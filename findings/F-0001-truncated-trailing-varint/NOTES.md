@@ -1,18 +1,22 @@
-# F-0001 — C accepts a truncated trailing varint that Go rejects
+# F-0001 — a truncated trailing varint: Go rejects, C/Rust accept
 
 **Status:** open — pending spec decision (PLAN §8)
-**Found:** Phase 1, first differential run (8 seeds, C + Go)
+**Found:** Phase 1, first differential run (C + Go); refined in Phase 2 (+ Rust)
 **Axis:** verdict (hard, per `oracle/policy.yaml`)
 
-## Reproducers
+## The split (3 accept, 1 reject)
 
-| file | bytes | C (`corelib-c-cpp`) | Go (`corelib-go`) |
-|---|---|---|---|
-| `06_dangling_varint.bin` | `80` | `A u=0 i=0 f=00000000 s=` (accept, all defaults) | `R invalid_msg` (reject) |
-| `07_garbage.bin` | `ff ff ff` | `A u=0 i=0 f=00000000 s=` (accept, all defaults) | `R invalid_msg` (reject) |
+| impl | verdict on `80` / `ff ff ff` |
+|---|---|
+| `corelib-go` | **`R invalid_msg`** (reject) |
+| `corelib-c-cpp` | `A u=0 i=0 f=00000000 s=` (accept, all defaults) |
+| `corelib-rs` (std) | `A …` (accept) |
+| `corelib-rs-no-std` | `A …` (accept) |
 
-Both inputs are an incomplete field-header varint (continuation bit set, no
-terminating byte). Reproduce:
+Three of four corelibs tolerate an incomplete trailing field-header varint and
+return the all-defaults message; **Go alone rejects it**. So the question is
+sharpened: is Go too strict, or are the other three too lenient? The wire is an
+incomplete varint (continuation bit set, no terminating byte). Reproduce:
 
 ```sh
 python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); sys.stdout.buffer.write(struct.pack('<I',len(d))+d)" \
@@ -22,14 +26,17 @@ python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); sys.stdout.buffe
 
 ## Analysis
 
-`corelib-c-cpp`'s streaming decoder tolerates an incomplete trailing varint: the
-bytes leave it mid-varint, it has consumed no complete field, and `feed`
-returns OK — yielding the all-defaults message. `corelib-go`'s cursor treats
-trailing bytes that cannot form a complete field as an invalid message.
+`corelib-c-cpp`, `corelib-rs`, and `corelib-rs-no-std` tolerate an incomplete
+trailing varint: the bytes leave the decoder mid-varint, no complete field was
+consumed, and `feed` returns OK — yielding the all-defaults message.
+`corelib-go`'s cursor treats trailing bytes that cannot form a complete field as
+an invalid message.
 
-This is **not** a driver artifact (verified by hand against both corelibs) and
-**not** the empty-input precondition (that is handled separately; see
-ARCHITECTURE). It is a real leniency difference on truncated input.
+This is **not** a driver artifact (verified by hand against all four corelibs;
+the Rust verdict comes from `IStream::feed`'s real `Result`, not the infallible
+generated `decode` — see docs/SOFABGEN.md G-0001) and **not** the empty-input
+precondition (handled separately; see ARCHITECTURE). It is a real leniency
+difference on truncated input, and the 3-vs-1 split makes the majority lenient.
 
 ## Resolution path
 

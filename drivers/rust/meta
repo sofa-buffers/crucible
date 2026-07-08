@@ -1,0 +1,5 @@
+lang=rust
+corelib=corelib-rs,corelib-rs-no-std
+framework=cargo-fuzz
+pacemaker=false
+variants=rs,rs-no-std

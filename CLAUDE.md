@@ -15,6 +15,7 @@ only a second net.
 | [`oracle/canonical.md`](oracle/canonical.md) | the canonical comparison form every driver must emit (once written). |
 | [`oracle/policy.yaml`](oracle/policy.yaml) | which divergences are legal vs bugs; each entry cites `MESSAGE_SPEC.md`. |
 | [`drivers/common/`](drivers/common/) | the driver contract every `drivers/<lang>/` obeys. |
+| [`docs/SOFABGEN.md`](docs/SOFABGEN.md) | generated-code weakness log — codegen defects to fix in `sofabgen`, not work around silently. |
 | `drivers/<lang>/{meta,build.sh,driver.*}` | per-language ground truth for build flags, framework, generation. |
 
 Everything below is only what is **not** written in those files.
@@ -70,6 +71,15 @@ exists), then record the new driver's quirks in `ARCHITECTURE.md`.
   PLAN §10.
 - **Zig fuzzing is immature** (Zig 0.16); the Zig driver may need libFuzzer via C
   interop rather than built-in fuzzing. Confirm before committing the approach.
+- **Generated decode may not surface the verdict.** The Rust `Probe::decode` is
+  infallible (drops `feed`'s `Result`), so `drivers/rust/` reads the corelib's
+  real accept/reject from a second `IStream::feed` pass. When adding a language,
+  check whether its generated decode returns the error; if not, capture the
+  corelib's real result and log the codegen gap in `docs/SOFABGEN.md`.
+- **A driver builds against multiple corelibs via one source.** `drivers/rust/`
+  has one `driver.rs` for both `corelib-rs` and `corelib-rs-no-std`, selected by
+  `build.sh <variant>` and registered as two drivers in `run.sh`. Mirror this if
+  another language ships std/embedded corelib pairs (e.g. cpp / c-cpp).
 
 ## Status
 

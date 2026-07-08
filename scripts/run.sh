@@ -15,12 +15,18 @@ CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 echo "==> building drivers" >&2
 C_BIN=$(sh "$ROOT/drivers/c/build.sh")
 GO_BIN=$(sh "$ROOT/drivers/go/build.sh")
-echo "==> c:  $C_BIN" >&2
-echo "==> go: $GO_BIN" >&2
+RS_BIN=$(sh "$ROOT/drivers/rust/build.sh" rs)
+NOSTD_BIN=$(sh "$ROOT/drivers/rust/build.sh" rs-no-std)
+echo "==> c:          $C_BIN" >&2
+echo "==> go:         $GO_BIN" >&2
+echo "==> rust-std:   $RS_BIN" >&2
+echo "==> rust-nostd: $NOSTD_BIN" >&2
 
 echo "==> differential comparison over $(ls "$CORPUS" | wc -l) seed(s)" >&2
 python3 "$ROOT/oracle/comparator.py" \
     --corpus "$CORPUS" \
     --policy "$ROOT/oracle/policy.yaml" \
     --driver "c:$C_BIN" \
-    --driver "go:$GO_BIN"
+    --driver "go:$GO_BIN" \
+    --driver "rust-std:$RS_BIN" \
+    --driver "rust-nostd:$NOSTD_BIN"
