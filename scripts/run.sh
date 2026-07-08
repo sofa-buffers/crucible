@@ -22,6 +22,7 @@ CCPP_BIN=$(sh "$ROOT/drivers/cpp/build.sh" c-cpp)
 PYC_BIN=$(sh "$ROOT/drivers/python/build.sh" cython)
 PYP_BIN=$(sh "$ROOT/drivers/python/build.sh" pure)
 JAVA_BIN=$(sh "$ROOT/drivers/java/build.sh")
+TS_BIN=$(sh "$ROOT/drivers/ts/build.sh")
 echo "==> c:          $C_BIN" >&2
 echo "==> go:         $GO_BIN" >&2
 echo "==> rust-std:   $RS_BIN" >&2
@@ -31,6 +32,7 @@ echo "==> cpp-c-cpp:  $CCPP_BIN" >&2
 echo "==> py-cython:  $PYC_BIN" >&2
 echo "==> py-pure:    $PYP_BIN" >&2
 echo "==> java:       $JAVA_BIN" >&2
+echo "==> typescript: $TS_BIN" >&2
 
 echo "==> differential comparison over $(ls "$CORPUS" | wc -l) seed(s)" >&2
 python3 "$ROOT/oracle/comparator.py" \
@@ -44,4 +46,5 @@ python3 "$ROOT/oracle/comparator.py" \
     --driver "cpp-c-cpp:$CCPP_BIN" \
     --driver "py-cython:$PYC_BIN" \
     --driver "py-pure:$PYP_BIN" \
-    --driver "java:$JAVA_BIN"
+    --driver "java:$JAVA_BIN" \
+    --driver "typescript:$TS_BIN"

@@ -1,10 +1,10 @@
 # F-0001 — a truncated trailing varint: Go rejects, C/Rust accept
 
 **Status:** open — pending spec decision (PLAN §8)
-**Found:** Phase 1 (C + Go); refined in Phase 2 (+ Rust, + C++, + Python, + Java)
+**Found:** Phase 1 (C + Go); refined in Phase 2 (+ Rust, C++, Python, Java, TypeScript)
 **Axis:** verdict (hard, per `oracle/policy.yaml`)
 
-## The split — two camps (6 accept, 3 reject)
+## The split — two camps (6 accept, 4 reject)
 
 | impl | verdict on `80` / `ff ff ff` |
 |---|---|
@@ -17,14 +17,16 @@
 | `corelib-go` | **`R invalid_msg`** (reject) |
 | `corelib-py` (Cython) | **`R invalid_msg`** (reject) |
 | `corelib-py` (pure) | **`R invalid_msg`** (reject) |
+| `corelib-ts` | **`R invalid_msg`** (reject) |
 
 The C/C++/Rust/Java camp tolerates an incomplete trailing field-header varint and
 returns the all-defaults message (corelib-cpp does so by design — its `feed`
 buffers "an incomplete trailing field … into the accumulator for the next
-feed()" and returns `None`). **Two independent lineages, Go and Python, reject
-it.** This is no longer a lone outlier: two unrelated implementations agreeing on
-*reject* is strong evidence the lenient camp is wrong. The wire is an incomplete
-varint (continuation bit set, no terminating byte). Reproduce:
+feed()" and returns `None`). **Three independent lineages — Go, Python, and
+TypeScript — reject it.** This is no longer a lone outlier: three unrelated
+implementations agreeing on *reject* is strong evidence the lenient camp is
+wrong. The wire is an incomplete varint (continuation bit set, no terminating
+byte). Reproduce:
 
 ```sh
 python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); sys.stdout.buffer.write(struct.pack('<I',len(d))+d)" \
@@ -37,11 +39,12 @@ python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); sys.stdout.buffe
 The C/C++/Rust/Java camp tolerates an incomplete trailing varint: the bytes leave
 the decoder mid-varint, no complete field was consumed, and `feed` returns OK —
 yielding the all-defaults message (corelib-cpp does this deliberately, buffering
-the tail for a future `feed`). Go's cursor and Python's decoder (which raises
-`SofaDecodeError("truncated varint")`) both treat trailing bytes that cannot form
-a complete field as an invalid message.
+the tail for a future `feed`). Go's cursor, Python's decoder (which raises
+`SofaDecodeError("truncated varint")`), and TypeScript's `Cursor` (which throws
+`SofabError`) all treat trailing bytes that cannot form a complete field as an
+invalid message.
 
-This is **not** a driver artifact (verified by hand against all nine corelibs;
+This is **not** a driver artifact (verified by hand against all ten corelibs;
 the Rust/C++ verdicts come from the corelib's real `feed` `Result`, not the
 infallible generated `decode` — see docs/SOFABGEN.md G-0001/G-0005) and **not**
 the empty-input precondition (handled separately; see ARCHITECTURE). It is a real
