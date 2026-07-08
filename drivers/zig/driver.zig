@@ -16,7 +16,6 @@ const message = @import("message.zig");
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
-    const a = init.gpa;
 
     var inbuf: [8192]u8 = undefined;
     var stdin_reader = std.Io.File.stdin().readerStreaming(io, &inbuf);
@@ -26,6 +25,12 @@ pub fn main(init: std.process.Init) !void {
     var stdout_writer = std.Io.File.stdout().writer(io, &outbuf);
     const out = &stdout_writer.interface;
 
+    // Per-record arena: the full message decodes array storage from it and
+    // re-encode allocates from it; reset per record so nothing leaks across the
+    // (potentially millions of) inputs.
+    var arena = std.heap.ArenaAllocator.init(init.gpa);
+    defer arena.deinit();
+
     while (true) {
         const lenb = in.takeArray(4) catch |e| switch (e) {
             error.EndOfStream => break, // clean EOF at record boundary
@@ -34,10 +39,14 @@ pub fn main(init: std.process.Init) !void {
         const n: usize = @as(usize, lenb[0]) | (@as(usize, lenb[1]) << 8) |
             (@as(usize, lenb[2]) << 16) | (@as(usize, lenb[3]) << 24);
 
+        _ = arena.reset(.retain_capacity);
+        const a = arena.allocator();
+
         const data = try a.alloc(u8, n);
-        defer a.free(data);
         if (n > 0) try in.readSliceAll(data);
 
+        // decode -> re-encode -> hex (oracle/canonical.md). m borrows string bytes
+        // from `data` (kept alive until the next reset), so encode can read them.
         const m = message.Probe.decode(a, data) catch |err| {
             const cls = switch (err) {
                 error.InvalidMessage => "invalid_msg",
@@ -49,10 +58,13 @@ pub fn main(init: std.process.Init) !void {
             try out.flush();
             continue;
         };
-
-        const fbits: u32 = @bitCast(m.f);
-        try out.print("A u={d} i={d} f={x:0>8} s=", .{ m.u, m.i, fbits });
-        for (m.s) |b| try out.print("{x:0>2}", .{b});
+        const enc = m.encode(a) catch {
+            try out.writeAll("R other\n");
+            try out.flush();
+            continue;
+        };
+        try out.writeAll("A ");
+        for (enc) |b| try out.print("{x:0>2}", .{b});
         try out.writeAll("\n");
         try out.flush();
     }

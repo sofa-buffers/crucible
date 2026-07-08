@@ -15,7 +15,6 @@ import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
 
 import message.Probe;
 
@@ -34,20 +33,16 @@ public final class Driver {
     }
 
     private static String canonical(byte[] data) {
-        Probe m;
+        // decode -> re-encode -> hex (oracle/canonical.md).
+        byte[] enc;
         try {
-            m = Probe.decode(data);
+            Probe m = Probe.decode(data);
+            enc = m.encode();
         } catch (RuntimeException e) {
             return "R " + rejectClass(e);
         }
-        StringBuilder sb = new StringBuilder();
-        // u, i are widened to long by the Java backend; both hold in-range u32/i32
-        // values, so decimal printing matches the other drivers.
-        sb.append("A u=").append(Long.toString(m.u))
-          .append(" i=").append(Long.toString(m.i))
-          .append(" f=").append(String.format("%08x", Float.floatToRawIntBits(m.f)))
-          .append(" s=");
-        for (byte b : m.s.getBytes(StandardCharsets.UTF_8)) {
+        StringBuilder sb = new StringBuilder("A ");
+        for (byte b : enc) {
             sb.append(String.format("%02x", b & 0xff));
         }
         return sb.toString();

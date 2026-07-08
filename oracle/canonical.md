@@ -1,64 +1,67 @@
-# Canonical form (v0 — Phase 1)
+# Canonical form (v1 — round-trip re-encoding)
 
 Every driver decodes an input and prints **exactly one line** describing the
-result, in this canonical form. The comparator (`oracle/comparator.py`) diffs
-these lines byte-for-byte across implementations, so the form is designed to be
-unambiguous and identical regardless of language. See `drivers/common/CONTRACT.md`
-for the framing that carries these lines.
+result. The comparator (`oracle/comparator.py`) diffs these lines byte-for-byte
+across implementations, so the form must be unambiguous and identical regardless
+of language and message shape.
 
 ## Grammar
 
 ```
 line    := accept | reject
-accept  := "A" ( SP field )*          ; fields in ascending schema-id order
+accept  := "A" SP hex            ; hex of the re-encoded sparse-canonical wire
 reject  := "R" SP class
-field   := name "=" value
 class   := "invalid_msg" | "argument" | "usage" | "buffer_full" | "other"
+hex     := *( HEXDIG HEXDIG )    ; lowercase, two digits per byte; empty allowed
 ```
 
 A trailing `\n` terminates every line. No other output goes to stdout (logs →
 stderr).
 
-## Value encoding (per type)
+## How `accept` is produced: decode → re-encode → hex
 
-| type | encoding | rationale |
-|---|---|---|
-| unsigned (u8…u64) | decimal, no leading zeros | exact |
-| signed (i8…i64) | decimal, leading `-` if negative | exact |
-| fp32 | `%08x` of the IEEE-754 bits (lowercase, zero-padded to 8) | **bit-exact**: distinguishes `-0.0`, every NaN payload, ±inf — which decimal printing loses |
-| fp64 | `%016x` of the IEEE-754 bits | as fp32 |
-| string | lowercase hex of the UTF-8 bytes (empty → `s=`) | avoids escaping/whitespace ambiguity; exact bytes |
-| blob | lowercase hex of the raw bytes | exact bytes |
-
-Example accept line for the `probe` message:
+On a successful decode the driver **re-encodes the decoded message** with the
+corelib's own encoder and emits the lowercase hex of those bytes:
 
 ```
-A u=42 i=-7 f=3fc00000 s=6869
+value  = decode(input)          # reject on failure
+bytes  = encode(value)          # the sparse-canonical wire form
+line   = "A " + hex(bytes)
 ```
 
-(`f=3fc00000` is `1.5f`; `s=6869` is `"hi"`.)
+Why this instead of walking fields:
 
-## Absent vs default vs value (v0 decision)
+- **Schema-agnostic.** The driver never references individual fields, so scaling
+  the schema (arrays, nested structs, unions, blobs, unicode) needs **zero**
+  driver changes — only the generated `decode`/`encode` change.
+- **Faithful decoded-value comparison.** The generated encoders are
+  deterministic and sparse-canonical (MESSAGE_SPEC S2/S5.1), and the whole family
+  produces byte-identical wire for the same value (this is exactly the invariant
+  the `arena` reference-wire SHAs enforce). So *identical decoded value ⇒
+  identical re-encoded bytes*, and any decode divergence surfaces as a hex diff.
+- **Round-trip oracle for free.** Comparing re-encoded bytes also catches an
+  encoder that produces non-canonical output for a value others encode
+  canonically — the round-trip invariant from PLAN §6, folded into the decode
+  comparison.
 
-The C object API and the Go visitor API both **materialize decoded values into a
-value type**, applying the schema default (zero) to any field the wire omits.
-The SofaBuffers wire is sparse-canonical: a default-valued field is *not*
-emitted, so on the wire `absent == default`. For these value-materializing
-decoders the two are therefore indistinguishable *and equal*, and the canonical
-form simply emits every field's value (the default when absent).
+### Tradeoff (recorded)
 
-> This collapses the three-way absent/default/value distinction from PLAN §7
-> into two states **for value-materializing decoders**. When a
-> presence-tracking decoder joins (a driver that can tell "field was on the
-> wire" from "field defaulted"), this file gains an explicit presence marker and
-> the comparator learns to treat a value-materializing driver's "default" as
-> compatible with a presence-tracking driver's "absent". Recorded as a Phase-1
-> simplification in ARCHITECTURE.md.
+Two implementations that decode an input to *different* values but happen to
+re-encode to the *same* bytes would be masked. Because encoding is deterministic
+from the value, this only happens when the differing values are
+encode-equivalent — i.e. they differ only in something the wire cannot represent
+(e.g. `-0.0` vs `+0.0`, both omitted as default). Those are semantically equal on
+the wire and are non-findings, so the masking is benign. Genuinely different
+decoded values encode differently and are caught.
+
+Float/NaN note: a decoder that materializes fp32 through a 64-bit double (Python,
+TypeScript) may not preserve a NaN *payload* across decode→re-encode; this is a
+known per-language limit, harmless for current seeds.
 
 ## Reject classes
 
-The class is a coarse taxonomy so the comparator can tell "rejected for the same
-reason" from "rejected differently". In Phase 1 the class comparison is **soft**
-(a class mismatch is a warning, not a failure — see `policy.yaml`) because the
-per-language error taxonomies are not yet aligned. The verdict itself
-(accept vs reject) is always **hard**.
+Coarse taxonomy so the comparator can tell "rejected for the same reason" from
+"rejected differently". Phase 2: the class comparison is **soft** (a mismatch is a
+warning, not a failure — see `policy.yaml`); the verdict (accept vs reject) is
+always **hard**. `encode` failing after a successful decode (it should not, given
+a worst-case buffer) is reported as a reject class too.

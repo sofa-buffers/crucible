@@ -28,19 +28,22 @@ _CLASS = {
 }
 
 
+def _reject(e: Exception) -> str:
+    if isinstance(e, SofaError):
+        return "R " + _CLASS.get(type(e).__name__, "invalid_msg")
+    # Any non-SofaError failure is surfaced (not hidden) so a divergence in
+    # failure mode still shows up rather than masquerading.
+    return "R other"
+
+
 def canonical(data: bytes) -> str:
+    # decode -> re-encode -> hex (oracle/canonical.md).
     try:
         m = Probe.decode(data)
-    except SofaError as e:
-        return "R " + _CLASS.get(type(e).__name__, "invalid_msg")
-    except Exception:
-        # Any non-SofaError decode failure is surfaced (not hidden) so a
-        # divergence in failure mode still shows up rather than masquerading.
-        return "R other"
-
-    fbits = struct.unpack("<I", struct.pack("<f", m.f))[0]
-    s_hex = m.s.encode("utf-8").hex()
-    return f"A u={m.u} i={m.i} f={fbits:08x} s={s_hex}"
+        b = m.encode()
+    except Exception as e:
+        return _reject(e)
+    return "A " + b.hex()
 
 
 def main() -> int:

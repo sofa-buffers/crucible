@@ -39,10 +39,11 @@ fn canonical(out: &mut impl Write, data: &[u8]) {
             let _ = writeln!(out, "R {}", reject_class(e));
         }
         Ok(()) => {
-            // Value: faithful decode via generated code (string quirks, capacity).
+            // Value: faithful decode via generated code; re-encode -> hex.
             let m = Probe::decode(data);
-            let _ = write!(out, "A u={} i={} f={:08x} s=", m.u, m.i, m.f.to_bits());
-            for b in m.s.as_bytes() {
+            let bytes = m.encode();
+            let _ = write!(out, "A ");
+            for b in bytes.iter() {
                 let _ = write!(out, "{:02x}", b);
             }
             let _ = writeln!(out);

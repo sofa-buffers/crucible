@@ -14,7 +14,7 @@
 import { readFileSync } from "node:fs";
 
 import { Probe } from "./message";
-import { SofabError } from "@sofa-buffers/corelib";
+import { OStream, SofabError } from "@sofa-buffers/corelib";
 
 function rejectClass(e: unknown): string {
   // Coarse in Phase 2 (reject-class comparison is soft per policy). A SofabError
@@ -24,19 +24,21 @@ function rejectClass(e: unknown): string {
 }
 
 function canonical(data: Uint8Array): string {
-  let m: Probe;
+  // decode -> re-encode -> hex (oracle/canonical.md). The generated TS message
+  // has no encode(), so marshal into an in-memory OStream and read its bytes.
+  let bytes: Uint8Array;
   try {
-    m = Probe.decode(data);
+    const m = Probe.decode(data);
+    const os = new OStream();
+    m.marshal(os);
+    bytes = os.bytes();
   } catch (e) {
     return "R " + rejectClass(e);
   }
-  // fp32 bits (matches the other drivers' raw IEEE-754 encoding).
-  const fbits = new DataView(new Float32Array([m.f]).buffer).getUint32(0, true);
-  const fhex = fbits.toString(16).padStart(8, "0");
-  const shex = Array.from(Buffer.from(m.s, "utf8"))
+  const hex = Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return `A u=${m.u} i=${m.i} f=${fhex} s=${shex}`;
+  return "A " + hex;
 }
 
 function main(): void {

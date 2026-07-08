@@ -29,17 +29,18 @@ internal static class Driver
 
     private static string Canonical(byte[] data)
     {
-        Probe m;
-        try { m = Probe.Decode(data); }
+        // decode -> re-encode -> hex (oracle/canonical.md).
+        byte[] enc;
+        try
+        {
+            Probe m = Probe.Decode(data);
+            enc = m.Encode();
+        }
         catch (SofabException e) { return "R " + RejectClass(e); }
         catch (Exception) { return "R other"; }
 
-        uint fbits = BitConverter.SingleToUInt32Bits(m.f);
-        var sb = new StringBuilder();
-        // u is uint, i is int in the C# backend — both print decimal to match.
-        sb.Append("A u=").Append(m.u).Append(" i=").Append(m.i)
-          .Append(" f=").Append(fbits.ToString("x8")).Append(" s=");
-        foreach (byte b in Encoding.UTF8.GetBytes(m.s)) sb.Append(b.ToString("x2"));
+        var sb = new StringBuilder("A ");
+        foreach (byte b in enc) sb.Append(b.ToString("x2"));
         return sb.ToString();
     }
 

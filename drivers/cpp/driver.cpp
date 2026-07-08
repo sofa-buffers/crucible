@@ -50,12 +50,12 @@ static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *o
         m = *in;
     }
 
-    std::uint32_t fbits;
-    std::memcpy(&fbits, &m.f, sizeof(fbits));
-    std::fprintf(out, "A u=%u i=%d f=%08x s=", m.u, m.i, fbits);
-    for (unsigned char c : m.s)
+    // Accept: re-encode the decoded value and emit its canonical wire as hex.
+    std::vector<std::uint8_t> enc = m.encode();
+    std::fputs("A ", out);
+    for (std::uint8_t b : enc)
     {
-        std::fprintf(out, "%02x", c);
+        std::fprintf(out, "%02x", b);
     }
     std::fputc('\n', out);
 }

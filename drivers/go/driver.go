@@ -13,24 +13,26 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math"
 	"os"
 
 	msg "crucible/driver/go/message"
 )
 
-// canonical writes the canonical line for one candidate input.
+// canonical writes the canonical line for one candidate input
+// (oracle/canonical.md: decode -> re-encode -> hex).
 func canonical(w *bufio.Writer, data []byte) {
 	m, err := msg.DecodeProbe(data)
 	if err != nil {
-		// Coarse reject class in Phase 1 (class comparison is soft; see
-		// oracle/policy.yaml). Refine to the taxonomy in canonical.md later.
+		// Coarse reject class (class comparison is soft; see oracle/policy.yaml).
 		fmt.Fprint(w, "R invalid_msg\n")
 		return
 	}
-	// Accept: fields in ascending schema-id order (u, i, f, s).
-	fmt.Fprintf(w, "A u=%d i=%d f=%08x s=%s\n",
-		m.U, m.I, math.Float32bits(m.F), hex.EncodeToString([]byte(m.S)))
+	b, err := m.Encode()
+	if err != nil {
+		fmt.Fprint(w, "R other\n")
+		return
+	}
+	fmt.Fprintf(w, "A %s\n", hex.EncodeToString(b))
 }
 
 func main() {

@@ -60,10 +60,13 @@ reads back one line per input.
 
 ### Canonical form (as built)
 
-Per `oracle/canonical.md`: `A u=<dec> i=<dec> f=<8 hex, IEEE-754 bits> s=<hex utf-8>`
-on accept (fields in ascending schema-id order), `R <class>` on reject. Floats as
-raw bits so `-0.0`/NaN/±inf are exact. Verified: valid inputs produce
-byte-identical lines from C and Go (e.g. `A u=42 i=-7 f=3fc00000 s=6869`).
+**v1 — round-trip re-encoding** (Phase 3; superseded the v0 per-field text form).
+Per `oracle/canonical.md`: each driver emits `A <hex(encode(decode(input)))>` on
+accept, `R <class>` on reject — the decoded value re-encoded with the corelib's
+own sparse-canonical encoder, hex-printed. This makes every driver
+**schema-agnostic** (no per-field code; scaling the schema needs zero driver
+changes) and folds in the round-trip oracle. Verified: all 12 drivers emit
+byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03f1a126869`).
 
 ### Per-language driver notes (as built)
 
@@ -193,6 +196,14 @@ byte-identical lines from C and Go (e.g. `A u=42 i=-7 f=3fc00000 s=6869`).
   but codegen ships to users, so codegen defects are tracked as generator changes,
   not worked around silently. (Python's generated `decode` *raises* — the
   fallible model G-0001/G-0005 propose for Rust/C++.)
+- **2026-07-08 — canonical form v1: round-trip re-encoding.** Replaced the v0
+  per-field text form with `A <hex(encode(decode(input)))>`. Reason: the full-scale
+  message (arrays, nested structs, unions) makes per-field walking in 12 languages
+  intractable and error-prone; re-encoding the decoded value is schema-agnostic
+  (drivers reference no fields) and identical across the family because the
+  encoders are sparse-canonical (the arena reference-wire invariant). Also gives
+  the round-trip oracle for free. Tradeoff (benign masking of encode-equivalent
+  differences) recorded in `oracle/canonical.md`. This is what surfaced F-0002.
 - **2026-07-08 — Python: build the Cython extension per interpreter.** The
   prebuilt `_speedups.so` is version-specific; a mismatched CPython silently falls
   back to pure, so "cython" mode would be a false label. build.sh compiles the

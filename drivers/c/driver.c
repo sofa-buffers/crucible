@@ -31,7 +31,8 @@ static const char *reject_class(sofab_ret_t r)
     }
 }
 
-/* Decode one candidate input and write its canonical line to `out`. */
+/* Decode one candidate input and write its canonical line to `out`
+ * (oracle/canonical.md: decode -> re-encode -> hex). */
 static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
 {
     message_probe_t m;
@@ -53,14 +54,19 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
         }
     }
 
-    /* Accept: emit fields in ascending schema-id order (u, i, f, s). */
-    uint32_t fbits;
-    memcpy(&fbits, &m.f, sizeof(fbits));
-
-    fprintf(out, "A u=%u i=%d f=%08x s=", m.u, m.i, fbits);
-    for (size_t k = 0; k < strlen(m.s); k++)
+    /* Accept: re-encode the decoded value and emit its canonical wire as hex. */
+    uint8_t enc[MESSAGE_PROBE_MAX_SIZE];
+    size_t used = 0;
+    sofab_ret_t er = message_probe_encode(&m, enc, sizeof(enc), &used);
+    if (er != SOFAB_RET_OK)
     {
-        fprintf(out, "%02x", (unsigned char)m.s[k]);
+        fprintf(out, "R %s\n", reject_class(er));
+        return;
+    }
+    fputs("A ", out);
+    for (size_t k = 0; k < used; k++)
+    {
+        fprintf(out, "%02x", enc[k]);
     }
     fputc('\n', out);
 }

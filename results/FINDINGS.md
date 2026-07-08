@@ -8,6 +8,7 @@ artifacts live under `corpus/crashes/` (gitignored); promoted findings land here
 | id | title | impls | axis | status |
 |---|---|---|---|---|
 | [F-0001](../findings/F-0001-truncated-trailing-varint/NOTES.md) | truncated trailing varint: two camps — C/C++/Rust/Java/C# accept, Go+Python+TS+Zig reject (7 vs 5) | {c,cpp,c-cpp,rust-std,rust-nostd,java,csharp} vs {go,py-cython,py-pure,typescript,zig} | verdict | open — pending spec (PLAN §8) |
+| [F-0002](../findings/F-0002-encoder-negative-left-shift-ub/NOTES.md) | corelib-c-cpp encoder left-shifts a negative value (UB) | corelib-c-cpp | ub (sanitizer) | open — corelib bug, fix upstream |
 
 Generated-code (codegen, not corelib) weaknesses are tracked separately in
 [`docs/SOFABGEN.md`](../docs/SOFABGEN.md) (G-0001..G-0004).
