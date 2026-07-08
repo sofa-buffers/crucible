@@ -39,8 +39,9 @@ null visitor to recover the verdict. Faithful but wasteful (decodes twice).
 **Proposed fix:** emit a fallible entry point, e.g.
 `pub fn try_decode(data: &[u8]) -> Result<Self, sofab::Error>` (or make `decode`
 return `Result`). Then the driver is one pass and real users can handle errors.
-The C (`sofab_ret_t`) and Go (`error`) backends already surface the result — Rust
-is the outlier.
+The C (`sofab_ret_t`), Go (`error`), and Python (`Probe.decode` raises
+`SofaError`) backends already surface the result — Rust and C++ are the outliers.
+Python is a ready reference for the fallible shape to mirror.
 
 ## G-0002 — std vs no-std Rust diverge on invalid UTF-8 in a string
 

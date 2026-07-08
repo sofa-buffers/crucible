@@ -1,0 +1,5 @@
+lang=python
+corelib=corelib-py
+framework=atheris
+pacemaker=false
+variants=cython,pure
