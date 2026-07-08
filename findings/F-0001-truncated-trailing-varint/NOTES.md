@@ -1,10 +1,10 @@
 # F-0001 — a truncated trailing varint: Go rejects, C/Rust accept
 
 **Status:** open — pending spec decision (PLAN §8)
-**Found:** Phase 1 (C + Go); refined in Phase 2 (+ Rust, C++, Python, Java, TypeScript)
+**Found:** Phase 1 (C + Go); refined in Phase 2 (+ Rust, C++, Python, Java, TS, C#)
 **Axis:** verdict (hard, per `oracle/policy.yaml`)
 
-## The split — two camps (6 accept, 4 reject)
+## The split — two camps (7 accept, 4 reject)
 
 | impl | verdict on `80` / `ff ff ff` |
 |---|---|
@@ -14,13 +14,14 @@
 | `corelib-rs` (std) | `A …` (accept) |
 | `corelib-rs-no-std` | `A …` (accept) |
 | `corelib-java` | `A …` (accept) |
+| `corelib-cs` | `A …` (accept) |
 | `corelib-go` | **`R invalid_msg`** (reject) |
 | `corelib-py` (Cython) | **`R invalid_msg`** (reject) |
 | `corelib-py` (pure) | **`R invalid_msg`** (reject) |
 | `corelib-ts` | **`R invalid_msg`** (reject) |
 
-The C/C++/Rust/Java camp tolerates an incomplete trailing field-header varint and
-returns the all-defaults message (corelib-cpp does so by design — its `feed`
+The C/C++/Rust/Java/C# camp tolerates an incomplete trailing field-header varint
+and returns the all-defaults message (corelib-cpp does so by design — its `feed`
 buffers "an incomplete trailing field … into the accumulator for the next
 feed()" and returns `None`). **Three independent lineages — Go, Python, and
 TypeScript — reject it.** This is no longer a lone outlier: three unrelated
@@ -36,15 +37,15 @@ python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); sys.stdout.buffe
 
 ## Analysis
 
-The C/C++/Rust/Java camp tolerates an incomplete trailing varint: the bytes leave
-the decoder mid-varint, no complete field was consumed, and `feed` returns OK —
+The C/C++/Rust/Java/C# camp tolerates an incomplete trailing varint: the bytes
+leave the decoder mid-varint, no complete field was consumed, and `feed` returns OK —
 yielding the all-defaults message (corelib-cpp does this deliberately, buffering
 the tail for a future `feed`). Go's cursor, Python's decoder (which raises
 `SofaDecodeError("truncated varint")`), and TypeScript's `Cursor` (which throws
 `SofabError`) all treat trailing bytes that cannot form a complete field as an
 invalid message.
 
-This is **not** a driver artifact (verified by hand against all ten corelibs;
+This is **not** a driver artifact (verified by hand against all eleven corelibs;
 the Rust/C++ verdicts come from the corelib's real `feed` `Result`, not the
 infallible generated `decode` — see docs/SOFABGEN.md G-0001/G-0005) and **not**
 the empty-input precondition (handled separately; see ARCHITECTURE). It is a real
