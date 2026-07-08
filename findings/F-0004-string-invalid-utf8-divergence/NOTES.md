@@ -1,54 +1,51 @@
-# F-0004 — invalid UTF-8 in a string: three different behaviors
+# F-0004 — invalid UTF-8 in a string: four behaviors, driven by the string type
 
-**Status:** open — pending spec decision (PLAN §8; UTF-8 policy)
-**Found:** Phase 3, C-pacemaker → differential loop (one of a cluster of
-string-handling divergences the pacemaker surfaced)
-**Axis:** verdict + accept_value (hard)
+**Status:** resolved in spec — `MESSAGE_SPEC.md` §8 (opt-in strict UTF-8 check,
+default off; conformance/fuzz runs it on). Corelib work: expose the check as a
+config flag and enable it under the fuzzer.
+**Found:** Phase 3, C-pacemaker → differential loop; **corrected** with a clean
+isolate (the original write-up was skewed — see below)
+**Axis:** verdict + accept_value (hard, when the check is on)
 
-## The three camps
+## The true split (clean isolate)
 
-For a `string` field whose wire bytes are **not valid UTF-8**, the family does
-three different things:
+Reproducer `invalid_utf8.bin` = a well-formed message whose only anomaly is a
+`nested.str` payload `41 ff 42` ("A", `0xff`, "B") — `0xff` alone is not valid
+UTF-8. Feeding it to every driver:
 
-| camp | impls | behavior |
+| behavior | impls | why — the decode target's string type |
 |---|---|---|
-| **preserve raw** | `corelib-c-cpp` (C + C++ wrapper), `corelib-cpp` | accept; keep the raw bytes verbatim (re-encode reproduces them) |
-| **lossy replace** | `corelib-java`, `corelib-cs` | accept; decode via UTF-8 with replacement → the string becomes U+FFFD (`ef bf bd`) per bad sequence, and re-encode emits those |
-| **reject** | `corelib-go`, `corelib-ts`, `corelib-zig`, `corelib-py` | reject the whole message (`R invalid_msg`) |
+| **preserve raw** (`…41 ff 42…`) | c, cpp, cpp-c-cpp, **zig** | byte-container string, no UTF-8 check: `char[]`, `std::string`, `[]const u8` |
+| **U+FFFD replace** (`…41 efbfbd 42…`) | rust-std, java, csharp, **typescript** | Unicode string whose constructor replaces: `from_utf8_lossy`, `new String(b, UTF_8)`, `Encoding.UTF8.GetString`, `TextDecoder` |
+| **empty / dropped** | rust-nostd | heapless `String` via `from_utf8().unwrap_or("")` |
+| **reject** (`R invalid_msg`) | go, py | explicit strict check: Go `utf8.Valid(b)`; Python `bytes.decode("utf-8")` (strict by default) |
 
-Reproducer `invalid_utf8.bin` (a nested-struct string with `ff…` bytes):
+The behavior **falls out of the target string type**, not a deliberate corelib
+choice: Unicode-string types (Rust/Java/C#/JS/Python `str`) cannot hold non-UTF-8
+bytes at all, so they replace or reject; byte-container types (C/C++/Go/Zig) carry
+raw bytes, and only Go (explicit `utf8.Valid`) and Python (strict `.decode`)
+actually reject.
 
-```sh
-python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); sys.stdout.buffer.write(struct.pack('<I',len(d))+d)" \
-  findings/F-0004-string-invalid-utf8-divergence/invalid_utf8.bin | drivers/c/build/driver
-#   c   -> A ...ff...        (raw bytes kept)
-#   java-> A ...efbfbd...    (U+FFFD replacement)
-#   go  -> R invalid_msg     (rejected)
-```
+## Correction to the original write-up
 
-## Why it matters
+The first version claimed a 3-way split with TypeScript and Zig in the *reject*
+camp. That was wrong: it was based on a **complex** pacemaker input where TS/Zig
+rejected for *other* structural reasons — and all rejects look identical
+(`R invalid_msg`) because the reject class is coarse. Isolated cleanly, **TS does
+U+FFFD** and **Zig preserves raw**. Lesson: characterize a divergence with a
+*minimal* input that isolates the one behavior, not a raw fuzzer finding.
 
-This is the most consequential kind of interop bug: **the same bytes mean three
-different things**. A C producer that round-trips a raw-byte "string" will have
-its value silently mangled by a Java/C# consumer and outright rejected by a
-Go/TS/Zig/Python consumer. No implementation crashes — they just disagree.
+## Resolution — MESSAGE_SPEC.md §8
 
-It generalizes docs/SOFABGEN.md G-0002 (which noted the *std vs no_std Rust*
-invalid-UTF-8 divergence): the whole family disagrees, in three ways.
+`string` is UTF-8; `blob` is the type for opaque bytes. The **strict, conformant**
+behavior is to reject invalid UTF-8 as `INVALID` (§7). Because validation has a
+cost and several native string types don't check, the corelib **MAY gate the
+check behind a config flag that MAY default OFF**:
 
-## Resolution path
+- **check on** → reject invalid UTF-8 (family-uniform, conformant);
+- **check off** (default allowed) → implementation-defined (raw bytes, or the
+  Unicode type's replacement) — zero-cost decode, outside the strict contract.
 
-A `MESSAGE_SPEC.md` decision (PLAN §8), and the highest-value one Crucible has
-forced so far. Options: (a) strings are UTF-8 and invalid UTF-8 is a decode error
-→ everyone rejects (Go/TS/Zig/Python camp is right); (b) strings are opaque byte
-sequences → everyone preserves raw (C/C++ camp is right). The lossy-replace camp
-(Java/C#) is defensible for neither — silent corruption. Whichever the spec
-chooses, this reproducer becomes a conformance fix for the other two camps.
-
-## Note
-
-This is one representative of a **cluster** of string/verdict divergences the
-pacemaker found on its first run (2 crashes + ~1330 raw divergence rows over 309
-discovered inputs, most tracing to this UTF-8 split, the F-0001 truncated-input
-split, and F-0003). Clustering the full pacemaker output into distinct root
-causes is ongoing Phase-3 work; F-0004 captures the dominant string class.
+Conformance testing and this differential fuzzer run with the check **on**, so all
+implementations agree. Corelib follow-up: add the flag (e.g. `SOFAB_STRICT_UTF8`)
+and build the Crucible drivers with it enabled.
