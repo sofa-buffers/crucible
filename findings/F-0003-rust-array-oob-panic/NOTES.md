@@ -1,6 +1,6 @@
 # F-0003 — Rust decoder panics (index out of bounds) on an over-long array
 
-**Status:** open — crash / DoS; codegen root cause (see docs/SOFABGEN.md G-0007)
+**Status:** fixed — bounds check added in sofabgen's Rust backend; PR [sofa-buffers/generator#87](https://github.com/sofa-buffers/generator/pull/87) (codegen root cause G-0007, issue [generator#78](https://github.com/sofa-buffers/generator/issues/78))
 **Found:** Phase 3, first differential run over the **C-pacemaker's** discovered
 corpus (a crash 8 hand-seeds never reached)
 **Axis:** crash (memory-safety-adjacent — a panic, not UB)
@@ -59,7 +59,21 @@ of a bare exit-2 — see the crash-isolation change in `oracle/comparator.py`.
 
 ## Fix
 
-In `sofabgen`'s Rust backend, bound the array-fill index like the Zig/C backends
-(drop or reject excess elements). Tracked as **G-0007** in docs/SOFABGEN.md. Until
-fixed, an untrusted Sofab message can crash any Rust consumer of the generated
-code.
+**Fixed** in `sofabgen`'s Rust backend (`generators/rust/visitor.go`,
+`emitNativeArrayStore`): the native-array element fill is now bounds-checked like
+the Zig/C backends, dropping excess elements per MESSAGE_SPEC §5.1:
+
+```rust
+(_Loc::Root_arrays, 0) => { if self.ai < 5 { self.m.arrays.u8[self.ai] = value as u8; self.ai += 1; } }
+```
+
+The guard covers every native-array element arm (unsigned, signed, enum, bool,
+bitfield, float) across both the std and no_std profiles. PR
+[sofa-buffers/generator#87](https://github.com/sofa-buffers/generator/pull/87)
+(issue [generator#78](https://github.com/sofa-buffers/generator/issues/78),
+codegen weakness **G-0007** in docs/SOFABGEN.md).
+
+**Verified:** rebuilt the Rust driver with the fixed `sofabgen` and re-fed
+`array_overflow.bin` — the harness that previously panicked (`index out of
+bounds: the len is 5 but the index is 5`, exit 101) now cleanly accepts and drops
+the overflow (exit 0), for both the `rs` and `rs-no-std` variants.
