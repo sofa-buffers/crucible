@@ -1,0 +1,4 @@
+lang=java
+corelib=corelib-java
+framework=jazzer
+pacemaker=false
