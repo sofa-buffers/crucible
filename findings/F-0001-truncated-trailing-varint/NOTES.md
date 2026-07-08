@@ -62,3 +62,7 @@ This is the canonical case behind PLAN §8: is decoding of truncated input
 **undefined** (both legal → record in `policy.yaml` as allowed)? The finding
 stays open until `documentation/MESSAGE_SPEC.md` rules. Whichever way it goes,
 this reproducer becomes either a corelib bug fix or a `policy.yaml` allow-entry.
+
+## Implementation
+
+Resolved in MESSAGE_SPEC §7 (three-state feed COMPLETE/INCOMPLETE/INVALID + finish; a valid message is consumed exactly). Family-wide implementation tracked in [generator#86](https://github.com/sofa-buffers/generator/issues/86): the lenient corelibs (c-cpp, cpp, rs, rs-no-std, java, cs) add the INCOMPLETE state + a finish that rejects a truncated tail; the strict corelibs (go, py, ts, zig) already reject truncated and align the feed/finish API. Crucible verifies (truncated seeds → F-0001 green).
