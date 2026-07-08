@@ -19,7 +19,7 @@ fix. Status: `open` until the generator change lands.
 | G-0004 | [generator#82](https://github.com/sofa-buffers/generator/issues/82) |
 | G-0005 | [generator#83](https://github.com/sofa-buffers/generator/issues/83) |
 | G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) |
-| G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) |
+| G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) — fixed by PR [#87](https://github.com/sofa-buffers/generator/pull/87) |
 
 ---
 
@@ -180,7 +180,8 @@ that references `bytes.` (or any std package) must import it.
 
 ## G-0007 — generated Rust array fill has no bounds check (crashes)
 
-**Status:** open · **Lang:** rust (both corelibs) · **Where:**
+**Status:** fixed (PR [generator#87](https://github.com/sofa-buffers/generator/pull/87)) ·
+**Lang:** rust (both corelibs) · **Where:**
 `generator/generators/rust/visitor.go` (native-array element fill) ·
 **Severity:** crash / DoS on untrusted input
 
@@ -201,7 +202,11 @@ This is the codegen root cause of **F-0003** (found by the C pacemaker → the
 differential loop). It panics in release too (Rust bounds-checks indexing), so it
 is a real DoS in any Rust consumer of the generated code.
 
-**Proposed fix:** mirror the Zig/C behavior — guard the fill index
-(`if self.ai < N { ... ; self.ai += 1; }`), dropping or rejecting excess elements
-per MESSAGE_SPEC. Apply to every native-array fill in the Rust backend (both the
-std and no_std profiles are affected).
+**Fix (shipped):** mirrored the Zig/C behavior — the fill index is now guarded
+(`if self.ai < N { ... ; self.ai += 1; }`), dropping excess elements per
+MESSAGE_SPEC §5.1. Applied in `emitNativeArrayStore` so it covers every
+native-array element arm (unsigned, signed, enum, bool, bitfield, float) across
+both the std and no_std profiles. PR
+[generator#87](https://github.com/sofa-buffers/generator/pull/87). Verified via
+F-0003's `array_overflow.bin`: the rebuilt Rust driver goes from panic (exit 101)
+to clean accept (exit 0) on both the `rs` and `rs-no-std` variants.
