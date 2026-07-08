@@ -9,6 +9,18 @@ a cross-implementation divergence, it is recorded here as a candidate change to
 Each entry: what, where, why it matters for the differential fuzzer, proposed
 fix. Status: `open` until the generator change lands.
 
+## Tracking issues (generator repo)
+
+| id | issue |
+|---|---|
+| G-0001 | [generator#79](https://github.com/sofa-buffers/generator/issues/79) |
+| G-0002 | [generator#80](https://github.com/sofa-buffers/generator/issues/80) |
+| G-0003 | [generator#81](https://github.com/sofa-buffers/generator/issues/81) |
+| G-0004 | [generator#82](https://github.com/sofa-buffers/generator/issues/82) |
+| G-0005 | [generator#83](https://github.com/sofa-buffers/generator/issues/83) |
+| G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) |
+| G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) |
+
 ---
 
 ## G-0001 — generated Rust `decode` is infallible (discards the decode error)
