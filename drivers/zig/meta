@@ -1,0 +1,4 @@
+lang=zig
+corelib=corelib-zig
+framework=zig-fuzz
+pacemaker=false

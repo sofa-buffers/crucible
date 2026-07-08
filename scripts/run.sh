@@ -24,6 +24,7 @@ PYP_BIN=$(sh "$ROOT/drivers/python/build.sh" pure)
 JAVA_BIN=$(sh "$ROOT/drivers/java/build.sh")
 TS_BIN=$(sh "$ROOT/drivers/ts/build.sh")
 CS_BIN=$(sh "$ROOT/drivers/cs/build.sh")
+ZIG_BIN=$(sh "$ROOT/drivers/zig/build.sh")
 echo "==> c:          $C_BIN" >&2
 echo "==> go:         $GO_BIN" >&2
 echo "==> rust-std:   $RS_BIN" >&2
@@ -35,6 +36,7 @@ echo "==> py-pure:    $PYP_BIN" >&2
 echo "==> java:       $JAVA_BIN" >&2
 echo "==> typescript: $TS_BIN" >&2
 echo "==> csharp:     $CS_BIN" >&2
+echo "==> zig:        $ZIG_BIN" >&2
 
 echo "==> differential comparison over $(ls "$CORPUS" | wc -l) seed(s)" >&2
 python3 "$ROOT/oracle/comparator.py" \
@@ -50,4 +52,5 @@ python3 "$ROOT/oracle/comparator.py" \
     --driver "py-pure:$PYP_BIN" \
     --driver "java:$JAVA_BIN" \
     --driver "typescript:$TS_BIN" \
-    --driver "csharp:$CS_BIN"
+    --driver "csharp:$CS_BIN" \
+    --driver "zig:$ZIG_BIN"
