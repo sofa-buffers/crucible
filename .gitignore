@@ -19,3 +19,6 @@
 testdata/fuzz/
 
 .env
+
+# Python bytecode cache
+__pycache__/

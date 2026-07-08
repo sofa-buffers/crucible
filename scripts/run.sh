@@ -38,10 +38,8 @@ echo "==> typescript: $TS_BIN" >&2
 echo "==> csharp:     $CS_BIN" >&2
 echo "==> zig:        $ZIG_BIN" >&2
 
-echo "==> differential comparison over $(ls "$CORPUS" | wc -l) seed(s)" >&2
-python3 "$ROOT/oracle/comparator.py" \
-    --corpus "$CORPUS" \
-    --policy "$ROOT/oracle/policy.yaml" \
+# The driver roster, shared by the comparator and the clusterer.
+set -- \
     --driver "c:$C_BIN" \
     --driver "go:$GO_BIN" \
     --driver "rust-std:$RS_BIN" \
@@ -54,3 +52,12 @@ python3 "$ROOT/oracle/comparator.py" \
     --driver "typescript:$TS_BIN" \
     --driver "csharp:$CS_BIN" \
     --driver "zig:$ZIG_BIN"
+
+if [ "${CLUSTER:-0}" = "1" ]; then
+    # Reduce the divergences to root-cause clusters (best over a big fuzzed corpus).
+    echo "==> clustering divergences over $(ls "$CORPUS" | grep -vc gitkeep) input(s)" >&2
+    python3 "$ROOT/oracle/cluster.py" --corpus "$CORPUS" --top "${TOP:-20}" "$@"
+else
+    echo "==> differential comparison over $(ls "$CORPUS" | grep -vc gitkeep) input(s)" >&2
+    python3 "$ROOT/oracle/comparator.py" --corpus "$CORPUS" --policy "$ROOT/oracle/policy.yaml" "$@"
+fi
