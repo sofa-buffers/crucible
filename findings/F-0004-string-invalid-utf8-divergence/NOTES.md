@@ -2,7 +2,9 @@
 
 **Status:** resolved in spec — `MESSAGE_SPEC.md` §8 (opt-in strict UTF-8 check,
 default off; conformance/fuzz runs it on). Corelib work: expose the check as a
-config flag and enable it under the fuzzer.
+config flag and enable it under the fuzzer — tracked in [generator#85](https://github.com/sofa-buffers/generator/issues/85).
+Re-verified 2026-07-08 (sofabgen 0.15.1 + corelibs@main): **still diverging (4
+behaviors)** — expected, as #85 (the `SOFAB_STRICT_UTF8` epic) is still open.
 **Found:** Phase 3, C-pacemaker → differential loop; **corrected** with a clean
 isolate (the original write-up was skewed — see below)
 **Axis:** verdict + accept_value (hard, when the check is on)

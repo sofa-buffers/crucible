@@ -1,6 +1,16 @@
 # F-0003 — Rust decoder panics (index out of bounds) on an over-long array
 
-**Status:** open — crash / DoS; codegen root cause (see docs/SOFABGEN.md G-0007)
+**Status:** ⚠️ **crash resolved, divergence remains (re-triage needed)** — the panic /
+DoS is fixed ([generator#78](https://github.com/sofa-buffers/generator/issues/78)
+closed: the Rust array fill is now bounds-checked). But re-verifying 2026-07-08
+(**sofabgen 0.15.1 + corelib-rs / corelib-rs-no-std @main**) shows the fix makes
+Rust **accept** the over-long array (silently dropping the excess elements): both
+`rust-std` and `rust-nostd` now return a decoded message where the other **10**
+drivers reject it. The crash became an **accept-vs-reject verdict divergence, 2 vs
+10** — and **no issue currently tracks this** (#78 was closed on the crash; #85/#86
+cover UTF-8 / truncation, not over-long arrays). **Axis changed: crash → verdict.**
+Resolution path: reopen #78 / file a new issue, or record a `policy.yaml`
+allow-entry once the spec rules on over-long arrays. See the re-run table below.
 **Found:** Phase 3, first differential run over the **C-pacemaker's** discovered
 corpus (a crash 8 hand-seeds never reached)
 **Axis:** crash (memory-safety-adjacent — a panic, not UB)
@@ -63,3 +73,24 @@ In `sofabgen`'s Rust backend, bound the array-fill index like the Zig/C backends
 (drop or reject excess elements). Tracked as **G-0007** in docs/SOFABGEN.md. Until
 fixed, an untrusted Sofab message can crash any Rust consumer of the generated
 code.
+
+## Update — 2026-07-08 (sofabgen 0.15.1 + corelib-rs / -no-std @main)
+
+`generator#78` landed: the Rust array fill is now bounds-checked, so the **panic /
+DoS is gone** (0 crashes on `array_overflow.bin`). But the chosen fix *accepts* the
+message and drops the excess, rather than rejecting it — which the rest of the
+family does not. Feeding the reproducer through all 12 drivers:
+
+| verdict | drivers |
+|---|---|
+| **A** (accept, excess dropped) | **rust-std, rust-nostd** |
+| **R** (reject) | c, go, cpp, cpp-c-cpp, py-cython, py-pure, java, typescript, csharp, zig |
+
+So the outcome is now a **2-accept-vs-10-reject verdict divergence** — Rust is the
+lone accepting camp. (Among the 10 rejecters the *reject class* also varies —
+c/cpp-c-cpp say `usage`, csharp says `other`, the rest `invalid_msg` — a secondary,
+policy-tolerated warning; note F-0003's original NOTES claimed Zig "drops excess",
+but on this input Zig rejects.) This crossed from the **crash** axis to the
+**verdict** axis and is **not covered by any open generator issue**. Next step is a
+triage decision: is rejecting the over-long array the specified behavior (→ Rust
+codegen bug, reopen/new issue) or legal leniency (→ `policy.yaml` allow-entry)?
