@@ -1,0 +1,17 @@
+# Crucible Phase-1 "probe" message.
+#
+# Deliberately minimal — one field per scalar family — so the two-language
+# differential loop (C + Go) can be brought up and proven end-to-end. The full
+# "full scale" message (every width, arrays, nested structs, unions, unicode)
+# is the target for Phase 3; scaling this schema up is a mechanical change once
+# the loop, canonical form, and comparator are solid. See docs/PLAN.md §12.
+#
+# Field ids are the wire ids the canonical form emits in ascending order.
+version: 1
+messages:
+  probe:
+    payload:
+      u: { id: 0, type: u32 }
+      i: { id: 1, type: i32 }
+      f: { id: 2, type: fp32 }
+      s: { id: 3, type: string, maxlen: 64 }

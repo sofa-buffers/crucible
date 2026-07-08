@@ -1,0 +1,20 @@
+# Vendored corelibs + tooling (populated by scripts/bootstrap.sh)
+/vendor/
+/tools/sofabgen
+
+# Per-driver build + generated code
+/drivers/*/build/
+/drivers/c/gen/
+/drivers/go/message/
+/drivers/go/go.sum
+
+# Fuzzing artifacts
+/corpus/interesting/*
+/corpus/crashes/*
+!/corpus/interesting/.gitkeep
+!/corpus/crashes/.gitkeep
+
+# Go native-fuzz corpus cache
+testdata/fuzz/
+
+.env

@@ -1,0 +1,20 @@
+{
+  "name": "Crucible (SofaBuffers differential fuzzer)",
+  "build": { "dockerfile": "Dockerfile" },
+  "onCreateCommand": "./scripts/bootstrap.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "golang.go",
+        "rust-lang.rust-analyzer",
+        "redhat.java",
+        "ms-dotnettools.csharp",
+        "ms-python.python",
+        "anthropic.claude-code"
+      ]
+    }
+  }
+}

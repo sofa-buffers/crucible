@@ -1,0 +1,45 @@
+# Allowed-divergence policy.
+#
+# Differential testing needs a definition of which divergences are BUGS vs
+# LEGAL. This file encodes that. Every rule should eventually cite a clause in
+# documentation/MESSAGE_SPEC.md, or record that none exists yet (a spec hole to
+# file upstream). See docs/PLAN.md §8.
+#
+# Phase 1 starts permissive and tightens as the spec firms up.
+
+version: 0
+
+# How the comparator treats a mismatch on each axis:
+#   hard  -> a divergence here fails the run (a finding)
+#   soft  -> reported as a warning, does not fail the run
+comparison:
+  # Accept-vs-reject disagreement between implementations. This is the core
+  # interop bug and is always hard.
+  verdict: hard
+
+  # On mutual ACCEPT, the decoded canonical value must match.
+  accept_value: hard
+
+  # On mutual REJECT, whether the reject *class* must match. Soft in Phase 1:
+  # the per-language error taxonomies are not aligned yet, so two impls
+  # rejecting the same bytes for nominally different reasons is not (yet) a bug.
+  # Tighten to `hard` once the taxonomy in canonical.md is enforced everywhere.
+  reject_class: soft
+
+# Specific inputs where divergence is explicitly tolerated, each with a reason
+# and (eventually) a spec citation. Empty in Phase 1.
+#
+#   - id: <stable name>
+#     applies_to: [<input hash or corpus file>]
+#     axis: verdict | accept_value | reject_class
+#     reason: <why this divergence is legal>
+#     spec: <MESSAGE_SPEC.md clause, or "UNSPECIFIED — file upstream">
+allow: []
+
+# The open spec question that most affects signal/noise (PLAN §8): is decoding of
+# malformed / truncated input specified (one correct outcome, so verdict
+# disagreement is a bug) or undefined (impls may differ)? Until resolved, verdict
+# is hard and any real disagreement surfaces here as a candidate finding — which
+# is exactly the pressure that forces the spec decision.
+notes:
+  malformed_input: UNSPECIFIED — drives the MESSAGE_SPEC.md decision; see PLAN §8
