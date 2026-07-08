@@ -1,17 +1,59 @@
-# Crucible Phase-1 "probe" message.
+# Crucible fuzzed message — the "full scale" message (Phase 3).
 #
-# Deliberately minimal — one field per scalar family — so the two-language
-# differential loop (C + Go) can be brought up and proven end-to-end. The full
-# "full scale" message (every width, arrays, nested structs, unions, unicode)
-# is the target for Phase 3; scaling this schema up is a mechanical change once
-# the loop, canonical form, and comparator are solid. See docs/PLAN.md §12.
+# This is the family's full-scale example (mirrors arena's schema/message.sofab.yaml
+# and the c-cpp fuzzer's full_scale_example): every scalar width, fp32/fp64, a
+# string, a blob, eight numeric arrays, nested fp arrays, and an array of strings.
+# It exercises far more of the wire format than the Phase-1 `probe`.
 #
-# Field ids are the wire ids the canonical form emits in ascending order.
+# The message is intentionally still keyed `probe` so the generated type name
+# (Probe / probe / message_probe_t) is stable and the drivers — which are
+# schema-agnostic under the round-trip canonical form (oracle/canonical.md) — need
+# no changes when the schema scales. Field ids are the wire ids.
 version: 1
 messages:
   probe:
+    summary: |
+      The full-scale fuzzed message: all scalar widths, floats, string, blob,
+      numeric arrays, a nested struct, a struct of arrays, and an array of strings.
     payload:
-      u: { id: 0, type: u32 }
-      i: { id: 1, type: i32 }
-      f: { id: 2, type: fp32 }
-      s: { id: 3, type: string, maxlen: 64 }
+      u8:  { id: 0, type: u8 }
+      i8:  { id: 1, type: i8 }
+      u16: { id: 2, type: u16 }
+      i16: { id: 3, type: i16 }
+      u32: { id: 4, type: u32 }
+      i32: { id: 5, type: i32 }
+      u64: { id: 6, type: u64 }
+      i64: { id: 7, type: i64 }
+
+      nested:
+        id: 10
+        type: struct
+        fields:
+          f32:         { id: 0, type: fp32 }
+          f64:         { id: 1, type: fp64 }
+          str:         { id: 2, type: string, maxlen: 32 }
+          bytes_field: { id: 3, type: blob,   maxlen: 4 }
+
+      arrays:
+        id: 100
+        type: struct
+        fields:
+          u8:  { id: 0, type: array, items: { type: u8,  count: 5 } }
+          i8:  { id: 1, type: array, items: { type: i8,  count: 5 } }
+          u16: { id: 2, type: array, items: { type: u16, count: 5 } }
+          i16: { id: 3, type: array, items: { type: i16, count: 5 } }
+          u32: { id: 4, type: array, items: { type: u32, count: 5 } }
+          i32: { id: 5, type: array, items: { type: i32, count: 5 } }
+          u64: { id: 6, type: array, items: { type: u64, count: 5 } }
+          i64: { id: 7, type: array, items: { type: i64, count: 5 } }
+          nested:
+            id: 10
+            type: struct
+            fields:
+              fp32: { id: 0, type: array, items: { type: fp32, count: 5 } }
+              fp64: { id: 1, type: array, items: { type: fp64, count: 5 } }
+
+      string_array:
+        id: 200
+        type: array
+        items: { type: string, count: 5, maxlen: 64 }

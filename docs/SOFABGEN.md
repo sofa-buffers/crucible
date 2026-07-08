@@ -132,3 +132,36 @@ workaround). But the public convenience API still can't reject.
 `static Result decode(const std::uint8_t*, std::size_t, Probe &out)` or
 `std::optional<Probe> try_decode(...)`, so `Probe::decode` users get the verdict.
 Align with G-0001 so C++, Rust, Go, and C all expose the decode result.
+
+## G-0006 — generated Go `types.go` uses `bytes.Equal` without importing `bytes`
+
+**Status:** open · **Lang:** go · **Where:**
+`generator/generators/golang/` (per-file import collection for named/nested types)
+· **Severity:** build-breaking
+
+A blob field inside a **named/nested** struct lands its marshal in `types.go`,
+which emits:
+
+```go
+if !bytes.Equal(m.BytesField, nil) { e.WriteBytes(3, m.BytesField) }
+```
+
+but `types.go`'s import block only has the corelib — **no `"bytes"`**. Go
+imports are per-file, so `go build` fails:
+
+```
+types.go:140:6: undefined: bytes
+```
+
+`probe.go` (which also uses `bytes`) *does* import it, so the top-level message
+compiles — but any schema with a blob in a nested struct (e.g. the full-scale
+message's `nested.bytes_field`) breaks. Reproduced with sofabgen 0.15.0 against
+the arena full-scale schema unchanged.
+
+**Impact on Crucible:** blocks the Go driver for the full-scale schema.
+Worked around in `drivers/go/build.sh` — after generation, inject `"bytes"` into
+any generated file that references `bytes.` but does not import it. Remove the
+workaround once fixed.
+
+**Proposed fix:** collect imports per emitted file, not per message — every file
+that references `bytes.` (or any std package) must import it.
