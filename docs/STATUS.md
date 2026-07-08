@@ -46,13 +46,20 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `docs/SOFABGEN.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
-| finding | what | tracked in |
+**Re-verification 2026-07-08** — after bumping **sofabgen → 0.15.1** and all 10
+corelibs to latest `main`, drivers rebuilt clean and the seed corpus is green (0
+divergences). Replaying the finding reproducers: **F-0002 and F-0005 are fixed**
+(upstream PRs merged); **F-0003's crash is fixed but morphed** into an untracked
+verdict divergence (see below); **F-0001 and F-0004 still diverge** — expected,
+they wait on the still-open epics generator#86 / #85 (the "2 issues still open").
+
+| finding | what | tracked in / status |
 |---|---|---|
-| F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 → epic **generator#86** |
-| F-0004 | invalid UTF-8 in a string: 4 behaviors, driven by the string type | spec §8 → epic **generator#85** |
-| F-0002 | corelib-c-cpp encoder left-shifts a negative value (UB) | **corelib-c-cpp#69** |
-| F-0003 | Rust array-fill OOB → panic (crash/DoS) | fixed — **generator#87** (issue #78, = G-0007) |
-| F-0005 | corelib-cpp accepts malformed msgs the family rejects | **corelib-cpp#22** |
+| F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 → epic **generator#86** — **still diverges (open)** |
+| F-0004 | invalid UTF-8 in a string: 4 behaviors, driven by the string type | spec §8 → epic **generator#85** — **still diverges (open)** |
+| F-0002 | corelib-c-cpp encoder left-shifts a negative value (UB) | **corelib-c-cpp#70** merged — ✅ **resolved** |
+| F-0003 | Rust array-fill OOB → panic (crash/DoS) | **generator#87** merged — ✅ crash fixed; ⚠️ but rust-std/nostd now *accept* an over-long array 10 others reject (verdict divergence, untracked) |
+| F-0005 | corelib-cpp accepts malformed msgs the family rejects | **corelib-cpp#22** closed — ✅ **resolved** |
 | G-0001,3,4,5,6 | codegen weaknesses (infallible decode, string handling, Go import) | generator#79,81,82,83,84 |
 | G-0002 | Rust std vs no_std UTF-8 | generator#80 (subsumed by #85) |
 

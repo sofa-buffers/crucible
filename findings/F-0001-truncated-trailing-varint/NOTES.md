@@ -1,6 +1,6 @@
 # F-0001 — a truncated trailing varint: Go rejects, C/Rust accept
 
-**Status:** open — pending spec decision (PLAN §8)
+**Status:** open — spec-resolved (§7), family impl pending [generator#86](https://github.com/sofa-buffers/generator/issues/86). Re-verified 2026-07-08 (sofabgen 0.15.1 + corelibs@main): **still diverging, 7 accept vs 5 reject** — expected, as #86 (the epic that closes it) is still open.
 **Found:** Phase 1 (C + Go); refined through Phase 2 (all 12 drivers)
 **Axis:** verdict (hard, per `oracle/policy.yaml`)
 
