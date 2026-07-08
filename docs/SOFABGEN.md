@@ -165,3 +165,31 @@ workaround once fixed.
 
 **Proposed fix:** collect imports per emitted file, not per message — every file
 that references `bytes.` (or any std package) must import it.
+
+## G-0007 — generated Rust array fill has no bounds check (crashes)
+
+**Status:** open · **Lang:** rust (both corelibs) · **Where:**
+`generator/generators/rust/visitor.go` (native-array element fill) ·
+**Severity:** crash / DoS on untrusted input
+
+The generated Rust visitor writes native-array elements by an unchecked running
+index:
+
+```rust
+(_Loc::Root_arrays, 0) => { self.m.arrays.u8[self.ai] = value as u8; self.ai += 1; }
+```
+
+`self.ai` is not bounded against the array length, so a wire message with more
+elements than the declared count panics (`index out of bounds`). The **C and Zig
+backends already guard this** — Zig's `_put` drops excess elements
+(`if (i.* >= s.len) return;`), C's fill is equivalently bounded. Rust is the
+outlier and it crashes rather than clamping.
+
+This is the codegen root cause of **F-0003** (found by the C pacemaker → the
+differential loop). It panics in release too (Rust bounds-checks indexing), so it
+is a real DoS in any Rust consumer of the generated code.
+
+**Proposed fix:** mirror the Zig/C behavior — guard the fill index
+(`if self.ai < N { ... ; self.ai += 1; }`), dropping or rejecting excess elements
+per MESSAGE_SPEC. Apply to every native-array fill in the Rust backend (both the
+std and no_std profiles are affected).

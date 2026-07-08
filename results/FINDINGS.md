@@ -9,6 +9,8 @@ artifacts live under `corpus/crashes/` (gitignored); promoted findings land here
 |---|---|---|---|---|
 | [F-0001](../findings/F-0001-truncated-trailing-varint/NOTES.md) | truncated trailing varint: two camps — C/C++/Rust/Java/C# accept, Go+Python+TS+Zig reject (7 vs 5) | {c,cpp,c-cpp,rust-std,rust-nostd,java,csharp} vs {go,py-cython,py-pure,typescript,zig} | verdict | open — pending spec (PLAN §8) |
 | [F-0002](../findings/F-0002-encoder-negative-left-shift-ub/NOTES.md) | corelib-c-cpp encoder left-shifts a negative value (UB) | corelib-c-cpp | ub (sanitizer) | open — corelib bug, fix upstream |
+| [F-0003](../findings/F-0003-rust-array-oob-panic/NOTES.md) | Rust decoder panics (index OOB) on an over-long array — crash/DoS | corelib-rs, corelib-rs-no-std | crash | open — codegen bug (G-0007), found by the C pacemaker |
+| [F-0004](../findings/F-0004-string-invalid-utf8-divergence/NOTES.md) | invalid UTF-8 in a string: preserve-raw (C/C++) vs U+FFFD (Java/C#) vs reject (Go/TS/Zig/Python) | 3-way | verdict + value | open — pending spec (PLAN §8) |
 
 Generated-code (codegen, not corelib) weaknesses are tracked separately in
 [`docs/SOFABGEN.md`](../docs/SOFABGEN.md) (G-0001..G-0004).

@@ -85,11 +85,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && npm install -g @jazzer.js/core @anthropic-ai/claude-code \
     && node --version
 
-# --- Python fuzzing: Atheris --------------------------------------------------
-# Atheris is libFuzzer for CPython; it builds a native extension, hence clang +
-# python3-dev above. Installed into a project venv at bootstrap, but the wheel's
-# build deps live in the image.
-RUN python3 -m pip install --break-system-packages --no-cache-dir atheris || true
+# --- Python fuzzing + Cython accelerator --------------------------------------
+# Atheris is libFuzzer for CPython (builds a native extension, hence clang +
+# python3-dev above). Cython builds corelib-py's `_speedups` accelerator for the
+# py-cython driver — pre-seeded here so the driver's venv build is fast/offline.
+# The drivers install these into a project venv at bootstrap; the image warms the
+# wheels and their build deps.
+RUN python3 -m pip install --break-system-packages --no-cache-dir cython atheris || true
 
 # --- GitHub CLI ---------------------------------------------------------------
 RUN mkdir -p -m 755 /etc/apt/keyrings \

@@ -31,7 +31,9 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `oracle/canonical.md` | built | v0 canonical form. |
 | `oracle/comparator.py` | built | N-way canonical diff, policy-aware, no external deps. |
 | `oracle/policy.yaml` | built | Permissive Phase-1 policy (verdict/accept_value hard, reject_class soft). |
-| `scripts/run.sh` | built | Build all four drivers → differential compare over a corpus. |
+| `scripts/run.sh` | built | Build all drivers → differential compare over a corpus (crash-isolating). |
+| `scripts/fuzz.sh` | built | The C pacemaker: build the libFuzzer target (clang) + run + grow corpus/interesting. |
+| C pacemaker (libFuzzer) | built | `drivers/c/driver.c` `CRUCIBLE_LIBFUZZER` path; ~41k exec/s; grows the corpus fed to the differential loop. Coverage-guided but NOT yet structure-aware. |
 | `corpus/seeds/` | built | 6 agreeing seeds (the regression gate); green across all 4 drivers. |
 | `findings/`, `results/FINDINGS.md` | built | F-0001 recorded (see below). |
 | `docs/SOFABGEN.md` | built | Generated-code weakness log (G-0001..G-0004 from the Rust drivers). |
@@ -43,8 +45,9 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `drivers/ts/` | built | Node replay driver, esbuild-bundled from corelib-ts source; fallible decode (try/catch); Jazzer.js coverage target. |
 | `drivers/cs/` | built | .NET replay driver referencing corelib-cs's built DLL; fallible decode (try/catch); SharpFuzz coverage target. |
 | `drivers/zig/` | built | Zig 0.16 replay driver, corelib wired as the `sofab` module; fallible decode (`catch`); coverage target is a placeholder (Zig fuzzing immature). |
-| `engine/mutator/` (structure-aware) | planned | Phase 3. |
-| Round-trip + cross-encode oracles | planned | Phase 3. |
+| `engine/mutator/` (structure-aware) | planned | Phase 3 — libFuzzer's byte-level mutator works; a TLV/varint grammar mutator is the next step. |
+| Round-trip oracle | built | Folded into the canonical form (re-encoding) — found F-0002. |
+| Cross-encode oracle | planned | Phase 3. |
 | CI (`replay`, `nightly`) | planned | Phase 4. |
 
 ## As-built detail
@@ -198,6 +201,11 @@ byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03
   but codegen ships to users, so codegen defects are tracked as generator changes,
   not worked around silently. (Python's generated `decode` *raises* — the
   fallible model G-0001/G-0005 propose for Rust/C++.)
+- **2026-07-08 — comparator is crash-isolating.** A driver that dies mid-stream
+  (fewer output lines than inputs) is reported as `[CRASH] driver X on input N`
+  and the run continues comparing the survivors, instead of aborting the whole
+  differential. Necessary once the pacemaker feeds adversarial inputs — a
+  crashing implementation (F-0003) is itself a finding, not a harness failure.
 - **2026-07-08 — canonical form v1: round-trip re-encoding.** Replaced the v0
   per-field text form with `A <hex(encode(decode(input)))>`. Reason: the full-scale
   message (arrays, nested structs, unions) makes per-field walking in 12 languages
@@ -250,6 +258,24 @@ byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03
 - **Why:** libFuzzer is a clang/LLVM feature; the devcontainer ships clang.
 - **Impact:** none to the differential loop (which runs on the replay drivers).
   Coverage-guided pacemaker runs live in the devcontainer/CI.
+
+### Pacemaker (as built)
+
+`scripts/fuzz.sh` builds the C driver's `CRUCIBLE_LIBFUZZER` entry with clang
+(`-fsanitize=fuzzer,address,undefined`) and runs it, seeded from `corpus/seeds` +
+`corpus/interesting` + the findings reproducers; new coverage-increasing inputs
+grow `corpus/interesting/`, crashes land in `corpus/crashes/`. Measured ~41k
+exec/s, ~1M runs in 26s. It only decodes (coverage over the C decoder); the
+discovered inputs then go through the differential loop
+(`CORPUS=corpus/interesting ./scripts/run.sh`) where decode+re-encode across all
+12 drivers finds the divergences. On its **first** run over 309 discovered inputs
+it produced F-0003 (2 crashes) and a large divergence cluster dominated by F-0004
+(string UTF-8) and F-0001 (truncated input) — findings 8 hand-seeds never reached.
+
+Needs clang + `libclang-rt-dev` (in the devcontainer image); the comparator
+(`oracle/comparator.py`) is **crash-isolating** — a driver that dies mid-stream is
+reported as `[CRASH] driver X on input N`, not a bare harness abort, so the
+pipeline survives a crashing implementation.
 
 ## First finding
 

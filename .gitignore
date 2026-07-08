@@ -5,6 +5,7 @@
 # Per-driver build + generated code
 /drivers/*/build/
 /drivers/*/gen/
+/drivers/*/fuzz-gen/
 /drivers/go/message/
 /drivers/go/go.sum
 

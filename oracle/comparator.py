@@ -50,19 +50,27 @@ def read_corpus(corpus_dir):
     return items
 
 
+CRASH = "\x00CRASH"  # sentinel verdict for the input a driver died on
+
+
 def run_driver(cmd, corpus):
-    """Feed every input framed as <u32 le len><payload>; return one line each."""
+    """Feed every input framed as <u32 le len><payload>; return one line each.
+
+    If the driver dies mid-stream (fewer lines than inputs), it crashed on the
+    input at index len(lines): mark that slot CRASH (a finding) and the rest
+    None (unknown). Returns (lines, crash_index_or_None, stderr_tail)."""
     stream = b"".join(struct.pack("<I", len(data)) + data for _, data in corpus)
     proc = subprocess.run([cmd], input=stream, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE)
     lines = proc.stdout.decode("utf-8", "replace").splitlines()
-    if len(lines) != len(corpus):
-        sys.stderr.write(
-            f"[harness] driver {cmd} returned {len(lines)} lines for "
-            f"{len(corpus)} inputs (exit {proc.returncode})\n"
-            f"{proc.stderr.decode('utf-8', 'replace')}\n")
-        raise SystemExit(2)
-    return lines
+    n = len(corpus)
+    if len(lines) == n:
+        return lines, None, ""
+    crash_idx = len(lines)
+    stderr_tail = "\n".join(proc.stderr.decode("utf-8", "replace")
+                            .splitlines()[-8:])
+    padded = lines + [CRASH] + [None] * (n - crash_idx - 1)
+    return padded[:n], crash_idx, stderr_tail
 
 
 def parse(line):
@@ -89,18 +97,31 @@ def main():
         return 2
 
     drivers = []  # (name, [lines])
+    hard = 0
+    crashed = []  # (name, seed, stderr_tail)
     for spec in args.driver:
         name, _, path = spec.partition(":")
-        drivers.append((name, run_driver(path, corpus)))
+        lines, crash_idx, stderr_tail = run_driver(path, corpus)
+        drivers.append((name, lines))
+        if crash_idx is not None:
+            seed = corpus[crash_idx][0]
+            crashed.append((name, seed, stderr_tail))
+            hard += 1
+            print(f"[CRASH] driver {name} died on input '{seed}' "
+                  f"(input #{crash_idx} of {len(corpus)})")
+            if stderr_tail:
+                print("        " + stderr_tail.replace("\n", "\n        "))
 
-    hard = 0
     soft = 0
-    ref_name, ref_lines = drivers[0]
-
+    # Reference = first driver that did NOT crash on a given input.
     for i, (seed, _) in enumerate(corpus):
-        rv, rp = parse(ref_lines[i])
-        for name, lines in drivers[1:]:
-            v, p = parse(lines[i])
+        present = [(nm, ln[i]) for nm, ln in drivers if ln[i] is not None and ln[i] != CRASH]
+        if len(present) < 2:
+            continue
+        ref_name, ref_line = present[0]
+        rv, rp = parse(ref_line)
+        for name, line in present[1:]:
+            v, p = parse(line)
             axis = reason = None
             if v != rv:
                 axis, reason = "verdict", f"{ref_name}={rv!r} {name}={v!r}"
@@ -121,7 +142,7 @@ def main():
     d = len(drivers)
     names = ", ".join(name for name, _ in drivers)
     print(f"\n{n} inputs × {d} drivers ({names}): "
-          f"{hard} divergence(s), {soft} warning(s)")
+          f"{hard} divergence(s) ({len(crashed)} crash), {soft} warning(s)")
     return 1 if hard else 0
 
 
