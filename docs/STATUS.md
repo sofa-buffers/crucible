@@ -51,7 +51,7 @@ Crucible is the catalog + verifier.
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 → epic **generator#86** |
 | F-0004 | invalid UTF-8 in a string: 4 behaviors, driven by the string type | spec §8 → epic **generator#85** |
 | F-0002 | corelib-c-cpp encoder left-shifts a negative value (UB) | **corelib-c-cpp#69** |
-| F-0003 | Rust array-fill OOB → panic (crash/DoS) | **generator#78** (= G-0007) |
+| F-0003 | Rust array-fill OOB → panic (crash/DoS) | fixed — **generator#87** (issue #78, = G-0007) |
 | F-0005 | corelib-cpp accepts malformed msgs the family rejects | **corelib-cpp#22** |
 | G-0001,3,4,5,6 | codegen weaknesses (infallible decode, string handling, Go import) | generator#79,81,82,83,84 |
 | G-0002 | Rust std vs no_std UTF-8 | generator#80 (subsumed by #85) |
