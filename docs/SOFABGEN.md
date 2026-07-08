@@ -104,3 +104,30 @@ signal at all.
 **Proposed fix:** surface capacity overflow as an `Error` through the fallible
 decode (G-0001). A fixed-capacity field overflowing is exactly the kind of thing
 the embedded profile must report, not swallow.
+
+## G-0005 — generated C++ `decode` is infallible (same gap as G-0001)
+
+**Status:** open · **Lang:** cpp (both corelibs) · **Where:**
+`generator/generators/cpp/` (the generated `static T decode(...)`)
+
+```cpp
+static Probe decode(const std::uint8_t *data, std::size_t len) {
+    sofab::IStreamObject<Probe> in;
+    in.feed(data, len);   // Result discarded
+    return *in;
+}
+```
+
+Same shape as G-0001: `IStreamObject::feed` returns a `Result` (with `.ok()` /
+`.code()`), but the generated convenience `decode` throws it away and always
+returns a value. A user of `Probe::decode` cannot tell a malformed message from a
+valid one.
+
+**Impact on Crucible:** smaller than Rust — the C++ driver simply uses
+`IStreamObject` directly and reads `feed`'s returned `Result` (one pass, no
+workaround). But the public convenience API still can't reject.
+
+**Proposed fix:** offer a fallible form, e.g.
+`static Result decode(const std::uint8_t*, std::size_t, Probe &out)` or
+`std::optional<Probe> try_decode(...)`, so `Probe::decode` users get the verdict.
+Align with G-0001 so C++, Rust, Go, and C all expose the decode result.

@@ -12,7 +12,7 @@ SIBLINGS=$(cd "$ROOT/.." && pwd)
 mkdir -p "$ROOT/vendor" "$ROOT/tools"
 
 # Corelibs needed by the current drivers. Extend as languages are added.
-CORELIBS="corelib-c-cpp corelib-go corelib-rs corelib-rs-no-std"
+CORELIBS="corelib-c-cpp corelib-cpp corelib-go corelib-rs corelib-rs-no-std"
 
 for lib in $CORELIBS; do
     dst="$ROOT/vendor/$lib"

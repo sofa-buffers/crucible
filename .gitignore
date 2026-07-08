@@ -4,7 +4,7 @@
 
 # Per-driver build + generated code
 /drivers/*/build/
-/drivers/c/gen/
+/drivers/*/gen/
 /drivers/go/message/
 /drivers/go/go.sum
 

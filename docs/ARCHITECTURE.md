@@ -1,8 +1,8 @@
 # Crucible — Architecture (living document)
 
-> **Status: Phase 2 in progress** — the differential loop runs across four
-> drivers (C pacemaker, Go, Rust-std, Rust-no-std) over the minimal `probe`
-> schema. This document describes the
+> **Status: Phase 2 in progress** — the differential loop runs across six
+> drivers (C pacemaker, Go, Rust-std, Rust-no-std, C++, C++/c-cpp) over the
+> minimal `probe` schema. This document describes the
 > architecture **as actually built**, and is updated whenever the real system
 > changes — especially when it **deviates from [`PLAN.md`](PLAN.md)**. `PLAN.md`
 > is the intended design and stays stable; this file tracks what exists and why
@@ -35,10 +35,11 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `docs/SOFABGEN.md` | built | Generated-code weakness log (G-0001..G-0004 from the Rust drivers). |
 | `.devcontainer/` | built | Fuzzing toolchains (clang/libFuzzer, cargo-fuzz, Jazzer, Atheris, SharpFuzz, Jazzer.js). |
 | `drivers/rust/` (rs + rs-no-std) | built | One shared `driver.rs` for both corelibs; two-pass decode (see notes). |
+| `drivers/cpp/` (cpp + c-cpp) | built | One shared `driver.cpp` for both corelibs; single-pass (feed returns Result). |
 | `engine/mutator/` (structure-aware) | planned | Phase 3. |
 | Round-trip + cross-encode oracles | planned | Phase 3. |
 | CI (`replay`, `nightly`) | planned | Phase 4. |
-| Drivers: cpp/java/python/cs/ts/zig | planned | Phase 2 (remaining). |
+| Drivers: java/python/cs/ts/zig | planned | Phase 2 (remaining). |
 
 ## As-built detail
 
@@ -86,6 +87,18 @@ byte-identical lines from C and Go (e.g. `A u=42 i=-7 f=3fc00000 s=6869`).
   `sofab_ret_t`). Coverage engine is cargo-fuzz (libFuzzer; devcontainer). The
   Rust `Probe.s` differs by variant (`String` vs `heapless::String<64>`) but
   `.as_bytes()` canonicalizes both identically.
+- **cpp (cpp + c-cpp)** — one shared `drivers/cpp/driver.cpp` builds against BOTH
+  corelibs; `build.sh <cpp|c-cpp>` selects the include path (`corelib-cpp/include`
+  vs `corelib-c-cpp/src/include`) and, for c-cpp, compiles the C corelib sources
+  (`object/istream/ostream.c`, C99, sanitized) and links them. The generated
+  `probe.hpp` and the `sofab::` API are identical across both, so the source is
+  shared. Registered as two drivers (`cpp`, `cpp-c-cpp`). **Single-pass:** unlike
+  Rust, `IStreamObject::feed` returns the `Result`, so the driver bypasses the
+  infallible generated `decode` (docs/SOFABGEN.md G-0005), uses `IStreamObject`
+  directly, and reads value (`*in`) and verdict (`feed`'s Result) in one pass.
+  Reject class maps `sofab::Error` (same 5 codes as C's `sofab_ret_t`). Empty
+  input guarded (len==0 → all-defaults) because c-cpp routes to the C istream's
+  `datalen>0` assert. Coverage engine is libFuzzer (devcontainer).
 
 ## Key decisions (decision log)
 
@@ -152,9 +165,10 @@ byte-identical lines from C and Go (e.g. `A u=42 i=-7 f=3fc00000 s=6869`).
 ## First finding
 
 The Phase-1 loop found **F-0001** on its first run: a truncated trailing varint
-(`80`, `ff ff ff`). Phase 2 refined it to a **3-vs-1 split** — `corelib-c-cpp`,
-`corelib-rs`, and `corelib-rs-no-std` all accept it as the all-defaults message;
-`corelib-go` alone rejects it. Real, hand-verified against all four corelibs (the
-Rust verdict is the corelib's real `feed` result, not the infallible generated
-`decode`). The majority-lenient split sharpens the PLAN §8 spec question. See
-`results/FINDINGS.md` and `findings/F-0001-truncated-trailing-varint/`.
+(`80`, `ff ff ff`). Phase 2 grew it to a **5-vs-1 split** — every corelib except
+Go (c-cpp, cpp, c-cpp wrapper, rs, rs-no-std) accepts it as the all-defaults
+message; `corelib-go` alone rejects it. Real, hand-verified against all six
+corelibs (the Rust/C++ verdicts are the corelib's real `feed` result, not the
+infallible generated `decode`). The lone-outlier split is the strongest pressure
+on the PLAN §8 spec question. See `results/FINDINGS.md` and
+`findings/F-0001-truncated-trailing-varint/`.

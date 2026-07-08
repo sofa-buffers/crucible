@@ -1,0 +1,5 @@
+lang=cpp
+corelib=corelib-cpp,corelib-c-cpp
+framework=libfuzzer
+pacemaker=false
+variants=cpp,c-cpp
