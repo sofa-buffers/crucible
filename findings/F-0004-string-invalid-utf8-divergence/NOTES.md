@@ -47,5 +47,11 @@ check behind a config flag that MAY default OFF**:
   Unicode type's replacement) — zero-cost decode, outside the strict contract.
 
 Conformance testing and this differential fuzzer run with the check **on**, so all
-implementations agree. Corelib follow-up: add the flag (e.g. `SOFAB_STRICT_UTF8`)
-and build the Crucible drivers with it enabled.
+implementations agree.
+
+**Implementation tracked:** [generator#85](https://github.com/sofa-buffers/generator/issues/85)
+(epic: `SOFAB_STRICT_UTF8` flag + check across corelibs, codegen call sites for
+rust/java/cs/zig, and Crucible verification). The check's *placement* follows each
+corelib's memory model — corelib-internal where the corelib builds the string
+(c/cpp/go/py/ts), codegen-invoked where the generated code builds it
+(rust/java/cs/zig).

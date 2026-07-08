@@ -14,7 +14,7 @@ fix. Status: `open` until the generator change lands.
 | id | issue |
 |---|---|
 | G-0001 | [generator#79](https://github.com/sofa-buffers/generator/issues/79) |
-| G-0002 | [generator#80](https://github.com/sofa-buffers/generator/issues/80) |
+| G-0002 | [generator#80](https://github.com/sofa-buffers/generator/issues/80) — subsumed by the §8 epic [#85](https://github.com/sofa-buffers/generator/issues/85) |
 | G-0003 | [generator#81](https://github.com/sofa-buffers/generator/issues/81) |
 | G-0004 | [generator#82](https://github.com/sofa-buffers/generator/issues/82) |
 | G-0005 | [generator#83](https://github.com/sofa-buffers/generator/issues/83) |
