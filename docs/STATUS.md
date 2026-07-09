@@ -60,8 +60,8 @@ they wait on the still-open epics generator#86 / #85 (the "2 issues still open")
 | F-0002 | corelib-c-cpp encoder left-shifts a negative value (UB) | **corelib-c-cpp#70** merged — ✅ **resolved** |
 | F-0003 | Rust array-fill OOB → panic (crash/DoS) | **generator#87** merged — ✅ crash fixed; ⚠️ but rust-std/nostd now *accept* an over-long array 10 others reject (verdict divergence, untracked) |
 | F-0005 | corelib-cpp accepts malformed msgs the family rejects | **corelib-cpp#22** closed — ✅ **resolved** |
-| G-0001,3,4,5,6 | codegen weaknesses (infallible decode, string handling, Go import) | generator#79,81,82,83,84 |
-| G-0002 | Rust std vs no_std UTF-8 | generator#80 (subsumed by #85) |
+| G-0001,3,4,5,6 | codegen weaknesses (infallible Rust/C++ decode, no-std string handling, Go bytes import) | **all fixed in sofabgen 0.15.1** (PRs #88/#92/#93/#89/#90) — see docs/SOFABGEN.md |
+| G-0002 | Rust std vs no_std UTF-8 (intra-Rust) | generator#80/#91 — ✅ **fixed** (both empty on invalid); family-wide UTF-8 is F-0004 / #85 |
 
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** — decode is incremental; `feed` is three-valued COMPLETE/INCOMPLETE/INVALID;
