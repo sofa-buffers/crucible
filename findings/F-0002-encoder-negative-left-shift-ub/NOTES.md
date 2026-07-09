@@ -1,6 +1,9 @@
 # F-0002 — corelib-c-cpp encoder: left shift of a negative value (UB)
 
-**Status:** open — corelib bug (fix upstream in corelib-c-cpp)
+**Status:** fixed — cast-to-unsigned-before-shift landed in corelib-c-cpp, PR
+[corelib-c-cpp#70](https://github.com/sofa-buffers/corelib-c-cpp/pull/70) (issue
+[corelib-c-cpp#69](https://github.com/sofa-buffers/corelib-c-cpp/issues/69)),
+merged to `main`
 **Found:** Phase 3, first run after switching the canonical form to round-trip
 re-encoding (which exercises the *encoder*, under the C driver's UBSan build)
 **Axis:** memory-safety / UB (sanitizer, not a differential divergence)
@@ -61,6 +64,14 @@ return (((sofab_unsigned_t)v) << 1) ^ (sofab_unsigned_t)(v >> (bits - 1));
 ```
 
 and consider an unsigned/logical form for the sign-replication term too.
+
+**Landed** in PR [corelib-c-cpp#70](https://github.com/sofa-buffers/corelib-c-cpp/pull/70):
+`_zigzag_encode` now casts to `sofab_unsigned_t` before the left shift.
+**Verified:** with all corelibs on clean `main`, the whole-box re-run (sofabgen
+0.15.2) produced **no `left shift of negative value` UBSan report** — the C
+driver round-trips `i_negative.bin` cleanly, and the pacemaker (which halts on
+UBSan) ran 4×600s with no crash. Source at `vendor/corelib-c-cpp/src/ostream.c`
+now reads `(((sofab_unsigned_t)v) << 1) ^ …`.
 
 ## Loop handling
 
