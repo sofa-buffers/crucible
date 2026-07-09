@@ -14,6 +14,11 @@
 /corpus/crashes/*
 !/corpus/interesting/.gitkeep
 !/corpus/crashes/.gitkeep
+# libFuzzer per-job logs (fuzz.sh with -jobs writes these to the repo root)
+/fuzz-*.log
+# Coredumps from a crashing driver/pacemaker
+/core
+core.*
 
 # Go native-fuzz corpus cache
 testdata/fuzz/
