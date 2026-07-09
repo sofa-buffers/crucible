@@ -18,7 +18,7 @@ fix. Status: `open` until the generator change lands.
 | G-0003 | [generator#81](https://github.com/sofa-buffers/generator/issues/81) |
 | G-0004 | [generator#82](https://github.com/sofa-buffers/generator/issues/82) |
 | G-0005 | [generator#83](https://github.com/sofa-buffers/generator/issues/83) |
-| G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) |
+| G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) — fixed by PR [#90](https://github.com/sofa-buffers/generator/pull/90) |
 | G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) — fixed by PR [#87](https://github.com/sofa-buffers/generator/pull/87) |
 
 ---
@@ -147,9 +147,10 @@ Align with G-0001 so C++, Rust, Go, and C all expose the decode result.
 
 ## G-0006 — generated Go `types.go` uses `bytes.Equal` without importing `bytes`
 
-**Status:** open · **Lang:** go · **Where:**
-`generator/generators/golang/` (per-file import collection for named/nested types)
-· **Severity:** build-breaking
+**Status:** **fixed** in sofabgen 0.15.2 (PR
+[#90](https://github.com/sofa-buffers/generator/pull/90), fixes #84) · **Lang:**
+go · **Where:** `generator/generators/golang/` (per-file import collection for
+named/nested types) · **Severity:** was build-breaking
 
 A blob field inside a **named/nested** struct lands its marshal in `types.go`,
 which emits:
@@ -170,10 +171,12 @@ compiles — but any schema with a blob in a nested struct (e.g. the full-scale
 message's `nested.bytes_field`) breaks. Reproduced with sofabgen 0.15.0 against
 the arena full-scale schema unchanged.
 
-**Impact on Crucible:** blocks the Go driver for the full-scale schema.
-Worked around in `drivers/go/build.sh` — after generation, inject `"bytes"` into
-any generated file that references `bytes.` but does not import it. Remove the
-workaround once fixed.
+**Impact on Crucible:** blocked the Go driver for the full-scale schema.
+Previously worked around in `drivers/go/build.sh` (inject `"bytes"` into any
+generated file that referenced `bytes.` but did not import it); that workaround
+was **removed** once 0.15.2 emitted the import correctly — verified: generated
+`types.go` now carries its own `"bytes"` import, so the injection no longer
+fires.
 
 **Proposed fix:** collect imports per emitted file, not per message — every file
 that references `bytes.` (or any std package) must import it.
