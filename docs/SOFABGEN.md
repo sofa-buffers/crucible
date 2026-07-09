@@ -9,26 +9,37 @@ a cross-implementation divergence, it is recorded here as a candidate change to
 Each entry: what, where, why it matters for the differential fuzzer, proposed
 fix. Status: `open` until the generator change lands.
 
+**As of sofabgen 0.15.2 (verified 2026-07-09 against the generator source at HEAD
+`fc46953`): all seven weaknesses G-0001..G-0007 are resolved — the fixes shipped
+in sofabgen 0.15.1 (`git tag --contains` on each merge → `v0.15.1`).**
+Note G-0002 was the *intra-Rust* std/no-std disagreement (now fixed — both empty
+on invalid UTF-8); the *family-wide* invalid-UTF-8 policy across all ten corelibs
+is the separate finding **F-0004** / spec §8 (epic [#85](https://github.com/sofa-buffers/generator/issues/85)),
+still open. Per-entry evidence below; Crucible drivers may still carry now-dead
+workarounds (e.g. the Rust two-pass) — those are driver-side follow-ups, not
+generator gaps.
+
 ## Tracking issues (generator repo)
 
-| id | issue |
-|---|---|
-| G-0001 | [generator#79](https://github.com/sofa-buffers/generator/issues/79) |
-| G-0002 | [generator#80](https://github.com/sofa-buffers/generator/issues/80) — subsumed by the §8 epic [#85](https://github.com/sofa-buffers/generator/issues/85) |
-| G-0003 | [generator#81](https://github.com/sofa-buffers/generator/issues/81) |
-| G-0004 | [generator#82](https://github.com/sofa-buffers/generator/issues/82) |
-| G-0005 | [generator#83](https://github.com/sofa-buffers/generator/issues/83) |
-| G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) — fixed by PR [#90](https://github.com/sofa-buffers/generator/pull/90) |
-| G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) — fixed by PR [#87](https://github.com/sofa-buffers/generator/pull/87) |
+| id | issue | status |
+|---|---|---|
+| G-0001 | [generator#79](https://github.com/sofa-buffers/generator/issues/79) | fixed — PR [#88](https://github.com/sofa-buffers/generator/pull/88) (0.15.1) |
+| G-0002 | [generator#80](https://github.com/sofa-buffers/generator/issues/80) | fixed — PR [#91](https://github.com/sofa-buffers/generator/pull/91) (0.15.1); family-wide UTF-8 continues as F-0004 / [#85](https://github.com/sofa-buffers/generator/issues/85) |
+| G-0003 | [generator#81](https://github.com/sofa-buffers/generator/issues/81) | fixed — PR [#92](https://github.com/sofa-buffers/generator/pull/92) (0.15.1) |
+| G-0004 | [generator#82](https://github.com/sofa-buffers/generator/issues/82) | fixed — PR [#93](https://github.com/sofa-buffers/generator/pull/93) (0.15.1) |
+| G-0005 | [generator#83](https://github.com/sofa-buffers/generator/issues/83) | fixed — PR [#89](https://github.com/sofa-buffers/generator/pull/89) (0.15.1) |
+| G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) | fixed — PR [#90](https://github.com/sofa-buffers/generator/pull/90) (0.15.1) |
+| G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) | fixed — PR [#87](https://github.com/sofa-buffers/generator/pull/87) |
 
 ---
 
 ## G-0001 — generated Rust `decode` is infallible (discards the decode error)
 
-**Status:** open · **Lang:** rust (both corelibs) · **Where:**
-`generator/generators/rust/visitor.go:194`
+**Status:** **fixed** in sofabgen 0.15.1 (PR
+[#88](https://github.com/sofa-buffers/generator/pull/88), fixes #79) · **Lang:**
+rust (both corelibs) · **Where:** `generator/generators/rust/visitor.go`
 
-The generated decoder is:
+The generated decoder *was*:
 
 ```rust
 pub fn decode(data: &[u8]) -> Self {
@@ -48,39 +59,55 @@ read the corelib's accept/reject decision through the public API.
 call `Probe::decode` for the value, then re-run `IStream::feed` against a
 null visitor to recover the verdict. Faithful but wasteful (decodes twice).
 
-**Proposed fix:** emit a fallible entry point, e.g.
-`pub fn try_decode(data: &[u8]) -> Result<Self, sofab::Error>` (or make `decode`
-return `Result`). Then the driver is one pass and real users can handle errors.
-The C (`sofab_ret_t`), Go (`error`), and Python (`Probe.decode` raises
-`SofaError`) backends already surface the result — Rust and C++ are the outliers.
-Python is a ready reference for the fallible shape to mirror.
+**Fix (shipped):** the Rust backend now emits a fallible entry point alongside
+the back-compat `decode`:
+`pub fn try_decode(data: &[u8]) -> Result<Self, sofab::Error>` (PR
+[#88](https://github.com/sofa-buffers/generator/pull/88); `backend.go:303`,
+`visitor.go:226`). Verified in the generated `message.rs` for both corelibs.
+**Driver follow-up (not blocking):** `drivers/rust/driver.rs` still runs the
+two-pass workaround; it can now collapse to a single `try_decode` call. The C
+(`sofab_ret_t`), Go (`error`), Python (`Probe.decode` raises), and now C++
+(G-0005) backends all surface the result.
 
 ## G-0002 — std vs no-std Rust diverge on invalid UTF-8 in a string
 
-**Status:** open · **Lang:** rust · **Where:** `generator/generators/rust/`
-(std uses `visitor.go`; no-std string emit differs)
+**Status:** **fixed** in sofabgen 0.15.1 (PR
+[#91](https://github.com/sofa-buffers/generator/pull/91), fixes #80) · **Lang:**
+rust · **Where:** `generator/generators/rust/visitor.go`
 
-Same wire bytes, different decoded string across the two Rust corelibs:
+Same wire bytes *used to* decode to a different string across the two Rust
+corelibs:
 
 ```rust
-// std (corelib-rs):
+// std (corelib-rs)   — WAS:
 String::from_utf8_lossy(&chunk[..total]).into_owned()   // invalid UTF-8 -> U+FFFD replacements
 // no-std (corelib-rs-no-std):
 core::str::from_utf8(&chunk[..total]).unwrap_or("")      // invalid UTF-8 -> empty string
 ```
 
-A fuzzer will produce non-UTF-8 bytes in a string field; the two ports then
-decode it to **different values** (replacement chars vs empty). That is a
-generated-code divergence, not a wire-format one — the two Rust corelibs should
-agree.
+A fuzzer produces non-UTF-8 bytes in a string field; the two ports then decoded
+it to **different values** (replacement chars vs empty) — a generated-code
+divergence, not a wire-format one.
 
-**Proposed fix:** pick one policy for invalid UTF-8 and emit it in both variants
-(both lossy, or both reject via G-0001's fallible path). Whichever the spec
-prefers — but it must be the same across the family.
+**Fix (shipped):** both profiles now agree — std was changed to
+`core::str::from_utf8(&chunk[..total]).map(|s| s.to_owned()).unwrap_or_default()`
+(empty on invalid), matching no-std (PR
+[#91](https://github.com/sofa-buffers/generator/pull/91); `visitor.go` UTF-8 emit
++ `backend_test.go:81`). **Verified empirically:** the F-0004 reproducer
+`invalid_utf8.bin` now yields byte-identical driver output for `rust-std` and
+`rust-nostd` (`A 5607a606560707c60c07`).
+
+**Consequence for F-0004:** rust-std moved from the *U+FFFD* camp to the *empty*
+camp. This closes the intra-Rust half; the **family-wide** invalid-UTF-8 split
+(raw / U+FFFD / empty / reject across all ten corelibs) is finding **F-0004**,
+resolved in spec §8 and tracked as epic [#85](https://github.com/sofa-buffers/generator/issues/85)
+(corelibs adopting the opt-in strict check) — still open.
 
 ## G-0003 — std vs no-std Rust diverge on a chunked (multi-feed) string
 
-**Status:** open · **Lang:** rust · **Where:** `generator/generators/rust/`
+**Status:** **fixed** in sofabgen 0.15.1 (PR
+[#92](https://github.com/sofa-buffers/generator/pull/92), fixes #81) · **Lang:**
+rust · **Where:** `generator/generators/rust/visitor.go`
 
 The std visitor accumulates a string split across `feed` chunks (has an `acc`
 buffer); the no-std visitor bails on any non-initial chunk:
@@ -97,31 +124,40 @@ Under incremental/streaming feed, a string delivered in pieces is reconstructed
 by std but yields the default (empty) in no-std — divergence. (Not reachable in
 single-shot decode, but Crucible's coverage engine will feed in chunks.)
 
-**Proposed fix:** no-std should accumulate too (bounded by the field's
-fixed capacity), or the constraint should be an explicit, surfaced error rather
-than a silent drop.
+**Fix (shipped):** the no-std visitor now accumulates chunked string/blob into
+`self.acc` like std (PR [#92](https://github.com/sofa-buffers/generator/pull/92),
+commit `b8e0693`). Verified: the generated no-std `message.rs` reads
+`core::str::from_utf8(&self.acc[..total])`. Combined with G-0004, an over-capacity
+accumulation is surfaced as an error rather than silently dropped.
 
 ## G-0004 — no-std silently drops an over-capacity string
 
-**Status:** open · **Lang:** rust (no-std) · **Where:** `generator/generators/rust/`
+**Status:** **fixed** in sofabgen 0.15.1 (PR
+[#93](https://github.com/sofa-buffers/generator/pull/93), fixes #82) · **Lang:**
+rust (no-std) · **Where:** `generator/generators/rust/visitor.go`
+
+The over-capacity fill *was* discarded silently:
 
 ```rust
 (_Loc::Root, 3) => { self.m.s.clear(); let _ = self.m.s.push_str(_s); }
 ```
 
 `heapless::String::push_str` is fallible (returns `Err` past capacity), and the
-result is discarded. A string longer than the field's `maxlen` is **silently
-dropped to empty** instead of rejected. Combined with G-0001 the caller gets no
+result was discarded. A string longer than the field's `maxlen` was **silently
+dropped to empty** instead of rejected. Combined with G-0001 the caller got no
 signal at all.
 
-**Proposed fix:** surface capacity overflow as an `Error` through the fallible
-decode (G-0001). A fixed-capacity field overflowing is exactly the kind of thing
-the embedded profile must report, not swallow.
+**Fix (shipped):** the fill now flags capacity overflow, e.g.
+`... let _ = self.m.nested.str.push_str(_s); if self.m.nested.str.len() != _s.len() { self.err = true; }`,
+and `err` is surfaced through the new fallible `try_decode` (G-0001) as an
+`Error` (PR [#93](https://github.com/sofa-buffers/generator/pull/93), commit
+`d56a1a7`). Verified in the generated no-std `message.rs`.
 
 ## G-0005 — generated C++ `decode` is infallible (same gap as G-0001)
 
-**Status:** open · **Lang:** cpp (both corelibs) · **Where:**
-`generator/generators/cpp/` (the generated `static T decode(...)`)
+**Status:** **fixed** in sofabgen 0.15.1 (PR
+[#89](https://github.com/sofa-buffers/generator/pull/89), fixes #83) · **Lang:**
+cpp (both corelibs) · **Where:** `generator/generators/cpp/backend.go`
 
 ```cpp
 static Probe decode(const std::uint8_t *data, std::size_t len) {
@@ -140,10 +176,12 @@ valid one.
 `IStreamObject` directly and reads `feed`'s returned `Result` (one pass, no
 workaround). But the public convenience API still can't reject.
 
-**Proposed fix:** offer a fallible form, e.g.
-`static Result decode(const std::uint8_t*, std::size_t, Probe &out)` or
-`std::optional<Probe> try_decode(...)`, so `Probe::decode` users get the verdict.
-Align with G-0001 so C++, Rust, Go, and C all expose the decode result.
+**Fix (shipped):** the C++ backend now emits a fallible form alongside `decode`:
+`static sofab::IStreamImpl::Result try_decode(const std::uint8_t *data, std::size_t len, Probe &out)`
+(PR [#89](https://github.com/sofa-buffers/generator/pull/89); `cpp/backend.go:221`).
+Verified in the generated `probe.hpp`. C++, Rust (G-0001), Go, and C now all
+expose the decode verdict. The Crucible C++ driver already read `feed`'s Result
+directly, so no driver change is required.
 
 ## G-0006 — generated Go `types.go` uses `bytes.Equal` without importing `bytes`
 
