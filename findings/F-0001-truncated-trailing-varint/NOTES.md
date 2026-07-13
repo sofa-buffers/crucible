@@ -57,12 +57,55 @@ lineages reject, so "reject truncated input" is the better-supported reading.
 
 ## Resolution path
 
-This is the canonical case behind PLAN §8: is decoding of truncated input
-**specified** (one correct verdict → one of the two corelibs has a bug) or
-**undefined** (both legal → record in `policy.yaml` as allowed)? The finding
-stays open until `documentation/MESSAGE_SPEC.md` rules. Whichever way it goes,
-this reproducer becomes either a corelib bug fix or a `policy.yaml` allow-entry.
+This was the canonical case behind PLAN §8: is decoding of truncated input
+**specified** or **undefined**? **RESOLVED** by MESSAGE_SPEC §7 (finish-less,
+documentation PR #12): truncated input is **specified** — it is `INCOMPLETE`, a
+distinct **non-error** outcome, neither accept nor reject. So **both** camps are
+wrong today: the lenient camp collapses INCOMPLETE→COMPLETE (accepts as done), the
+strict camp collapses INCOMPLETE→INVALID (rejects as malformed). The correct
+verdict is a third value. This is not a `policy.yaml` allow-entry — it is a
+family-wide bug on both sides.
 
 ## Implementation
 
-Resolved in MESSAGE_SPEC §7 (three-state feed COMPLETE/INCOMPLETE/INVALID + finish; a valid message is consumed exactly). Family-wide implementation tracked in [generator#86](https://github.com/sofa-buffers/generator/issues/86): the lenient corelibs (c-cpp, cpp, rs, rs-no-std, java, cs) add the INCOMPLETE state + a finish that rejects a truncated tail; the strict corelibs (go, py, ts, zig) already reject truncated and align the feed/finish API. Crucible verifies (truncated seeds → F-0001 green).
+Resolved in **MESSAGE_SPEC §7 (finish-less)**: one-shot `decode` and streaming
+`feed` both return `COMPLETE`/`INCOMPLETE`/`INVALID`; there is **no** `finish`
+step, and `INCOMPLETE` is an explicit non-error outcome (the caller owns
+end-of-input). Two coordinated efforts close this:
+
+- **Corelibs** — epic [generator#86](https://github.com/sofa-buffers/generator/issues/86)
+  + 10 per-corelib issues. Lenient camp (c-cpp #72, cpp #27, cs #29, rs #21,
+  rs-no-std #37, java #35) **introduces a distinct INCOMPLETE** (don't collapse
+  into COMPLETE); strict camp (go #41, py #32, ts #39, zig #11) **splits
+  INVALID→INCOMPLETE** (truncation is no longer an error); rs/rs-no-std/ts/zig
+  additionally **remove the finish-promotion**.
+- **Crucible** — [crucible#8](https://github.com/sofa-buffers/crucible/issues/8):
+  canonical form v2 adds the third verdict line `I`; comparator parses `A`/`I`/`R`.
+
+**Target (revised):** F-0001 goes green when **every impl emits `I`** on the
+truncated seed — *not* the earlier "every impl rejects". The current 7-accept /
+5-reject split all become `I`.
+
+## ✅ Verified green — 2026-07-13
+
+All 10 corelibs implement the finish-less §7 outcome (Camp A + Camp B PRs) and all
+12 Crucible drivers were wired to emit the third verdict `I`. Running the
+differential over the F-0001 reproducers (`80` and `ff ff ff`) across **all 12
+drivers**:
+
+```
+2 inputs × 12 drivers (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp,
+  py-cython, py-pure, java, typescript, csharp, zig): 0 divergence(s), 2 warning(s)
+```
+
+**Every driver now emits `I`** on both seeds — the historical 7-accept-vs-5-reject
+split is resolved to unanimous INCOMPLETE. The 2 warnings are the **soft**
+`incomplete_value` axis only (java emits `I <partial-hex>`, others bare `I` — a
+per-language partial-value materialization difference, not a verdict conflict).
+
+Driver notes: the exception/return-code corelibs (c, cpp, cpp-c-cpp, go, rust-std,
+rust-nostd, py-cython, py-pure, ts, zig) propagate INCOMPLETE through the generated
+decode; the **status-returning** corelibs (csharp, java) needed a two-pass driver
+(verdict from a direct `feed`+status read, value from generated decode) because the
+generated one-shot decode discards the status — logged as **G-0008** /
+[generator#105](https://github.com/sofa-buffers/generator/issues/105).

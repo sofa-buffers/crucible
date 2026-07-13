@@ -42,6 +42,13 @@ static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *o
     {
         sofab::IStreamObject<message::Probe> in;
         auto r = in.feed(data, len);
+        if (r.incomplete())
+        {
+            // INCOMPLETE (MESSAGE_SPEC §7): bytes end mid-message — the third
+            // canonical verdict, neither accept (A) nor reject (R). Not an error.
+            std::fputs("I\n", out);
+            return;
+        }
         if (!r.ok())
         {
             std::fprintf(out, "R %s\n", reject_class(r.code()));

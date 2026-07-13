@@ -47,6 +47,14 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
     if (len > 0)
     {
         sofab_ret_t r = message_probe_decode(&m, buf, len);
+        if (r == SOFAB_RET_INCOMPLETE)
+        {
+            /* Decode ended mid-field or with an open sequence: valid so far but
+             * not a complete message. Distinct hard verdict (oracle/canonical.md,
+             * MESSAGE_SPEC §7) — must not collapse into A (accept) or R (reject). */
+            fputs("I\n", out);
+            return;
+        }
         if (r != SOFAB_RET_OK)
         {
             fprintf(out, "R %s\n", reject_class(r));

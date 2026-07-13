@@ -4,9 +4,14 @@
 // decodes each into the probe message via the generated corelib-java code, and
 // writes one canonical line (oracle/canonical.md) per record to stdout.
 //
-// Like Python (and unlike Rust/C++), the generated Java `Probe.decode` is
-// fallible: it wraps a decode failure in a RuntimeException, so the verdict is a
-// plain try/catch — no two-pass workaround.
+// Two-pass decode (see docs/SOFABGEN.md): the generated Java `Probe.decode`
+// feeds the bytes to an IStream but DISCARDS the terminal `IStream.status()`, so
+// it cannot tell COMPLETE from INCOMPLETE — a truncated message decodes without
+// throwing and would wrongly read as accept (A). Mirroring the Rust driver, we
+// recover the faithful three-valued VERDICT by re-running `IStream.feed` against
+// a null visitor and reading `status()`, and take the VALUE (for A/I hex) from
+// the generated `Probe.decode`. Visitor callbacks return unit and cannot affect
+// feed's outcome, so the null-pass verdict equals the one inside `decode`.
 //
 // The Java coverage engine is Jazzer — see FuzzProbe.java.
 package crucible;
@@ -18,34 +23,76 @@ import java.io.PrintStream;
 
 import message.Probe;
 
+import org.sofabuffers.sofab.DecodeStatus;
+import org.sofabuffers.sofab.IStream;
+import org.sofabuffers.sofab.SofabError;
+import org.sofabuffers.sofab.SofabException;
+import org.sofabuffers.sofab.Visitor;
+
 public final class Driver {
 
-    private static String rejectClass(RuntimeException e) {
-        // corelib-java surfaces a decode failure as the RuntimeException's cause.
-        // Coarse mapping in Phase 2 (reject-class comparison is soft per policy);
-        // refine to the canonical taxonomy once the Java exception types are pinned.
-        Throwable c = (e.getCause() != null) ? e.getCause() : e;
-        String n = c.getClass().getSimpleName().toLowerCase();
-        if (n.contains("range") || n.contains("argument")) return "argument";
-        if (n.contains("state") || n.contains("usage")) return "usage";
-        if (n.contains("buffer")) return "buffer_full";
-        return "invalid_msg";
+    // Verdict pass sink: every Visitor method defaults to a no-op, so decoded
+    // fields are dropped. We only care whether feed throws (INVALID) and what
+    // status() reports afterwards (COMPLETE vs INCOMPLETE).
+    private static final class Null implements Visitor {
     }
 
-    private static String canonical(byte[] data) {
-        // decode -> re-encode -> hex (oracle/canonical.md).
+    private static String rejectClass(SofabException e) {
+        // corelib-java carries the canonical category on the exception itself
+        // (SofabError), so branch on it rather than string-matching class names.
+        switch (e.error()) {
+            case ARGUMENT:    return "argument";
+            case USAGE:       return "usage";
+            case BUFFER_FULL: return "buffer_full";
+            case INVALID_MSG:
+            default:          return "invalid_msg";
+        }
+    }
+
+    private static String hexValue(char verdict, byte[] data) {
+        // Value for an A (COMPLETE) or I (INCOMPLETE) line: the generated
+        // decode->re-encode->hex pipeline (oracle/canonical.md). For I this is the
+        // partial value decoded before truncation (the `incomplete_value` axis is
+        // soft in Phase 2; the verdict itself is hard).
         byte[] enc;
         try {
             Probe m = Probe.decode(data);
             enc = m.encode();
         } catch (RuntimeException e) {
-            return "R " + rejectClass(e);
+            // decode/encode failed after the verdict pass agreed on A/I — should
+            // not happen given a worst-case buffer; report it as a reject class.
+            Throwable c = (e.getCause() != null) ? e.getCause() : e;
+            if (c instanceof SofabException) {
+                return "R " + rejectClass((SofabException) c);
+            }
+            return "R other";
         }
-        StringBuilder sb = new StringBuilder("A ");
+        StringBuilder sb = new StringBuilder();
+        sb.append(verdict).append(' ');
         for (byte b : enc) {
             sb.append(String.format("%02x", b & 0xff));
         }
         return sb.toString();
+    }
+
+    private static String canonical(byte[] data) {
+        // Verdict: the corelib's real three-valued outcome (visitor-independent).
+        IStream is = new IStream();
+        try {
+            is.feed(data, new Null());
+        } catch (SofabException e) {
+            // Malformed regardless of what follows (MESSAGE_SPEC §7).
+            return "R " + rejectClass(e);
+        } catch (RuntimeException e) {
+            return "R other";
+        }
+        if (is.status() == DecodeStatus.INCOMPLETE) {
+            // INCOMPLETE (MESSAGE_SPEC §7): bytes end mid-message — the third
+            // canonical verdict, neither accept (A) nor reject (R). Not an error.
+            return hexValue('I', data);
+        }
+        // COMPLETE: a valid message; emit A <hex> of the re-encoded value.
+        return hexValue('A', data);
     }
 
     private static boolean readFully(InputStream in, byte[] buf, int n) throws IOException {

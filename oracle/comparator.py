@@ -23,7 +23,8 @@ import sys
 
 def load_policy(path):
     """Minimal reader for the three comparison axes we need. Avoids a YAML dep."""
-    axes = {"verdict": "hard", "accept_value": "hard", "reject_class": "soft"}
+    axes = {"verdict": "hard", "accept_value": "hard",
+            "incomplete_value": "soft", "reject_class": "soft"}
     if path and os.path.exists(path):
         in_cmp = False
         for line in open(path):
@@ -31,7 +32,7 @@ def load_policy(path):
                 in_cmp = True
                 continue
             if in_cmp:
-                m = re.match(r"^\s+(verdict|accept_value|reject_class):\s*(hard|soft)", line)
+                m = re.match(r"^\s+(verdict|accept_value|incomplete_value|reject_class):\s*(hard|soft)", line)
                 if m:
                     axes[m.group(1)] = m.group(2)
                 elif re.match(r"^\S", line):  # dedent → left the comparison block
@@ -74,9 +75,15 @@ def run_driver(cmd, corpus):
 
 
 def parse(line):
-    """(verdict, payload): ('A', fields-string) or ('R', class)."""
+    """(verdict, payload): ('A', hex), ('I', hex-or-empty), or ('R', class).
+
+    Three verdicts per oracle/canonical.md: A=complete, I=incomplete (decode ended
+    mid-message, MESSAGE_SPEC §7 — not an error), R=reject. A/I/R are three distinct
+    hard verdict values; disagreeing on which is a verdict divergence."""
     if line.startswith("A"):
         return ("A", line[1:].strip())
+    if line.startswith("I"):
+        return ("I", line[1:].strip())
     if line.startswith("R"):
         return ("R", line[1:].strip())
     return ("?", line)
@@ -127,6 +134,8 @@ def main():
                 axis, reason = "verdict", f"{ref_name}={rv!r} {name}={v!r}"
             elif rv == "A" and p != rp:
                 axis, reason = "accept_value", f"{ref_name}: {rp}\n        {name}: {p}"
+            elif rv == "I" and p != rp:
+                axis, reason = "incomplete_value", f"{ref_name}: {rp}\n        {name}: {p}"
             elif rv == "R" and p != rp:
                 axis, reason = "reject_class", f"{ref_name}={rp} {name}={p}"
             if axis:

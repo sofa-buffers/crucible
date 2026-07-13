@@ -24,9 +24,11 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
 ## Current state
 - **Phase 1–2 done:** 12 drivers / 10 corelibs green (c, go, rust-std, rust-nostd,
   cpp, cpp-c-cpp, py-cython, py-pure, java, typescript, csharp, zig).
-- **Phase 3 in progress:** canonical form v1 = **round-trip re-encoding**
-  (`A <hex(encode(decode(input)))>` — drivers are schema-agnostic, folds in the
-  round-trip oracle); schema scaled to the **full-scale** message; **C pacemaker
+- **Phase 3 in progress:** canonical form v2 = **round-trip re-encoding** with a
+  **three-valued verdict** (`A` complete / `I` incomplete / `R` reject, per
+  MESSAGE_SPEC §7 — comparator + `canonical.md` updated, drivers emit `I` as each
+  corelib gains INCOMPLETE; crucible#8); drivers are schema-agnostic, folds in the
+  round-trip oracle; schema scaled to the **full-scale** message; **C pacemaker
   active** (~41k exec/s); comparator is **crash-isolating**; **auto-clustering**.
 - Remaining Phase 3 / Phase 4: see [`../TODO.md`](../TODO.md).
 
@@ -49,23 +51,37 @@ Crucible is the catalog + verifier.
 **Re-verification 2026-07-08** — after bumping **sofabgen → 0.15.1** and all 10
 corelibs to latest `main`, drivers rebuilt clean and the seed corpus is green (0
 divergences). Replaying the finding reproducers: **F-0002 and F-0005 are fixed**
-(upstream PRs merged); **F-0003's crash is fixed but morphed** into an untracked
-verdict divergence (see below); **F-0001 and F-0004 still diverge** — expected,
+(upstream PRs merged); **F-0003's crash is fixed but morphed** into a verdict
+divergence, now tracked as generator#100 (see below); **F-0001 and F-0004 still
+diverge** — expected,
 they wait on the still-open epics generator#86 / #85 (the "2 issues still open").
 
 | finding | what | tracked in / status |
 |---|---|---|
-| F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 → epic **generator#86** — **still diverges (open)** |
+| F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |
 | F-0004 | invalid UTF-8 in a string: 4 behaviors, driven by the string type | spec §8 → epic **generator#85** — **still diverges (open)** |
 | F-0002 | corelib-c-cpp encoder left-shifts a negative value (UB) | **corelib-c-cpp#70** merged — ✅ **resolved** |
-| F-0003 | Rust array-fill OOB → panic (crash/DoS) | **generator#87** merged — ✅ crash fixed; ⚠️ but rust-std/nostd now *accept* an over-long array 10 others reject (verdict divergence, untracked) |
+| F-0003 | Rust array-fill OOB → panic (crash/DoS) | **generator#87** merged — ✅ crash fixed; ⚠️ residual verdict divergence (rust-std/nostd *accept* an over-count array the rest reject) now tracked → **generator#100** (over-count scalar array MUST be INVALID/`R` per §3+§7; distinct from the INCOMPLETE axis) |
 | F-0005 | corelib-cpp accepts malformed msgs the family rejects | **corelib-cpp#22** closed — ✅ **resolved** |
 | G-0001,3,4,5,6 | codegen weaknesses (infallible Rust/C++ decode, no-std string handling, Go bytes import) | **all fixed in sofabgen 0.15.1** (PRs #88/#92/#93/#89/#90) — see docs/SOFABGEN.md |
 | G-0002 | Rust std vs no_std UTF-8 (intra-Rust) | generator#80/#91 — ✅ **fixed** (both empty on invalid); family-wide UTF-8 is F-0004 / #85 |
+| G-0008 | generated one-shot decode discards the INCOMPLETE status (C#, Java) | ✅ **fixed** — sofabgen 0.15.3 ([generator#106](https://github.com/sofa-buffers/generator/pull/106) closes #105): status-surfacing `TryDecode`/`tryDecode`. Crucible C#/Java drivers can drop the two-pass workaround (follow-up). See docs/SOFABGEN.md |
+
+**New divergences surfaced 2026-07-13 while wiring the `I` verdict — ✅ both fixed (pre-existing corelib leniency, unrelated to truncation):**
+- **corelib-cpp** classified an unterminated over-long varint (>64 bits) as `I` (INCOMPLETE) where the rest say `R` (INVALID) — the measure phase treated the over-long-but-unterminated varint as a truncated tail. **Fixed** (corelib-cpp#29, in PR #28): getVarint/skipVarint report the >64-bit overflow so the measure phase rejects it.
+- **corelib-ts** accepted a top-level stray sequence-end (`0x07`) as `A`, and also accepted a truncated *known* nested sequence as `A` (COMPLETE) — the pull/Cursor decoder tracked no depth. **Fixed** (corelib-ts#42, in PR #41): a `depth` counter → stray end at root = `R` (INVALID), unclosed sequence at EOF = `I` (INCOMPLETE), matching the fast path.
+
+Both verified: full differential over the two reproducers + the F-0001 seeds across all 12 drivers = **0 divergences**.
 
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
-- **§7** — decode is incremental; `feed` is three-valued COMPLETE/INCOMPLETE/INVALID;
-  a `finish` turns still-INCOMPLETE → INVALID; a valid message is consumed exactly.
+- **§7** (finish-less, documentation PR #12) — decode is three-valued
+  COMPLETE/INCOMPLETE/INVALID, returned identically by one-shot `decode` and every
+  streaming `feed`. **There is no `finish`/`finalize`/`end`**, and **INCOMPLETE is
+  an explicit non-error outcome** — whether a trailing INCOMPLETE is a truncation
+  error is the caller's decision (its own framing: length prefix, datagram, EOF).
+  A truncated message (e.g. a lone `0x80`) is INCOMPLETE, not INVALID. Family
+  implementation: epic **generator#86** + 10 per-corelib issues; Crucible-side
+  verification (third verdict `I`): **crucible#8**.
 - **§8** — `string` is UTF-8, `blob` is opaque bytes; strict-reject is conformant but
   gated behind a corelib flag (`SOFAB_STRICT_UTF8`) that may default OFF; conformance
   + the fuzzer run it ON.
