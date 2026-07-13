@@ -30,7 +30,7 @@ generator gaps.
 | G-0005 | [generator#83](https://github.com/sofa-buffers/generator/issues/83) | fixed — PR [#89](https://github.com/sofa-buffers/generator/pull/89) (0.15.1) |
 | G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) | fixed — PR [#90](https://github.com/sofa-buffers/generator/pull/90) (0.15.1) |
 | G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) | fixed — PR [#87](https://github.com/sofa-buffers/generator/pull/87) |
-| G-0008 | [generator#105](https://github.com/sofa-buffers/generator/issues/105) | **open** — generated one-shot decode discards the INCOMPLETE status (C#, Java); part of §7 epic [#86](https://github.com/sofa-buffers/generator/issues/86) |
+| G-0008 | [generator#105](https://github.com/sofa-buffers/generator/issues/105) | ✅ **fixed** — PR [generator#106](https://github.com/sofa-buffers/generator/pull/106) (sofabgen 0.15.3): status-surfacing `TryDecode`/`tryDecode`; part of §7 epic [#86](https://github.com/sofa-buffers/generator/issues/86) |
 
 ---
 
@@ -290,11 +290,16 @@ corelib computes correctly.
 generated decode — the same two-pass pattern the Rust driver uses for G-0001.
 Emit `I` on `Incomplete`, `R` on the malformed throw, `A` on `Complete`.
 
-**Proposed fix:** the generated one-shot decode for status-returning corelibs
-should surface the terminal `DecodeStatus` (return it, or expose a
-status-returning `try`-style entry point) so a caller can tell COMPLETE from
-INCOMPLETE without re-running `feed`. Tracked as generator#105, under the §7 epic
-[#86](https://github.com/sofa-buffers/generator/issues/86). The
-exception-throwing corelibs (Go, Rust via feed, C++, C, Python, TS, Zig) already
-propagate INCOMPLETE through the generated decode — only the status-returning
-pair needs the codegen change.
+**Fixed** in sofabgen 0.15.3 (PR
+[generator#106](https://github.com/sofa-buffers/generator/pull/106), closes
+generator#105, under the §7 epic
+[#86](https://github.com/sofa-buffers/generator/issues/86)): the generated
+one-shot decode for the status-returning corelibs now surfaces the terminal
+`DecodeStatus` via a status-returning entry point — C#
+`DecodeStatus TryDecode(byte[] data, out T msg)` and Java
+`DecodeStatus tryDecode(byte[] data, T out)` — so a caller can tell COMPLETE from
+INCOMPLETE without re-running `feed`. The `drivers/cs`/`drivers/java` two-pass
+workaround above can now collapse to a single `trydecode` call (driver-side
+follow-up). The exception-throwing corelibs (Go, Rust via feed, C++, C, Python,
+TS, Zig) already propagate INCOMPLETE through the generated decode — only the
+status-returning pair needed the codegen change.
