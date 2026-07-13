@@ -13,12 +13,20 @@ version: 0
 #   hard  -> a divergence here fails the run (a finding)
 #   soft  -> reported as a warning, does not fail the run
 comparison:
-  # Accept-vs-reject disagreement between implementations. This is the core
-  # interop bug and is always hard.
+  # Disagreement on the three-valued verdict A(COMPLETE) / I(INCOMPLETE) /
+  # R(INVALID) between implementations (MESSAGE_SPEC §7). This is the core interop
+  # bug and is always hard — including an impl that collapses INCOMPLETE into
+  # accept (A) or reject (R) instead of emitting I.
   verdict: hard
 
   # On mutual ACCEPT, the decoded canonical value must match.
   accept_value: hard
+
+  # On mutual INCOMPLETE, whether the partial re-encoded value must match. Soft in
+  # Phase 2: partial-value materialization on a truncated stream is not aligned
+  # across languages yet (same rationale as reject_class). The I verdict itself is
+  # hard (above); only the payload comparison is soft.
+  incomplete_value: soft
 
   # On mutual REJECT, whether the reject *class* must match. Soft in Phase 1:
   # the per-language error taxonomies are not aligned yet, so two impls
@@ -36,10 +44,13 @@ comparison:
 #     spec: <MESSAGE_SPEC.md clause, or "UNSPECIFIED — file upstream">
 allow: []
 
-# The open spec question that most affects signal/noise (PLAN §8): is decoding of
-# malformed / truncated input specified (one correct outcome, so verdict
-# disagreement is a bug) or undefined (impls may differ)? Until resolved, verdict
-# is hard and any real disagreement surfaces here as a candidate finding — which
-# is exactly the pressure that forces the spec decision.
+# PLAN §8 is now RESOLVED. The open question was: is decoding of truncated input
+# specified (one correct outcome) or undefined? MESSAGE_SPEC §7 (finish-less
+# three-valued decode) settles it: truncated input is INCOMPLETE — a distinct,
+# non-error verdict (line "I"), neither accept (A) nor reject (R). So verdict stays
+# hard and F-0001's 7-accept/5-reject split is a genuine bug on both sides: the
+# target is every impl emitting I. Genuinely malformed bytes remain INVALID (R).
 notes:
-  malformed_input: UNSPECIFIED — drives the MESSAGE_SPEC.md decision; see PLAN §8
+  truncated_input: SPECIFIED as INCOMPLETE — MESSAGE_SPEC §7; verifies F-0001
+  malformed_input: INVALID — MESSAGE_SPEC §7 (unknown wire-type, >64-bit varint,
+    count/length over max, MAX_DEPTH, stray sequence-end)

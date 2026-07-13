@@ -32,9 +32,17 @@ CLI is *not* reused here.
 
 - Decode the candidate bytes into the `probe` message using the corelib's real
   decode entry point (generated from `schema/` via `sofabgen`).
-- On success → emit `A <fields...>` per `oracle/canonical.md`.
-- On failure → emit `R <class>`, mapping the corelib's error to the canonical
-  reject class.
+- Map the corelib's **three-valued** decode outcome (MESSAGE_SPEC §7) to the
+  canonical line (`oracle/canonical.md`):
+  - `COMPLETE` → emit `A <hex>`.
+  - `INCOMPLETE` (decode ended mid-field/varint or with an open sequence — **not**
+    an error) → emit `I` (optionally `I <hex>` for the partial value). Do **not**
+    report it as `A` or `R`.
+  - `INVALID` → emit `R <class>`, mapping the corelib's error to the canonical
+    reject class.
+- A driver can only emit `I` once its corelib exposes a distinct `INCOMPLETE`
+  outcome (tracked in generator#86 + the per-corelib issues). Until then it emits
+  `A`/`R` and F-0001 stays red for that impl — the correct signal.
 - **Never** crash, hang, or read out of bounds on malformed input — if it does,
   that is itself a finding (the coverage front-end + sanitizers exist to catch
   exactly this).

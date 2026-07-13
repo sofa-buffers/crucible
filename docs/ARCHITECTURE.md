@@ -28,9 +28,9 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `drivers/common/CONTRACT.md` | built | Persistent length-prefixed protocol + canonical output. |
 | `drivers/c/` (pacemaker) | built | gcc replay driver (ASan/UBSan) verified; libFuzzer front-end present, `#ifdef CRUCIBLE_LIBFUZZER`, built in devcontainer (no clang in bare workspace). |
 | `drivers/go/` | built | Replay driver + native `FuzzProbe`; builds against vendored corelib-go via `replace`. |
-| `oracle/canonical.md` | built | v0 canonical form. |
-| `oracle/comparator.py` | built | N-way canonical diff, policy-aware, no external deps. |
-| `oracle/policy.yaml` | built | Permissive Phase-1 policy (verdict/accept_value hard, reject_class soft). |
+| `oracle/canonical.md` | built | v2 canonical form: round-trip re-encoding, three-valued verdict `A`/`I`/`R` (§7). |
+| `oracle/comparator.py` | built | N-way canonical diff, policy-aware, no external deps; parses `A`/`I`/`R`. |
+| `oracle/policy.yaml` | built | Permissive Phase-1 policy (verdict/accept_value hard, incomplete_value/reject_class soft). |
 | `scripts/run.sh` | built | Build all drivers → differential compare over a corpus (crash-isolating). |
 | `scripts/fuzz.sh` | built | The C pacemaker: build the libFuzzer target (clang) + run + grow corpus/interesting. |
 | `oracle/cluster.py` | built | Groups divergences by camp-partition into root causes (`CLUSTER=1 ./scripts/run.sh`); 256 divergences → 47 clusters. |
@@ -215,6 +215,18 @@ byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03
   encoders are sparse-canonical (the arena reference-wire invariant). Also gives
   the round-trip oracle for free. Tradeoff (benign masking of encode-equivalent
   differences) recorded in `oracle/canonical.md`. This is what surfaced F-0002.
+- **2026-07-13 — canonical form v2: three-valued verdict (`A`/`I`/`R`).** Added a
+  third verdict line `I` (INCOMPLETE) alongside `A`/`R`, tracking the finish-less
+  MESSAGE_SPEC §7 decode model (documentation PR #12). Truncated input is
+  INCOMPLETE — a distinct, non-error outcome — not accept and not reject. Touched
+  the canonical-form triad together (the CLAUDE.md invariant): the grammar +
+  three-verdict table in `oracle/canonical.md`, the `parse()`/compare logic in
+  `oracle/comparator.py` (new `incomplete_value` axis, soft), and the driver
+  contract in `drivers/common/CONTRACT.md`. `policy.yaml` gains
+  `incomplete_value: soft` and resolves the PLAN §8 truncated-input question
+  (SPECIFIED as INCOMPLETE). Drivers emit `I` only once their corelib exposes the
+  state (generator#86 + per-corelib issues); until then F-0001 stays red — the
+  correct signal. Verification tracked in crucible#8. See Deviation 2026-07-13a.
 - **2026-07-08 — Python: build the Cython extension per interpreter.** The
   prebuilt `_speedups.so` is version-specific; a mismatched CPython silently falls
   back to pure, so "cython" mode would be a false label. build.sh compiles the
@@ -259,6 +271,24 @@ byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03
 - **Why:** libFuzzer is a clang/LLVM feature; the devcontainer ships clang.
 - **Impact:** none to the differential loop (which runs on the replay drivers).
   Coverage-guided pacemaker runs live in the devcontainer/CI.
+
+### 2026-07-13a — canonical verdict is three-valued (`A`/`I`/`R`), not binary
+- **PLAN says:** the canonical form's verdict axis is accept-vs-reject (PLAN §6/§7
+  frame decode as a binary outcome).
+- **Reality:** MESSAGE_SPEC §7 (finish-less, documentation PR #12) makes decode
+  three-valued — COMPLETE / **INCOMPLETE** / INVALID — where INCOMPLETE (truncated
+  but well-formed-so-far) is an explicit non-error outcome. The canonical form
+  gained a third line `I` (`oracle/canonical.md` v2), the comparator a third
+  verdict + a soft `incomplete_value` axis, and the driver contract an `I`
+  mapping.
+- **Why:** collapsing INCOMPLETE into accept (`A`) or reject (`R`) is exactly the
+  F-0001 bug; the loop cannot verify the family's convergence on INCOMPLETE
+  without a distinct verdict for it.
+- **Impact:** verdict comparison now ranges over `A`/`I`/`R` (all hard). Drivers
+  emit `I` only after their corelib exposes INCOMPLETE (generator#86 +
+  per-corelib issues); until then their `A`/`R` on a truncated seed is a real
+  verdict divergence. No PLAN revision needed — this refines §7's outcome model to
+  match the now-settled spec. Verification: crucible#8.
 
 ### Pacemaker (as built)
 
