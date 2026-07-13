@@ -67,9 +67,9 @@ they wait on the still-open epics generator#86 / #85 (the "2 issues still open")
 | G-0002 | Rust std vs no_std UTF-8 (intra-Rust) | generator#80/#91 — ✅ **fixed** (both empty on invalid); family-wide UTF-8 is F-0004 / #85 |
 | G-0008 | generated one-shot decode discards the INCOMPLETE status (C#, Java) | **open** → **generator#105** (§7 epic #86); Crucible drivers use a two-pass workaround. See docs/SOFABGEN.md |
 
-**New divergences surfaced 2026-07-13 while wiring the `I` verdict (to triage/file — both pre-existing corelib leniency, unrelated to truncation):**
-- **corelib-cpp** classifies an over-long varint (11 continuation bytes, >64 bits) as `I` (INCOMPLETE) where rust/c-cpp/go say `R` (INVALID) — its varint reader doesn't flag the >64-bit overflow until a terminator arrives. Related to the over-lenient decoder family (#22).
-- **corelib-ts** accepts a top-level stray sequence-end (`0x07`) as `A` (a benign empty message) where the rest reject it — `Cursor.readHeader` returns end-of-loop on `SequenceEnd` with no open-sequence depth check. Contradicts `oracle/canonical.md` (stray sequence-end = INVALID).
+**New divergences surfaced 2026-07-13 while wiring the `I` verdict (filed; both pre-existing corelib leniency, unrelated to truncation):**
+- **corelib-cpp** classifies an over-long varint (11 continuation bytes, >64 bits) as `I` (INCOMPLETE) where rust/c-cpp/go say `R` (INVALID) — its varint reader doesn't flag the >64-bit overflow until a terminator arrives. → **corelib-cpp#29** (related to the over-lenient decoder family #22).
+- **corelib-ts** accepts a top-level stray sequence-end (`0x07`) as `A` (a benign empty message) where the rest reject it — `Cursor.readHeader` returns end-of-loop on `SequenceEnd` with no open-sequence depth check. Contradicts `oracle/canonical.md`. → **corelib-ts#42**.
 
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued
