@@ -35,6 +35,11 @@ fn canonical(out: &mut impl Write, data: &[u8]) {
     let mut is = IStream::new();
     let mut null = Null;
     match is.feed(data, &mut null) {
+        Err(Error::Incomplete) => {
+            // INCOMPLETE (MESSAGE_SPEC §7): the bytes end mid-message — the third
+            // canonical verdict, neither accept (A) nor reject (R). Not an error.
+            let _ = writeln!(out, "I");
+        }
         Err(e) => {
             let _ = writeln!(out, "R {}", reject_class(e));
         }

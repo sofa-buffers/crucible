@@ -58,13 +58,18 @@ they wait on the still-open epics generator#86 / #85 (the "2 issues still open")
 
 | finding | what | tracked in / status |
 |---|---|---|
-| F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less) → epic **generator#86** + per-corelib issues; Crucible third verdict `I` → **crucible#8**. Target: every impl emits `I` (INCOMPLETE), not accept/reject — **still diverges (open)** |
+| F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |
 | F-0004 | invalid UTF-8 in a string: 4 behaviors, driven by the string type | spec §8 → epic **generator#85** — **still diverges (open)** |
 | F-0002 | corelib-c-cpp encoder left-shifts a negative value (UB) | **corelib-c-cpp#70** merged — ✅ **resolved** |
 | F-0003 | Rust array-fill OOB → panic (crash/DoS) | **generator#87** merged — ✅ crash fixed; ⚠️ residual verdict divergence (rust-std/nostd *accept* an over-count array the rest reject) now tracked → **generator#100** (over-count scalar array MUST be INVALID/`R` per §3+§7; distinct from the INCOMPLETE axis) |
 | F-0005 | corelib-cpp accepts malformed msgs the family rejects | **corelib-cpp#22** closed — ✅ **resolved** |
 | G-0001,3,4,5,6 | codegen weaknesses (infallible Rust/C++ decode, no-std string handling, Go bytes import) | **all fixed in sofabgen 0.15.1** (PRs #88/#92/#93/#89/#90) — see docs/SOFABGEN.md |
 | G-0002 | Rust std vs no_std UTF-8 (intra-Rust) | generator#80/#91 — ✅ **fixed** (both empty on invalid); family-wide UTF-8 is F-0004 / #85 |
+| G-0008 | generated one-shot decode discards the INCOMPLETE status (C#, Java) | **open** → **generator#105** (§7 epic #86); Crucible drivers use a two-pass workaround. See docs/SOFABGEN.md |
+
+**New divergences surfaced 2026-07-13 while wiring the `I` verdict (to triage/file — both pre-existing corelib leniency, unrelated to truncation):**
+- **corelib-cpp** classifies an over-long varint (11 continuation bytes, >64 bits) as `I` (INCOMPLETE) where rust/c-cpp/go say `R` (INVALID) — its varint reader doesn't flag the >64-bit overflow until a terminator arrives. Related to the over-lenient decoder family (#22).
+- **corelib-ts** accepts a top-level stray sequence-end (`0x07`) as `A` (a benign empty message) where the rest reject it — `Cursor.readHeader` returns end-of-loop on `SequenceEnd` with no open-sequence depth check. Contradicts `oracle/canonical.md` (stray sequence-end = INVALID).
 
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued

@@ -48,11 +48,20 @@ pub fn main(init: std.process.Init) !void {
         // decode -> re-encode -> hex (oracle/canonical.md). m borrows string bytes
         // from `data` (kept alive until the next reset), so encode can read them.
         const m = message.Probe.decode(a, data) catch |err| {
+            // INCOMPLETE (§7) is a distinct verdict, not an error: the bytes end
+            // inside a field/varint or an open sequence. Emit `I` — never collapse
+            // it into A (accept-as-done) or R (reject-as-malformed).
+            if (err == error.Incomplete) {
+                try out.writeAll("I\n");
+                try out.flush();
+                continue;
+            }
             const cls = switch (err) {
                 error.InvalidMessage => "invalid_msg",
                 error.InvalidArgument => "argument",
                 error.UsageError => "usage",
                 error.BufferFull => "buffer_full",
+                error.Incomplete => unreachable, // handled above
             };
             try out.print("R {s}\n", .{cls});
             try out.flush();

@@ -4,8 +4,17 @@
 // decodes each into the probe message via the generated corelib-cs code, and
 // writes one canonical line (oracle/canonical.md) per record to stdout.
 //
-// Like Python/Java/TS (and unlike Rust/C++), the generated C# Probe.Decode
-// throws (SofabException) on malformed input, so the verdict is a try/catch.
+// Verdict is three-valued (oracle/canonical.md, MESSAGE_SPEC §7): A COMPLETE /
+// I INCOMPLETE / R INVALID. Two-pass decode, mirroring drivers/rust/driver.rs
+// (docs/SOFABGEN.md G-0001, and now the C# analogue): the generated
+// `Probe.Decode` DISCARDS the `DecodeStatus` that `IStream.Feed` returns, so it
+// cannot tell COMPLETE from INCOMPLETE — a truncated message decodes to the
+// default value and would wrongly re-encode as `A`. We therefore take the
+// VERDICT from a direct `IStream.Feed` against a null visitor (its returned
+// DecodeStatus, or the SofabException it throws on malformed input) and use the
+// generated `Probe.Decode`+`Encode` only for the VALUE hex on a COMPLETE decode.
+// Visitor callbacks cannot affect Feed's status (they return void), so the
+// null-pass verdict equals the one inside `Decode`.
 //
 // The C# coverage engine is SharpFuzz — see Fuzz.cs.
 using System;
@@ -15,6 +24,11 @@ using sofab;
 using Message;
 
 namespace Crucible;
+
+// No-op sink: IVisitor's methods are all default (no-op) interface methods, so
+// an empty implementor drops every field. Used only to drive Feed for the
+// verdict; the value comes from the generated ProbeVisitor via Probe.Decode.
+internal sealed class NullVisitor : IVisitor { }
 
 internal static class Driver
 {
@@ -29,7 +43,20 @@ internal static class Driver
 
     private static string Canonical(byte[] data)
     {
-        // decode -> re-encode -> hex (oracle/canonical.md).
+        // Verdict: the corelib's real §7 outcome (visitor-independent).
+        DecodeStatus status;
+        try
+        {
+            status = new IStream().Feed(data, 0, data.Length, new NullVisitor());
+        }
+        catch (SofabException e) { return "R " + RejectClass(e); }
+        catch (Exception) { return "R other"; }
+
+        // INCOMPLETE: bytes ended mid-message — the third verdict, not an error.
+        // (Optional I <hex> partial-value payload is not materialized here.)
+        if (status == DecodeStatus.Incomplete) return "I";
+
+        // COMPLETE: value via generated decode -> re-encode -> hex.
         byte[] enc;
         try
         {

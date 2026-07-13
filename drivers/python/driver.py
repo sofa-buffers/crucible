@@ -18,7 +18,7 @@ import struct
 import sys
 
 from message import Probe
-from sofab import SofaError
+from sofab import SofaError, SofaIncompleteError
 
 _CLASS = {
     "SofaDecodeError": "invalid_msg",
@@ -41,6 +41,12 @@ def canonical(data: bytes) -> str:
     try:
         m = Probe.decode(data)
         b = m.encode()
+    except SofaIncompleteError:
+        # §7 INCOMPLETE: decode ended mid-message (truncation) — not an error and
+        # not malformed, so it is neither "A" nor "R". SofaIncompleteError is a
+        # sibling of SofaDecodeError under SofaError, so this clause MUST precede
+        # the generic handler below or _reject would mislabel it "R invalid_msg".
+        return "I"
     except Exception as e:
         return _reject(e)
     return "A " + b.hex()

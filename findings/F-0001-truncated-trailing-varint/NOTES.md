@@ -85,3 +85,27 @@ end-of-input). Two coordinated efforts close this:
 **Target (revised):** F-0001 goes green when **every impl emits `I`** on the
 truncated seed — *not* the earlier "every impl rejects". The current 7-accept /
 5-reject split all become `I`.
+
+## ✅ Verified green — 2026-07-13
+
+All 10 corelibs implement the finish-less §7 outcome (Camp A + Camp B PRs) and all
+12 Crucible drivers were wired to emit the third verdict `I`. Running the
+differential over the F-0001 reproducers (`80` and `ff ff ff`) across **all 12
+drivers**:
+
+```
+2 inputs × 12 drivers (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp,
+  py-cython, py-pure, java, typescript, csharp, zig): 0 divergence(s), 2 warning(s)
+```
+
+**Every driver now emits `I`** on both seeds — the historical 7-accept-vs-5-reject
+split is resolved to unanimous INCOMPLETE. The 2 warnings are the **soft**
+`incomplete_value` axis only (java emits `I <partial-hex>`, others bare `I` — a
+per-language partial-value materialization difference, not a verdict conflict).
+
+Driver notes: the exception/return-code corelibs (c, cpp, cpp-c-cpp, go, rust-std,
+rust-nostd, py-cython, py-pure, ts, zig) propagate INCOMPLETE through the generated
+decode; the **status-returning** corelibs (csharp, java) needed a two-pass driver
+(verdict from a direct `feed`+status read, value from generated decode) because the
+generated one-shot decode discards the status — logged as **G-0008** /
+[generator#105](https://github.com/sofa-buffers/generator/issues/105).

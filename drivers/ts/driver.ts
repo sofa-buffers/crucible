@@ -10,11 +10,15 @@
 // on the corelib's committed dist.
 //
 // Like Python/Java (and unlike Rust/C++), the generated TS decode throws on
-// malformed input (SofabError), so the verdict is a plain try/catch.
+// non-COMPLETE input (SofabError), so the verdict is a plain try/catch. The
+// one-shot Probe.decode path (MESSAGE_SPEC §7) throws a SofabError whose .code
+// distinguishes the two non-COMPLETE outcomes: Incomplete (truncation — decode
+// ended mid-field, not an error → canonical "I") vs InvalidMsg (malformed →
+// "R invalid_msg"). COMPLETE returns normally (→ "A <hex>").
 import { readFileSync } from "node:fs";
 
 import { Probe } from "./message";
-import { OStream, SofabError } from "@sofa-buffers/corelib";
+import { OStream, SofabError, SofabErrorCode } from "@sofa-buffers/corelib";
 
 function rejectClass(e: unknown): string {
   // Coarse in Phase 2 (reject-class comparison is soft per policy). A SofabError
@@ -33,6 +37,14 @@ function canonical(data: Uint8Array): string {
     m.marshal(os);
     bytes = os.bytes();
   } catch (e) {
+    // INCOMPLETE (truncation) is a distinct hard verdict, not a reject: the
+    // stream ended inside a field. Detect it first (canonical.md: never collapse
+    // it into A or R). The optional partial-value hex payload is not emitted —
+    // the throwing one-shot path yields no partial value, and the payload axis is
+    // soft in Phase 2.
+    if (e instanceof SofabError && e.code === SofabErrorCode.Incomplete) {
+      return "I";
+    }
     return "R " + rejectClass(e);
   }
   const hex = Array.from(bytes)
