@@ -31,7 +31,7 @@ generator gaps.
 | G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) | fixed — PR [#90](https://github.com/sofa-buffers/generator/pull/90) (0.15.1) |
 | G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) | fixed — PR [#87](https://github.com/sofa-buffers/generator/pull/87) |
 | G-0008 | [generator#105](https://github.com/sofa-buffers/generator/issues/105) | ✅ **fixed** — PR [generator#106](https://github.com/sofa-buffers/generator/pull/106) (sofabgen 0.15.3): status-surfacing `TryDecode`/`tryDecode`; part of §7 epic [#86](https://github.com/sofa-buffers/generator/issues/86) |
-| G-0009 | [generator#112](https://github.com/sofa-buffers/generator/issues/112) | **open** — sofabgen 0.16.0 C++ heap backend emits a schema-*unbounded* array as `std::array<T, 0>` (fixed zero-length) instead of a growable `std::vector<T>`; silently drops every element and skips the `max_dyn_array_count` cap. Sibling of [generator#104](https://github.com/sofa-buffers/generator/issues/104) (C backend) |
+| G-0009 | [generator#112](https://github.com/sofa-buffers/generator/issues/112) | **open** — sofabgen 0.16.0 C++ heap backend emits a schema-*unbounded* array as `std::array<T, 0>` (fixed zero-length) instead of a growable `std::vector<T>`; silently drops every element of an *accepted* array (value divergence; the `max_dyn_array_count` cap itself still fires). Sibling of [generator#104](https://github.com/sofa-buffers/generator/issues/104) (C backend) |
 
 ---
 
@@ -348,37 +348,39 @@ profile), mirroring the string/blob it sits next to. It looks like the backend
 defaults a missing `count` to `0` and takes the fixed-`std::array<T,N>` path
 meant for *bounded* arrays, instead of the dynamic-vector path.
 
-**Why it matters (two divergences, both fatal for limit mode):** at decode,
+**Why it matters (a value divergence on accepted arrays):** at decode,
 `IStream::read` takes the span branch, reads `count_` varints off the wire but
-writes only `min(sp.size(), count_) = 0` of them (`sofab.hpp` ~L1526) — so:
+writes only `min(sp.size(), count_) = 0` of them (`sofab.hpp` ~L1526). So a
+**non-over-cap** array that C++ *accepts* decodes to **empty** while the family
+decodes the real elements. Reproduced end-to-end: bytes `03 03 07 08 09`
+(array id0 = `[7,8,9]`, under the cap) → Python/family `[7,8,9]`, C++ `[]`.
 
-1. **Value divergence** — a nonempty array decodes to empty on C++ while the
-   family decodes the real elements. Reproduced end-to-end: bytes
-   `03 03 07 08 09` (array id0 = `[7,8,9]`) → Python/family `[7,8,9]`, C++ `[]`.
-2. **Verdict divergence** — the whole point of the probe is the receiver-side
-   `max_dyn_array_count` cap, but the generated C++ has **no cap check** on this
-   path, so an over-cap array that the family rejects with `L` is *accepted*
-   (as empty) on C++. Reproduced on the corpus vectors:
+The `max_dyn_array_count` **cap itself is unaffected**: the corelib enforces it at
+the array's count header (keyed on the generated `SOFAB_MAX_DYN_ARRAY_COUNT`
+macro), *before* the broken container is touched — so an over-cap array still
+yields `L`, agreeing with the family. The divergence is confined to the **value**
+axis on accepted arrays; the verdict axis (`A`/`I`/`R`/`L`) is correct.
+Confirmed on the limit-mode corpus vectors (caps baked at 8):
 
-   | vector | family | C++ (this bug) |
-   |---|---|---|
-   | `under_arr` (4 elems) | `A` `[1,2,3,4]` | `A` `[]` |
-   | `at_arr_8` (8, at cap) | `A` `[0..7]` | `A` `[]` |
-   | `over_arr` (16, over cap 8) | `R`/`L` (limit) | **`A` `[]`** |
+   | vector | family | C++ (this bug) | axis |
+   |---|---|---|---|
+   | `under_arr` (4 elems) | `A` `[1,2,3,4]` | `A` `[]` | **value divergence** |
+   | `at_arr_8` (8, at cap) | `A` `[0..7]` | `A` `[]` | **value divergence** |
+   | `over_arr` (16, over cap 8) | `L` (limit) | `L` | agree ✓ |
 
-   The maxlen-less **string** and **blob** are unaffected — only the array path
-   is broken — so C++ still exercises `max_dyn_string_len` / `max_dyn_blob_len`
-   correctly.
+The maxlen-less **string** and **blob** are unaffected — only the array path is
+broken — so C++ still exercises `max_dyn_string_len` / `max_dyn_blob_len` fully
+and correctly.
 
 **Proposed fix (generator):** in the C++ backend, a schema array with no `count`
 must generate `std::vector<T>` (and the vector read/cap path), exactly as the
 count-less string/blob already do — not `std::array<T, 0>`.
 
-**Crucible disposition:** the `cpp` target is held out of the array dimension of
-limit mode until this lands (mirroring the c-cpp carve-out — the fixed-capacity
-profile refuses an unbounded field outright). Not worked around in generated
-code or masked in the comparator: a silent zero-length array is exactly the kind
-of value/verdict divergence Crucible exists to catch, so hiding it would blind
-the harness. The minimal repro is the `03 03 07 08 09` bytes above; the full
-`corpus/limits/` array vectors land with the limit-mode wiring (crucible#10,
-still open).
+**Crucible disposition:** the `cpp` target is held out of the **array** dimension
+of limit mode until this lands (`scripts/run-limits.sh` runs the arr vectors on the
+roster minus cpp). It still runs the **string/blob** dimensions, which are correct.
+Not worked around in generated code or masked in the comparator: a silent
+zero-length array is exactly the kind of value divergence Crucible exists to catch,
+so hiding it would blind the harness. Repro: `03 03 07 08 09` above, and the
+`corpus/limits/arr/` vectors (the negative control — with cpp back in, the arr
+dimension reports the two accept-value divergences).
