@@ -32,6 +32,7 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `oracle/comparator.py` | built | N-way canonical diff, policy-aware, no external deps; parses `A`/`I`/`R`. |
 | `oracle/policy.yaml` | built | Permissive Phase-1 policy (verdict/accept_value hard, incomplete_value/reject_class soft). |
 | `scripts/run.sh` | built | Build all drivers → differential compare over a corpus (crash-isolating). |
+| `scripts/run-limits.sh` | built | Limit-mode loop (crucible#10 / generator#102): heap roster built from `schema/probe-dyn.sofab.yaml` with identical `max_dyn_*` caps, compared per dimension over `corpus/limits/{arr,str,blb}`. cpp held out of `arr` (G-0009). |
 | `scripts/fuzz.sh` | built | The C pacemaker: build the libFuzzer target (clang) + run + grow corpus/interesting. |
 | `oracle/cluster.py` | built | Groups divergences by camp-partition into root causes (`CLUSTER=1 ./scripts/run.sh`); 256 divergences → 47 clusters. |
 | C pacemaker (libFuzzer) | built | `drivers/c/driver.c` `CRUCIBLE_LIBFUZZER` path; ~41k exec/s; grows the corpus fed to the differential loop. Coverage-guided but NOT yet structure-aware. |
@@ -71,6 +72,29 @@ own sparse-canonical encoder, hex-printed. This makes every driver
 **schema-agnostic** (no per-field code; scaling the schema needs zero driver
 changes) and folds in the round-trip oracle. Verified: all 12 drivers emit
 byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03f1a126869`).
+
+### Limit mode (as built)
+
+`scripts/run-limits.sh` (crucible#10 / generator#102) exercises the receiver-side
+decode caps (`max_dyn_array_count` / `max_dyn_string_len` / `max_dyn_blob_len`),
+which bind only schema-*unbounded* fields. It uses a dedicated unbounded schema
+`schema/probe-dyn.sofab.yaml` (one count-less array, one maxlen-less string, one
+maxlen-less blob) and a **heap-only** roster — the fixed-capacity profiles (c,
+c-cpp, rust-nostd) cannot represent an unbounded field, so they are out by
+construction. Each driver's `build.sh` takes `SCHEMA` + `LIMITS` from the
+environment and bakes the **same** caps into every driver, so a disagreement on
+`A` (under cap) vs `L` (LIMIT_EXCEEDED, over cap) is a real verdict finding — the
+fourth canonical verdict `L` (`oracle/canonical.md`) exists only here.
+
+The corpus is split by dimension (`corpus/limits/{arr,str,blb}`) so the roster can
+differ per dimension: the **arr** dimension drops **cpp** (G-0009 / generator#112 —
+sofabgen 0.16.0 emits its unbounded array as `std::array<T,0>`, so an accepted
+array decodes to empty; the cap itself still fires), while **str**/**blb** run the
+full heap roster since cpp's string/blob caps are correct. Verified green:
+arr 3×8, str 2×9, blb 2×9, 0 divergences; negative control (cpp back into arr)
+surfaces the two accept-value divergences. rust-std gained the `L` arm behind a
+`limit` cargo feature (`drivers/rust/build.sh` enables it for the std variant only;
+rs-no-std's `Error` has no `LimitExceeded`).
 
 ### Per-language driver notes (as built)
 
