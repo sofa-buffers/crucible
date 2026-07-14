@@ -16,6 +16,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 #                                needed just to run the differential loop)
 #   go (official 1.25.x)       Go target + native `go test -fuzz`
 #   (rustup) + cargo-fuzz      Rust target (corelib-rs / rs-no-std) — libFuzzer-based
+#                              (+ rust-analyzer component for editor/LSP)
 #   default-jdk + maven        Java target; Jazzer is fetched per build
 #   python3 + venv + atheris   Python target + Atheris (libFuzzer for CPython)
 #   (dotnet 9) + SharpFuzz     C# target (corelib-cs)
@@ -43,9 +44,9 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:/usr/local/dotnet:$PATH
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --profile minimal --default-toolchain stable \
-    && rustup component add rust-src \
+    && rustup component add rust-src rust-analyzer \
     && cargo install cargo-fuzz \
-    && rustc --version && cargo fuzz --version
+    && rustc --version && cargo fuzz --version && rust-analyzer --version
 
 # --- Go (official toolchain) --------------------------------------------------
 # Matches the version corelib-go's generated go.mod pins; native fuzzing is the
