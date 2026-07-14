@@ -22,15 +22,35 @@ case "$VARIANT" in
     *) echo "unknown variant '$VARIANT' (want: rs | rs-no-std)" >&2; exit 2 ;;
 esac
 
+# Limit mode (crucible#10 / generator#102): SCHEMA selects the schema (default the
+# bounded probe); LIMITS, when set, bakes identical max_dyn_* caps into the
+# generated code so an unbounded field over the cap decodes to LIMIT_EXCEEDED (the
+# `L` verdict). Only the std corelib (rs) supports it — rs-no-std is fixed-capacity
+# and cannot represent an unbounded field, and its Error has no LimitExceeded.
+SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
+if [ -n "${LIMITS:-}" ] && [ "$VARIANT" = "rs-no-std" ]; then
+    echo "==> [rust:rs-no-std] LIMITS is unsupported: the fixed-capacity profile has no unbounded fields" >&2
+    exit 2
+fi
+
 [ -x "$SOFABGEN" ] || { echo "missing $SOFABGEN — run scripts/bootstrap.sh" >&2; exit 1; }
 [ -d "$CORELIB" ] || { echo "missing $CORELIB — run scripts/bootstrap.sh" >&2; exit 1; }
 
 OUT="$HERE/build/$VARIANT"
-echo "==> [rust:$VARIANT] generating probe project from schema" >&2
+echo "==> [rust:$VARIANT] generating probe project from ${SCHEMA##*/}${LIMITS:+ (limits=$LIMITS)}" >&2
 rm -rf "$OUT"
 mkdir -p "$OUT"
-printf 'generic: { emit: project }\n%s\n' "$CFG" > "$OUT/cfg.yaml"
-"$SOFABGEN" --config "$OUT/cfg.yaml" --lang rust --in "$ROOT/schema/probe.sofab.yaml" --out "$OUT" >&2
+# Merge the max_dyn_* caps into the generic block (block style so the caps sit
+# alongside `emit: project`), mirroring the cpp backend's single-cfg approach.
+{
+    printf 'generic:\n  emit: project\n'
+    if [ -n "${LIMITS:-}" ]; then
+        printf '  max_dyn_array_count: %s\n  max_dyn_string_len: %s\n  max_dyn_blob_len: %s\n' \
+            "$LIMITS" "$LIMITS" "$LIMITS"
+    fi
+    printf '%s\n' "$CFG"
+} > "$OUT/cfg.yaml"
+"$SOFABGEN" --config "$OUT/cfg.yaml" --lang rust --in "$SCHEMA" --out "$OUT" >&2
 
 # Replace the generated JSON harness with our replay driver (preamble brings
 # `Probe` into scope for the variant's crate layout).
@@ -41,7 +61,17 @@ cat "$HERE/driver.rs" >> "$OUT/src/main.rs"
 # ${SOFAB_RS_CORELIB} placeholder).
 sed -i "s#\${SOFAB_RS_CORELIB}#$CORELIB#" "$OUT/Cargo.toml"
 
-echo "==> [rust:$VARIANT] cargo build" >&2
-( cd "$OUT" && cargo build -q >&2 )
+# The `L` (LimitExceeded) verdict arm in driver.rs is std-only — declare + enable
+# the `limit` cargo feature that gates it for the std corelib (rs) only. rs-no-std's
+# Error has no LimitExceeded variant, so the arm must stay compiled out there.
+FEATURES=""
+if [ "$VARIANT" = "rs" ]; then
+    printf '\n[features]\nlimit = []\n' >> "$OUT/Cargo.toml"
+    FEATURES="--features limit"
+fi
+
+echo "==> [rust:$VARIANT] cargo build${FEATURES:+ ($FEATURES)}" >&2
+# shellcheck disable=SC2086
+( cd "$OUT" && cargo build -q $FEATURES >&2 )
 
 echo "$OUT/target/debug/harness"

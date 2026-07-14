@@ -17,7 +17,15 @@ OUT="$HERE/build"
 
 echo "==> [go] generating probe types from schema" >&2
 rm -rf "$GEN"
-"$SOFABGEN" --lang go --in "$ROOT/schema/probe.sofab.yaml" --out "$GEN" >&2
+mkdir -p "$GEN"
+SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
+LIMCFG=""
+if [ -n "${LIMITS:-}" ]; then
+    LIMCFG="$GEN/limits.cfg.yaml"
+    printf 'generic:\n  max_dyn_array_count: %s\n  max_dyn_string_len: %s\n  max_dyn_blob_len: %s\n' \
+        "$LIMITS" "$LIMITS" "$LIMITS" > "$LIMCFG"
+fi
+"$SOFABGEN" ${LIMCFG:+--config "$LIMCFG"} --lang go --in "$SCHEMA" --out "$GEN" >&2
 
 mkdir -p "$OUT"
 echo "==> [go] go build" >&2

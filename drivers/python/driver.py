@@ -18,7 +18,7 @@ import struct
 import sys
 
 from message import Probe
-from sofab import SofaError, SofaIncompleteError
+from sofab import SofaError, SofaIncompleteError, SofaLimitError
 
 _CLASS = {
     "SofaDecodeError": "invalid_msg",
@@ -47,6 +47,12 @@ def canonical(data: bytes) -> str:
         # sibling of SofaDecodeError under SofaError, so this clause MUST precede
         # the generic handler below or _reject would mislabel it "R invalid_msg".
         return "I"
+    except SofaLimitError:
+        # LIMIT_EXCEEDED (generator#102, limit mode only): a configured receiver-side
+        # cap on a schema-unbounded field. A policy rejection distinct from INVALID —
+        # its own verdict `L`, not `R`. Sibling of SofaDecodeError under SofaError, so
+        # this clause MUST precede the generic handler below.
+        return "L"
     except Exception as e:
         return _reject(e)
     return "A " + b.hex()

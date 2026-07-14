@@ -16,9 +16,11 @@
 // over-count-array rejection (generator#100); try_decode runs them, so rust now
 // converges with the family on those inputs (was the F-0003 residual divergence).
 //
-// LimitExceeded (generator#102) would map to a fourth verdict `L`, but that arm is
-// std-only (corelib-rs-no-std's Error has no LimitExceeded variant) and only fires
-// under a configured limit — it belongs to limit mode, added there.
+// LimitExceeded (generator#102) maps to a fourth verdict `L`, gated behind the
+// `limit` cargo feature: the arm is std-only (corelib-rs-no-std's Error has no
+// LimitExceeded variant), so build.sh enables `limit` for the `rs` variant only.
+// It fires solely under a configured cap (limit mode); with no cap it never occurs,
+// so the default conformance run is unchanged.
 //
 // Emits the canonical form (oracle/canonical.md) over the replay protocol
 // (drivers/common/CONTRACT.md).
@@ -50,6 +52,13 @@ fn canonical(out: &mut impl Write, data: &[u8]) {
             // INCOMPLETE (MESSAGE_SPEC §7): the bytes end mid-message — the third
             // canonical verdict, neither accept (A) nor reject (R). Not an error.
             let _ = writeln!(out, "I");
+        }
+        #[cfg(feature = "limit")]
+        Err(Error::LimitExceeded) => {
+            // LIMIT_EXCEEDED (generator#102, limit mode only): a configured
+            // receiver-side cap on a schema-unbounded field was exceeded. A policy
+            // rejection distinct from INVALID — its own verdict `L`, not `R`.
+            let _ = writeln!(out, "L");
         }
         Err(e) => {
             let _ = writeln!(out, "R {}", reject_class(e));

@@ -33,6 +33,12 @@ func canonical(w *bufio.Writer, data []byte) {
 			fmt.Fprint(w, "I\n")
 			return
 		}
+		if errors.Is(err, sofab.ErrLimitExceeded) {
+			// LIMIT_EXCEEDED (generator#102, limit mode only): a configured receiver-side
+			// cap on a schema-unbounded field. A policy rejection distinct from INVALID.
+			fmt.Fprint(w, "L\n")
+			return
+		}
 		// Coarse reject class (class comparison is soft; see oracle/policy.yaml).
 		fmt.Fprint(w, "R invalid_msg\n")
 		return
