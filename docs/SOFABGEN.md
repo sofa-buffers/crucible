@@ -31,6 +31,7 @@ generator gaps.
 | G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) | fixed — PR [#90](https://github.com/sofa-buffers/generator/pull/90) (0.15.1) |
 | G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) | fixed — PR [#87](https://github.com/sofa-buffers/generator/pull/87) |
 | G-0008 | [generator#105](https://github.com/sofa-buffers/generator/issues/105) | ✅ **fixed** — PR [generator#106](https://github.com/sofa-buffers/generator/pull/106) (sofabgen 0.15.3): status-surfacing `TryDecode`/`tryDecode`; part of §7 epic [#86](https://github.com/sofa-buffers/generator/issues/86) |
+| G-0009 | [generator#112](https://github.com/sofa-buffers/generator/issues/112) | **open** — sofabgen 0.16.0 C++ heap backend emits a schema-*unbounded* array as `std::array<T, 0>` (fixed zero-length) instead of a growable `std::vector<T>`; silently drops every element and skips the `max_dyn_array_count` cap. Sibling of [generator#104](https://github.com/sofa-buffers/generator/issues/104) (C backend) |
 
 ---
 
@@ -312,3 +313,72 @@ now take both verdict and value from a single `TryDecode`/`tryDecode` call
 (`Complete`→`A <hex>`, `Incomplete`→`I`, malformed throw→`R <class>`). Verified:
 lone `0x80` still reports `I` (not the pre-fix `A`), and both drivers agree with
 the family on the F-0001 seeds.
+
+## G-0009 — generated C++ emits a schema-*unbounded* array as `std::array<T, 0>`
+
+**Status:** open — [generator#112](https://github.com/sofa-buffers/generator/issues/112)
+(sofabgen 0.16.0). Sibling of the C-backend
+[generator#104](https://github.com/sofa-buffers/generator/issues/104). Surfaced
+adopting the limit-mode probe (`schema/probe-dyn.sofab.yaml`, crucible#10 /
+generator#102).
+
+**Where:** the C++ backend, generated `probe.hpp` for a count-less `array` field.
+
+**What:** the limit probe carries one schema-*unbounded* field of each kind — a
+count-less array, a maxlen-less string, a maxlen-less blob:
+
+```yaml
+dyn_arr: { id: 0, type: array, items: { type: u32 } }   # no count -> unbounded
+dyn_str: { id: 1, type: string }                        # no maxlen -> unbounded
+dyn_blb: { id: 2, type: blob }                           # no maxlen -> unbounded
+```
+
+Every other backend maps the unbounded array to a **growable** type
+(`uint[]` C#, `list[int]` Python, `number[]` TS, `[]const u32` Zig), and the C++
+backend itself maps the unbounded **string**→`std::string` and **blob**→
+`std::vector<std::uint8_t>`. But the unbounded **array** is emitted as a fixed
+**zero-length** container:
+
+```cpp
+std::array<std::uint32_t, 0> dyn_arr = {};   // cannot hold any element
+```
+
+A count-less array should be `std::vector<std::uint32_t>` (the heap `cpp`
+profile), mirroring the string/blob it sits next to. It looks like the backend
+defaults a missing `count` to `0` and takes the fixed-`std::array<T,N>` path
+meant for *bounded* arrays, instead of the dynamic-vector path.
+
+**Why it matters (two divergences, both fatal for limit mode):** at decode,
+`IStream::read` takes the span branch, reads `count_` varints off the wire but
+writes only `min(sp.size(), count_) = 0` of them (`sofab.hpp` ~L1526) — so:
+
+1. **Value divergence** — a nonempty array decodes to empty on C++ while the
+   family decodes the real elements. Reproduced end-to-end: bytes
+   `03 03 07 08 09` (array id0 = `[7,8,9]`) → Python/family `[7,8,9]`, C++ `[]`.
+2. **Verdict divergence** — the whole point of the probe is the receiver-side
+   `max_dyn_array_count` cap, but the generated C++ has **no cap check** on this
+   path, so an over-cap array that the family rejects with `L` is *accepted*
+   (as empty) on C++. Reproduced on the corpus vectors:
+
+   | vector | family | C++ (this bug) |
+   |---|---|---|
+   | `under_arr` (4 elems) | `A` `[1,2,3,4]` | `A` `[]` |
+   | `at_arr_8` (8, at cap) | `A` `[0..7]` | `A` `[]` |
+   | `over_arr` (16, over cap 8) | `R`/`L` (limit) | **`A` `[]`** |
+
+   The maxlen-less **string** and **blob** are unaffected — only the array path
+   is broken — so C++ still exercises `max_dyn_string_len` / `max_dyn_blob_len`
+   correctly.
+
+**Proposed fix (generator):** in the C++ backend, a schema array with no `count`
+must generate `std::vector<T>` (and the vector read/cap path), exactly as the
+count-less string/blob already do — not `std::array<T, 0>`.
+
+**Crucible disposition:** the `cpp` target is held out of the array dimension of
+limit mode until this lands (mirroring the c-cpp carve-out — the fixed-capacity
+profile refuses an unbounded field outright). Not worked around in generated
+code or masked in the comparator: a silent zero-length array is exactly the kind
+of value/verdict divergence Crucible exists to catch, so hiding it would blind
+the harness. The minimal repro is the `03 03 07 08 09` bytes above; the full
+`corpus/limits/` array vectors land with the limit-mode wiring (crucible#10,
+still open).
