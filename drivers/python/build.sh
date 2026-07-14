@@ -42,7 +42,14 @@ fi
 
 echo "==> [python] generating probe types from schema" >&2
 rm -rf "$GEN"; mkdir -p "$GEN"
-"$SOFABGEN" --lang python --in "$ROOT/schema/probe.sofab.yaml" --out "$GEN" >&2
+SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
+LIMCFG=""
+if [ -n "${LIMITS:-}" ]; then
+    LIMCFG="$GEN/limits.cfg.yaml"
+    printf 'generic:\n  max_dyn_array_count: %s\n  max_dyn_string_len: %s\n  max_dyn_blob_len: %s\n' \
+        "$LIMITS" "$LIMITS" "$LIMITS" > "$LIMCFG"
+fi
+"$SOFABGEN" ${LIMCFG:+--config "$LIMCFG"} --lang python --in "$SCHEMA" --out "$GEN" >&2
 
 # Sanity: confirm the requested mode actually resolves as expected.
 GOT=$(SOFAB_PUREPYTHON=$PURE "$VENV/bin/python" -c "import sofab; print(sofab.IMPL)")

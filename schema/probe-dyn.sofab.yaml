@@ -1,0 +1,27 @@
+# Crucible limit-mode message — the "unbounded" probe (crucible#10 / generator#102).
+#
+# The full-scale schema/probe.sofab.yaml bounds every field (array `count`,
+# string/blob `maxlen`), so the receiver-side decode limits (`max_dyn_*`) can never
+# trip on it — those caps apply ONLY to schema-*unbounded* fields. This variant
+# carries one of each unbounded kind so the caps are reachable:
+#   - a count-less array   -> max_dyn_array_count
+#   - a maxlen-less string -> max_dyn_string_len
+#   - a maxlen-less blob   -> max_dyn_blob_len
+#
+# It is a HEAP-only message: the fixed-capacity/embedded profiles (corelib-c-cpp,
+# corelib-rs-no-std) refuse to generate an unbounded field without `allow_dynamic`,
+# so limit mode runs the heap targets only (cs, java, go, py, ts, cpp, rust-std,
+# zig) — see scripts/run-limits.sh and docs/STATUS.md.
+#
+# Keyed `probe` so the generated type name stays `Probe`/`probe`/`message_probe_t`
+# and the schema-agnostic round-trip drivers (oracle/canonical.md) need no change.
+version: 1
+messages:
+  probe:
+    summary: |
+      The unbounded-field probe for limit mode: one count-less array, one
+      maxlen-less string, one maxlen-less blob — each the target of a max_dyn_* cap.
+    payload:
+      dyn_arr: { id: 0, type: array, items: { type: u32 } }
+      dyn_str: { id: 1, type: string }
+      dyn_blb: { id: 2, type: blob }

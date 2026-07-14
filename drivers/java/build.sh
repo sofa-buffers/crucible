@@ -25,7 +25,14 @@ fi
 
 echo "==> [java] generating probe classes from schema" >&2
 rm -rf "$GEN" "$CLASSES"; mkdir -p "$GEN" "$CLASSES"
-"$SOFABGEN" --lang java --in "$ROOT/schema/probe.sofab.yaml" --out "$GEN" >&2
+SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
+LIMCFG=""
+if [ -n "${LIMITS:-}" ]; then
+    LIMCFG="$GEN/limits.cfg.yaml"
+    printf 'generic:\n  max_dyn_array_count: %s\n  max_dyn_string_len: %s\n  max_dyn_blob_len: %s\n' \
+        "$LIMITS" "$LIMITS" "$LIMITS" > "$LIMCFG"
+fi
+"$SOFABGEN" ${LIMCFG:+--config "$LIMCFG"} --lang java --in "$SCHEMA" --out "$GEN" >&2
 
 echo "==> [java] javac (driver + generated, against sofab.jar)" >&2
 # shellcheck disable=SC2046

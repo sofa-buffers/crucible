@@ -34,6 +34,12 @@ internal static class Driver
         _ => "other",
     };
 
+    // Map a decode exception to its canonical line prefix. LIMIT_EXCEEDED
+    // (generator#102, limit mode only) is a policy rejection distinct from INVALID
+    // and gets its own verdict `L`; everything else is an `R <class>` reject.
+    private static string ErrLine(SofabException e) =>
+        e.Error == SofabError.LimitExceeded ? "L" : "R " + RejectClass(e);
+
     private static string Canonical(byte[] data)
     {
         // One pass: TryDecode fills `m` and returns the corelib's real §7 outcome
@@ -44,7 +50,7 @@ internal static class Driver
         {
             status = Probe.TryDecode(data, out m);
         }
-        catch (SofabException e) { return "R " + RejectClass(e); }
+        catch (SofabException e) { return ErrLine(e); }
         catch (Exception) { return "R other"; }
 
         // INCOMPLETE: bytes ended mid-message — the third verdict, not an error.
@@ -57,7 +63,7 @@ internal static class Driver
         {
             enc = m.Encode();
         }
-        catch (SofabException e) { return "R " + RejectClass(e); }
+        catch (SofabException e) { return ErrLine(e); }
         catch (Exception) { return "R other"; }
 
         var sb = new StringBuilder("A ");

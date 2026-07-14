@@ -34,6 +34,12 @@ comparison:
   # Tighten to `hard` once the taxonomy in canonical.md is enforced everywhere.
   reject_class: soft
 
+  # On mutual LIMIT_EXCEEDED (limit mode only), whether the optional class must
+  # match. Soft for the same reason as reject_class. The L verdict itself is hard
+  # (via `verdict` above): in limit mode every driver is generated with identical
+  # max_dyn_* caps, so they must agree on L vs A/I/R. See oracle/canonical.md.
+  limit_class: soft
+
 # Specific inputs where divergence is explicitly tolerated, each with a reason
 # and (eventually) a spec citation. Empty in Phase 1.
 #
@@ -54,3 +60,12 @@ notes:
   truncated_input: SPECIFIED as INCOMPLETE — MESSAGE_SPEC §7; verifies F-0001
   malformed_input: INVALID — MESSAGE_SPEC §7 (unknown wire-type, >64-bit varint,
     count/length over max, MAX_DEPTH, stray sequence-end)
+  limit_exceeded: >-
+    A configured receiver-side decode cap (max_dyn_array_count / max_dyn_string_len /
+    max_dyn_blob_len, generator#102) on a schema-UNBOUNDED field. This is a POLICY
+    rejection, a category distinct from INVALID: the bytes are well-formed and decode
+    under a looser/unset cap. Surfaced as the `L` verdict (limit mode only). SPEC
+    BASIS: analogue of the MAX_DEPTH stack bound (MESSAGE_SPEC §5.4); the heap-limit
+    note is not yet in MESSAGE_SPEC — SPEC HOLE to file upstream (tracked via
+    generator#102). Differing *configured* caps across impls are NOT a divergence;
+    limit mode avoids that by generating the whole roster with identical caps.

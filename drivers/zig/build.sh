@@ -21,7 +21,14 @@ command -v "$ZIG" >/dev/null || { echo "zig not found on PATH" >&2; exit 1; }
 
 echo "==> [zig] generating probe module from schema" >&2
 rm -rf "$BUILD"; mkdir -p "$BUILD/src"
-"$SOFABGEN" --lang zig --in "$ROOT/schema/probe.sofab.yaml" --out "$BUILD" >&2  # writes $BUILD/src/message.zig
+SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
+LIMCFG=""
+if [ -n "${LIMITS:-}" ]; then
+    LIMCFG="$BUILD/limits.cfg.yaml"
+    printf 'generic:\n  max_dyn_array_count: %s\n  max_dyn_string_len: %s\n  max_dyn_blob_len: %s\n' \
+        "$LIMITS" "$LIMITS" "$LIMITS" > "$LIMCFG"
+fi
+"$SOFABGEN" ${LIMCFG:+--config "$LIMCFG"} --lang zig --in "$SCHEMA" --out "$BUILD" >&2  # writes $BUILD/src/message.zig
 cp "$HERE/driver.zig" "$BUILD/src/driver.zig"
 
 echo "==> [zig] zig build-exe (ReleaseSafe: safety checks stay on)" >&2

@@ -8,11 +8,12 @@ of language and message shape.
 ## Grammar
 
 ```
-line       := accept | incomplete | reject
+line       := accept | incomplete | reject | limit
 accept     := "A" SP hex          ; COMPLETE — hex of the re-encoded sparse-canonical wire
 incomplete := "I" [ SP hex ]      ; INCOMPLETE — decode ended mid-message; optional hex = re-encode of the partial value
-reject     := "R" SP class        ; INVALID
-class      := "invalid_msg" | "argument" | "usage" | "buffer_full" | "other"
+reject     := "R" SP class        ; INVALID — malformed regardless of what follows
+limit      := "L" [ SP class ]    ; LIMIT_EXCEEDED — a configured receiver-side decode cap was exceeded (limit mode only)
+class      := "invalid_msg" | "argument" | "usage" | "buffer_full" | "limit_exceeded" | "other"
 hex        := *( HEXDIG HEXDIG )  ; lowercase, two digits per byte; empty allowed
 ```
 
@@ -36,6 +37,26 @@ disagreeing on which one applies is a `verdict` divergence (a finding). A driver
 **MUST NOT** collapse `INCOMPLETE` into either neighbour — reporting `A` for a
 truncated message (accept-as-done) or `R` (reject-as-malformed) is itself the bug
 this axis exists to catch (see F-0001).
+
+### The fourth verdict `L` (LIMIT_EXCEEDED, limit mode only)
+
+| corelib outcome | line | meaning |
+|---|---|---|
+| `LIMIT_EXCEEDED` | `L` (or `L <class>`) | a **configured** receiver-side decode cap (`max_dyn_array_count` / `max_dyn_string_len` / `max_dyn_blob_len`, generator#102) was exceeded on a schema-*unbounded* field. The bytes are well-formed; rejecting them is receiver **policy** — a category deliberately **distinct from `R` (INVALID)** |
+
+`L` exists because a limit violation is *not* a wire-conformance failure: the same
+bytes decode fine under a looser (or unset) limit. It appears **only in limit mode**
+(`scripts/run-limits.sh`), where every driver in the roster is generated with the
+**same** caps — so they must all agree on `L`, and a disagreement is a `verdict`
+finding exactly like `A`/`I`/`R`. In the default conformance/fuzz run **no limits are
+configured** (unset = unlimited), so `L` can never occur there and every driver's
+output ranges over `A`/`I`/`R` as before. Because the caps only bind schema-unbounded
+fields, limit mode uses a dedicated **unbounded** schema (`schema/probe-dyn.sofab.yaml`)
+and a **heap-only** driver roster (the fixed-capacity profiles — c, c-cpp, rust-nostd —
+cannot represent an unbounded field; see `scripts/run-limits.sh`). Comparing a limited
+against an unlimited implementation is **not** a divergence and is avoided by
+construction (identical caps across the roster) — MESSAGE_SPEC §5.4's `MAX_DEPTH` note
+is the stack analogue; the heap note is pending upstream (generator#102).
 
 ### The `I` payload
 

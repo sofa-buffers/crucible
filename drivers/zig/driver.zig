@@ -56,12 +56,21 @@ pub fn main(init: std.process.Init) !void {
                 try out.flush();
                 continue;
             }
+            if (err == error.LimitExceeded) {
+                // LIMIT_EXCEEDED (generator#102, limit mode only): a configured receiver-side
+                // cap on a schema-unbounded field. A policy rejection distinct from INVALID —
+                // its own verdict `L`, not `R`.
+                try out.writeAll("L\n");
+                try out.flush();
+                continue;
+            }
             const cls = switch (err) {
                 error.InvalidMessage => "invalid_msg",
                 error.InvalidArgument => "argument",
                 error.UsageError => "usage",
                 error.BufferFull => "buffer_full",
                 error.Incomplete => unreachable, // handled above
+                error.LimitExceeded => unreachable, // handled above
             };
             try out.print("R {s}\n", .{cls});
             try out.flush();

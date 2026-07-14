@@ -26,7 +26,14 @@ fi
 
 echo "==> [ts] generating probe class from schema" >&2
 rm -rf "$BUILD"; mkdir -p "$BUILD"
-"$SOFABGEN" --lang typescript --in "$ROOT/schema/probe.sofab.yaml" --out "$BUILD" >&2
+SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
+LIMCFG=""
+if [ -n "${LIMITS:-}" ]; then
+    LIMCFG="$BUILD/limits.cfg.yaml"
+    printf 'generic:\n  max_dyn_array_count: %s\n  max_dyn_string_len: %s\n  max_dyn_blob_len: %s\n' \
+        "$LIMITS" "$LIMITS" "$LIMITS" > "$LIMCFG"
+fi
+"$SOFABGEN" ${LIMCFG:+--config "$LIMCFG"} --lang typescript --in "$SCHEMA" --out "$BUILD" >&2
 cp "$HERE/driver.ts" "$BUILD/driver.ts"
 
 echo "==> [ts] esbuild bundle (driver + message + corelib source)" >&2

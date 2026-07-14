@@ -45,6 +45,12 @@ function canonical(data: Uint8Array): string {
     if (e instanceof SofabError && e.code === SofabErrorCode.Incomplete) {
       return "I";
     }
+    if (e instanceof SofabError && e.code === SofabErrorCode.LimitExceeded) {
+      // LIMIT_EXCEEDED (generator#102, limit mode only): a configured receiver-side
+      // cap on a schema-unbounded field. A policy rejection distinct from INVALID —
+      // its own verdict `L`, not `R`.
+      return "L";
+    }
     return "R " + rejectClass(e);
   }
   const hex = Array.from(bytes)

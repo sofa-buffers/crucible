@@ -24,6 +24,7 @@ import java.io.PrintStream;
 import message.Probe;
 
 import org.sofabuffers.sofab.DecodeStatus;
+import org.sofabuffers.sofab.SofabError;
 import org.sofabuffers.sofab.SofabException;
 
 public final class Driver {
@@ -40,6 +41,12 @@ public final class Driver {
         }
     }
 
+    // LIMIT_EXCEEDED (generator#102, limit mode only) is a policy rejection distinct
+    // from INVALID and gets its own verdict `L`; everything else is an `R <class>`.
+    private static String errLine(SofabException e) {
+        return e.error() == SofabError.LIMIT_EXCEEDED ? "L" : "R " + rejectClass(e);
+    }
+
     private static String hexValue(char verdict, Probe m) {
         // Value for an A (COMPLETE) or I (INCOMPLETE) line: re-encode the decoded
         // message -> hex (oracle/canonical.md). For I this is the partial value
@@ -53,7 +60,7 @@ public final class Driver {
             // worst-case buffer; report it as a reject class.
             Throwable c = (e.getCause() != null) ? e.getCause() : e;
             if (c instanceof SofabException) {
-                return "R " + rejectClass((SofabException) c);
+                return errLine((SofabException) c);
             }
             return "R other";
         }
@@ -73,8 +80,17 @@ public final class Driver {
         try {
             status = Probe.tryDecode(data, m);
         } catch (SofabException e) {
-            return "R " + rejectClass(e);
+            return errLine(e);
         } catch (RuntimeException e) {
+            // Generated decode raises rejections from inside the visitor as an
+            // unchecked wrapper (e.g. UncheckedIOException around a SofabException),
+            // so the real category — including LIMIT_EXCEEDED — arrives here rather
+            // than the checked branch above. Unwrap to preserve the L/R distinction;
+            // a genuinely foreign RuntimeException still falls through to "R other".
+            Throwable c = (e.getCause() != null) ? e.getCause() : e;
+            if (c instanceof SofabException) {
+                return errLine((SofabException) c);
+            }
             return "R other";
         }
         // INCOMPLETE (MESSAGE_SPEC §7): bytes end mid-message — the third canonical

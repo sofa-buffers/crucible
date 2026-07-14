@@ -51,6 +51,18 @@ static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *o
         }
         if (!r.ok())
         {
+#ifdef CRUCIBLE_HAS_LIMIT_EXCEEDED
+            // LIMIT_EXCEEDED (generator#102, limit mode only): a configured
+            // receiver-side cap on a schema-unbounded field. A policy rejection
+            // distinct from INVALID — its own verdict `L`, not `R`. Guarded by the
+            // build macro: only the pure-C++ corelib's Error carries LimitExceeded
+            // (the c-cpp fixed-capacity wrapper's Error does not).
+            if (r.code() == sofab::Error::LimitExceeded)
+            {
+                std::fputs("L\n", out);
+                return;
+            }
+#endif
             std::fprintf(out, "R %s\n", reject_class(r.code()));
             return;
         }

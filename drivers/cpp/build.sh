@@ -16,21 +16,39 @@ SOFABGEN="$ROOT/tools/sofabgen"
 CXX="${CXX:-g++}"
 CC="${CC:-cc}"
 
+# HASLIM: the pure-C++ corelib's sofab::Error carries LimitExceeded (the heap
+# profile, generator#102); the c-cpp wrapper's Error does NOT (fixed-capacity), so
+# the shared driver.cpp guards its L verdict behind this macro. Only the cpp variant
+# is in limit mode — the c-cpp fixed-capacity profile cannot generate an unbounded
+# field (see scripts/run-limits.sh).
 case "$VARIANT" in
-    cpp)   CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: {} }";              CSRC="" ;;
-    c-cpp) CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp } }"; CSRC="$CORELIB/src/object.c $CORELIB/src/istream.c $CORELIB/src/ostream.c" ;;
+    cpp)   CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: {} }";              CSRC=""; HASLIM="-DCRUCIBLE_HAS_LIMIT_EXCEEDED" ;;
+    c-cpp) CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp } }"; CSRC="$CORELIB/src/object.c $CORELIB/src/istream.c $CORELIB/src/ostream.c"; HASLIM="" ;;
     *) echo "unknown variant '$VARIANT' (want: cpp | c-cpp)" >&2; exit 2 ;;
 esac
 
 [ -x "$SOFABGEN" ] || { echo "missing $SOFABGEN — run scripts/bootstrap.sh" >&2; exit 1; }
 [ -d "$CORELIB" ] || { echo "missing $CORELIB — run scripts/bootstrap.sh" >&2; exit 1; }
 
+# Limit mode (crucible#10 / generator#102): SCHEMA selects the schema; LIMITS bakes
+# identical max_dyn_* caps into the generated code. Only the pure-C++ (cpp) variant
+# supports it — the c-cpp fixed-capacity profile cannot represent an unbounded field.
+SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
+if [ -n "${LIMITS:-}" ] && [ "$VARIANT" = "c-cpp" ]; then
+    echo "==> [cpp:c-cpp] LIMITS is unsupported: the fixed-capacity profile has no unbounded fields" >&2
+    exit 2
+fi
+
 GEN="$HERE/gen/$VARIANT"
 OUT="$HERE/build/$VARIANT"
-echo "==> [cpp:$VARIANT] generating probe types from schema" >&2
+echo "==> [cpp:$VARIANT] generating probe types from ${SCHEMA##*/}${LIMITS:+ (limits=$LIMITS)}" >&2
 rm -rf "$GEN" "$OUT"; mkdir -p "$GEN" "$OUT"
 printf '%s\n' "$CFG" > "$GEN/cfg.yaml"
-"$SOFABGEN" --config "$GEN/cfg.yaml" --lang cpp --in "$ROOT/schema/probe.sofab.yaml" --out "$GEN" >&2
+if [ -n "${LIMITS:-}" ]; then
+    printf 'generic:\n  max_dyn_array_count: %s\n  max_dyn_string_len: %s\n  max_dyn_blob_len: %s\n' \
+        "$LIMITS" "$LIMITS" "$LIMITS" >> "$GEN/cfg.yaml"
+fi
+"$SOFABGEN" --config "$GEN/cfg.yaml" --lang cpp --in "$SCHEMA" --out "$GEN" >&2
 
 SAN=""
 [ "${SANITIZE:-1}" = "1" ] && SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
@@ -49,6 +67,6 @@ fi
 
 echo "==> [cpp:$VARIANT] compiling driver ($CXX${SAN:+, sanitized})" >&2
 # shellcheck disable=SC2086
-"$CXX" -std=c++20 -O1 -Wall $SAN -I"$GEN" $INC "$HERE/driver.cpp" $COBJS -o "$OUT/driver" >&2
+"$CXX" -std=c++20 -O1 -Wall $SAN $HASLIM -I"$GEN" $INC "$HERE/driver.cpp" $COBJS -o "$OUT/driver" >&2
 
 echo "$OUT/driver"
