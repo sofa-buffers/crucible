@@ -6,19 +6,24 @@
 // The `sofab` crate (either corelib) is a dependency of both, so the imports
 // below resolve unchanged.
 //
-// Two-pass decode (see docs/SOFABGEN.md G-0001): the generated `Probe::decode`
-// is infallible — it discards feed's Result — so we get the VALUE from it and
-// recover the faithful ACCEPT/REJECT VERDICT by re-running IStream::feed against
-// a null visitor. Visitor callbacks cannot affect feed's Result (they return
-// unit), so the null-pass verdict equals the one inside `decode`.
+// Single-pass decode via the generated fallible `Probe::try_decode` (sofabgen
+// 0.16.0 — G-0001 fixed, see docs/SOFABGEN.md): it runs the real generated visitor
+// AND returns the §7 outcome as a `Result`, so one call yields both the verdict
+// and the value. This replaced the earlier two-pass workaround, which recovered
+// the verdict by re-running `IStream::feed` against a null visitor because the old
+// infallible `Probe::decode` discarded feed's Result. Because the null visitor
+// skipped the generated per-field checks, that workaround also missed the
+// over-count-array rejection (generator#100); try_decode runs them, so rust now
+// converges with the family on those inputs (was the F-0003 residual divergence).
+//
+// LimitExceeded (generator#102) would map to a fourth verdict `L`, but that arm is
+// std-only (corelib-rs-no-std's Error has no LimitExceeded variant) and only fires
+// under a configured limit — it belongs to limit mode, added there.
 //
 // Emits the canonical form (oracle/canonical.md) over the replay protocol
 // (drivers/common/CONTRACT.md).
-use sofab::{Error, IStream, Visitor};
+use sofab::Error;
 use std::io::{Read, Write};
-
-struct Null;
-impl Visitor for Null {}
 
 fn reject_class(e: Error) -> &'static str {
     match e {
@@ -31,10 +36,16 @@ fn reject_class(e: Error) -> &'static str {
 }
 
 fn canonical(out: &mut impl Write, data: &[u8]) {
-    // Verdict: the corelib's real accept/reject decision (visitor-independent).
-    let mut is = IStream::new();
-    let mut null = Null;
-    match is.feed(data, &mut null) {
+    match Probe::try_decode(data) {
+        Ok(m) => {
+            // COMPLETE: re-encode the decoded value -> hex.
+            let bytes = m.encode();
+            let _ = write!(out, "A ");
+            for b in bytes.iter() {
+                let _ = write!(out, "{:02x}", b);
+            }
+            let _ = writeln!(out);
+        }
         Err(Error::Incomplete) => {
             // INCOMPLETE (MESSAGE_SPEC §7): the bytes end mid-message — the third
             // canonical verdict, neither accept (A) nor reject (R). Not an error.
@@ -42,16 +53,6 @@ fn canonical(out: &mut impl Write, data: &[u8]) {
         }
         Err(e) => {
             let _ = writeln!(out, "R {}", reject_class(e));
-        }
-        Ok(()) => {
-            // Value: faithful decode via generated code; re-encode -> hex.
-            let m = Probe::decode(data);
-            let bytes = m.encode();
-            let _ = write!(out, "A ");
-            for b in bytes.iter() {
-                let _ = write!(out, "{:02x}", b);
-            }
-            let _ = writeln!(out);
         }
     }
 }

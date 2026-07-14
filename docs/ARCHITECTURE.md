@@ -39,7 +39,7 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `findings/`, `results/FINDINGS.md` | built | F-0001 recorded (see below). |
 | `docs/SOFABGEN.md` | built | Generated-code weakness log (G-0001..G-0007; all fixed in sofabgen 0.15.1). |
 | `.devcontainer/` | built | Fuzzing toolchains (clang/libFuzzer, cargo-fuzz, Jazzer, Atheris, SharpFuzz, Jazzer.js). |
-| `drivers/rust/` (rs + rs-no-std) | built | One shared `driver.rs` for both corelibs; two-pass decode (see notes). |
+| `drivers/rust/` (rs + rs-no-std) | built | One shared `driver.rs` for both corelibs; single-pass `try_decode` (see notes). |
 | `drivers/cpp/` (cpp + c-cpp) | built | One shared `driver.cpp` for both corelibs; single-pass (feed returns Result). |
 | `drivers/python/` (cython + pure) | built | One `driver.py`, both engines of corelib-py via `SOFAB_PUREPYTHON`; fallible decode (try/except). |
 | `drivers/java/` | built | Replay driver on the JVM against corelib-java's jar; fallible decode (try/catch); Jazzer coverage target. |
@@ -93,13 +93,18 @@ byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03
   prepends a per-variant `Probe` import (`mod message` for std, the lib crate
   `sofabuffers_generated` for no-std). Registered as two separate drivers
   (`rust-std`, `rust-nostd`) — they are two implementations to compare.
-  **Two-pass decode:** sofabgen's generated `Probe::decode` is infallible (drops
-  `feed`'s `Result` — docs/SOFABGEN.md G-0001), so the driver takes the *value*
-  from `Probe::decode` (faithful string/capacity handling) and the *verdict* from
-  a second `IStream::feed` against a null visitor. Visitor callbacks return unit
-  and cannot affect `feed`'s result, so the null-pass verdict equals the one
-  inside `decode`. Reject class maps `sofab::Error` (same 4 codes as C's
-  `sofab_ret_t`). Coverage engine is cargo-fuzz (libFuzzer; devcontainer). The
+  **Single-pass decode:** the driver calls the generated fallible
+  `Probe::try_decode(&[u8]) -> Result<Probe, sofab::Error>` (sofabgen 0.16.0,
+  G-0001 fix) — `Ok`→`A <hex>`, `Err(Incomplete)`→`I`, else `R <class>`. This
+  replaced the earlier two-pass workaround (value from the infallible
+  `Probe::decode` + verdict from a null-visitor `feed`), which the fallible
+  `try_decode` made unnecessary. Because `try_decode` runs the real generated
+  visitor, rust now runs the generated per-field checks the null-visitor pass
+  skipped — e.g. the over-count-array check (F-0003 / generator#100; see STATUS.md
+  for the re-triage, the outcome interacts with truncation). Reject
+  class maps `sofab::Error` (same 4 codes as C's `sofab_ret_t`; the std corelib
+  additionally has `LimitExceeded`, used only in limit mode). Coverage engine is
+  cargo-fuzz (libFuzzer; devcontainer). The
   Rust `Probe.s` differs by variant (`String` vs `heapless::String<64>`) but
   `.as_bytes()` canonicalizes both identically.
 - **cpp (cpp + c-cpp)** — one shared `drivers/cpp/driver.cpp` builds against BOTH
@@ -196,11 +201,15 @@ byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03
 - **2026-07-08 — bring up on a minimal schema, not full-scale.** Fastest path to
   a proven loop, canonical form, and comparator. See Deviation 2026-07-08a.
 - **2026-07-08 — Rust: capture the corelib's verdict, not the generated API's.**
-  The generated Rust `decode` is infallible; testing it verbatim would make Rust
+  The generated Rust `decode` was infallible; testing it verbatim would make Rust
   ACCEPT everything and flood the comparator with codegen-artifact divergences.
-  The driver instead reads the corelib's true `feed` result (two-pass), isolating
-  wire semantics from the codegen's error-handling gap. The gap itself is logged
-  as docs/SOFABGEN.md G-0001 (fix: emit a fallible `try_decode`).
+  The driver originally read the corelib's true `feed` result via a two-pass
+  (null-visitor verdict + `decode` value), isolating wire semantics from the
+  codegen's error-handling gap (docs/SOFABGEN.md G-0001). **Superseded
+  2026-07-14 (crucible#10):** G-0001 is fixed — the driver is now single-pass on
+  the fallible `try_decode`, which surfaces the verdict directly *and* runs the
+  real generated per-field checks the null-visitor pass had skipped (e.g. the
+  over-count-array check; F-0003 / generator#100 — re-triage in STATUS.md).
 - **2026-07-08 — generated-code weaknesses go to docs/SOFABGEN.md.** Building the
   Rust drivers surfaced four (G-0001 infallible decode; G-0002 std/no-std invalid
   UTF-8; G-0003 std/no-std chunked strings; G-0004 no-std silent capacity drop);
