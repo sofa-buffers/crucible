@@ -4,8 +4,16 @@
 #
 # In a dev workspace where the corelib repos already sit next to this one
 # (../corelib-*), they are symlinked (fast, live). Otherwise they are cloned
-# from GitHub. Override versions/pins as this matures.
+# from GitHub. We track the corelib/generator `main` branches (no version pin) —
+# this mirrors the repo's "latest main" re-verification convention (STATUS.md).
+#
+# REFRESH=1 pulls updates into an already-bootstrapped tree: cloned corelibs are
+# fast-forwarded to origin's tip and sofabgen is rebuilt from generator main.
+# Symlinked siblings are live checkouts — refresh those in their own repos. The
+# plain (unset) run stays skip-if-present so it is cheap to re-invoke.
 set -eu
+
+REFRESH="${REFRESH:-0}"
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SIBLINGS=$(cd "$ROOT/.." && pwd)
@@ -16,7 +24,18 @@ CORELIBS="corelib-c-cpp corelib-cpp corelib-cs corelib-go corelib-java corelib-p
 
 for lib in $CORELIBS; do
     dst="$ROOT/vendor/$lib"
-    [ -e "$dst" ] && { echo "==> vendor/$lib present" >&2; continue; }
+    if [ -e "$dst" ]; then
+        # Symlinks are live siblings — refresh them in their own repos. Only pull
+        # cloned (real git dir) checkouts, and only under REFRESH.
+        if [ "$REFRESH" = "1" ] && [ ! -L "$dst" ] && [ -d "$dst/.git" ]; then
+            echo "==> vendor/$lib -> refresh (fetch + reset to origin main)" >&2
+            git -C "$dst" fetch --depth 1 origin >&2
+            git -C "$dst" reset --hard origin/HEAD >&2
+        else
+            echo "==> vendor/$lib present" >&2
+        fi
+        continue
+    fi
     if [ -d "$SIBLINGS/$lib" ]; then
         echo "==> vendor/$lib -> symlink to $SIBLINGS/$lib" >&2
         ln -s "$SIBLINGS/$lib" "$dst"
@@ -27,11 +46,12 @@ for lib in $CORELIBS; do
 done
 
 # sofabgen: prefer a sibling arena's prebuilt binary, else build from a sibling
-# generator checkout, else clone+build.
+# generator checkout, else clone+build. Under REFRESH we skip the opaque arena
+# binary (it may lag generator main / v0.16.0) and build from source.
 SG="$ROOT/tools/sofabgen"
-if [ -x "$SG" ]; then
+if [ -x "$SG" ] && [ "$REFRESH" != "1" ]; then
     echo "==> tools/sofabgen present" >&2
-elif [ -x "$SIBLINGS/arena/tools/sofabgen" ]; then
+elif [ "$REFRESH" != "1" ] && [ -x "$SIBLINGS/arena/tools/sofabgen" ]; then
     echo "==> tools/sofabgen <- arena/tools/sofabgen" >&2
     cp "$SIBLINGS/arena/tools/sofabgen" "$SG"
 elif [ -d "$SIBLINGS/generator" ]; then

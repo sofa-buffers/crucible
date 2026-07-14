@@ -284,11 +284,10 @@ driver workaround.
 *accept-vs-incomplete* dimension). The generated glue hides a real outcome the
 corelib computes correctly.
 
-**Driver workaround (in place):** `drivers/cs/Driver.cs` and
-`drivers/java/Driver.java` take the **verdict** from a direct
+**Former driver workaround (now removed):** `drivers/cs/Driver.cs` and
+`drivers/java/Driver.java` used to take the **verdict** from a direct
 `IStream.Feed`/`feed` + status read (a no-op visitor), and the **value** from the
 generated decode — the same two-pass pattern the Rust driver uses for G-0001.
-Emit `I` on `Incomplete`, `R` on the malformed throw, `A` on `Complete`.
 
 **Fixed** in sofabgen 0.15.3 (PR
 [generator#106](https://github.com/sofa-buffers/generator/pull/106), closes
@@ -298,8 +297,13 @@ one-shot decode for the status-returning corelibs now surfaces the terminal
 `DecodeStatus` via a status-returning entry point — C#
 `DecodeStatus TryDecode(byte[] data, out T msg)` and Java
 `DecodeStatus tryDecode(byte[] data, T out)` — so a caller can tell COMPLETE from
-INCOMPLETE without re-running `feed`. The `drivers/cs`/`drivers/java` two-pass
-workaround above can now collapse to a single `trydecode` call (driver-side
-follow-up). The exception-throwing corelibs (Go, Rust via feed, C++, C, Python,
-TS, Zig) already propagate INCOMPLETE through the generated decode — only the
-status-returning pair needed the codegen change.
+INCOMPLETE without re-running `feed`. The exception-throwing corelibs (Go, Rust
+via feed, C++, C, Python, TS, Zig) already propagate INCOMPLETE through the
+generated decode — only the status-returning pair needed the codegen change.
+
+**Driver follow-up done** (crucible#10, sofabgen 0.16.0 bump): the two-pass
+workaround is **removed** — `drivers/cs/Driver.cs` and `drivers/java/Driver.java`
+now take both verdict and value from a single `TryDecode`/`tryDecode` call
+(`Complete`→`A <hex>`, `Incomplete`→`I`, malformed throw→`R <class>`). Verified:
+lone `0x80` still reports `I` (not the pre-fix `A`), and both drivers agree with
+the family on the F-0001 seeds.
