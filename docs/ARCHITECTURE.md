@@ -131,9 +131,12 @@ byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03
   compiled with the generated `message.*` classes against corelib-java's
   `target/sofab.jar` (built via `mvn package` if the vendored checkout lacks it);
   `build.sh` emits an executable wrapper that runs `java … crucible.Driver`.
-  **Fallible decode:** the generated `Probe.decode` wraps a decode failure in a
-  `RuntimeException`, so the verdict is a try/catch; reject class is derived
-  coarsely from the exception cause. Fields `u`/`i` are widened to `long` by the
+  **Status-returning single-pass decode:** the generated
+  `DecodeStatus Probe.tryDecode(byte[], Probe)` (sofabgen 0.16.0, G-0008 fix) fills
+  the message and returns the §7 status — `INCOMPLETE`→`I`, `COMPLETE`→`A`, and a
+  thrown `SofabException`→`R` (reject class derived coarsely from the exception).
+  This replaced the earlier two-pass G-0008 workaround (a null-visitor `feed` for
+  the verdict + `decode` for the value). Fields `u`/`i` are widened to `long` by the
   Java backend but hold in-range u32/i32 values, so decimal printing matches;
   float bits via `Float.floatToRawIntBits` (raw, NaN-preserving). Coverage engine
   is Jazzer (`FuzzProbe.java`, devcontainer — not compiled by `build.sh`, which
@@ -157,9 +160,12 @@ byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03
   than a `ProjectReference` (a ProjectReference into the symlinked vendor tree hit
   a ref-assembly ordering error, CS0006; the DLL reference also keeps build output
   out of the vendored source). `InvariantGlobalization` avoids an ICU dependency.
-  **Fallible decode:** `Probe.Decode` throws `SofabException` (carrying a
-  `SofabError`, same 4 codes as C) — try/catch verdict, class from `.Error`.
-  Fields are native `uint`/`int`; float bits via `BitConverter.SingleToUInt32Bits`
+  **Status-returning single-pass decode:** `DecodeStatus Probe.TryDecode(byte[],
+  out Probe)` (sofabgen 0.16.0, G-0008 fix) fills the message and returns the §7
+  status — `Incomplete`→`I`, `Complete`→`A`, and a thrown `SofabException`
+  (carrying a `SofabError`, same 4 codes as C)→`R` with class from `.Error`. This
+  replaced the earlier two-pass G-0008 workaround (a null-visitor `Feed` verdict +
+  `Decode` value). Fields are native `uint`/`int`; float bits via `BitConverter.SingleToUInt32Bits`
   (raw, NaN-preserving). Coverage engine is SharpFuzz (`Fuzz.cs`, devcontainer —
   not compiled by `build.sh`, which builds only the replay driver).
 - **zig** — `drivers/zig/driver.zig` built with `zig build-exe`, wiring the

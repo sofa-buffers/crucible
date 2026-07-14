@@ -5,16 +5,14 @@
 // writes one canonical line (oracle/canonical.md) per record to stdout.
 //
 // Verdict is three-valued (oracle/canonical.md, MESSAGE_SPEC §7): A COMPLETE /
-// I INCOMPLETE / R INVALID. Two-pass decode, mirroring drivers/rust/driver.rs
-// (docs/SOFABGEN.md G-0001, and now the C# analogue): the generated
-// `Probe.Decode` DISCARDS the `DecodeStatus` that `IStream.Feed` returns, so it
-// cannot tell COMPLETE from INCOMPLETE — a truncated message decodes to the
-// default value and would wrongly re-encode as `A`. We therefore take the
-// VERDICT from a direct `IStream.Feed` against a null visitor (its returned
-// DecodeStatus, or the SofabException it throws on malformed input) and use the
-// generated `Probe.Decode`+`Encode` only for the VALUE hex on a COMPLETE decode.
-// Visitor callbacks cannot affect Feed's status (they return void), so the
-// null-pass verdict equals the one inside `Decode`.
+// I INCOMPLETE / R INVALID. Single-pass decode via the generated status-returning
+// `Probe.TryDecode(byte[], out Probe)` (sofabgen 0.16.0 — G-0008 fixed, see
+// docs/SOFABGEN.md): it feeds the bytes AND returns the terminal `DecodeStatus`,
+// so one call yields both the verdict (its returned status, or the SofabException
+// it throws on malformed input) and the decoded value (`msg`, re-encoded for the
+// hex on a COMPLETE decode). This replaces the earlier two-pass workaround that
+// re-ran `IStream.Feed` against a null visitor because `Probe.Decode` discarded
+// the status.
 //
 // The C# coverage engine is SharpFuzz — see Fuzz.cs.
 using System;
@@ -24,11 +22,6 @@ using sofab;
 using Message;
 
 namespace Crucible;
-
-// No-op sink: IVisitor's methods are all default (no-op) interface methods, so
-// an empty implementor drops every field. Used only to drive Feed for the
-// verdict; the value comes from the generated ProbeVisitor via Probe.Decode.
-internal sealed class NullVisitor : IVisitor { }
 
 internal static class Driver
 {
@@ -43,11 +36,13 @@ internal static class Driver
 
     private static string Canonical(byte[] data)
     {
-        // Verdict: the corelib's real §7 outcome (visitor-independent).
+        // One pass: TryDecode fills `m` and returns the corelib's real §7 outcome
+        // (or throws SofabException on malformed input).
         DecodeStatus status;
+        Probe m;
         try
         {
-            status = new IStream().Feed(data, 0, data.Length, new NullVisitor());
+            status = Probe.TryDecode(data, out m);
         }
         catch (SofabException e) { return "R " + RejectClass(e); }
         catch (Exception) { return "R other"; }
@@ -56,11 +51,10 @@ internal static class Driver
         // (Optional I <hex> partial-value payload is not materialized here.)
         if (status == DecodeStatus.Incomplete) return "I";
 
-        // COMPLETE: value via generated decode -> re-encode -> hex.
+        // COMPLETE: value via re-encode -> hex.
         byte[] enc;
         try
         {
-            Probe m = Probe.Decode(data);
             enc = m.Encode();
         }
         catch (SofabException e) { return "R " + RejectClass(e); }
