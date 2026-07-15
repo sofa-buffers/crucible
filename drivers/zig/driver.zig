@@ -51,7 +51,7 @@ pub fn main(init: std.process.Init) !void {
             // INCOMPLETE (§7) is a distinct verdict, not an error: the bytes end
             // inside a field/varint or an open sequence. Emit `I` — never collapse
             // it into A (accept-as-done) or R (reject-as-malformed).
-            if (err == error.Incomplete) {
+            if (err == error.IncompleteMessage) {
                 try out.writeAll("I\n");
                 try out.flush();
                 continue;
@@ -69,7 +69,7 @@ pub fn main(init: std.process.Init) !void {
                 error.InvalidArgument => "argument",
                 error.UsageError => "usage",
                 error.BufferFull => "buffer_full",
-                error.Incomplete => unreachable, // handled above
+                error.IncompleteMessage => unreachable, // handled above
                 error.LimitExceeded => unreachable, // handled above
             };
             try out.print("R {s}\n", .{cls});

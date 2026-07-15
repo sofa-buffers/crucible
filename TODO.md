@@ -18,6 +18,24 @@ corelib-c-cpp#69, corelib-cpp#22). Crucible's job is to catalog and **verify** t
       lesson). Distinguish e.g. truncated / bad-varint / bad-tag / depth / bad-utf8,
       then make `reject_class` a hard axis in `policy.yaml`.
 
+## Unbreak the zig driver (G-0010) — ✅ DONE 2026-07-15 (sofabgen 0.16.2)
+- [x] Fixed in **sofabgen 0.16.2** (generator#120 / commit `26f1f4c`): generated zig
+      `decode` binds `feed(chunk)→Status`, surfacing `.incomplete` as
+      `error.IncompleteMessage`. **`drivers/zig/driver.zig`** updated to match
+      (`error.Incomplete` → `error.IncompleteMessage`). Re-verified: zig builds, F-0001
+      `80` → `I`, full 12-driver box green.
+
+## Triage the INVALID-vs-INCOMPLETE precedence family (F-0007, opened 2026-07-15)
+- [ ] Drive a **MESSAGE_SPEC §7 precedence clause** upstream: an input that is *both*
+      malformed and truncated is **INVALID** ("malformed regardless of what follows"
+      wins over INCOMPLETE). This is the spec basis the whole family needs.
+- [x] Per corelib in the `I`-at-wrong-length camp, **minimal-isolate** the decoder's
+      check-ordering and file individually: corelib-py → [corelib-py#38](https://github.com/sofa-buffers/corelib-py/issues/38) (closed, F-0006);
+      corelib-c-cpp → [corelib-c-cpp#82](https://github.com/sofa-buffers/corelib-c-cpp/issues/82) (open, F-0007 — the C istream checks `length > target_len`, not the exact fp width).
+      No other corelib is in the `I`-at-wrong-length camp. (Filed from minimal isolates, not raw fuzzer inputs — F-0004 lesson.)
+- [ ] Promote `findings/F-0007-*/` minimal isolates into the regression corpus once the
+      spec clause lands and the camps collapse to `R`.
+
 ## Verify fixes as they land (Crucible = acceptance test)
 - [ ] For each merged fix (issues above): re-run the reproducer / differential loop,
       flip the finding's status in `results/FINDINGS.md`, and promote the reproducer

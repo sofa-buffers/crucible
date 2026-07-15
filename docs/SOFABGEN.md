@@ -31,7 +31,8 @@ generator gaps.
 | G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) | fixed — PR [#90](https://github.com/sofa-buffers/generator/pull/90) (0.15.1) |
 | G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) | fixed — PR [#87](https://github.com/sofa-buffers/generator/pull/87) |
 | G-0008 | [generator#105](https://github.com/sofa-buffers/generator/issues/105) | ✅ **fixed** — PR [generator#106](https://github.com/sofa-buffers/generator/pull/106) (sofabgen 0.15.3): status-surfacing `TryDecode`/`tryDecode`; part of §7 epic [#86](https://github.com/sofa-buffers/generator/issues/86) |
-| G-0009 | [generator#112](https://github.com/sofa-buffers/generator/issues/112) | **open** — sofabgen 0.16.0 C++ heap backend emits a schema-*unbounded* array as `std::array<T, 0>` (fixed zero-length) instead of a growable `std::vector<T>`; silently drops every element of an *accepted* array (value divergence; the `max_dyn_array_count` cap itself still fires). Sibling of [generator#104](https://github.com/sofa-buffers/generator/issues/104) (C backend) |
+| G-0010 | [generator#120](https://github.com/sofa-buffers/generator/issues/120) | ✅ **fixed in sofabgen 0.16.2** (commit `26f1f4c`, PR #121): the generated zig `decode` now binds `feed(chunk)→Status` and surfaces `.incomplete` as `error.IncompleteMessage`. **Crucible driver.zig updated** to match (`error.Incomplete` → `error.IncompleteMessage`, two sites). **Re-verified 2026-07-15:** zig builds, F-0001 `80` → `I`, and the full 12-driver box is green. Was: sofabgen 0.16.1's zig backend `try`-discarded the new `Error!Status` return (compile error) — the zig analogue of G-0008. |
+| G-0009 | [generator#112](https://github.com/sofa-buffers/generator/issues/112) | ✅ **fixed in sofabgen 0.16.1** (commit `7899c4b`, "heap unbounded array -> std::vector, not std::array<T,0>"). **Re-verified in Crucible 2026-07-15:** repro `03 03 07 08 09` → cpp decodes `[7,8,9]` (was `[]`) matching the family; cpp rejoined the limit-mode `arr` dimension (`scripts/run-limits.sh`), green. Was: sofabgen 0.16.0 C++ heap backend emitted a schema-*unbounded* array as `std::array<T, 0>`, silently dropping every element of an *accepted* array (the `max_dyn_array_count` cap itself still fired). Sibling of [generator#104](https://github.com/sofa-buffers/generator/issues/104) (C backend) |
 
 ---
 
@@ -316,11 +317,13 @@ the family on the F-0001 seeds.
 
 ## G-0009 — generated C++ emits a schema-*unbounded* array as `std::array<T, 0>`
 
-**Status:** open — [generator#112](https://github.com/sofa-buffers/generator/issues/112)
-(sofabgen 0.16.0). Sibling of the C-backend
-[generator#104](https://github.com/sofa-buffers/generator/issues/104). Surfaced
-adopting the limit-mode probe (`schema/probe-dyn.sofab.yaml`, crucible#10 /
-generator#102).
+**Status:** ✅ **fixed in sofabgen 0.16.1** (commit `7899c4b`, the count-less array
+now generates `std::vector<T>`) — [generator#112](https://github.com/sofa-buffers/generator/issues/112).
+Sibling of the C-backend [generator#104](https://github.com/sofa-buffers/generator/issues/104).
+Surfaced adopting the limit-mode probe (`schema/probe-dyn.sofab.yaml`, crucible#10 /
+generator#102) at sofabgen 0.16.0; **re-verified fixed in Crucible 2026-07-15** —
+cpp decodes `03 03 07 08 09` → `[7,8,9]` (was `[]`) and rejoined the limit-mode
+`arr` dimension (green). The rest of this entry documents the original 0.16.0 bug.
 
 **Where:** the C++ backend, generated `probe.hpp` for a count-less `array` field.
 
@@ -376,11 +379,57 @@ and correctly.
 must generate `std::vector<T>` (and the vector read/cap path), exactly as the
 count-less string/blob already do — not `std::array<T, 0>`.
 
-**Crucible disposition:** the `cpp` target is held out of the **array** dimension
-of limit mode until this lands (`scripts/run-limits.sh` runs the arr vectors on the
-roster minus cpp). It still runs the **string/blob** dimensions, which are correct.
-Not worked around in generated code or masked in the comparator: a silent
-zero-length array is exactly the kind of value divergence Crucible exists to catch,
-so hiding it would blind the harness. Repro: `03 03 07 08 09` above, and the
-`corpus/limits/arr/` vectors (the negative control — with cpp back in, the arr
-dimension reports the two accept-value divergences).
+**Crucible disposition (resolved 2026-07-15):** with the 0.16.1 fix, the `cpp`
+target **rejoined the array dimension** of limit mode — `scripts/run-limits.sh`
+runs the full heap roster (incl. cpp) on the arr vectors and is green; the `NO_CPP`
+hold-out was removed. While the bug was open, cpp was held out of *only* the array
+dimension (it always ran the correct string/blob dimensions). The bug was never
+worked around in generated code or masked in the comparator: a silent zero-length
+array is exactly the kind of value divergence Crucible exists to catch. Repro:
+`03 03 07 08 09` → cpp now `[7,8,9]` (was `[]`), and the `corpus/limits/arr/`
+vectors all agree.
+
+## G-0010 — generated zig `message.zig` discards the new finish-less decode `Status`
+
+**Status:** ✅ **fixed in sofabgen 0.16.2** (generator [#120](https://github.com/sofa-buffers/generator/issues/120),
+commit `26f1f4c` / PR #121) + a Crucible `drivers/zig/driver.zig` update. Surfaced
+2026-07-15 pulling corelib-zig `main` (`0f861e4`, "decode: replace finish() with
+feed(chunk)→status", plan §5/§6.1); fixed the same day. **Lang:** zig · **Where:**
+the generator zig backend (generated `message.zig`), plus the Crucible
+`drivers/zig/driver.zig`. The rest of this entry documents the original break.
+
+**Fix as shipped:** the generated `Probe.decode` now returns `DecodeError!Probe`
+where `DecodeError = sofab.Error || error{IncompleteMessage}`; it binds the corelib's
+`feed(chunk)→Status` and returns `error.IncompleteMessage` when the terminal status
+is `.incomplete` (generated `message.zig` L146-158). The Crucible driver maps that
+error to the `I` verdict — `drivers/zig/driver.zig` changed `error.Incomplete` →
+`error.IncompleteMessage` at both the verdict test and the reject-class switch.
+Verified: zig builds `-OReleaseSafe`, `80` → `I`, empty → `A`, and the full
+12-driver seed + limit box is green.
+
+**What:** corelib-zig adopted the finish-less MESSAGE_SPEC §7 model — its `decode`
+and `feed` now return `Error!Status` where `Status` is `{ complete, incomplete }`,
+and **INCOMPLETE is a returned `Status`, not an error** (`istream.zig`: `pub fn
+decode(buf, visitor) Error!Status`). sofabgen 0.16.1's zig backend predates this and
+still emits:
+
+```zig
+try sofab.decode(data, &v);   // Error!Status now — the Status is ignored
+```
+
+which fails to compile: `error: value of type 'istream.Status' ignored`. And the
+Crucible zig driver still switches on `error.Incomplete`, which is no longer a
+member of the corelib's error set (`error: 'error.Incomplete' not a member of
+destination error set`).
+
+**Why it matters:** this is the **zig analogue of G-0008** (which fixed the same
+INCOMPLETE-as-returned-status gap for C# and Java via status-surfacing
+`TryDecode`/`tryDecode`). The corelib moved correctly to §7; the generated glue and
+the driver must catch up or a zig consumer cannot tell COMPLETE from INCOMPLETE (and
+here, cannot even build).
+
+**Fix:** (1) generator zig backend surfaces the terminal `Status` from the generated
+one-shot decode (a `tryDecode`-equivalent), mirroring the cs/java G-0008 fix; (2)
+`drivers/zig/driver.zig` reads the `Status` and maps `.complete`→`A <hex>` /
+`.incomplete`→`I`, dropping the `error.Incomplete` arm. Until both land, zig is held
+out of `scripts/run.sh` / `run-limits.sh` (the box runs over the other 11 drivers).
