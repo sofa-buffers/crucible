@@ -40,8 +40,8 @@ rm -rf "$GEN"; mkdir -p "$GEN" "$CORP" "$CRASH" "$ROOT/drivers/c/build"
 echo "==> [pacemaker] building libFuzzer target (clang: fuzzer+ASan+UBSan)" >&2
 "$CC" -DCRUCIBLE_LIBFUZZER -std=c11 -O1 -g \
     -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer \
-    -I"$GEN" -I"$CORELIB/src/include" \
-    "$ROOT/drivers/c/driver.c" "$GEN/probe.c" \
+    -I"$GEN" -I"$CORELIB/src/include" -I"$ROOT/engine/mutator" \
+    "$ROOT/drivers/c/driver.c" "$ROOT/engine/mutator/sofab_mutator.c" "$GEN/probe.c" \
     "$CORELIB/src/object.c" "$CORELIB/src/istream.c" "$CORELIB/src/ostream.c" \
     -o "$BIN" >&2
 

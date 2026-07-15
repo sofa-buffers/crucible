@@ -80,6 +80,8 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
 }
 
 #ifdef CRUCIBLE_LIBFUZZER
+#include "sofab_mutator.h"   /* engine/mutator: grammar-aware mutation ops */
+
 /* Coverage pacemaker front-end. Exercise the decode core; sanitizers catch
  * memory faults, the differential path catches disagreement. No output. */
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
@@ -89,6 +91,28 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     if (size > 0) (void)message_probe_decode(&m, data, size); /* see decode_and_report */
     return 0;
 }
+
+/* Build with -DCRUCIBLE_NO_CUSTOM_MUTATOR to fall back to libFuzzer's byte-level
+ * mutator (the A/B baseline for the coverage check in DESIGN.md). */
+#ifndef CRUCIBLE_NO_CUSTOM_MUTATOR
+/* libFuzzer's built-in mutator — used both as a ~40% mix-in and as the fallback
+ * for the structure-aware ops (keeps libFuzzer's generic power; see DESIGN.md). */
+size_t LLVMFuzzerMutate(uint8_t *data, size_t size, size_t max_size);
+
+/* Structure-aware custom mutator (engine/mutator/DESIGN.md). libFuzzer picks it
+ * up automatically when present. Deterministic in `seed`; ~40% of the time it
+ * defers to the byte-level mutator, otherwise it applies one grammar-aware op
+ * (varint/header/length/count/sequence/utf8/fp) so the pacemaker reaches deep
+ * TLV paths on purpose instead of by luck. */
+size_t LLVMFuzzerCustomMutator(uint8_t *data, size_t size, size_t max_size,
+                               unsigned int seed)
+{
+    uint32_t rng = (uint32_t)seed ^ 0x9e3779b9u;   /* never 0; see sofab_mutator */
+    if ((rng & 7) < 3)                              /* ~37.5%: generic mutator */
+        return LLVMFuzzerMutate(data, size, max_size);
+    return sofab_grammar_mutate(data, size, max_size, &rng);
+}
+#endif /* CRUCIBLE_NO_CUSTOM_MUTATOR */
 #else
 /* Persistent replay front-end (drivers/common/CONTRACT.md). */
 static int read_exact(void *dst, size_t n)
