@@ -152,15 +152,22 @@ so the caches picked up the new corelibs. Results:
   (F-0006 + F-0007 both fixed).
 - ✅ F-0001 all `I`; F-0002 clean; F-0006 all `R`; generator#100 all `R`; G-0009
   holds. ⏳ F-0004 unchanged 4-way (#85).
-- 🆕 **F-0008 (new): a DoS hang in corelib-c-cpp** — a 4-byte input `c6 0c c6 07`
-  (a nested `SEQUENCE_START` inside the `string_array` field) makes the c-cpp C++
-  decode path **loop forever**; `c`/`cpp`/`go`/`rust` all return `I` instantly.
-  Found by the **structure-aware mutator** and localized by the new comparator
-  **per-driver timeout** (the whole pipeline working end to end). Root-caused to the
-  string-array read-sequence path; filed
-  **[corelib-c-cpp#84](https://github.com/sofa-buffers/corelib-c-cpp/issues/84)**.
+- 🆕 **F-0008 (new): a generated fixed-capacity C++ DoS hang** — a 4-byte input
+  `c6 0c c6 07` (a nested `SEQUENCE_START` inside the `string_array` field) makes the
+  generated `_FixedStrSeq` fill **loop forever**; `c`/`cpp`/`go`/`rust` all return `I`
+  instantly. Found by the **structure-aware mutator** and localized by the new
+  comparator **per-driver timeout** (the whole pipeline working end to end).
+  **Correction:** first mis-filed against corelib-c-cpp (the differential symptom was
+  `cpp-c-cpp`-only); the corelib maintainer showed `sofab_istream_feed` terminates
+  ([corelib-c-cpp#84](https://github.com/sofa-buffers/corelib-c-cpp/issues/84) closed,
+  [crucible#16](https://github.com/sofa-buffers/crucible/issues/16)). Tracing the
+  generated code found the real bug: `_FixedStrSeq`/`_FixedBlobSeq` do
+  `while (out->size() <= id) out->emplace_back()`, but the fixed-capacity
+  `InlineVector::emplace_back` no-ops when full, so `id ≥ N` spins. Re-targeted to
+  **codegen: [generator#126](https://github.com/sofa-buffers/generator/issues/126)**
+  (G-0011).
 
-Net open items: **F-0004** (spec §8 / gen#85) and **F-0008** (corelib-c-cpp#84).
+Net open items: **F-0004** (spec §8 / gen#85) and **F-0008** (generator#126 / G-0011).
 
 | finding | what | tracked in / status |
 |---|---|---|
