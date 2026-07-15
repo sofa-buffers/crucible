@@ -1,0 +1,47 @@
+# Build the Crucible CI toolchain image and publish it to GHCR.
+#
+# A full differential run needs every language toolchain + its fuzzing framework
+# (clang/libFuzzer, cargo-fuzz, go, dotnet+SharpFuzz, zig, node+Jazzer.js,
+# jdk+maven, python+atheris/cython) — that is the .devcontainer/Dockerfile, ~15 min
+# to build. So we build it ONCE here (on Dockerfile changes, or manually) and push
+# it to ghcr.io/<owner>/crucible-ci:latest; the replay + nightly jobs then start in
+# that prebuilt container in seconds instead of re-installing toolchains every run.
+#
+# FIRST-TIME SETUP: run this workflow manually once (Actions → image → Run workflow)
+# to seed GHCR before the first replay/nightly run, then make the package readable
+# (public, or leave private — the jobs authenticate with GITHUB_TOKEN).
+name: image
+
+on:
+  push:
+    branches: [main]
+    paths: ['.devcontainer/Dockerfile']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push crucible-ci:latest
+        uses: docker/build-push-action@v6
+        with:
+          context: .devcontainer
+          file: .devcontainer/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/crucible-ci:latest
+          # cache the ~2-3 GB toolchain layers between builds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
