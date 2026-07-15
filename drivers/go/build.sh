@@ -30,6 +30,9 @@ fi
 mkdir -p "$OUT"
 echo "==> [go] go build" >&2
 # GOFLAGS=-mod=mod so the committed require+replace resolves without `go mod tidy`.
-( cd "$HERE" && GOFLAGS=-mod=mod GOTOOLCHAIN=local go build -o "$OUT/driver" . >&2 )
+# -buildvcs=false: don't stamp git VCS info into the driver binary — a fuzz driver
+# doesn't need it, and in a CI container the checkout's ownership mismatch makes
+# `go build`'s VCS probe fail ("error obtaining VCS status: exit status 128").
+( cd "$HERE" && GOFLAGS=-mod=mod GOTOOLCHAIN=local go build -buildvcs=false -o "$OUT/driver" . >&2 )
 
 echo "$OUT/driver"
