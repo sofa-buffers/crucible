@@ -42,7 +42,7 @@ jobs:
 
       # Restore the accumulated coverage corpus (compounds across nights).
       - name: Restore interesting corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: corpus/interesting
           key: crucible-corpus-${{ github.run_id }}
