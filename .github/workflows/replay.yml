@@ -32,7 +32,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Bootstrap (corelibs@main + sofabgen)
         run: REFRESH=1 ./scripts/bootstrap.sh
