@@ -29,7 +29,7 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `drivers/c/` (pacemaker) | built | gcc replay driver (ASan/UBSan) verified; libFuzzer front-end present, `#ifdef CRUCIBLE_LIBFUZZER`, built in devcontainer (no clang in bare workspace). |
 | `drivers/go/` | built | Replay driver + native `FuzzProbe`; builds against vendored corelib-go via `replace`. |
 | `oracle/canonical.md` | built | v2 canonical form: round-trip re-encoding, three-valued verdict `A`/`I`/`R` (§7). |
-| `oracle/comparator.py` | built | N-way canonical diff, policy-aware, no external deps; parses `A`/`I`/`R`. |
+| `oracle/comparator.py` | built | N-way canonical diff, policy-aware, no external deps; parses `A`/`I`/`R`. **Crash- and hang-isolating:** a per-driver wall-clock budget (`--timeout`, default `max(30s, 0.25s × corpus)`; `TIMEOUT=` env via the scripts) via stdout-to-tempfile, so an adversarial input that hangs a driver is localized + reported `[TIMEOUT]` (a DoS finding), not a wedged run. |
 | `oracle/policy.yaml` | built | Permissive Phase-1 policy (verdict/accept_value hard, incomplete_value/reject_class soft). |
 | `scripts/run.sh` | built | Build all drivers → differential compare over a corpus (crash-isolating). |
 | `scripts/run-limits.sh` | built | Limit-mode loop (crucible#10 / generator#102): heap roster built from `schema/probe-dyn.sofab.yaml` with identical `max_dyn_*` caps, compared per dimension over `corpus/limits/{arr,str,blb}`. Full heap roster (incl. cpp) in all three dimensions since sofabgen 0.16.1 fixed G-0009. |
@@ -255,6 +255,19 @@ has no `LimitExceeded`).
   and the run continues comparing the survivors, instead of aborting the whole
   differential. Necessary once the pacemaker feeds adversarial inputs — a
   crashing implementation (F-0003) is itself a finding, not a harness failure.
+- **2026-07-15 — comparator is hang-isolating (per-driver timeout).** Companion to
+  crash isolation: a per-driver wall-clock budget (`--timeout`, default
+  `max(30s, 0.25s × corpus size)`; `TIMEOUT=` env through `run.sh`/`run-limits.sh`).
+  `run_driver` sends the driver's stdout/stderr to temp files (not pipes) so that on
+  a `subprocess` timeout — which on POSIX does *not* carry the killed process's
+  partial output — the flushed lines are still recovered; the culprit is the input
+  at index `len(lines)`, reported `[TIMEOUT] driver X hung … culprit ≈ input N`.
+  `cluster.py` recovers past it exactly like a crash. A driver that takes unbounded
+  time on a small malformed input is a **DoS finding**, not a wedged run (the
+  gap the structure-aware mutator surfaced: maxed array counts / deep nesting made
+  the replay loop crawl). Precision note: exact for flush-per-line drivers; a
+  slurp-then-emit driver (ts) yields 0 partial lines, so it reports "hung, produced
+  0/N" without a precise index — bisection to localize those is a follow-up.
 - **2026-07-08 — canonical form v1: round-trip re-encoding.** Replaced the v0
   per-field text form with `A <hex(encode(decode(input)))>`. Reason: the full-scale
   message (arrays, nested structs, unions) makes per-field walking in 12 languages

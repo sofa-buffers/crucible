@@ -19,6 +19,7 @@ import re
 import struct
 import subprocess
 import sys
+import tempfile
 
 
 def load_policy(path):
@@ -52,27 +53,54 @@ def read_corpus(corpus_dir):
     return items
 
 
-CRASH = "\x00CRASH"  # sentinel verdict for the input a driver died on
+CRASH = "\x00CRASH"      # sentinel: the input a driver died on
+TIMEOUT = "\x00TIMEOUT"  # sentinel: the input a driver hung on (a DoS finding)
 
 
-def run_driver(cmd, corpus):
+def default_timeout(corpus):
+    """Whole-driver wall-clock budget: generous enough that a green run (a small
+    seed corpus finishes in well under a second) never false-trips, but a genuine
+    hang trips in tens of seconds. max(30s, 0.25s x corpus size)."""
+    return max(30.0, 0.25 * len(corpus))
+
+
+def run_driver(cmd, corpus, timeout=None):
     """Feed every input framed as <u32 le len><payload>; return one line each.
 
-    If the driver dies mid-stream (fewer lines than inputs), it crashed on the
-    input at index len(lines): mark that slot CRASH (a finding) and the rest
-    None (unknown). Returns (lines, crash_index_or_None, stderr_tail)."""
+    stdout/stderr go to temp files (not pipes) so a per-driver ``timeout`` can be
+    enforced while still recovering the bytes the driver already flushed — on
+    POSIX a killed process's TimeoutExpired does not carry partial output.
+
+    If the driver stops early (fewer lines than inputs), the input at index
+    len(lines) is the culprit: a CRASH if the process exited, a TIMEOUT if it was
+    killed for hanging. Both mark that slot and leave the rest None (unknown).
+    Returns (lines, fail_index_or_None, stderr_tail, kind) where kind is None,
+    'crash', or 'timeout'."""
     stream = b"".join(struct.pack("<I", len(data)) + data for _, data in corpus)
-    proc = subprocess.run([cmd], input=stream, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE)
-    lines = proc.stdout.decode("utf-8", "replace").splitlines()
     n = len(corpus)
-    if len(lines) == n:
-        return lines, None, ""
-    crash_idx = len(lines)
-    stderr_tail = "\n".join(proc.stderr.decode("utf-8", "replace")
-                            .splitlines()[-8:])
-    padded = lines + [CRASH] + [None] * (n - crash_idx - 1)
-    return padded[:n], crash_idx, stderr_tail
+    timed_out = False
+    with tempfile.TemporaryFile() as outf, tempfile.TemporaryFile() as errf:
+        try:
+            subprocess.run([cmd], input=stream, stdout=outf, stderr=errf,
+                           timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True  # process killed; outf holds whatever it flushed
+        outf.seek(0)
+        lines = outf.read().decode("utf-8", "replace").splitlines()
+        errf.seek(0)
+        stderr_tail = "\n".join(errf.read().decode("utf-8", "replace")
+                                .splitlines()[-8:])
+
+    # All lines present ⇒ success, even if a post-last-input slow exit tripped the
+    # timeout (nothing to localize; the comparison has every verdict it needs).
+    if len(lines) >= n:
+        return lines[:n], None, stderr_tail, None
+
+    fail_idx = len(lines)
+    kind = "timeout" if timed_out else "crash"
+    sentinel = TIMEOUT if timed_out else CRASH
+    padded = lines + [sentinel] + [None] * (n - fail_idx - 1)
+    return padded[:n], fail_idx, stderr_tail, kind
 
 
 def parse(line):
@@ -101,6 +129,9 @@ def main():
     ap.add_argument("--driver", action="append", required=True,
                     help="name:path, repeatable")
     ap.add_argument("--policy", default=None)
+    ap.add_argument("--timeout", type=float, default=None,
+                    help="per-driver wall-clock budget in seconds "
+                         "(default max(30, 0.25 x corpus size))")
     args = ap.parse_args()
 
     axes = load_policy(args.policy)
@@ -108,27 +139,36 @@ def main():
     if not corpus:
         sys.stderr.write(f"[harness] empty corpus: {args.corpus}\n")
         return 2
+    timeout = args.timeout if args.timeout is not None else default_timeout(corpus)
 
     drivers = []  # (name, [lines])
     hard = 0
-    crashed = []  # (name, seed, stderr_tail)
+    crashed = timed = 0  # counts for the summary
     for spec in args.driver:
         name, _, path = spec.partition(":")
-        lines, crash_idx, stderr_tail = run_driver(path, corpus)
+        lines, fail_idx, stderr_tail, kind = run_driver(path, corpus, timeout)
         drivers.append((name, lines))
-        if crash_idx is not None:
-            seed = corpus[crash_idx][0]
-            crashed.append((name, seed, stderr_tail))
+        if fail_idx is not None:
+            seed = corpus[fail_idx][0]
             hard += 1
-            print(f"[CRASH] driver {name} died on input '{seed}' "
-                  f"(input #{crash_idx} of {len(corpus)})")
+            if kind == "timeout":
+                timed += 1
+                got = fail_idx  # lines produced before the hang
+                print(f"[TIMEOUT] driver {name} hung after {timeout:g}s "
+                      f"(produced {got}/{len(corpus)} lines; culprit ≈ input "
+                      f"'{seed}', #{fail_idx})")
+            else:
+                crashed += 1
+                print(f"[CRASH] driver {name} died on input '{seed}' "
+                      f"(input #{fail_idx} of {len(corpus)})")
             if stderr_tail:
                 print("        " + stderr_tail.replace("\n", "\n        "))
 
     soft = 0
-    # Reference = first driver that did NOT crash on a given input.
+    # Reference = first driver that did NOT crash/hang on a given input.
     for i, (seed, _) in enumerate(corpus):
-        present = [(nm, ln[i]) for nm, ln in drivers if ln[i] is not None and ln[i] != CRASH]
+        present = [(nm, ln[i]) for nm, ln in drivers
+                   if ln[i] not in (None, CRASH, TIMEOUT)]
         if len(present) < 2:
             continue
         ref_name, ref_line = present[0]
@@ -159,7 +199,8 @@ def main():
     d = len(drivers)
     names = ", ".join(name for name, _ in drivers)
     print(f"\n{n} inputs × {d} drivers ({names}): "
-          f"{hard} divergence(s) ({len(crashed)} crash), {soft} warning(s)")
+          f"{hard} divergence(s) ({crashed} crash, {timed} timeout), "
+          f"{soft} warning(s)")
     return 1 if hard else 0
 
 
