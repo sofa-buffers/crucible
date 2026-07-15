@@ -138,6 +138,30 @@ of G-0010). Full re-run:
   is `I` not `R` — the direct analogue of the closed corelib-py#38.
 - **G-0010 resolved** (generator side in 0.16.2 + the Crucible driver.zig fix).
 
+**Fourth re-run 2026-07-15 — sofabgen 0.17.0, corelibs@main, full 12/12 green.**
+Bumped **sofabgen 0.16.2 → 0.17.0** (`eef4d6a`; a cosmetic release — only #123
+"render metadata as clean doc comments", no wire behavior) and re-pulled all
+corelibs to their `main` tips. Wiped the Python venv + Java jar (corelib-java moved)
+so the caches picked up the new corelibs. Results:
+
+- **Seed 12/12 green**; **limit mode green** all dimensions.
+- ✅ **F-0007 RESOLVED** — corelib-c-cpp `635966d` "reject wrong-width fixlen
+  fp32/fp64 as INVALID (#82)(#83)"; `56 0a 09` / `56 02 10` → **all 12 `R`**;
+  [corelib-c-cpp#82](https://github.com/sofa-buffers/corelib-c-cpp/issues/82)
+  **closed**. The whole INVALID-vs-INCOMPLETE precedence family is now convergent
+  (F-0006 + F-0007 both fixed).
+- ✅ F-0001 all `I`; F-0002 clean; F-0006 all `R`; generator#100 all `R`; G-0009
+  holds. ⏳ F-0004 unchanged 4-way (#85).
+- 🆕 **F-0008 (new): a DoS hang in corelib-c-cpp** — a 4-byte input `c6 0c c6 07`
+  (a nested `SEQUENCE_START` inside the `string_array` field) makes the c-cpp C++
+  decode path **loop forever**; `c`/`cpp`/`go`/`rust` all return `I` instantly.
+  Found by the **structure-aware mutator** and localized by the new comparator
+  **per-driver timeout** (the whole pipeline working end to end). Root-caused to the
+  string-array read-sequence path; filed
+  **[corelib-c-cpp#84](https://github.com/sofa-buffers/corelib-c-cpp/issues/84)**.
+
+Net open items: **F-0004** (spec §8 / gen#85) and **F-0008** (corelib-c-cpp#84).
+
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |
