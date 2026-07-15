@@ -1,5 +1,14 @@
 # F-0007 — INVALID-vs-INCOMPLETE precedence on inputs that are *both* malformed and truncated
 
+> **✅ RESOLVED 2026-07-15.** The last outlier (the C corelib) is fixed — corelib-c-cpp
+> `635966d` "reject wrong-width fixlen fp32/fp64 as INVALID (#82)(#83)",
+> [corelib-c-cpp#82](https://github.com/sofa-buffers/corelib-c-cpp/issues/82) **closed**.
+> Re-verified on sofabgen 0.17.0: `56 0a 09` (fp64) and `56 02 10` (fp32) → **all 12
+> drivers `R`** (were c + cpp-c-cpp `I`). With corelib-py#38 (F-0006) already closed,
+> the whole precedence family is now convergent. A family-wide MESSAGE_SPEC §7
+> precedence clause (INVALID > INCOMPLETE) remains a nice-to-have but no impl
+> currently diverges. The rest of this file is the original analysis.
+
 **Status:** open — **spec-precedence question** (candidate MESSAGE_SPEC clarification),
 not a single-repo bug. The one cleanly-isolated, single-culprit instance is split
 out as **[F-0006](../F-0006-corelib-py-fixlen-fp-incomplete-vs-invalid/NOTES.md)**
