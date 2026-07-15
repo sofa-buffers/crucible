@@ -23,8 +23,12 @@ corelib-c-cpp#69, corelib-cpp#22). Crucible's job is to catalog and **verify** t
         DESIGN.md). Do it once the comparator timeout lands, ideally in the nightly.
   - [ ] **Structured track** (DESIGN §"Two corpus tracks"): seed valid-ish frames from
         the schema to hunt semantic value divergence, not just malformed-input crashes.
-- [ ] **Cross-encode oracle** (the 3rd oracle): encode a value in impl A, decode in
-      impl B, compare. (Decode-agreement and round-trip idempotence already run.)
+- [x] **Cross-encode oracle** (the 3rd oracle) — `engine/structured/gen.py` +
+      `scripts/cross-encode.sh` over `corpus/structured/`. Realized via the
+      byte-canonical invariant (all encoders identical → agreement = "encode in A,
+      decode in B"). Found **F-0009** on first run. Follow-up: extend the value
+      generator to the numeric arrays (id 100) + `string_array` (id 200) — slice 1
+      covers scalars + the `nested` struct.
 - [ ] **Union corpus / schema**: add a schema definition containing a `union` — the
       one wire feature the full-scale `probe` message lacks (§4.2).
 - [ ] **Finer reject-class taxonomy** in `oracle/canonical.md` + the drivers +
