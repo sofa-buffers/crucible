@@ -31,6 +31,7 @@ generator gaps.
 | G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) | fixed — PR [#90](https://github.com/sofa-buffers/generator/pull/90) (0.15.1) |
 | G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) | fixed — PR [#87](https://github.com/sofa-buffers/generator/pull/87) |
 | G-0008 | [generator#105](https://github.com/sofa-buffers/generator/issues/105) | ✅ **fixed** — PR [generator#106](https://github.com/sofa-buffers/generator/pull/106) (sofabgen 0.15.3): status-surfacing `TryDecode`/`tryDecode`; part of §7 epic [#86](https://github.com/sofa-buffers/generator/issues/86) |
+| G-0012 | [generator#128](https://github.com/sofa-buffers/generator/issues/128) | **open** — C backend generates a `blob` field as a bare `uint8_t[maxlen]` + the plain fixed-full-capacity `SOFAB_OBJECT_FIELD(...BLOB)` descriptor, with **no length member**. A blob is opaque bytes (no NUL recovery), so the object API pads a sub-`maxlen` blob to `maxlen` and drops an all-zero one — round-trip data loss. Fix: emit `{ uintX field_len; uint8_t field[N]; }` + `SOFAB_OBJECT_FIELD_BLOB_SIZED` (the corelib already provides it, byte-identical wire; the C++ backend already uses `FixedBytes<N>`). Crucible finding **F-0009** (found by the cross-encode oracle) |
 | G-0011 | [generator#126](https://github.com/sofa-buffers/generator/issues/126) | **open** — C++ backend's generated `_FixedStrSeq`/`_FixedBlobSeq` (fixed-capacity string/blob arrays) do `while (out->size() <= id) out->emplace_back()`, but the corelib's fixed-capacity `InlineVector::emplace_back` is a no-op once full, so a wire element index `id ≥ N` (capacity) **loops forever** — a 4-byte DoS (`c6 0c c6 07`). Fixed-capacity C++ profile only; heap `std::vector` grows/terminates. Crucible finding **F-0008** (first mis-filed corelib-c-cpp#84, redirected via crucible#16). Fix: bound the fill by `N`, drop an over-capacity index (like the C/Zig backends) |
 | G-0010 | [generator#120](https://github.com/sofa-buffers/generator/issues/120) | ✅ **fixed in sofabgen 0.16.2** (commit `26f1f4c`, PR #121): the generated zig `decode` now binds `feed(chunk)→Status` and surfaces `.incomplete` as `error.IncompleteMessage`. **Crucible driver.zig updated** to match (`error.Incomplete` → `error.IncompleteMessage`, two sites). **Re-verified 2026-07-15:** zig builds, F-0001 `80` → `I`, and the full 12-driver box is green. Was: sofabgen 0.16.1's zig backend `try`-discarded the new `Error!Status` return (compile error) — the zig analogue of G-0008. |
 | G-0009 | [generator#112](https://github.com/sofa-buffers/generator/issues/112) | ✅ **fixed in sofabgen 0.16.1** (commit `7899c4b`, "heap unbounded array -> std::vector, not std::array<T,0>"). **Re-verified in Crucible 2026-07-15:** repro `03 03 07 08 09` → cpp decodes `[7,8,9]` (was `[]`) matching the family; cpp rejoined the limit-mode `arr` dimension (`scripts/run-limits.sh`), green. Was: sofabgen 0.16.0 C++ heap backend emitted a schema-*unbounded* array as `std::array<T, 0>`, silently dropping every element of an *accepted* array (the `max_dyn_array_count` cap itself still fired). Sibling of [generator#104](https://github.com/sofa-buffers/generator/issues/104) (C backend) |
@@ -474,3 +475,42 @@ the heap profile.
 corelib maintainer correctly showed `sofab_istream_feed` terminates and redirected via
 crucible#16). The differential symptom (only `cpp-c-cpp` hangs) was real; the fix is
 codegen.
+
+## G-0012 — C backend generates a blob field without a length (round-trip data loss)
+
+**Status:** open — [generator#128](https://github.com/sofa-buffers/generator/issues/128).
+Surfaced 2026-07-15 by the cross-encode / structured-value oracle (Crucible finding
+**F-0009**). **Lang:** c · **Where:** the generator C backend, generated `probe.h`
+struct + `probe.c` field descriptors.
+
+**What:** a `blob` field (e.g. `nested.bytes_field`, `maxlen: 4`) is generated as a
+bare fixed array with the plain, fixed-full-capacity descriptor:
+
+```c
+typedef struct { … char str[33]; uint8_t bytes_field[4]; … } message_probe_nested_t;
+SOFAB_OBJECT_FIELD(3, message_probe_nested_t, bytes_field, SOFAB_OBJECT_FIELDTYPE_BLOB)
+```
+
+There is **no length member**, and a blob is opaque bytes (can contain `\0`), so the
+object API cannot tell how many bytes are live. On re-encode it emits the full
+`maxlen` (zero-padded); an all-zero sub-`maxlen` blob collapses to empty. A producer
+on the C object API therefore cannot faithfully carry a blob shorter than `maxlen` —
+silent round-trip data loss (`[0x01]` → `01 00 00 00`; `[0x00]` → dropped). `str`
+round-trips because it is `char[maxlen+1]` and NUL-terminated; a blob can't be
+NUL-recovered.
+
+**Why it matters:** ships to every consumer of the generated C object API. Not a
+corelib bug — the C `ostream`/`istream` take an explicit length (the C++ wrapper
+`cpp-c-cpp`, using `FixedBytes<N>`, round-trips correctly over the *same* C sources).
+
+**Proposed fix:** the corelib already offers the sized variant. Emit a companion
+length member immediately before the buffer and use it:
+
+```c
+typedef struct { … uintX bytes_field_len; uint8_t bytes_field[4]; … } message_probe_nested_t;
+SOFAB_OBJECT_FIELD_BLOB_SIZED(3, message_probe_nested_t, bytes_field_len, bytes_field)
+```
+
+`SOFAB_OBJECT_FIELD_BLOB_SIZED` stores the received length on decode and "produces
+byte-identical wire to a plain blob of the same actual length" (`object.h`), so the C
+object API then matches the rest of the family byte-for-byte.

@@ -1,7 +1,9 @@
 # F-0009 — C object API pads a sub-`maxlen` blob to `maxlen` (and drops an all-zero blob)
 
-**Status:** 🔎 **candidate — needs triage before filing** (the F-0008 lesson:
-trace decode-vs-encode and codegen-vs-corelib before choosing a repo).
+**Status:** open — **triaged & filed [generator#128](https://github.com/sofa-buffers/generator/issues/128)**
+(sofabgen C backend; codegen weakness **G-0012**). **Not** a corelib bug — the C
+corelib already provides the fix primitive (`SOFAB_OBJECT_FIELD_BLOB_SIZED`); the C
+backend just doesn't use it.
 **Found:** 2026-07-15 by the **cross-encode / structured-value oracle**
 (`scripts/cross-encode.sh`) on its first run — a divergence on a *valid* value the
 malformed-wire fuzzer never reached.
@@ -31,23 +33,31 @@ short blob to catch it. Reproducers: `blob_short.bin` (`[0x01]`),
 ## Why it matters
 
 Round-trip **data loss** on a valid message: a producer on the C object API cannot
-faithfully carry a blob shorter than its declared `maxlen`. The C++ wrapper over the
-*same* C corelib gets it right, so it is not the C `ostream` — it points at the
-generated C **object struct/encode** (likely a fixed `uint8_t[maxlen]` whose real
-length is not tracked/emitted), i.e. a **sofabgen C-backend** codegen issue rather
-than a corelib one. To confirm before filing:
+faithfully carry a blob shorter than its declared `maxlen`.
 
-1. **decode vs encode** — does the C decoder store the real length (inspect the
-   decoded `message_probe_t.nested.bytes_field` length) or is the loss purely in
-   encode?
-2. **codegen vs corelib** — is `bytes_field` generated as a fixed array without a
-   companion length, or does the C `ostream` blob path ignore a tracked length?
-3. **strings too?** — `string` (`str`, `maxlen: 32`) is the sibling fixed-storage
-   type; check whether a sub-maxlen string round-trips (it appears to — strings are
-   NUL-relevant — but verify).
+## Root cause (confirmed) — sofabgen C backend
 
-Then file against **generator** (if codegen) or **corelib-c-cpp** (if the C ostream),
-with the exact code location — do **not** file on the differential symptom alone.
+The generated C struct + descriptor for `nested.bytes_field` (`probe.h` / `probe.c`):
+
+```c
+typedef struct { double f64; char str[33]; uint8_t bytes_field[4]; float f32; } message_probe_nested_t;
+SOFAB_OBJECT_FIELD(3, message_probe_nested_t, bytes_field, SOFAB_OBJECT_FIELDTYPE_BLOB)
+```
+
+`bytes_field` is a bare `uint8_t[maxlen]` with **no length member**, wired with the
+**plain, fixed-full-capacity** `SOFAB_OBJECT_FIELD(..., BLOB)` descriptor. A blob is
+opaque bytes (can hold `\0`), so with no length the object API can't tell how many
+bytes are live → it emits the full `maxlen` (padded), and an all-zero one collapses
+to empty. (`str` round-trips because it is `char[maxlen+1]` and NUL-terminated, so
+the corelib recovers its length; a blob can't be NUL-recovered.)
+
+**The corelib already offers the fix** (`object.h`): `SOFAB_OBJECT_FIELD_BLOB_SIZED`
+pairs a fixed buffer with a companion length member (stored on decode), and produces
+**byte-identical wire to a plain blob of the same actual length**. The C++ backend
+already does the equivalent via `sofab::FixedBytes<N>` + `os.write(id, data,
+size())`. So it is a **pure codegen issue**, not a corelib one — the C backend must
+emit `{ uintX bytes_field_len; uint8_t bytes_field[N]; }` and use the sized
+descriptor. **Filed [generator#128](https://github.com/sofa-buffers/generator/issues/128)** (G-0012).
 
 ## Harness note
 
