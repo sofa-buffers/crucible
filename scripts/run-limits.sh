@@ -57,6 +57,11 @@ ALL="--driver go:$GO_BIN --driver rust-std:$RS_BIN --driver cpp:$CPP_BIN \
      --driver py-cython:$PYC_BIN --driver py-pure:$PYP_BIN --driver java:$JAVA_BIN \
      --driver typescript:$TS_BIN --driver csharp:$CS_BIN --driver zig:$ZIG_BIN"
 
+# Optional per-driver hang budget (seconds); unset → comparator defaults to
+# max(30, 0.25 x corpus size).
+TIMEOUT_ARG=""
+[ -n "${TIMEOUT:-}" ] && TIMEOUT_ARG="--timeout $TIMEOUT"
+
 fail=0
 run_dim() {
     dim="$1"; shift
@@ -64,7 +69,7 @@ run_dim() {
     n=$(find "$CORPUS/$dim" -type f -name '*.bin' | wc -l | tr -d ' ')
     echo "==> limit mode :: $dim dimension ($n vector(s))" >&2
     # shellcheck disable=SC2086
-    python3 "$ROOT/oracle/comparator.py" --corpus "$CORPUS/$dim" --policy "$ROOT/oracle/policy.yaml" "$@" || fail=1
+    python3 "$ROOT/oracle/comparator.py" --corpus "$CORPUS/$dim" --policy "$ROOT/oracle/policy.yaml" $TIMEOUT_ARG "$@" || fail=1
 }
 
 run_dim arr $ALL

@@ -53,11 +53,18 @@ set -- \
     --driver "csharp:$CS_BIN" \
     --driver "zig:$ZIG_BIN"
 
+# Optional per-driver hang budget (seconds); unset → the tools compute
+# max(30, 0.25 x corpus size). A hanging driver is a finding, not a wedged run.
+TIMEOUT_ARG=""
+[ -n "${TIMEOUT:-}" ] && TIMEOUT_ARG="--timeout $TIMEOUT"
+
 if [ "${CLUSTER:-0}" = "1" ]; then
     # Reduce the divergences to root-cause clusters (best over a big fuzzed corpus).
     echo "==> clustering divergences over $(ls "$CORPUS" | grep -vc gitkeep) input(s)" >&2
-    python3 "$ROOT/oracle/cluster.py" --corpus "$CORPUS" --top "${TOP:-20}" "$@"
+    # shellcheck disable=SC2086
+    python3 "$ROOT/oracle/cluster.py" --corpus "$CORPUS" --top "${TOP:-20}" $TIMEOUT_ARG "$@"
 else
     echo "==> differential comparison over $(ls "$CORPUS" | grep -vc gitkeep) input(s)" >&2
-    python3 "$ROOT/oracle/comparator.py" --corpus "$CORPUS" --policy "$ROOT/oracle/policy.yaml" "$@"
+    # shellcheck disable=SC2086
+    python3 "$ROOT/oracle/comparator.py" --corpus "$CORPUS" --policy "$ROOT/oracle/policy.yaml" $TIMEOUT_ARG "$@"
 fi

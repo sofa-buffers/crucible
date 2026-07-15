@@ -11,11 +11,13 @@ corelib-c-cpp#69, corelib-cpp#22). Crucible's job is to catalog and **verify** t
       (`drivers/c/driver.c`) + `scripts/fuzz.sh`. Verified safe/deterministic
       (336k-mutation ASan soak) + clean 231k-run campaign. See engine/mutator/DESIGN.md
       "As built". Follow-ups below.
-  - [ ] **Comparator per-input timeout** (harness gap the mutator surfaced):
-        `oracle/comparator.py` / `cluster.py` have no per-input wall-clock cap, so an
-        adversarial corpus (maxed array counts, deep nesting) stalls the replay drivers.
-        Add a timeout; a hanging driver is itself a finding (DoS). The libFuzzer
-        pacemaker is unaffected (it has `-timeout`).
+  - [x] **Comparator per-input timeout** (harness gap the mutator surfaced) — done
+        2026-07-15. `oracle/comparator.py` + `cluster.py` take a per-driver wall-clock
+        budget (`--timeout`, default `max(30, 0.25 × corpus size)`; `TIMEOUT=` env via
+        the scripts); a hang is localized + reported `[TIMEOUT]` as a DoS finding
+        (stdout→tempfile so partial output survives the kill). Follow-up: **bisect to
+        localize hangs in slurp-then-emit drivers** (ts reports "hung, 0/N" without an
+        exact index).
   - [ ] **Differential-cluster A/B** of the grammar vs byte-level corpora (the real
         "done when" — coverage saturates at cov:533 on `probe` so it can't discriminate;
         DESIGN.md). Do it once the comparator timeout lands, ideally in the nightly.

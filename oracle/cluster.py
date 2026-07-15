@@ -19,29 +19,33 @@ Usage (same driver args as comparator.py):
 import argparse
 import sys
 
-from comparator import run_driver, parse, read_corpus, CRASH
+from comparator import (run_driver, parse, read_corpus, CRASH, TIMEOUT,
+                        default_timeout)
 
 
-def run_driver_recover(path, corpus):
-    """Like run_driver but recover past a crash: a driver that dies at input k has
-    its line marked CRASH and is re-run on k+1.. so later inputs are not lost."""
+def run_driver_recover(path, corpus, timeout=None):
+    """Like run_driver but recover past a crash OR a hang: a driver that dies or
+    hangs at input k has its line marked CRASH/TIMEOUT and is re-run on k+1.. so
+    later inputs are not lost."""
     lines = []
     start = 0
     while start < len(corpus):
         sub = corpus[start:]
-        ls, crash_idx, _ = run_driver(path, sub)
-        if crash_idx is None:
+        ls, fail_idx, _, _ = run_driver(path, sub, timeout)
+        if fail_idx is None:
             lines.extend(ls)
             break
-        lines.extend(ls[:crash_idx])
-        lines.append(CRASH)
-        start += crash_idx + 1
+        lines.extend(ls[:fail_idx])
+        lines.append(ls[fail_idx])   # CRASH or TIMEOUT sentinel
+        start += fail_idx + 1
     return lines
 
 
 def verdict_tag(line):
     if line == CRASH:
         return "CRASH", ""
+    if line == TIMEOUT:
+        return "TIMEOUT", ""
     v, p = parse(line)
     return {"A": "accept", "R": "reject"}.get(v, v), p
 
@@ -68,17 +72,21 @@ def main():
     ap.add_argument("--corpus", required=True)
     ap.add_argument("--driver", action="append", required=True)
     ap.add_argument("--top", type=int, default=20)
+    ap.add_argument("--timeout", type=float, default=None,
+                    help="per-driver wall-clock budget in seconds "
+                         "(default max(30, 0.25 x corpus size))")
     args = ap.parse_args()
 
     corpus = read_corpus(args.corpus)
     if not corpus:
         sys.stderr.write(f"[cluster] empty corpus: {args.corpus}\n")
         return 2
+    timeout = args.timeout if args.timeout is not None else default_timeout(corpus)
 
     drivers = []
     for spec in args.driver:
         name, _, path = spec.partition(":")
-        drivers.append((name, run_driver_recover(path, corpus)))
+        drivers.append((name, run_driver_recover(path, corpus, timeout)))
 
     clusters = {}  # key -> {count, min:(size, seed, groups)}
     for i, (seed, data) in enumerate(corpus):
