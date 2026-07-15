@@ -1,0 +1,68 @@
+# Long, non-blocking, continuous fuzzing — grows the corpus and surfaces NEW
+# divergences (what a human otherwise does by hand).
+#
+# The C pacemaker (libFuzzer + the structure-aware mutator, engine/mutator) grows
+# corpus/interesting; that grown corpus is then replayed through all 12 drivers and
+# auto-clustered by root cause. Crashes, the new interesting corpus, and the cluster
+# inventory are uploaded as artifacts for a human to triage (F-0006/7/8/9 workflow).
+# The corpus is cached between runs so coverage compounds night over night.
+#
+# Non-blocking by design: a fresh divergence is expected signal, not a build break —
+# triage stays human (the corelibs are other repos; cross-repo auto-filing is a
+# later step).
+name: nightly
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # 03:00 UTC daily
+  workflow_dispatch:
+    inputs:
+      fuzz_time:
+        description: 'Pacemaker wall-clock budget (seconds)'
+        default: '1800'
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    container:
+      image: ghcr.io/sofa-buffers/crucible-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap (corelibs@main + sofabgen)
+        run: REFRESH=1 ./scripts/bootstrap.sh
+
+      # Restore the accumulated coverage corpus (compounds across nights).
+      - name: Restore interesting corpus
+        uses: actions/cache@v4
+        with:
+          path: corpus/interesting
+          key: crucible-corpus-${{ github.run_id }}
+          restore-keys: crucible-corpus-
+
+      - name: Fuzz — grow the corpus (C pacemaker + structure-aware mutator)
+        run: FUZZ_TIME=${{ github.event.inputs.fuzz_time || '1800' }} ./scripts/fuzz.sh
+
+      - name: Cluster new divergences (non-blocking)
+        continue-on-error: true
+        run: CLUSTER=1 TIMEOUT=5 CORPUS=corpus/interesting ./scripts/run.sh
+
+      - name: Upload findings artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ github.run_id }}
+          path: |
+            corpus/crashes/
+            corpus/interesting/
+            results/CLUSTERS.md
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,47 @@
+# Fast, blocking regression gate — runs on every push and PR.
+#
+# Bootstraps the corelibs (their `main` tips) + sofabgen, builds all 12 replay
+# drivers, and runs the three GREEN oracles: the seed differential, the
+# cross-encode / structured-value differential, and limit mode. Any divergence
+# fails the run — so a corelib bump (or a Crucible change) that reintroduces a
+# resolved finding is caught the moment it lands. Runs in the prebuilt toolchain
+# image (see image.yml); the per-driver timeout keeps a hanging driver from
+# wedging the job (it is reported as a finding instead).
+#
+# Corelibs are pinned to `main` on purpose: this is a conformance fuzzer, so a red
+# gate on an upstream regression is exactly the signal we want. Open findings
+# (F-0004, F-0008, F-0009) diverge by design and are kept OUT of these green
+# corpora — they live in findings/ until fixed.
+name: replay
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  differential:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/sofa-buffers/crucible-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap (corelibs@main + sofabgen)
+        run: REFRESH=1 ./scripts/bootstrap.sh
+
+      - name: Differential over seeds (the green gate)
+        run: ./scripts/run.sh
+
+      - name: Cross-encode over structured values
+        run: REGEN=0 ./scripts/cross-encode.sh
+
+      - name: Limit mode (receiver-side caps)
+        run: ./scripts/run-limits.sh

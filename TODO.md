@@ -64,9 +64,12 @@ corelib-c-cpp#69, corelib-cpp#22). Crucible's job is to catalog and **verify** t
       **F-0001 green** family-wide.
 
 ## Phase 4 — continuous
-- [ ] **CI**: `replay` workflow (fast, blocking, every push — regression corpus +
-      known crashes) and `nightly` (long, non-blocking, continuous fuzz that grows
-      the corpus). See PLAN §10/§12.
+- [~] **CI**: `.github/workflows/{image,replay,nightly}.yml` authored (docs/CI.md).
+      `image` → GHCR toolchain image; `replay` (blocking, push/PR) → seeds + structured
+      + limits green gates; `nightly` → fuzz + cluster + artifacts. **Remaining:**
+      one-time manual `image` run to seed GHCR, then confirm the first live runs;
+      follow-ups — build-reuse (replay rebuilds 3×), `corpus/regression/` for resolved
+      findings, cross-repo auto-annotation.
 - [ ] **Corpus hygiene**: minimize with libFuzzer `-merge`; commit a minimized
       regression corpus; keep `corpus/interesting`/`crashes` gitignored.
 - [ ] **Structural crash minimization** (e.g. F-0003 via cargo-fuzz `-minimize` once a
