@@ -47,7 +47,7 @@ done
 
 # sofabgen: prefer a sibling arena's prebuilt binary, else build from a sibling
 # generator checkout, else clone+build. Under REFRESH we skip the opaque arena
-# binary (it may lag generator main / v0.16.0) and build from source.
+# binary (it may lag generator main / v0.16.2) and build from source.
 SG="$ROOT/tools/sofabgen"
 if [ -x "$SG" ] && [ "$REFRESH" != "1" ]; then
     echo "==> tools/sofabgen present" >&2

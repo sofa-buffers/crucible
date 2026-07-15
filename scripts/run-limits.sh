@@ -14,11 +14,13 @@
 #   CORPUS=path ./scripts/run-limits.sh
 #
 # Roster (heap targets only): the fixed-capacity profiles — c, c-cpp, rust-nostd —
-# refuse to generate an unbounded field, so they are out by construction. The pure
-# C++ (cpp) target is held out of the ARRAY dimension only: sofabgen 0.16.0 emits its
-# unbounded array as std::array<T,0>, so an *accepted* array decodes to empty — a
-# value divergence (G-0009 / generator#112). The max_dyn_array_count cap itself still
-# fires (over-cap -> L), and cpp's string/blob caps are correct, so cpp runs those.
+# refuse to generate an unbounded field, so they are out by construction. cpp now
+# runs the FULL heap roster in every dimension: G-0009 / generator#112 (sofabgen
+# 0.16.0 emitted the unbounded array as std::array<T,0>, decoding an accepted array
+# to empty) is FIXED in sofabgen 0.16.1 (commit 7899c4b -> std::vector); verified
+# 2026-07-15 that cpp matches the family on the arr vectors (under/at/over-cap) and
+# on the old repro `03 03 07 08 09` -> `[7,8,9]`. cpp's string/blob caps were always
+# correct.
 set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -50,11 +52,8 @@ for line in \
     echo "==> ${line%%:*}: ${line#*:}" >&2
 done
 
-# The array dimension drops cpp (G-0009); string/blob run the full heap roster.
+# The full heap roster runs every dimension (arr included — G-0009 fixed @0.16.1).
 ALL="--driver go:$GO_BIN --driver rust-std:$RS_BIN --driver cpp:$CPP_BIN \
-     --driver py-cython:$PYC_BIN --driver py-pure:$PYP_BIN --driver java:$JAVA_BIN \
-     --driver typescript:$TS_BIN --driver csharp:$CS_BIN --driver zig:$ZIG_BIN"
-NO_CPP="--driver go:$GO_BIN --driver rust-std:$RS_BIN \
      --driver py-cython:$PYC_BIN --driver py-pure:$PYP_BIN --driver java:$JAVA_BIN \
      --driver typescript:$TS_BIN --driver csharp:$CS_BIN --driver zig:$ZIG_BIN"
 
@@ -68,7 +67,7 @@ run_dim() {
     python3 "$ROOT/oracle/comparator.py" --corpus "$CORPUS/$dim" --policy "$ROOT/oracle/policy.yaml" "$@" || fail=1
 }
 
-run_dim arr $NO_CPP   # cpp excluded — generator#112
+run_dim arr $ALL
 run_dim str $ALL
 run_dim blb $ALL
 

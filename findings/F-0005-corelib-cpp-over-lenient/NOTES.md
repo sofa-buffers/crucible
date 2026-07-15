@@ -1,5 +1,12 @@
 # F-0005 — corelib-cpp accepts malformed messages the whole family rejects
 
+> **Re-verified ✅ resolved 2026-07-15 (sofabgen 0.16.1 + corelib-cpp@main):** cpp
+> now rejects the reproducer `56 0a 59` in step with the family. **New, unrelated:**
+> on that same input corelib-py now returns `I` (INCOMPLETE) where the family
+> returns `R` — split out as [F-0006](../F-0006-corelib-py-fixlen-fp-incomplete-vs-invalid/NOTES.md)
+> (filed corelib-py#38), part of the broader [F-0007](../F-0007-invalid-vs-incomplete-precedence/NOTES.md)
+> precedence family. Not a regression of F-0005.
+
 **Status:** ✅ **resolved** — fixed upstream in corelib-cpp ([issue #22](https://github.com/sofa-buffers/corelib-cpp/issues/22) closed). Re-verified 2026-07-08 against **sofabgen 0.15.1 + corelib-cpp@main**: `cpp_accepts_malformed.bin` no longer diverges — corelib-cpp now rejects it in step with the rest of the family.
 **Found:** Phase 3, by clustering the pacemaker's divergences (`oracle/cluster.py`)
 — the single largest divergence source after F-0001
