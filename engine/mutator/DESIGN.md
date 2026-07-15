@@ -96,3 +96,43 @@ known bugs still open, the differential loop stays red with the *known* clusters
 (F-0001/F-0004/F-0005) — expected and tracked. To keep new signal from drowning,
 optionally add the known clusters to `oracle/policy.yaml` as allow-entries first
 (see TODO / STATUS).
+
+---
+
+## As built (2026-07-15)
+
+Implemented in `sofab_mutator.{h,c}` (pure C11, no libFuzzer/corelib dependency)
+and wired into the pacemaker via `LLVMFuzzerCustomMutator` in `drivers/c/driver.c`
+(≈37% mix-in to `LLVMFuzzerMutate`, the rest grammar-aware); `scripts/fuzz.sh`
+compiles the extra TU + adds `-Iengine/mutator`. Operators: varint
+truncate/extend/flip/max-out, header type-tag and id perturb, fixlen declared
+length, array count max-out, sequence open/close, invalid-UTF-8 injection, fp
+NaN/inf injection, field duplicate, and a byte/​bootstrap fallback. A best-effort
+forward walk records site offsets (headers, varints, fixlen lengths, array counts,
+fixlen payloads + subtype); one applicable op is chosen per call.
+
+**Verified**
+- `test_mutator.c` (gcc/clang + ASan/UBSan, no libFuzzer): **336k mutations, 0
+  out-of-bounds, 0 over-`max_size`, deterministic per seed**, and it produces the
+  target shapes (truncated varints, invalid-UTF-8 bytes). Build/run:
+  `cc -std=c11 -fsanitize=address,undefined -Iengine/mutator engine/mutator/test_mutator.c engine/mutator/sofab_mutator.c -o /tmp/mut_test && /tmp/mut_test`.
+- A real 10s libFuzzer campaign (`pm_grammar`) ran **231k runs, exit 0, no
+  mutator crash/OOM** (libFuzzer's `-timeout` handles pathological inputs).
+
+**On the coverage "done when" — honest result.** Block coverage is **not** a
+discriminating metric on the `probe` decoder: an A/B of the grammar build vs a
+`-DCRUCIBLE_NO_CUSTOM_MUTATOR` byte-level baseline, both seeded from `corpus/seeds`,
+**both saturate at `cov: 533` within ~8 s** (ft is noise, ~3.1–3.3k, overlapping).
+The C decoder is small enough that any mutator covers it in seconds, so the
+strategy barely moves `cov`. The mutator's real payoff is *structural reach +
+malformed-shape manufacture* feeding the **differential** oracle, which
+coverage-of-one-decoder cannot measure.
+
+**Follow-up (the real validation).** Compare the two grown corpora through the
+**differential** loop and count distinct **clusters** (root causes), not coverage.
+Attempting this surfaced a harness gap: `oracle/comparator.py` / `cluster.py` have
+**no per-input timeout**, so an adversarial corpus (maxed array counts, deep
+nesting) makes the *replay* drivers crawl and the batch stalls — the libFuzzer
+pacemaker itself is fine (it has `-timeout`). Added to TODO: give the comparator a
+per-input wall-clock timeout (a hanging driver is itself a finding). Do the
+cluster A/B once that lands, ideally in the Phase-4 nightly.

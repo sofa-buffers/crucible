@@ -6,9 +6,21 @@ found are **not** here — they live in the owning repos (see `findings/` +
 corelib-c-cpp#69, corelib-cpp#22). Crucible's job is to catalog and **verify** them.
 
 ## Phase 3 — finish the engine & oracles
-- [ ] **Structure-aware mutator** (TLV/varint grammar) for the pacemaker. libFuzzer's
-      byte-level mutator only reaches deep paths by luck; a grammar-aware mutator
-      targets nested sequences, array counts, varint boundaries, and the depth limit.
+- [x] **Structure-aware mutator** (TLV/varint grammar) for the pacemaker —
+      `engine/mutator/sofab_mutator.{h,c}`, wired via `LLVMFuzzerCustomMutator`
+      (`drivers/c/driver.c`) + `scripts/fuzz.sh`. Verified safe/deterministic
+      (336k-mutation ASan soak) + clean 231k-run campaign. See engine/mutator/DESIGN.md
+      "As built". Follow-ups below.
+  - [ ] **Comparator per-input timeout** (harness gap the mutator surfaced):
+        `oracle/comparator.py` / `cluster.py` have no per-input wall-clock cap, so an
+        adversarial corpus (maxed array counts, deep nesting) stalls the replay drivers.
+        Add a timeout; a hanging driver is itself a finding (DoS). The libFuzzer
+        pacemaker is unaffected (it has `-timeout`).
+  - [ ] **Differential-cluster A/B** of the grammar vs byte-level corpora (the real
+        "done when" — coverage saturates at cov:533 on `probe` so it can't discriminate;
+        DESIGN.md). Do it once the comparator timeout lands, ideally in the nightly.
+  - [ ] **Structured track** (DESIGN §"Two corpus tracks"): seed valid-ish frames from
+        the schema to hunt semantic value divergence, not just malformed-input crashes.
 - [ ] **Cross-encode oracle** (the 3rd oracle): encode a value in impl A, decode in
       impl B, compare. (Decode-agreement and round-trip idempotence already run.)
 - [ ] **Union corpus / schema**: add a schema definition containing a `union` — the
