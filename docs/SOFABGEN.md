@@ -31,6 +31,7 @@ generator gaps.
 | G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) | fixed — PR [#90](https://github.com/sofa-buffers/generator/pull/90) (0.15.1) |
 | G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) | fixed — PR [#87](https://github.com/sofa-buffers/generator/pull/87) |
 | G-0008 | [generator#105](https://github.com/sofa-buffers/generator/issues/105) | ✅ **fixed** — PR [generator#106](https://github.com/sofa-buffers/generator/pull/106) (sofabgen 0.15.3): status-surfacing `TryDecode`/`tryDecode`; part of §7 epic [#86](https://github.com/sofa-buffers/generator/issues/86) |
+| G-0011 | [generator#126](https://github.com/sofa-buffers/generator/issues/126) | **open** — C++ backend's generated `_FixedStrSeq`/`_FixedBlobSeq` (fixed-capacity string/blob arrays) do `while (out->size() <= id) out->emplace_back()`, but the corelib's fixed-capacity `InlineVector::emplace_back` is a no-op once full, so a wire element index `id ≥ N` (capacity) **loops forever** — a 4-byte DoS (`c6 0c c6 07`). Fixed-capacity C++ profile only; heap `std::vector` grows/terminates. Crucible finding **F-0008** (first mis-filed corelib-c-cpp#84, redirected via crucible#16). Fix: bound the fill by `N`, drop an over-capacity index (like the C/Zig backends) |
 | G-0010 | [generator#120](https://github.com/sofa-buffers/generator/issues/120) | ✅ **fixed in sofabgen 0.16.2** (commit `26f1f4c`, PR #121): the generated zig `decode` now binds `feed(chunk)→Status` and surfaces `.incomplete` as `error.IncompleteMessage`. **Crucible driver.zig updated** to match (`error.Incomplete` → `error.IncompleteMessage`, two sites). **Re-verified 2026-07-15:** zig builds, F-0001 `80` → `I`, and the full 12-driver box is green. Was: sofabgen 0.16.1's zig backend `try`-discarded the new `Error!Status` return (compile error) — the zig analogue of G-0008. |
 | G-0009 | [generator#112](https://github.com/sofa-buffers/generator/issues/112) | ✅ **fixed in sofabgen 0.16.1** (commit `7899c4b`, "heap unbounded array -> std::vector, not std::array<T,0>"). **Re-verified in Crucible 2026-07-15:** repro `03 03 07 08 09` → cpp decodes `[7,8,9]` (was `[]`) matching the family; cpp rejoined the limit-mode `arr` dimension (`scripts/run-limits.sh`), green. Was: sofabgen 0.16.0 C++ heap backend emitted a schema-*unbounded* array as `std::array<T, 0>`, silently dropping every element of an *accepted* array (the `max_dyn_array_count` cap itself still fired). Sibling of [generator#104](https://github.com/sofa-buffers/generator/issues/104) (C backend) |
 
@@ -433,3 +434,43 @@ one-shot decode (a `tryDecode`-equivalent), mirroring the cs/java G-0008 fix; (2
 `drivers/zig/driver.zig` reads the `Status` and maps `.complete`→`A <hex>` /
 `.incomplete`→`I`, dropping the `error.Incomplete` arm. Until both land, zig is held
 out of `scripts/run.sh` / `run-limits.sh` (the box runs over the other 11 drivers).
+
+## G-0011 — generated fixed-capacity C++ string/blob-array fill infinite-loops (DoS)
+
+**Status:** open — [generator#126](https://github.com/sofa-buffers/generator/issues/126).
+Surfaced 2026-07-15 by the structure-aware mutator + the comparator per-driver
+timeout (Crucible finding **F-0008**). **Lang:** cpp (fixed-capacity / `c-cpp`
+profile) · **Where:** the generator C++ backend, generated `_FixedStrSeq` /
+`_FixedBlobSeq` in `probe.hpp`.
+
+**What:** the generated element handler for a fixed-capacity string/blob array grows
+the destination up to the wire element index, then writes at that index:
+
+```cpp
+while (out->size() <= static_cast<std::size_t>(id)) out->emplace_back();   // id = wire element index
+auto &s = (*out)[id]; ...
+```
+
+On the fixed-capacity profile `out` is the corelib's `InlineVector<T, N>`, whose
+`emplace_back()` is a **no-op once full** (intentional — no heap growth):
+`std::size_t i = len_ < N ? len_++ : N - 1;`. So a wire element index `id ≥ N` makes
+`out->size()` stick at `N`, `size() <= id` stays true, and the `while` **never
+terminates** — a 4-byte DoS (`c6 0c c6 07`: the nested `SEQUENCE_START` is element id
+120 into the count-5 `string_array`). The heap profile (`std::vector`) grows and
+terminates, so only the fixed-capacity C++ target hangs.
+
+**Why it matters:** ships to any consumer of the fixed-capacity C++ profile (the
+embedded target) — an unbounded loop on 4 untrusted bytes. Not a corelib bug (the
+`InlineVector` cap is correct/intentional) and not a Crucible driver bug (single
+`feed()`); purely the generated fill loop assuming `emplace_back()` always grows.
+
+**Proposed fix:** bound the fill by the fixed capacity `N` and drop/ignore (or reject)
+an element index `≥ N`, so the loop cannot spin on a full `InlineVector`
+(`if (id < N) { while (out->size() <= id) out->emplace_back(); ... }`). Mirrors the
+C/Zig backends dropping excess native-array elements (MESSAGE_SPEC §5.1). Harmless on
+the heap profile.
+
+**Correction note:** F-0008 was first mis-filed against corelib-c-cpp#84 (closed — the
+corelib maintainer correctly showed `sofab_istream_feed` terminates and redirected via
+crucible#16). The differential symptom (only `cpp-c-cpp` hangs) was real; the fix is
+codegen.

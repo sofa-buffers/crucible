@@ -1,14 +1,27 @@
-# F-0008 — corelib-c-cpp hangs (infinite loop / DoS) on a nested sequence inside the `string_array` field
+# F-0008 — generated C++ fixed-capacity string/blob-array fill hangs (infinite loop / DoS) on an element index ≥ capacity
 
-**Status:** open — filed **[corelib-c-cpp#84](https://github.com/sofa-buffers/corelib-c-cpp/issues/84)**. A 4-byte untrusted input makes
-the `cpp-c-cpp` decoder loop forever (no output, no crash — a denial-of-service).
+> **⚠️ CORRECTION 2026-07-15 — re-targeted corelib-c-cpp → generator (sofabgen).**
+> The first write-up blamed the corelib-c-cpp *decode*. That was wrong: the
+> corelib-c-cpp maintainer showed `sofab_istream_feed` structurally terminates and
+> couldn't reproduce it in the corelib (**corelib-c-cpp#84 closed**, dispute in
+> **[crucible#16](https://github.com/sofa-buffers/crucible/issues/16)**). Tracing
+> into the **generated `probe.hpp`** found the real infinite loop in the C++
+> codegen — filed **[generator#126](https://github.com/sofa-buffers/generator/issues/126)**
+> (see Root cause). The differential *symptom* (only `cpp-c-cpp` hangs) was real;
+> the attribution was one layer too shallow. Codegen-weakness log: **G-0011**.
+
+**Status:** open — **[generator#126](https://github.com/sofa-buffers/generator/issues/126)**
+(sofabgen C++ backend). A 4-byte untrusted input makes the generated fixed-capacity
+string-array fill loop forever (no output, no crash — a denial-of-service).
 **Found:** 2026-07-15 by the **structure-aware mutator** (engine/mutator) → the
 differential loop, localized by the new comparator per-driver **timeout** (the
 input hung `cpp-c-cpp`; every other driver returned in milliseconds).
 **Axis:** liveness / DoS (a hang, distinct from F-0003's panic-crash).
-**Affects:** `corelib-c-cpp` **only** — the C++ object-stream path
-(`sofab::IStreamObject<Probe>` + generated `probe.hpp`). Its pure-C sibling driver
-(`c`, same `istream.c`) and the pure-C++ corelib (`cpp`) both decode the input fine.
+**Affects:** the **fixed-capacity C++ profile** (the `cpp-c-cpp` driver / embedded
+target). The heap C++ profile (`cpp`, `std::vector`), the pure-C object API (`c`,
+same `istream.c`), Go, and Rust all decode the input fine — it is specifically the
+generated `_FixedStrSeq`/`_FixedBlobSeq` fill on the corelib's fixed-capacity
+`InlineVector`.
 
 ## Reproduce
 
@@ -63,31 +76,52 @@ neither consumes the inner marker nor terminates on end-of-input, and spins. It 
 **not** an unbalanced-sequence check in general (a lone open, or a struct+nested,
 is fine).
 
-## Localization
+## Root cause (generator / sofabgen C++ backend) — confirmed
 
-corelib-c-cpp's `IStreamImpl::feed` (`src/include/sofab/sofab.hpp`) delegates to the
-C `sofab_istream_feed`, and the generated `probe.hpp` binds a
-`sofab_istream_read_sequence` for the `string_array` string elements. The pure-C
-driver (generated C visitor) and pure-C++ corelib both terminate on this input, so
-the loop is in the **interaction between the generated C++ `string_array`
-read-sequence handling and the C istream on a nested sequence marker** — most
-likely a decode state that re-reads the same marker without advancing / without an
-end-of-input guard. (No debugger in this environment; localized by differential +
-the minimal-variant sweep above.)
+The generated element handler for a fixed-capacity string/blob array grows the
+destination up to the wire element index, then writes at that index
+(`drivers/cpp/gen/c-cpp/probe.hpp`, `_FixedStrSeq` / `_FixedBlobSeq`):
+
+```cpp
+while (out->size() <= static_cast<std::size_t>(id)) out->emplace_back();  // id = wire element index
+auto &s = (*out)[id]; ...
+```
+
+On the **fixed-capacity** profile `out` is the corelib's `InlineVector<T, N>`, whose
+`emplace_back()` is a **no-op once full** (intentional — no heap growth;
+`corelib-c-cpp/src/include/sofab/sofab.hpp`):
+
+```cpp
+T &emplace_back() noexcept { std::size_t i = len_ < N ? len_++ : N - 1; ... }  // len_ never exceeds N
+```
+
+So when the wire delivers an element index `id ≥ N`, `out->size()` reaches `N` and
+**sticks** — `size() <= id` stays true forever → the `while` never terminates. For
+`string_array` (`count: 5`) the nested `SEQUENCE_START` in `c6 0c c6 07` is element
+id `120 ≥ 5`, so it spins. The **heap** profile (`cpp`, `std::vector`) grows and
+terminates (or OOMs for a huge id), which is exactly why `cpp` did not hang and
+`c-cpp` did. It is **not** the corelib istream (`c`, the C object API over the same
+`istream.c`, terminates) and **not** the Crucible driver (a single `feed()`, no
+re-feed) — it is the generated fixed-capacity fill loop.
 
 ## Why it matters
 
 A **4-byte** untrusted message wedges the decoder forever — a denial-of-service in
-any C++ consumer built on corelib-c-cpp. This is the liveness analogue of F-0003
-(which was a panic-crash): the structure-aware mutator manufactured the shape and
-the comparator's per-driver timeout turned an otherwise-invisible infinite loop
-into a localized `[TIMEOUT]` finding.
+any consumer of the generated **fixed-capacity C++ profile** (the embedded target).
+The liveness analogue of F-0003 (a panic-crash). The structure-aware mutator
+manufactured the shape and the comparator's per-driver timeout turned an
+otherwise-invisible infinite loop into a localized `[TIMEOUT]` finding — but the
+attribution took a second pass (see the correction banner): the differential
+*symptom* pointed at `cpp-c-cpp`, and only tracing the generated code showed the
+bug is codegen, shared by any fixed-capacity C++ target.
 
-## Fix direction (corelib-c-cpp)
+## Fix direction (generator#126)
 
-In the `string_array` element read-sequence path, on encountering a nested
-`SEQUENCE_START` where a string element (or the sequence end) is expected, either
-skip the nested sequence or report the partial decode (INCOMPLETE at EOF / INVALID
-for a type mismatch) — and ensure the decode state **always advances** so it cannot
-re-read the same marker. Match the pure-C object API and pure-C++ corelib, which
+Bound the fill loop by the fixed capacity `N` and drop/ignore (or reject) an element
+index `≥ N`, so it cannot spin on a full `InlineVector` — e.g. `if (id < N) { while
+(out->size() <= id) out->emplace_back(); (*out)[id] = …; }`. Mirrors how the C/Zig
+backends drop excess native-array elements (MESSAGE_SPEC §5.1). The heap profile is
+unaffected but the same guard is harmless there. (Earlier, wrong direction —
+"corelib-c-cpp read-sequence must always advance" — struck: the corelib is fine.)
+Reference for the intended behavior: the pure-C object API and pure-C++ corelib, which
 both return INCOMPLETE here.
