@@ -47,3 +47,25 @@ Plus a separate **crash cluster**: Rust (std + no_std) die on over-long arrays �
 
 The tail (35 smaller clusters) is where rarer edge cases live; re-run clustering
 after more fuzzing to see them grow or new ones appear.
+
+## Snapshot — 2026-07-15 re-run (post sofabgen 0.16.1 + corelibs@main bump)
+
+Re-ran the pacemaker (~1M execs, 91 s) then clustered a **1200-input sample** of
+the grown `corpus/interesting` through all 12 drivers on 0.16.1:
+
+**1200 inputs: 14 agree, 1186 diverge → 18 clusters.** The landscape has **shifted
+from F-0005 to the INVALID-vs-INCOMPLETE precedence family** (F-0005 is fixed —
+corelib-cpp no longer over-accepts). Every cluster maps to a *known* class; **no
+new crash and no new clean single-impl accept-value bug** surfaced:
+
+| kind | clusters | maps to |
+|---|---|---|
+| **R-vs-I precedence** (input both malformed *and* truncated; impls disagree on which verdict wins) | 2,3,4,6,7,8,10,12,13 (~600 inputs) | **F-0007** (new) — cleanly-isolated corelib-py instance is **F-0006** (filed corelib-py#38) |
+| **F-0004** invalid UTF-8 (`go`+`py` reject, others raw/U+FFFD) | 9 | F-0004 / generator#85 (open, expected) |
+| **`incomplete_value` soft** (`java` emits `I <partial-hex>`, others bare `I`) | 1 (468) | soft axis, not a finding |
+| **`reject_class` soft** (`usage` vs `invalid_msg` vs `other`) | 5, 11 | soft axis, not a finding |
+
+The three old `corpus/crashes/` artifacts (Jul 8: c-cpp ostream-overflow, java
+array-OOM, py-cython segfault) **no longer crash** any 0.16.1 driver — they now land
+in the R-vs-I precedence family. Regenerate the full picture with
+`CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh`.

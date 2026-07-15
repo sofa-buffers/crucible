@@ -1,5 +1,14 @@
 # F-0003 — Rust decoder panics (index out of bounds) on an over-long array
 
+> **✅ FULLY RESOLVED 2026-07-15 (sofabgen 0.16.1).** The residual over-count
+> *accept* divergence (generator#100) is fixed by commit `ca0fda7` ("reject
+> over-count scalar arrays in every backend"). Re-verified with a clean
+> non-truncated over-count(8>5) array (`a6 06 03 08 01..08 07`): **all 12 drivers
+> reject** (`R`) — rust-std/nostd reject with the family. The rest of this file is
+> the earlier history (crash fix + the then-open residual). Note the old 145-byte
+> reproducer is contaminated (over-count *and* truncated), so rust/zig report `I`
+> there; the clean isolate above is the correct test.
+
 **Status:** ✅ **crash fixed** — bounds check added in sofabgen's Rust backend; PR
 [sofa-buffers/generator#87](https://github.com/sofa-buffers/generator/pull/87)
 (codegen root cause G-0007, issue [generator#78](https://github.com/sofa-buffers/generator/issues/78)).
