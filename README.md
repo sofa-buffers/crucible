@@ -1,4 +1,11 @@
-# Crucible
+<p align="center"><img src="assets/sofabuffers_logo.png" alt="SofaBuffers" height="140"></p>
+
+# SofaBuffers vs. The World
+
+<b>Structured Objects For Anyone</b><br>
+<i>... so optimized, feels amazing.</i>
+
+## Crucible
 
 **Differential fuzzing for the SofaBuffers wire format.** Crucible feeds the same
 bytes to every corelib implementation and fails when they **disagree** — one
@@ -13,7 +20,7 @@ contract, one schema, one runner — but builds the corelibs **instrumented**
 repo. See [`docs/PLAN.md`](docs/PLAN.md) for the full design and
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for what is actually built.
 
-## Quick start
+### Quick start
 
 ```sh
 ./scripts/bootstrap.sh     # vendor corelibs + sofabgen (idempotent)
@@ -37,7 +44,7 @@ interesting input is replayed through all N drivers and compared. C is the motor
 **not** a privileged oracle — its output is diffed like everyone else's. The
 pacemaker needs clang (in `.devcontainer/`); the replay drivers build with gcc.
 
-## Status
+### Status
 
 **Phases 1–2 complete, Phase 3 in progress.** The differential loop runs green
 across **12 drivers / 10 corelibs** — C (pacemaker), Go, Rust-std, Rust-no-std,
@@ -58,7 +65,7 @@ Remaining Phase 3 / Phase 4 work (structure-aware mutator selection, cross-encod
 oracle, finer reject-class taxonomy, CI) is tracked in [`TODO.md`](TODO.md);
 roadmap in [`docs/PLAN.md`](docs/PLAN.md) §12.
 
-## Findings
+### Findings
 
 The oracle has already caught real disagreements — reproducers in `findings/`,
 catalog in [`results/FINDINGS.md`](results/FINDINGS.md), codegen defects in
@@ -73,7 +80,7 @@ Crucible is the catalog + acceptance test.
 | F-0003 | Rust array-fill OOB → panic (crash/DoS) — fixed upstream |
 | F-0005 | `corelib-cpp` accepts malformed messages the rest of the family rejects |
 
-## Layout
+### Layout
 
 | path | what |
 |---|---|
