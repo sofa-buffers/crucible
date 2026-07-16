@@ -112,6 +112,36 @@ reproducers become a regression gate once the family converges).
 
 ## Status
 
-Both clauses filed upstream (documentation#15, #16). When adopted in `MESSAGE_SPEC.md`, the
-corresponding corelib work is tracked per-impl (epic-style, like §7/#86 and §8/#85),
-and Crucible flips F-0007's residual note and F-0010 to green as the family converges.
+**Both clauses ADOPTED upstream (2026-07-16).**
+- Proposal 1 → **documentation#17** merged (`1018e0c`): §5.2 gains the normative
+  *precedence of `INVALID` over `INCOMPLETE`*; §4.6 makes wrong-width `fp32`/`fp64`
+  an explicit `INVALID`; §6.3 `InvalidMessage` row + MESSAGE_SPEC §7 updated. Closes
+  documentation#15.
+- Proposal 2 → **documentation#18** merged (`ac621db`): the **sparse fill-to-N**
+  reading. §3 redefines `count: N` as a fixed-length array of exactly N logical
+  elements; a wire count `M < N` is a *trailing-default run*; decode **MUST**
+  materialize N, canonical encode **MUST** elide the trailing default run
+  (`M` = one-past-last-non-default); `M > N` and element id `≥ N` are `INVALID`.
+  Closes documentation#16.
+
+**Compliance audit vs the adopted clauses (2026-07-16, all 12 drivers):**
+- Proposal 1 / §5.2 — ✅ **whole family compliant.** wrong-width fp fixlen (`56 0a 59`
+  and three siblings) → all 12 `R`; over-count `M>N` → all 12 `R`. (This codifies the
+  F-0006/F-0007 fixes; nothing left to do.)
+- Proposal 2 / §3+§5.1 — ✗ **family split, neither camp fully compliant** (this is
+  F-0010, now with a definite spec direction):
+  - **encode (observable):** `c, rust-std, rust-nostd, cpp, cpp-c-cpp, zig` emit the
+    **trailing default run** (`[7,8,9,0,0]`, wire count 5) → violate the §3 canonical
+    "MUST NOT emit the trailing default run." The 6 systems backends need the encoder
+    to trim to `M` = one-past-last-non-default.
+  - **decode (latent — round-trip-masked):** `go, py-cython, py-pure, java, typescript,
+    csharp` keep `M` elements and do **not** default-fill to `N` (go confirmed by
+    source: `[]uint32` slice, `m.U32 = narrow(v)`, encodes `len(m.U32)`) → violate
+    §5.1 "a growable-list target MUST default-fill to N." Their **wire** is canonical
+    (count 3), so the round-trip oracle cannot see this — only direct element/length
+    access would. Recorded in F-0010.
+  See [`../findings/F-0010-undercount-array-pad-vs-keep/NOTES.md`](../findings/F-0010-undercount-array-pad-vs-keep/NOTES.md).
+
+Attribution (systems-camp encode: sofabgen codegen vs corelib array serializer) needs
+per-backend tracing before an issue is filed — the F-0008 lesson. F-0004's §8 UTF-8
+opt-in check remains unimplemented family-wide (generator#85).

@@ -1,8 +1,45 @@
 # F-0010 — under-count fixed array round-trips to different values (pad-to-capacity vs keep-count)
 
-**Status:** open — **spec-underspecification** (candidate MESSAGE_SPEC clarification),
-family-wide, not a single-repo bug. **Spec clause drafted + filed: [documentation#16](https://github.com/sofa-buffers/documentation/issues/16)**
-(docs/spec-proposals.md, Proposal 2). Like F-0001 (truncation) / F-0004 (UTF-8): resolved spec-first, then per-impl.
+**Status:** **spec-RESOLVED, corelibs not yet compliant** (family-wide convergence
+work, not a single-repo bug). The clause was **adopted upstream — [documentation#18](https://github.com/sofa-buffers/documentation/pull/18)**
+merged (`ac621db`, §3 + §5.1), closing [documentation#16](https://github.com/sofa-buffers/documentation/issues/16).
+Like F-0001 (truncation) / F-0004 (UTF-8): resolved spec-first, then per-impl.
+
+## Adopted resolution (documentation#18): sparse **fill-to-N**, elide the trailing default run
+
+`count: N` is a **fixed-length** array of exactly `N` logical elements. A wire count
+`M < N` is a *trailing-default run* (last `N−M` elements = element default). Normative:
+- **decode** — MUST materialize exactly `N` elements (M received + defaults at `[M,N)`),
+  **regardless of storage model** — a growable list MUST default-fill to `N` too.
+- **canonical encode** — MUST set `M` = one-past-the-last-non-default element and
+  MUST NOT emit the trailing default run. (A decoder still *accepts* a non-canonical
+  wire that carries trailing defaults.)
+- `M > N` and element id `≥ N` are `INVALID` (§7).
+
+So the **canonical wire for `[7,8,9]` in a `count:5` array is count 3** (`2303 070809`),
+not count 5 — the compact form, same sparse principle as omitting a default scalar field.
+
+## Compliance re-check 2026-07-16 (all 12 drivers) — neither camp fully compliant
+
+| camp | drivers | decode fill-to-N (§5.1) | canonical encode / elide trailing (§3) | round-trip wire |
+|---|---|---|---|---|
+| **systems** | c, rust-std, rust-nostd, cpp, cpp-c-cpp, zig | ✅ fills to N | ❌ **emits trailing run** (count 5) | `2305 070809 0000` |
+| **managed** | go, py-cython, py-pure, java, typescript, csharp | ❌ **keeps M** (no fill) | ✅ canonical (count 3) | `2303 070809` |
+
+- The **systems** camp's violation is **observable** on the wire (count 5 ≠ canonical
+  count 3) — this is the F-0010 round-trip divergence. Fix: trim trailing default
+  elements on encode.
+- The **managed** camp's violation is **latent / round-trip-masked**: they hold only
+  `M` elements (go confirmed by source — `[]uint32` slice, `m.U32 = _narrowU(v)`,
+  encode writes `len(m.U32)`), so `len()==3` and `elem[3..5]` are absent instead of
+  default `0`; but because their re-encode also yields count 3, the round-trip oracle
+  sees canonical wire and can't flag it. Only a direct element/length access test can.
+  **A genuine limitation of the round-trip oracle**, worth a dedicated element-access
+  probe if we want to gate the managed camp's decode side.
+
+Attribution of the systems-camp encode fix — sofabgen codegen (the generated encoder
+passing all N) vs the corelib array serializer — needs per-backend tracing before
+filing (the F-0008 lesson).
 **Found:** 2026-07-16 by the **cross-encode / structured-value oracle**, slice 2
 (the array value space, `engine/structured/gen.py`) — on its first run over arrays.
 **Axis:** accept_value (round-trip) — the same wire decodes to different values.
@@ -42,15 +79,15 @@ An under-count array is a valid wire message (not truncated, not over-count) tha
 silent interop bug of the exact kind Crucible exists to catch, and one the
 malformed-wire fuzzer would not cleanly produce (it needs a well-formed short array).
 
-This is almost certainly a **MESSAGE_SPEC underspecification** rather than one impl's
-bug — the spec fixes the array `count` in the schema and defines over-count as
-INVALID (§3/§7), but does not say whether an *under*-count array decodes to `N`
-elements or to the full schema capacity (default-filled). The two answers fall out
-of the two natural storage models. Resolution: a MESSAGE_SPEC clause — most likely
-"a fixed array decodes to its schema count, missing trailing elements defaulted"
-(the fixed-storage reading, which matches how the schema declares the field), which
-would move the managed camp to pad-to-capacity. Track like F-0001/F-0004 (spec-first,
-family-wide), not as a scattershot of per-repo issues.
+This was a **MESSAGE_SPEC underspecification** — the spec fixed the array `count` and
+defined over-count as INVALID (§3/§7) but not the *under*-count decode. **Now resolved:
+documentation#18 adopted the sparse fill-to-N reading** (see the "Adopted resolution"
+section above). Note the adopted answer is the *compact* one — decode fills to `N`
+internally, but the **canonical wire elides the trailing default run** (count 3, not
+5), so the managed camp's wire was already canonical and it is the **systems** camp
+that must change (trim trailing defaults on encode). This is the opposite of the
+"move the managed camp to pad-to-capacity" guess made when this finding was first
+written. Tracked like F-0001/F-0004 (spec-first, family-wide).
 
 ## Reproducers
 
