@@ -1,5 +1,9 @@
 # F-0008 — generated C++ fixed-capacity string/blob-array fill hangs (infinite loop / DoS) on an element index ≥ capacity
 
+> **✅ RESOLVED 2026-07-16 (sofabgen 0.17.1).** [generator#126](https://github.com/sofa-buffers/generator/issues/126)
+> fixed (commit `483c281`, "bound fixed-capacity string/blob-seq fill loop"). Re-verified:
+> `c6 0c c6 07` → `I` (terminates cleanly, no hang) on the rebuilt `cpp-c-cpp` driver.
+
 > **⚠️ CORRECTION 2026-07-15 — re-targeted corelib-c-cpp → generator (sofabgen).**
 > The first write-up blamed the corelib-c-cpp *decode*. That was wrong: the
 > corelib-c-cpp maintainer showed `sofab_istream_feed` structurally terminates and

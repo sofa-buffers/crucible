@@ -169,6 +169,20 @@ so the caches picked up the new corelibs. Results:
 
 Net open items: **F-0004** (spec §8 / gen#85) and **F-0008** (generator#126 / G-0011).
 
+**Fifth re-run 2026-07-16 — sofabgen 0.17.1: F-0008 + F-0009 verified FIXED.**
+Bumped `tools/sofabgen` to **0.17.1** (`fa909c7`), which lands both codegen fixes the
+mutator + cross-encode oracle found this session: **generator#126** (F-0008, commit
+`483c281` — bounded the fixed-capacity string/blob-seq fill loop) and **generator#128**
+(F-0009, commit `25d5853` — sized blob descriptor). Rebuilt + re-ran the full box:
+- ✅ **F-0008 fixed** — `c6 0c c6 07` → `I` (terminates, no hang) on `cpp-c-cpp`.
+- ✅ **F-0009 fixed** — short blobs round-trip in `c`, matching the family; the
+  sub-`maxlen` vectors rejoined the green cross-encode gate (`corpus/structured/`, now
+  **52 inputs, 0 divergences**).
+- ✅ Seed + limit-mode gates green. **crucible#16** (the F-0008 dispute) closed.
+
+Net open now: **F-0004** only (spec §8 / gen#85). All Crucible-found codegen bugs
+(G-0001…G-0012) are resolved.
+
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |

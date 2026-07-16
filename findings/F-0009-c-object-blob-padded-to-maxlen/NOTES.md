@@ -1,5 +1,10 @@
 # F-0009 — C object API pads a sub-`maxlen` blob to `maxlen` (and drops an all-zero blob)
 
+> **✅ RESOLVED 2026-07-16 (sofabgen 0.17.1).** [generator#128](https://github.com/sofa-buffers/generator/issues/128)
+> fixed (commit `25d5853`, sized blob descriptor — the C backend now emits `SOFAB_OBJECT_FIELD_BLOB_SIZED`
+> with a length companion). Re-verified: short blobs (`[0x01]`, `[0x00]`, `[0x00 0x01]`) round-trip in `c`
+> and match the family; the sub-`maxlen` vectors rejoined the green `corpus/structured/` gate.
+
 **Status:** open — **triaged & filed [generator#128](https://github.com/sofa-buffers/generator/issues/128)**
 (sofabgen C backend; codegen weakness **G-0012**). **Not** a corelib bug — the C
 corelib already provides the fix primitive (`SOFAB_OBJECT_FIELD_BLOB_SIZED`); the C
