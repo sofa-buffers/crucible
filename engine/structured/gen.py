@@ -128,11 +128,15 @@ def vectors():
     out.append(("str_unicode", {"str": "äöü\U0001F600"}))
     out.append(("str_max32", {"str": "x" * 32}))
     out.append(("str_ctrl", {"str": "a\tb\nc"}))
-    # blobs — only full-maxlen (4-byte) blobs here: a *sub*-maxlen blob is the
-    # F-0009 divergence (the C object API pads a blob to maxlen / drops all-zero),
-    # tracked as a finding rather than kept in this green cross-encode gate.
+    # blobs — full-maxlen and sub-maxlen. Sub-maxlen blobs were the F-0009
+    # divergence (the C object API padded to maxlen / dropped all-zero); fixed in
+    # sofabgen 0.17.1 (sized blob descriptor, generator#128), so they now round-trip
+    # and belong in the green cross-encode gate.
     out.append(("blob_full", {"blob": bytes([0x00, 0xFF, 0x7F, 0x80])}))
     out.append(("blob_full2", {"blob": bytes([0xDE, 0xAD, 0xBE, 0xEF])}))
+    out.append(("blob_short", {"blob": bytes([0x01])}))            # sub-maxlen (F-0009)
+    out.append(("blob_zero", {"blob": bytes([0x00])}))            # sub-maxlen, all-zero (F-0009)
+    out.append(("blob_short2", {"blob": bytes([0x00, 0x01])}))     # sub-maxlen, 2 bytes
     # a couple of dense combos
     out.append(("combo_scalars", {"u8": 200, "i8": -100, "u32": 12345, "i64": -99999}))
     out.append(("combo_nested", {"u32": 7, "f32": 2.5, "f64": -3.14159,
