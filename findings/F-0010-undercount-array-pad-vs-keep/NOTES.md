@@ -1,8 +1,8 @@
 # F-0010 — under-count fixed array round-trips to different values (pad-to-capacity vs keep-count)
 
 **Status:** open — **spec-underspecification** (candidate MESSAGE_SPEC clarification),
-family-wide, not a single-repo bug. Needs triage/decision like F-0001 (truncation)
-and F-0004 (UTF-8) before any per-impl issue.
+family-wide, not a single-repo bug. **Spec clause drafted + filed: [documentation#16](https://github.com/sofa-buffers/documentation/issues/16)**
+(docs/spec-proposals.md, Proposal 2). Like F-0001 (truncation) / F-0004 (UTF-8): resolved spec-first, then per-impl.
 **Found:** 2026-07-16 by the **cross-encode / structured-value oracle**, slice 2
 (the array value space, `engine/structured/gen.py`) — on its first run over arrays.
 **Axis:** accept_value (round-trip) — the same wire decodes to different values.
