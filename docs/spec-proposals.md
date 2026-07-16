@@ -10,6 +10,8 @@ which implementations it validates vs. requires to change.
 
 ## Proposal 1 — §7: INVALID takes precedence over INCOMPLETE
 
+**Filed:** [documentation#15](https://github.com/sofa-buffers/documentation/issues/15).
+
 **Motivated by:** F-0006 (corelib-py, fixed) and F-0007 (corelib-c-cpp, fixed). Both
 decoders reported **INCOMPLETE** for a message that was *both* malformed (a fixlen
 fp field whose declared length ≠ its exact width) *and* truncated, because they hit
@@ -56,6 +58,8 @@ gap.
 ---
 
 ## Proposal 2 — §5/§3: under-count of a fixed-count array
+
+**Filed:** [documentation#16](https://github.com/sofa-buffers/documentation/issues/16).
 
 **Motivated by:** F-0010. A fixed-count array (schema `count: N`) that receives
 `0 < M < N` elements on the wire round-trips to **different values** across the
@@ -108,6 +112,6 @@ reproducers become a regression gate once the family converges).
 
 ## Status
 
-Neither clause is filed upstream yet. When adopted in `MESSAGE_SPEC.md`, the
+Both clauses filed upstream (documentation#15, #16). When adopted in `MESSAGE_SPEC.md`, the
 corresponding corelib work is tracked per-impl (epic-style, like §7/#86 and §8/#85),
 and Crucible flips F-0007's residual note and F-0010 to green as the family converges.
