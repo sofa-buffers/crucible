@@ -237,7 +237,18 @@ count:N array instead of emitting it"):
   (Clause A fp-precedence, §7 over-count) all `R`.
 The 0.17.2→0.17.3 round-trip (F-0010 fix → go regression → go fix) closed within the day.
 
-Net open now: **F-0004** only (§8 UTF-8, gen#85). F-0010 + F-0011 resolved.
+**Fuzzer round 2026-07-16 (sofabgen 0.17.3) — 1 new finding, no crash.** Ran the C
+pacemaker (`scripts/fuzz.sh`, `FUZZ_TIME=180`: 2.49M execs @ 13.7k/s, **no crashes**,
+coverage saturated, +306 corpus units → 43.3k `corpus/interesting`). Clustered a 1-in-10
+sample (4326 inputs → 70 clusters). Dominant class (~66%): **F-0012** — corelib-ts's
+unknown-field **skip path** reports `INCOMPLETE` where the family reports `INVALID` for a
+malformed fixlen word + truncation (§5.2 precedence), filed **[corelib-ts#49](https://github.com/sofa-buffers/corelib-ts/issues/49)**.
+The rest is the precedence family (other impls' skip paths lenient/eager — the C family
+shows the same gap in cluster 5, follow-up) + **F-0004** (UTF-8) + soft reject_class /
+incomplete_value. Green gates unaffected (all malformed-input edge cases). See CLUSTERS.md.
+
+Net open now: **F-0004** (§8 UTF-8, gen#85), **F-0012** (corelib-ts skip precedence,
+corelib-ts#49). F-0010 + F-0011 resolved.
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |

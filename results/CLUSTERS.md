@@ -69,3 +69,26 @@ The three old `corpus/crashes/` artifacts (Jul 8: c-cpp ostream-overflow, java
 array-OOM, py-cython segfault) **no longer crash** any 0.16.1 driver — they now land
 in the R-vs-I precedence family. Regenerate the full picture with
 `CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh`.
+
+## Snapshot — 2026-07-16 (post sofabgen 0.17.3, ~43k-input corpus)
+
+Ran a fresh pacemaker round (`FUZZ_TIME=180`, 2.49M execs @ 13.7k/s, **no crashes**,
+coverage saturated at cov 566 — all REDUCE, +306 corpus units). Clustered a 1-in-10
+sample (**4326 inputs: 585 agree, 3741 diverge → 70 clusters**):
+
+| # | inputs | partition | root cause |
+|---|---|---|---|
+| 1 | **2475** | `I` **typescript** · `R invalid_msg` other 11 | **F-0012** — TS skip path defers a malformed fixlen word → INCOMPLETE (§5.2), [corelib-ts#49](https://github.com/sofa-buffers/corelib-ts/issues/49) |
+| 2 | 548 | all `I` · java `I`+value | **soft** — java emits an `incomplete_value` on `I` (verdict agrees) |
+| 3 | 115 | `R` (9) · `I` py×2, ts | precedence family (py+ts lenient on some construct) |
+| 4 | 70 | `I` (8) · `R` go,py · java `I`+value | precedence + **F-0004** (UTF-8 string, `efbfbd`) mix |
+| 5 | 49 | `R` (9) · `I` c, cpp-c-cpp, ts | precedence — **C-family skip path** lenient (analogue of F-0012) |
+| 6–12 | ~200 | mixed `I`/`R` + reject_class (usage/other/invalid_msg) | precedence family + **soft** reject-class splits |
+
+**Landscape:** the dominant class is now **F-0012** (TS skip-path precedence, ~66%). No
+new crash. The remaining clusters are the **INVALID-vs-INCOMPLETE precedence family**
+(different impls' skip paths lenient/eager on different malformed constructs — the C
+family shows the same skip-path gap in cluster 5, worth a follow-up after F-0012),
+**F-0004** (UTF-8 value split, still open / generator#85), and **soft** `reject_class` +
+`incomplete_value` differences (verdict agrees). The green gates (seeds, cross-encode,
+union, limit) stay green — these are all malformed-input edge cases the fuzzer reaches.
