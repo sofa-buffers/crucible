@@ -193,6 +193,22 @@ mutator + cross-encode oracle found this session: **generator#126** (F-0008, com
 Net open now: **F-0004** only (spec §8 / gen#85). All Crucible-found codegen bugs
 (G-0001…G-0012) are resolved.
 
+**Sixth re-run 2026-07-16 — corelib bump (`main` tips), full box green, no regression.**
+Pulled all 10 corelibs from origin/main; four advanced — **corelib-c-cpp** `635966d→98ab841`
+(docs), **corelib-cpp** `9fd4f78→24ee297` (docs), **corelib-rs** `03b44f6→7b453d8` (docs),
+**corelib-rs-no-std** `3e4a69f→29ddf42` (one real change: `perf(size)` varint push
+outlining, #44). sofabgen unchanged (0.17.1). Full box:
+- ✅ **Differential** (seeds) 6×12, **cross-encode** 69×12, **union** 11×12, **limit
+  mode** (arr/str/blb) 9-driver roster — **all 0 divergences**.
+- ✅ Resolved reproducers (F-0002/05/06/07/09) still all-agree.
+- The two reproducer-level splits that appear — F-0003 `array_overflow` (rust `I` vs
+  family `R`) and F-0008 `hang_min`/`hang_orig` (py `R usage` vs family `I`) — are the
+  **INVALID-vs-INCOMPLETE precedence** spec-hole (documentation#15) on the *original*
+  crash/hang reproducers, **not regressions**: proven by reverting corelib-rs/-rs-no-std
+  to pre-pull commits (identical `I`), and corelib-py was untouched by the pull. Recorded
+  as residual notes in the F-0003/F-0008 NOTES.
+- F-0001/F-0004/F-0010 reproducers show their documented spec-hole behavior unchanged.
+
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |
