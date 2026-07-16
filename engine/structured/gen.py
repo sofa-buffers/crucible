@@ -20,10 +20,10 @@ sequences always emitted) so its output equals each corelib's re-encoding — bu
 oracle only requires the 12 drivers to agree with *each other*, so a non-canonical
 (but valid) encoding would work too.
 
-Slice 1 covers the top-level scalars (u8..i64) and the `nested` struct
-(fp32/fp64/string/blob). The numeric arrays (id 100) and `string_array` (id 200) are
-emitted empty for now — their element encoding (the `_StrSeq` index form, cf F-0008)
-is the next slice. Writes raw wire (no length prefix) to corpus/structured/.
+Covers the top-level scalars (u8..i64), the `nested` struct (fp32/fp64/string/blob),
+the numeric arrays (id 100: u8..i64 + nested fp32/fp64) and the `string_array`
+(id 200, the index-keyed element sequence — F-0008's neighbourhood). Writes raw wire
+(no length prefix) to corpus/structured/.
 
 Usage: python3 engine/structured/gen.py [out_dir]   (default corpus/structured)
 """
@@ -68,14 +68,28 @@ def fp64(field_id, v):  return fixlen(field_id, FL_FP64, struct.pack("<d", v))
 def fstr(field_id, s):  return fixlen(field_id, FL_STRING, s.encode("utf-8"))
 def fblob(field_id, b): return fixlen(field_id, FL_BLOB, b)
 
-# The `arrays` (id 100) and `string_array` (id 200) sequences are always present in
-# the canonical form even when empty; slice 1 emits them empty, verbatim.
-EMPTY_ARRAYS = bytes.fromhex("a606560707")   # arrays{ nested{} }
-EMPTY_STRARR = bytes.fromhex("c60c07")        # string_array{}
+# array wire types (low 3 bits of a field header)
+WT_ARR_U, WT_ARR_S, WT_ARR_FIX = 3, 4, 5
+
+def arr_u(field_id, vals):   # unsigned: header, count, count varints
+    return hdr(field_id, WT_ARR_U) + varint(len(vals)) + b"".join(varint(v) for v in vals)
+
+def arr_s(field_id, vals):   # signed: header, count, count zigzag varints
+    return hdr(field_id, WT_ARR_S) + varint(len(vals)) + b"".join(varint(zigzag(v)) for v in vals)
+
+def arr_fp(field_id, vals, fmt, subtype):  # fixlen array: header, count, fixlen-word, payload
+    width = 4 if fmt == "<f" else 8
+    word = varint((width << 3) | subtype)
+    payload = b"".join(struct.pack(fmt, v) for v in vals)
+    return hdr(field_id, WT_ARR_FIX) + varint(len(vals)) + word + payload
 
 # top-level scalar fields: (id, signed?)
 SCALARS = [("u8", 0, False), ("i8", 1, True), ("u16", 2, False), ("i16", 3, True),
            ("u32", 4, False), ("i32", 5, True), ("u64", 6, False), ("i64", 7, True)]
+
+# numeric array fields inside the `arrays` struct (id 100): (msg-key, id, signed?)
+NUM_ARRAYS = [("au8", 0, False), ("ai8", 1, True), ("au16", 2, False), ("ai16", 3, True),
+              ("au32", 4, False), ("ai32", 5, True), ("au64", 6, False), ("ai64", 7, True)]
 
 def encode(msg: dict) -> bytes:
     """msg: {scalar-name: int, 'f32'|'f64': float, 'str': str, 'blob': bytes}.
@@ -92,7 +106,25 @@ def encode(msg: dict) -> bytes:
     if msg.get("str", ""):   out += fstr(2, msg["str"])
     if msg.get("blob", b""): out += fblob(3, msg["blob"])
     out += bytes([WT_SEQ_END])
-    out += EMPTY_ARRAYS + EMPTY_STRARR
+    # arrays struct (id 100) — always emitted; each array omitted when empty
+    out += hdr(100, WT_SEQ_BEG)
+    for name, fid, signed in NUM_ARRAYS:
+        vals = msg.get(name)
+        if vals:
+            out += arr_s(fid, vals) if signed else arr_u(fid, vals)
+    # arrays.nested (id 10) — always emitted; fp arrays inside
+    out += hdr(10, WT_SEQ_BEG)
+    if msg.get("afp32"): out += arr_fp(0, msg["afp32"], "<f", FL_FP32)
+    if msg.get("afp64"): out += arr_fp(1, msg["afp64"], "<d", FL_FP64)
+    out += bytes([WT_SEQ_END])   # close arrays.nested
+    out += bytes([WT_SEQ_END])   # close arrays
+    # string_array (id 200) — a sequence of index-keyed fixlen-string elements;
+    # a default (empty) element is omitted (stored at its wire index on decode).
+    out += hdr(200, WT_SEQ_BEG)
+    for i, sv in enumerate(msg.get("strarr", [])):
+        if sv:
+            out += fstr(i, sv)
+    out += bytes([WT_SEQ_END])
     return bytes(out)
 
 def _is_special(v):
@@ -137,10 +169,36 @@ def vectors():
     out.append(("blob_short", {"blob": bytes([0x01])}))            # sub-maxlen (F-0009)
     out.append(("blob_zero", {"blob": bytes([0x00])}))            # sub-maxlen, all-zero (F-0009)
     out.append(("blob_short2", {"blob": bytes([0x00, 0x01])}))     # sub-maxlen, 2 bytes
-    # a couple of dense combos
+    # --- slice 2: the array value space (arrays id 100, string_array id 200) ---
+    # numeric arrays: full-count with 1s, and boundary values
+    out.append(("arr_u8_ones", {"au8": [1, 2, 3, 4, 5]}))
+    out.append(("arr_u8_max", {"au8": [U["u8"]] * 5}))
+    out.append(("arr_i8_neg", {"ai8": [-1, -2, -3, -4, -5]}))
+    out.append(("arr_i8_bounds", {"ai8": [SMIN["i8"], SMAX["i8"], 0, 1, -1]}))
+    out.append(("arr_u32_seq", {"au32": [1, 2, 3, 4, 5]}))
+    out.append(("arr_u64_max", {"au64": [U["u64"]] * 5}))
+    out.append(("arr_i64_bounds", {"ai64": [SMIN["i64"], SMAX["i64"], 0, 1, -1]}))
+    # NB: an *under*-count array (0 < wire count < schema count) re-encodes
+    # divergently (F-0010: fixed-storage langs pad to capacity, dynamic langs keep
+    # the wire count) — kept OUT of this green gate; reproducers in findings/F-0010.
+    out.append(("arr_empty", {"au8": []}))          # count 0 (explicit empty) — agrees
+    # fp arrays (arrays.nested): specials in both widths
+    out.append(("arr_fp32_specials", {"afp32": [0.0, 1.0, -1.0, float("inf"), float("nan")]}))
+    out.append(("arr_fp64_specials", {"afp64": [float("-inf"), 2.5, -3.5, 1e308, 0.0]}))
+    # string_array (id 200): the index-keyed element sequence (F-0008's neighbourhood)
+    out.append(("sa_full", {"strarr": ["one", "two", "three", "four", "five"]}))
+    out.append(("sa_unicode", {"strarr": ["äöü", "日本語", "x", "y", "z"]}))
+    out.append(("sa_partial", {"strarr": ["only-first"]}))          # element at index 0
+    out.append(("sa_sparse", {"strarr": ["a", "", "c", "", "e"]}))  # empty middle elements omitted
+    out.append(("sa_last_index", {"strarr": ["", "", "", "", "idx4"]}))  # only the max valid index (4)
+    out.append(("sa_maxlen", {"strarr": ["Z" * 64]}))              # maxlen-64 string element
+    # dense combos across arrays + scalars + nested
     out.append(("combo_scalars", {"u8": 200, "i8": -100, "u32": 12345, "i64": -99999}))
     out.append(("combo_nested", {"u32": 7, "f32": 2.5, "f64": -3.14159,
                                   "str": "Sofab ✓", "blob": bytes([0xde, 0xad, 0xbe, 0xef])}))
+    out.append(("combo_arrays", {"au8": [1, 2, 3, 4, 5], "ai32": [-1, 2, -3, 4, -5],
+                                  "afp64": [1.5, -2.5, 0.0, float("inf"), float("nan")],
+                                  "strarr": ["alpha", "beta", "gamma", "delta", "epsilon"]}))
     return out
 
 def main():

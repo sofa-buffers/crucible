@@ -26,9 +26,10 @@ corelib-c-cpp#69, corelib-cpp#22). Crucible's job is to catalog and **verify** t
 - [x] **Cross-encode oracle** (the 3rd oracle) — `engine/structured/gen.py` +
       `scripts/cross-encode.sh` over `corpus/structured/`. Realized via the
       byte-canonical invariant (all encoders identical → agreement = "encode in A,
-      decode in B"). Found **F-0009** on first run. Follow-up: extend the value
-      generator to the numeric arrays (id 100) + `string_array` (id 200) — slice 1
-      covers scalars + the `nested` struct.
+      decode in B"). Found **F-0009** (slice 1) and **F-0010** (slice 2, under-count
+      array). Slice 2 now covers the numeric arrays (id 100) + `string_array` (id 200)
+      value space; the green gate is 69 inputs. Next: a `union` schema (the one wire
+      feature `probe` lacks).
 - [ ] **Union corpus / schema**: add a schema definition containing a `union` — the
       one wire feature the full-scale `probe` message lacks (§4.2).
 - [ ] **Finer reject-class taxonomy** in `oracle/canonical.md` + the drivers +
