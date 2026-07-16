@@ -20,6 +20,11 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   differential over what it found.
 - `CLUSTER=1 ./scripts/run.sh` — reduce divergences to root-cause clusters
   (`oracle/cluster.py`); inventory in `results/CLUSTERS.md`.
+- `./scripts/cross-encode.sh` — the 3rd oracle: generate valid, value-rich `probe`
+  messages (`corpus/structured/`) and run the round-trip + decode-agreement oracle.
+- `./scripts/run-union.sh` — the **union suite**: points the oracles at
+  `schema/probe-union.sofab.yaml` (a `probe` carrying a 4-variant union), the one
+  wire feature the main `probe` lacks. 11 seeds × 12 drivers, 0 divergences.
 
 ## Current state
 - **Phase 1–2 done:** 12 drivers / 10 corelibs green (c, go, rust-std, rust-nostd,
@@ -32,6 +37,11 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   corelib gains INCOMPLETE; crucible#8); drivers are schema-agnostic, folds in the
   round-trip oracle; schema scaled to the **full-scale** message; **C pacemaker
   active** (~41k exec/s); comparator is **crash-isolating**; **auto-clustering**.
+- **Union feature covered** (2026-07-16): `schema/probe-union.sofab.yaml` +
+  `corpus/union/` (11 seeds) + `scripts/run-union.sh`. All 12 backends generate the
+  union and agree on every variant, the one-of encoding, and the two malformed-union
+  edge cases (two members set → all re-encode both in id order; unknown member id →
+  all skip → empty union). Green, no finding — the last untested wire feature.
 - Remaining Phase 3 / Phase 4: see [`../TODO.md`](../TODO.md).
 
 ## Key design points

@@ -22,7 +22,11 @@ CC="${CC:-cc}"
 
 echo "==> [c] generating probe types from schema" >&2
 rm -rf "$GEN"
-"$SOFABGEN" --lang c --in "$ROOT/schema/probe.sofab.yaml" --out "$GEN" >&2
+# SCHEMA overrides the default full-scale probe (e.g. schema/probe-union.sofab.yaml
+# for the union suite); the driver is schema-agnostic (round-trip form), so only the
+# generated types change.
+SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
+"$SOFABGEN" --lang c --in "$SCHEMA" --out "$GEN" >&2
 
 mkdir -p "$OUT"
 SAN=""
