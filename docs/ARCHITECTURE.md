@@ -25,6 +25,7 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 |---|---|---|
 | `scripts/bootstrap.sh` | built | Symlinks sibling `../corelib-*` when present, else clones; sources sofabgen from a sibling arena/generator or clones+builds. |
 | `schema/probe.sofab.yaml` | built | **Full-scale** message (Phase 3): 8 scalar widths, fp32/fp64, string, blob, 8 numeric arrays, nested fp arrays, string array. Still keyed `probe` (stable type name). |
+| `schema/probe-union.sofab.yaml` | built | `probe` message carrying a **union** (`choice`: `as_u16`/`as_i32`/`as_text`/`as_blob`) between a scalar `tag` and `trailer` — the one wire feature the full-scale `probe` lacks. Drives `scripts/run-union.sh`. |
 | `drivers/common/CONTRACT.md` | built | Persistent length-prefixed protocol + canonical output. |
 | `drivers/c/` (pacemaker) | built | gcc replay driver (ASan/UBSan) verified; libFuzzer front-end present, `#ifdef CRUCIBLE_LIBFUZZER`, built in devcontainer (no clang in bare workspace). |
 | `drivers/go/` | built | Replay driver + native `FuzzProbe`; builds against vendored corelib-go via `replace`. |
@@ -32,6 +33,7 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `oracle/comparator.py` | built | N-way canonical diff, policy-aware, no external deps; parses `A`/`I`/`R`. **Crash- and hang-isolating:** a per-driver wall-clock budget (`--timeout`, default `max(30s, 0.25s × corpus)`; `TIMEOUT=` env via the scripts) via stdout-to-tempfile, so an adversarial input that hangs a driver is localized + reported `[TIMEOUT]` (a DoS finding), not a wedged run. |
 | `oracle/policy.yaml` | built | Permissive Phase-1 policy (verdict/accept_value hard, incomplete_value/reject_class soft). |
 | `scripts/run.sh` | built | Build all drivers → differential compare over a corpus (crash-isolating). |
+| `scripts/run-union.sh` | built | Union suite: `SCHEMA=schema/probe-union.sofab.yaml CORPUS=corpus/union run.sh` — points the differential + round-trip oracles at a `probe` message carrying a 4-variant union. Drivers are schema-agnostic (round-trip form), so only the generated types change; `drivers/c/build.sh` made SCHEMA-aware to match the other 8. 11 seeds × 12 drivers, 0 divergences — the `union` wire feature `probe` lacked, now covered. |
 | `scripts/run-limits.sh` | built | Limit-mode loop (crucible#10 / generator#102): heap roster built from `schema/probe-dyn.sofab.yaml` with identical `max_dyn_*` caps, compared per dimension over `corpus/limits/{arr,str,blb}`. Full heap roster (incl. cpp) in all three dimensions since sofabgen 0.16.1 fixed G-0009. |
 | `scripts/fuzz.sh` | built | The C pacemaker: build the libFuzzer target (clang) + run + grow corpus/interesting. |
 | `oracle/cluster.py` | built | Groups divergences by camp-partition into root causes (`CLUSTER=1 ./scripts/run.sh`); 256 divergences → 47 clusters. |
@@ -309,7 +311,12 @@ has no `LimitExceeded`).
   the drivers reference no fields. Loop green across all 12 drivers on 6
   full-scale seeds. Kept the message key `probe` so generated type names are
   stable. Unions are the one full-scale feature not in this message (the family's
-  full-scale example has none); add a union corpus def in a later Phase-3 step.
+  full-scale example has none) — **covered separately** via
+  `schema/probe-union.sofab.yaml` + `scripts/run-union.sh` rather than folded into
+  `probe` (keeping the main message's type names stable). The schema-agnostic
+  round-trip form pays off again: pointing the oracles at the union schema needs
+  only a rebuild, no driver edits. All 12 backends generate + agree on every
+  variant and the one-of/unknown-member edge cases — green, no finding.
 
 ### 2026-07-08b — absent/default/value collapsed to two states
 - **PLAN says:** canonical form distinguishes *absent* / *present-but-default* /

@@ -30,8 +30,14 @@ corelib-c-cpp#69, corelib-cpp#22). Crucible's job is to catalog and **verify** t
       array). Slice 2 now covers the numeric arrays (id 100) + `string_array` (id 200)
       value space; the green gate is 69 inputs. Next: a `union` schema (the one wire
       feature `probe` lacks).
-- [ ] **Union corpus / schema**: add a schema definition containing a `union` — the
-      one wire feature the full-scale `probe` message lacks (§4.2).
+- [x] **Union corpus / schema** — `schema/probe-union.sofab.yaml` (a `probe` message
+      with a 4-variant union: `as_u16` / `as_i32` / `as_text` / `as_blob`, plus a scalar
+      tag + trailer around it), `corpus/union/` (11 seeds), `scripts/run-union.sh`. Points
+      the differential + round-trip oracles at the union schema; drivers are schema-agnostic
+      so no driver code changes (`drivers/c/build.sh` made SCHEMA-aware to match the other 8).
+      **All 12 backends generate + agree** on every variant, the one-of encoding, a wire with
+      **two** members set, and an **unknown** member id — green, no finding. The one wire
+      feature `probe` lacked is now covered (§4.2).
 - [ ] **Finer reject-class taxonomy** in `oracle/canonical.md` + the drivers +
       comparator. The coarse `invalid_msg` hid *why* impls rejected (the F-0004
       lesson). Distinguish e.g. truncated / bad-varint / bad-tag / depth / bad-utf8,

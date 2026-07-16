@@ -1,0 +1,19 @@
+# Crucible union probe — a message whose payload includes a `union` (the one wire
+# feature the full-scale `probe` message lacks). Keyed `probe` so generated type
+# names stay stable and the schema-agnostic round-trip drivers need no changes.
+version: 1
+messages:
+  probe:
+    summary: A small message exercising a union (tagged variant) field.
+    payload:
+      tag: { id: 0, type: u32 }
+      choice:
+        id: 1
+        type: union
+        default_id: 0
+        oneof:
+          as_u16:  { id: 0, type: u16 }
+          as_i32:  { id: 1, type: i32 }
+          as_text: { id: 2, type: string, maxlen: 16 }
+          as_blob: { id: 3, type: blob,   maxlen: 8 }
+      trailer: { id: 2, type: u8 }

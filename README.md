@@ -115,7 +115,8 @@ they feed and how they build. Each is one command.
 |---|---|---|
 | [Differential loop](#1-differential-loop-scriptsrunsh) | `./scripts/run.sh` | the core gate — accept/reject + value divergence over a corpus |
 | [Cross-encode / structured](#2-cross-encode--structured-values-scriptscross-encodesh) | `./scripts/cross-encode.sh` | encoder/decoder asymmetry on **valid, value-rich** messages |
-| [Limit mode](#3-limit-mode-scriptsrun-limitssh) | `./scripts/run-limits.sh` | receiver-side decode caps (`max_dyn_*`) on unbounded fields |
+| [Union suite](#3-union-suite-scriptsrun-unionsh) | `./scripts/run-union.sh` | the `union` (tagged-variant) wire feature — variants, one-of, unknown members |
+| [Limit mode](#4-limit-mode-scriptsrun-limitssh) | `./scripts/run-limits.sh` | receiver-side decode caps (`max_dyn_*`) on unbounded fields |
 | [Coverage pacemaker (fuzz)](#4-coverage-pacemaker--fuzzing-scriptsfuzzsh) | `./scripts/fuzz.sh` | crashes, hangs, and deep-path divergence via coverage-guided + grammar-aware mutation |
 | [Clustering](#5-clustering-cluster1) | `CLUSTER=1 ./scripts/run.sh` | reduce a divergence firehose to root causes |
 
@@ -155,7 +156,24 @@ The value vectors live in `engine/structured/gen.py` (a small reference encoder 
 `schema/probe.sofab.yaml`). On its first run this suite found **F-0009** (the C
 object API pads a sub-`maxlen` blob to `maxlen` / drops an all-zero blob).
 
-### 3. Limit mode (`scripts/run-limits.sh`)
+### 3. Union suite (`scripts/run-union.sh`)
+
+The `probe` message covers every wire feature except one — the **union** (a
+tagged/​discriminated variant: a field that holds exactly one of several members).
+This suite points the differential + round-trip oracles at
+`schema/probe-union.sofab.yaml` (a message with a 4-variant union). Because the
+drivers are schema-agnostic, no driver code changes — they are just rebuilt against
+the union schema.
+
+```sh
+./scripts/run-union.sh                 # build all 12 drivers on the union schema, differential over corpus/union
+```
+
+It exercises each variant, the tag/​trailer around the union, and the union failure
+modes (a wire with **two** members set, an **unknown** member id). The whole family
+agrees on all of them — the last untested wire feature, confirmed consistent.
+
+### 4. Limit mode (`scripts/run-limits.sh`)
 
 Exercises the receiver-side decode caps (`max_dyn_array_count` /
 `max_dyn_string_len` / `max_dyn_blob_len`) that bind schema-*unbounded* fields. It
@@ -168,7 +186,7 @@ cap) vs `L` (LIMIT_EXCEEDED, over cap) is a real verdict finding.
 LIMITS=16 ./scripts/run-limits.sh      # different cap
 ```
 
-### 4. Coverage pacemaker / fuzzing (`scripts/fuzz.sh`)
+### 5. Coverage pacemaker / fuzzing (`scripts/fuzz.sh`)
 
 The discovery engine. Builds the C driver's libFuzzer front-end (clang:
 `-fsanitize=fuzzer,address,undefined`) and runs it with a **structure-aware
@@ -192,7 +210,7 @@ cc -std=c11 -fsanitize=address,undefined -Iengine/mutator \
    engine/mutator/test_mutator.c engine/mutator/sofab_mutator.c -o /tmp/mut && /tmp/mut
 ```
 
-### 5. Clustering (`CLUSTER=1`)
+### 6. Clustering (`CLUSTER=1`)
 
 Over a big fuzzed corpus the comparator emits one row per (input, driver-pair) —
 thousands of rows for a handful of real bugs. Clustering groups them by
