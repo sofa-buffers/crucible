@@ -122,3 +122,18 @@ but on this input Zig rejects.) This crossed from the **crash** axis to the
 **verdict** axis and is **not covered by any open generator issue**. Next step is a
 triage decision: is rejecting the over-long array the specified behavior (→ Rust
 codegen bug, reopen/new issue) or legal leniency (→ `policy.yaml` allow-entry)?
+
+## Residual note — original `array_overflow.bin` is a *precedence* case (2026-07-16)
+
+The finding is resolved on a **clean** over-count array (FINDINGS.md: `8>5` non-truncated
+→ all 12 `R`). The kept **original** reproducer `array_overflow.bin` is additionally
+**truncated**, so on it the family splits on the INVALID-vs-INCOMPLETE *precedence*
+axis, **not** the over-count axis: `rust-std`/`rust-nostd` → `I` (lazy: runs out of
+bytes first), the other 10 → `R` (eager: reject the malformed construct). This is the
+same spec-hole as **[documentation#15](https://github.com/sofa-buffers/documentation/issues/15)**
+(Proposal 1, §7 precedence) — whose clause lists "an array count that violates the
+schema" as a construct that must be `INVALID` regardless of truncation. **Re-confirmed
+pre-existing (not a regression) on the 2026-07-16 corelib bump:** reverting corelib-rs
++ corelib-rs-no-std to their pre-pull commits (`03b44f6`/`3e4a69f`) yields the *same*
+`I` on this input — the rust tips changed nothing here. Not a new finding; a data point
+for documentation#15. (Clean-input regression gate stays green.)

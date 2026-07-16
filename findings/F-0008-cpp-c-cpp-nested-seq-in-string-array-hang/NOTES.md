@@ -129,3 +129,17 @@ unaffected but the same guard is harmless there. (Earlier, wrong direction —
 "corelib-c-cpp read-sequence must always advance" — struck: the corelib is fine.)
 Reference for the intended behavior: the pure-C object API and pure-C++ corelib, which
 both return INCOMPLETE here.
+
+## Residual note — py is the eager rejecter here (precedence), 2026-07-16
+
+Hang resolved (0.17.1): `c6 0c c6 07` / `hang_orig` **terminate** — c, cpp, cpp-c-cpp,
+go, rust×2, java, ts, cs, zig all return `I`. The kept reproducers do, however, show a
+verdict split on the **INVALID-vs-INCOMPLETE precedence** axis: `py-cython`/`py-pure`
+return `R usage` (eager: a nested `SEQUENCE_START` where a string-array element is
+expected is malformed regardless of what follows), the other 10 return `I` (lazy: bytes
+end first). Mirror image of F-0006/F-0007 (there py was the *lazy* one). Same spec-hole
+as **[documentation#15](https://github.com/sofa-buffers/documentation/issues/15)**
+(Proposal 1, §7 precedence). **Not caused by the 2026-07-16 corelib bump** — corelib-py
+was untouched by that pull (still `0e15785`) and sofabgen is unchanged (0.17.1), so the
+py driver is byte-identical. Not a new finding; a data point for documentation#15. Kept
+out of the green gates like the other reproducers.
