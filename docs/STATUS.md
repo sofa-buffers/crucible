@@ -209,6 +209,23 @@ outlining, #44). sofabgen unchanged (0.17.1). Full box:
   as residual notes in the F-0003/F-0008 NOTES.
 - F-0001/F-0004/F-0010 reproducers show their documented spec-hole behavior unchanged.
 
+**Seventh re-run 2026-07-16 — sofabgen 0.17.2: F-0010 fixed for 11/12, NEW go regression (F-0011).**
+Built sofabgen from generator `v0.17.2` (`d8d35c2`) and pulled corelibs — only
+**corelib-c-cpp** advanced (`98ab841→390f237`, carries corelib-c-cpp#87, the C-path
+half of the F-0010 fix). 0.17.2 lands **generator#136** (my F-0010 issue, PR #137):
+- ✅ **F-0010 resolved for the trim/pad question, all 12 backends** — R1/R2 reproducers
+  (`u32_count3`, `i16_count1`) now round-trip to the canonical **count 3 / count 1**; the
+  systems camp trims the trailing default run (C via corelib-c-cpp#87).
+- ✅ **Union** (11×12) and **limit mode** (dynamic arrays, 9-driver roster) **green**.
+- ❌ **Seed gate (5/6) + entire cross-encode corpus RED — go only.** The same 0.17.2 go
+  changeset (`684656d`) over-corrected: an **all-default `count:N` array field is emitted
+  explicitly** (`<hdr> 00`) instead of omitted (§2). New finding **F-0011**, filed
+  **[generator#139](https://github.com/sofa-buffers/generator/issues/139)**. go-only,
+  `count:N`-array-specific (union + dynamic-array limit mode stay green; go's under-count
+  *trim* is itself correct). **Staying on 0.17.2** (F-0010 value) with the gates red-on-go
+  until generator#139 lands.
+
+Net open now: **F-0004** (§8 UTF-8, gen#85), **F-0011** (go, gen#139). F-0010 resolved.
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |

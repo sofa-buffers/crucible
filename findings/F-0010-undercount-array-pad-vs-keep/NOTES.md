@@ -1,13 +1,22 @@
 # F-0010 — under-count fixed array round-trips to different values (pad-to-capacity vs keep-count)
 
-**Status:** **spec-RESOLVED, codegen fix filed — [generator#136](https://github.com/sofa-buffers/generator/issues/136)**
-(family-wide convergence work, not a single-repo bug). The clause was **adopted
+**Status:** ✅ **RESOLVED in sofabgen 0.17.2** ([generator#136](https://github.com/sofa-buffers/generator/issues/136),
+PR #137) — the trim/pad question is settled family-wide. The clause was **adopted
 upstream — [documentation#18](https://github.com/sofa-buffers/documentation/pull/18)**
 merged (`ac621db`, §3 + §5.1), closing [documentation#16](https://github.com/sofa-buffers/documentation/issues/16).
 Like F-0001 (truncation) / F-0004 (UTF-8): resolved spec-first, then per-impl.
 **Attribution settled: codegen (sofabgen), not corelib** — both fixes need schema
 knowledge (`N`, fixed-vs-dynamic) the schema-agnostic corelib array writers don't
 have; the corelibs faithfully write `count = len(passed slice)` and are correct.
+
+**Re-verified 2026-07-16 (sofabgen 0.17.2):** the R1/R2 reproducers (`u32_count3`,
+`i16_count1`) now round-trip to the **canonical count 3 / count 1 on all 12 drivers** —
+the systems camp (c, rust×2, cpp, cpp-c-cpp, zig) now trims the trailing default run;
+C got its half via **corelib-c-cpp#87** (`937f60b`). ⚠️ The **same go changeset**
+introduced a *separate* regression — an all-default `count:N` array field emitted
+explicitly instead of omitted (§2) — split out as **[F-0011](../F-0011-go-fixed-count-array-not-omitted/NOTES.md)**
+/ [generator#139](https://github.com/sofa-buffers/generator/issues/139). That is not the
+under-count value bug: go trims the *populated* array correctly here.
 
 ## Adopted resolution (documentation#18): sparse **fill-to-N**, elide the trailing default run
 
