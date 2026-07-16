@@ -225,7 +225,19 @@ half of the F-0010 fix). 0.17.2 lands **generator#136** (my F-0010 issue, PR #13
   *trim* is itself correct). **Staying on 0.17.2** (F-0010 value) with the gates red-on-go
   until generator#139 lands.
 
-Net open now: **F-0004** (§8 UTF-8, gen#85), **F-0011** (go, gen#139). F-0010 resolved.
+**Eighth re-run 2026-07-16 — sofabgen 0.17.3: F-0011 fixed, FULL BOX GREEN.**
+Built sofabgen from generator `v0.17.3` (`0bc18e1`); corelibs unchanged (pure go codegen
+fix). 0.17.3 lands **generator#139** (commit `0713b94`, "fix(go): omit an all-default
+count:N array instead of emitting it"):
+- ✅ **F-0011 resolved** — `empty_arrays` → all 12 omit the all-default arrays
+  (`A 5607a606560707c60c07`); `undercount_siblings` → all 12 agree.
+- ✅ **Full box green:** differential (seeds) 6×12, cross-encode 69×12, union 11×12, limit
+  mode (arr/str/blb) 9-driver roster — **all 0 divergences**.
+- ✅ **F-0010 stays canonical** (count 3 / count 1 on all 12); compliance spot-checks
+  (Clause A fp-precedence, §7 over-count) all `R`.
+The 0.17.2→0.17.3 round-trip (F-0010 fix → go regression → go fix) closed within the day.
+
+Net open now: **F-0004** only (§8 UTF-8, gen#85). F-0010 + F-0011 resolved.
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |

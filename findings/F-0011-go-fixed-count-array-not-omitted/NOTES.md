@@ -1,7 +1,12 @@
 # F-0011 — go emits an all-default `count:N` array field instead of omitting it (§2)
 
-**Status:** open — **corelib-go / codegen regression in sofabgen 0.17.2**, filed
-**[generator#139](https://github.com/sofa-buffers/generator/issues/139)**. go-only.
+**Status:** ✅ **RESOLVED in sofabgen 0.17.3** ([generator#139](https://github.com/sofa-buffers/generator/issues/139),
+commit `0713b94` "fix(go): omit an all-default count:N array instead of emitting it").
+A short-lived **codegen regression in sofabgen 0.17.2** (go-only), filed & fixed same day.
+**Re-verified 2026-07-16 (sofabgen 0.17.3):** `empty_arrays.bin` → all 12 drivers emit
+`A 5607a606560707c60c07` (all-default arrays omitted); `undercount_siblings.bin` → all 12
+emit `A 5607a6062303070809560707c60c07` (u32 count 3, siblings omitted). Full box green
+again (seeds 6×12, cross-encode 69×12, union 11×12, limit mode) — see STATUS eighth re-run.
 **Found:** 2026-07-16, on the sofabgen 0.17.2 bump — the seed gate (5/6) and the whole
 cross-encode corpus went red with go as the sole outlier.
 **Axis:** accept_value (round-trip / canonical form).
