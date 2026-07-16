@@ -142,6 +142,9 @@ reproducers become a regression gate once the family converges).
     access would. Recorded in F-0010.
   See [`../findings/F-0010-undercount-array-pad-vs-keep/NOTES.md`](../findings/F-0010-undercount-array-pad-vs-keep/NOTES.md).
 
-Attribution (systems-camp encode: sofabgen codegen vs corelib array serializer) needs
-per-backend tracing before an issue is filed — the F-0008 lesson. F-0004's §8 UTF-8
-opt-in check remains unimplemented family-wide (generator#85).
+Attribution traced (the F-0008 lesson applied): **codegen, not corelib** — the
+schema-agnostic corelib array writers only write `count = len(passed slice)` and are
+correct; both fixes need `N` / fixed-vs-dynamic, which live only in generated code.
+Filed **[generator#136](https://github.com/sofa-buffers/generator/issues/136)** with
+the R1/R2 reproducers. F-0004's §8 UTF-8 opt-in check remains unimplemented family-wide
+(generator#85).

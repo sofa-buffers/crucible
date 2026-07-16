@@ -1,9 +1,13 @@
 # F-0010 — under-count fixed array round-trips to different values (pad-to-capacity vs keep-count)
 
-**Status:** **spec-RESOLVED, corelibs not yet compliant** (family-wide convergence
-work, not a single-repo bug). The clause was **adopted upstream — [documentation#18](https://github.com/sofa-buffers/documentation/pull/18)**
+**Status:** **spec-RESOLVED, codegen fix filed — [generator#136](https://github.com/sofa-buffers/generator/issues/136)**
+(family-wide convergence work, not a single-repo bug). The clause was **adopted
+upstream — [documentation#18](https://github.com/sofa-buffers/documentation/pull/18)**
 merged (`ac621db`, §3 + §5.1), closing [documentation#16](https://github.com/sofa-buffers/documentation/issues/16).
 Like F-0001 (truncation) / F-0004 (UTF-8): resolved spec-first, then per-impl.
+**Attribution settled: codegen (sofabgen), not corelib** — both fixes need schema
+knowledge (`N`, fixed-vs-dynamic) the schema-agnostic corelib array writers don't
+have; the corelibs faithfully write `count = len(passed slice)` and are correct.
 
 ## Adopted resolution (documentation#18): sparse **fill-to-N**, elide the trailing default run
 
@@ -37,9 +41,16 @@ not count 5 — the compact form, same sparse principle as omitting a default sc
   **A genuine limitation of the round-trip oracle**, worth a dedicated element-access
   probe if we want to gate the managed camp's decode side.
 
-Attribution of the systems-camp encode fix — sofabgen codegen (the generated encoder
-passing all N) vs the corelib array serializer — needs per-backend tracing before
-filing (the F-0008 lesson).
+Attribution of the systems-camp encode fix was traced (the F-0008 lesson applied):
+the corelib array writers only write `count = len(passed slice)` (C
+`sofab_ostream_write_array_of_*` gets the count as `field->size/element_size`; Rust
+`write_array_unsigned(id, data: &[T])` writes `data.len()`; Go `WriteUnsignedArray`
+writes `len(slice)`) and are **correct**. Both fixes need schema knowledge the corelib
+lacks — `N` for decode-fill, and fixed-vs-dynamic for encode-trim (a *dynamic* array
+must keep trailing defaults) — so it is a **codegen** change. Filed as
+**[generator#136](https://github.com/sofa-buffers/generator/issues/136)** with R1/R2
+reproducers + per-backend scope (encode-trim: all backends, observably wrong in the 6
+fixed-storage ones; decode-fill-to-N: the 5 growable backends).
 **Found:** 2026-07-16 by the **cross-encode / structured-value oracle**, slice 2
 (the array value space, `engine/structured/gen.py`) — on its first run over arrays.
 **Axis:** accept_value (round-trip) — the same wire decodes to different values.
