@@ -286,9 +286,33 @@ valid-skip controls stay `A`/`I`. (cs/go moved on docs/deps/test only.) PR #39 (
 write-up) had already merged; the overindex finding it collided with was renumbered
 **F-0012 → F-0013**.
 
-Net open now: **F-0004** (§8 UTF-8, gen#85) and **F-0013** (G-0013 over-index, filed
-**[generator#142](https://github.com/sofa-buffers/generator/issues/142)**). F-0010 + F-0011
-+ F-0012 resolved.
+**Eleventh change 2026-07-17 — full box green; 1 h fuzzer round; F-0001 closed, F-0014 opened.**
+Box (all 5 suites incl. the new regression gate) **green** on current tips. Ran the pacemaker
+for **1 hour** (143 M execs @ 39.9k/s): **no new crash**, coverage saturated (cov 566, all
+REDUCE), corpus → 44.1k. Results:
+- ✅ **corelib-ts#49's effect measured:** the sample divergence rate fell **86% → 32%** and the
+  dominant cluster (TS skip-path precedence, 66%) is **gone**.
+- ✅ **F-0001 marked resolved** — its target ("every impl emits `I`") has been met since
+  2026-07-13; re-verified. Its NOTES had been badly stale ("still diverging, 7 vs 5",
+  2026-07-08). The residual java `incomplete_value` on `I` is the **soft** axis, not F-0001.
+- ✅ **F-0004 config audit contributed upstream** ([gen#85 comment](https://github.com/sofa-buffers/generator/issues/85#issuecomment-5000859662)):
+  **no corelib exposes the §6.4 opt-in toggle** — go+py validate unconditionally, the other 8
+  never do, so 8 of 10 **cannot reach the conformance-ON configuration** §8 requires. That is
+  the blocking half of that epic.
+- 🆕 **F-0014 (new):** with #49's cluster gone, the residual precedence clusters (149 py / 97
+  c-family / 94 ts) turned out to be **one class on the array path** — the `ARRAY_FIXLEN`
+  element word isn't (fully) validated at the header. Three minimal isolates, each pinning one
+  impl; filed **[corelib-c-cpp#89](https://github.com/sofa-buffers/corelib-c-cpp/issues/89)**,
+  **[corelib-py#41](https://github.com/sofa-buffers/corelib-py/issues/41)**,
+  **[corelib-ts#51](https://github.com/sofa-buffers/corelib-ts/issues/51)**. The array analogue
+  of the fixed F-0006/F-0007/F-0012.
+- **F-0013 did not surface** in fuzzing — as expected: it needs a *well-formed* over-index,
+  which byte mutation practically never produces (it was found via a structured isolate).
+
+Net open now: **F-0004** (§8 UTF-8, gen#85), **F-0013** (G-0013 over-index,
+[generator#142](https://github.com/sofa-buffers/generator/issues/142)), **F-0014**
+(ARRAY_FIXLEN element word — corelib-c-cpp#89 / corelib-py#41 / corelib-ts#51). F-0001 +
+F-0010 + F-0011 + F-0012 resolved.
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |
