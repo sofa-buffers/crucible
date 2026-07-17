@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (26 inputs)
+## Contents (29 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -33,6 +33,8 @@ looking. This corpus makes it automatic.
 | `F0015_string_40_over_maxlen32.bin`, `F0015_blob_8_over_maxlen4.bin`, `F0015_strarray_elem_70_over_maxlen64.bin` | F-0015 | MESSAGE_SPEC §7.1 (documentation#20) + sofabgen 0.17.5 | a `string`/`blob` over its schema `maxlen` is `R invalid_msg` on **all 12** — the bound binds every target, not just the ones whose buffer happens to be too small |
 | `F0015_control_string_within_maxlen32.bin` | F-0015 (control) | — | the **counter-direction**: a value *within* `maxlen` is still accepted by all 12 — guards against over-rejecting |
 | `F0013_overindex_clean.bin` | F-0013 | generator#142 (0.17.4) + #149→#151/#150 (0.17.6) | a `string_array` element at index ≥ the schema `count` is `R invalid_msg` on **all 12** — heap and fixed-capacity alike; no silent drop, no DoS |
+| `F0016_u64_over_65bit.bin`, `F0016_u64_over_70bit.bin` | F-0016 | corelib-cpp#39 / go#48 / rs-no-std#45 / py#43 / ts#53 / java#41 / cs#37 | an overlong (>64-bit) varint (u64 whose 10th byte carries bits above 64) is `R invalid_msg` on **all 12** — no silent truncation, no value corruption |
+| `F0016_control_u64_max.bin` | F-0016 (control) | — | the **counter-direction**: `2^64-1` (the valid maximum) is still accepted by all 12 — guards against over-rejecting at the boundary |
 
 Filenames are `F<nnnn>_<original-name>.bin`; the originals stay in `findings/<id>/` as the
 finding's own record. `F0003_overcount_clean.bin` has no original — see below.
