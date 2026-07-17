@@ -1,6 +1,20 @@
 # F-0001 — a truncated trailing varint: Go rejects, C/Rust accept
 
-**Status:** open — spec-resolved (§7), family impl pending [generator#86](https://github.com/sofa-buffers/generator/issues/86). Re-verified 2026-07-08 (sofabgen 0.15.1 + corelibs@main): **still diverging, 7 accept vs 5 reject** — expected, as #86 (the epic that closes it) is still open.
+**Status:** ✅ **RESOLVED — the target is met.** Spec-resolved (§7 finish-less: truncated =
+INCOMPLETE), and the family now implements it: **all 12 drivers emit `I`** on both seeds
+(was 7-accept vs 5-reject). **Verified green 2026-07-13, re-verified 2026-07-17** — both
+reproducers (`80`, `ff ff ff`) live in the green `corpus/regression/` gate, so a
+regression fails CI. Tracked upstream as [generator#86](https://github.com/sofa-buffers/generator/issues/86)
+(the epic may still be formally open; the observable target is met).
+
+> **Note on the one residual difference:** `java` additionally emits an
+> `incomplete_value` payload on `I` (`I 5607a606…`) where the other 11 emit a bare `I`.
+> That is the **soft** `incomplete_value` axis (`oracle/policy.yaml`), *not* F-0001's
+> verdict axis — the verdict is unanimous. It is one of the 3 soft warnings in the green
+> regression gate, and shows up as the largest (soft) cluster in the fuzzer landscape.
+
+*(Historical: this file's earlier status — "still diverging, 7 accept vs 5 reject",
+re-verified 2026-07-08 — was stale; the camps collapsed to `I` on 2026-07-13.)*
 **Found:** Phase 1 (C + Go); refined through Phase 2 (all 12 drivers)
 **Axis:** verdict (hard, per `oracle/policy.yaml`)
 
