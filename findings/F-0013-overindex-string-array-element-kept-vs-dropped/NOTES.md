@@ -1,6 +1,16 @@
 # F-0013 — a string_array element at an index ≥ the schema count: dropped (fixed-capacity) vs kept (heap), plus an unbounded-allocation DoS
 
-**Status:** open — **half fixed.** [generator#142](https://github.com/sofa-buffers/generator/issues/142)
+**Status:** ✅ **FULLY RESOLVED** — both halves fixed and verified.
+**0.17.4** (generator#142) killed the DoS and made the 9 heap backends reject; **0.17.6**
+(generator#149 → #151 "reject over-index wrapper elements on the fixed-capacity C family" +
+#150 "…on no_std") made the last 3 profiles (`c`, `cpp-c-cpp`, `rust-nostd`) reject too.
+**Re-verified 2026-07-17 (0.17.6):** `overindex_clean` and `overindex_amplify` → **all 12
+`R invalid_msg`**; in-range elements still accepted by all 12; DoS gone (cpp 226 MB → 10 MB).
+`overindex_clean.bin` is now in the green `corpus/regression/` gate (26 inputs).
+The whole thing took four sofabgen releases to close, in the right order — the DoS and heap
+half first (the security-critical part), the fixed-capacity verdict half last.
+
+*(Historical status —)* open — **half fixed.** [generator#142](https://github.com/sofa-buffers/generator/issues/142)
 **closed & rightly so** (sofabgen **0.17.4**, PR #143): the **DoS is gone** (cpp **226 MB → 10 MB**
 at index 2,000,000) and the **9 heap backends now reject**. The **residual** — the 3
 fixed-capacity profiles (`c`, `cpp-c-cpp`, `rust-nostd`) still **accept and silently drop** the
