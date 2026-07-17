@@ -60,11 +60,11 @@ TIMEOUT_ARG=""
 
 if [ "${CLUSTER:-0}" = "1" ]; then
     # Reduce the divergences to root-cause clusters (best over a big fuzzed corpus).
-    echo "==> clustering divergences over $(ls "$CORPUS" | grep -vc gitkeep) input(s)" >&2
+    echo "==> clustering divergences over $(ls "$CORPUS" | grep -vc -e gitkeep -e "\.md$") input(s)" >&2
     # shellcheck disable=SC2086
     python3 "$ROOT/oracle/cluster.py" --corpus "$CORPUS" --top "${TOP:-20}" $TIMEOUT_ARG "$@"
 else
-    echo "==> differential comparison over $(ls "$CORPUS" | grep -vc gitkeep) input(s)" >&2
+    echo "==> differential comparison over $(ls "$CORPUS" | grep -vc -e gitkeep -e "\.md$") input(s)" >&2
     # shellcheck disable=SC2086
     python3 "$ROOT/oracle/comparator.py" --corpus "$CORPUS" --policy "$ROOT/oracle/policy.yaml" $TIMEOUT_ARG "$@"
 fi

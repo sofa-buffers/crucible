@@ -1,17 +1,20 @@
 # Fast, blocking regression gate — runs on every push and PR.
 #
 # Bootstraps the corelibs (their `main` tips) + sofabgen, builds all 12 replay
-# drivers, and runs the three GREEN oracles: the seed differential, the
-# cross-encode / structured-value differential, and limit mode. Any divergence
-# fails the run — so a corelib bump (or a Crucible change) that reintroduces a
-# resolved finding is caught the moment it lands. Runs in the prebuilt toolchain
-# image (see image.yml); the per-driver timeout keeps a hanging driver from
-# wedging the job (it is reported as a finding instead).
+# drivers, and runs the five GREEN oracles: the seed differential, the resolved-
+# findings regression corpus, the cross-encode / structured-value differential,
+# the union suite, and limit mode. Any divergence fails the run — so a corelib bump
+# (or a Crucible change) that reintroduces a resolved finding is caught the moment
+# it lands. Runs in the prebuilt toolchain image (see image.yml); the per-driver
+# timeout keeps a hanging driver from wedging the job (it is reported as a finding
+# instead).
 #
 # Corelibs are pinned to `main` on purpose: this is a conformance fuzzer, so a red
 # gate on an upstream regression is exactly the signal we want. Open findings
-# (F-0004, F-0008, F-0009) diverge by design and are kept OUT of these green
-# corpora — they live in findings/ until fixed.
+# (F-0004, F-0012) diverge by design and are kept OUT of these green corpora — they
+# live in findings/ until fixed, as do the reproducers that trip the open
+# INVALID-vs-INCOMPLETE precedence hole (documentation#15). See
+# corpus/regression/README.md for what is admitted and why.
 name: replay
 
 on:
@@ -40,8 +43,17 @@ jobs:
       - name: Differential over seeds (the green gate)
         run: ./scripts/run.sh
 
+      # Reproducers for findings that are already fixed: a divergence here means a
+      # resolved bug came back. See corpus/regression/README.md.
+      - name: Differential over the resolved-findings regression corpus
+        run: CORPUS=corpus/regression ./scripts/run.sh
+
       - name: Cross-encode over structured values
         run: REGEN=0 ./scripts/cross-encode.sh
+
+      # The union schema — the one wire feature schema/probe.sofab.yaml lacks.
+      - name: Union suite (probe-union schema)
+        run: ./scripts/run-union.sh
 
       - name: Limit mode (receiver-side caps)
         run: ./scripts/run-limits.sh

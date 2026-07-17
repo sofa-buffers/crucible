@@ -43,9 +43,20 @@ def load_policy(path):
 
 
 def read_corpus(corpus_dir):
-    """Return [(name, bytes)] sorted by name for deterministic ordering."""
+    """Return [(name, bytes)] sorted by name for deterministic ordering.
+
+    Every regular file is an input, so a corpus dir can carry no bookkeeping of its own —
+    except the two kinds below, which are never fuzz inputs. Inputs cannot be selected by
+    extension instead: libFuzzer names its corpus files by content hash, with none.
+
+      *.md      — a corpus README (e.g. corpus/regression/README.md)
+      .*        — dotfiles, notably the .gitkeep holding an empty gitignored corpus dir
+                  (fed as a valid empty message before this skip, silently inflating counts)
+    """
     items = []
     for name in sorted(os.listdir(corpus_dir)):
+        if name.startswith(".") or name.endswith(".md"):
+            continue
         p = os.path.join(corpus_dir, name)
         if os.path.isfile(p):
             with open(p, "rb") as fh:
