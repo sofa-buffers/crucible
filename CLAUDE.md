@@ -12,7 +12,7 @@ only a second net.
 |---|---|
 | [`docs/PLAN.md`](docs/PLAN.md) | the authoritative master plan: mission, scope, architecture, driver ABI, oracles, the add-a-corelib checklist, roadmap. **Everything is built from here.** |
 | [`docs/STATUS.md`](docs/STATUS.md) | **start here for orientation** — current state, how it runs, findings + where each is tracked, spec decisions, gotchas (durable snapshot of the working memory). |
-| [`TODO.md`](TODO.md) | open work on Crucible itself (fixes for found bugs live in the owning repos, not here). |
+| [`docs/TODO.md`](docs/TODO.md) | open work on Crucible itself (fixes for found bugs live in the owning repos, not here). |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the living as-built architecture + component status + decision log + **deviations from PLAN**. Read this to know what actually exists today. |
 | [`oracle/canonical.md`](oracle/canonical.md) | the canonical comparison form every driver must emit (once written). |
 | [`oracle/policy.yaml`](oracle/policy.yaml) | which divergences are legal vs bugs; each entry cites `MESSAGE_SPEC.md`. |

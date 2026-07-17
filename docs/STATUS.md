@@ -50,7 +50,7 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   union and agree on every variant, the one-of encoding, and the two malformed-union
   edge cases (two members set → all re-encode both in id order; unknown member id →
   all skip → empty union). Green, no finding — the last untested wire feature.
-- Remaining Phase 3 / Phase 4: see [`../TODO.md`](../TODO.md).
+- Remaining Phase 3 / Phase 4: see [`TODO.md`](TODO.md).
 
 ## Key design points
 - One coverage **pacemaker** (C, libFuzzer+ASan/UBSan) drives exploration; every
