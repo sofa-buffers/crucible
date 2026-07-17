@@ -90,7 +90,7 @@ everyone else's.
 ## Quick start
 
 ```sh
-./scripts/bootstrap.sh     # vendor the corelibs + build sofabgen (idempotent)
+./scripts/bootstrap.sh     # vendor the corelibs @origin/main + install the latest sofabgen release
 ./scripts/run.sh           # build every driver, run the differential over the seed corpus
 ```
 

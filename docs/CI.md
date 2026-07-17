@@ -36,7 +36,7 @@ drivers, and runs the three **green** oracles in sequence; any divergence fails 
 job:
 
 ```sh
-REFRESH=1 ./scripts/bootstrap.sh   # corelibs@main + sofabgen (all public, no secrets)
+./scripts/bootstrap.sh   # always: latest sofabgen release (checksum-verified) + corelibs@main
 ./scripts/run.sh                   # seed differential           (corpus/seeds)
 REGEN=0 ./scripts/cross-encode.sh  # cross-encode / structured   (corpus/structured)
 ./scripts/run-limits.sh            # limit mode                  (corpus/limits)

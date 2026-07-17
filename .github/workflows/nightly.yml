@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Bootstrap (corelibs@main + sofabgen)
-        run: REFRESH=1 ./scripts/bootstrap.sh
+        run: ./scripts/bootstrap.sh   # always: latest sofabgen release + corelibs@main
 
       # Restore the accumulated coverage corpus (compounds across nights).
       - name: Restore interesting corpus
