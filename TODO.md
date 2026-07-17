@@ -64,9 +64,16 @@ corelib-c-cpp#69, corelib-cpp#22). Crucible's job is to catalog and **verify** t
       spec clause lands and the camps collapse to `R`.
 
 ## Verify fixes as they land (Crucible = acceptance test)
+- [x] **Committed regression corpus** — `corpus/regression/` (18 inputs × 12 drivers, 0
+      divergences), wired into `replay.yml` on every push/PR, so a bump that reintroduces
+      a resolved finding fails CI instead of waiting for a manual re-run to notice (the
+      0.17.2 go regression was caught only because someone was looking). Admits a
+      reproducer only when it is green **for the reason the finding is about** — see
+      `corpus/regression/README.md` for contents + the exclusions and why. Also wired the
+      **union suite** into `replay.yml` (green since 2026-07-16, never actually in CI).
 - [ ] For each merged fix (issues above): re-run the reproducer / differential loop,
       flip the finding's status in `results/FINDINGS.md`, and promote the reproducer
-      into the committed regression corpus.
+      into `corpus/regression/` (procedure at the foot of its README).
 - [ ] **§8 / #85:** once corelibs expose `SOFAB_STRICT_UTF8`, build all drivers with
       it **on** + add invalid-UTF-8 seeds → confirm **F-0004 green** family-wide.
 - [ ] **§7 / #86:** once feed+finish lands, add truncated/incomplete seeds → confirm
@@ -79,11 +86,30 @@ corelib-c-cpp#69, corelib-cpp#22). Crucible's job is to catalog and **verify** t
       one-time manual `image` run to seed GHCR, then confirm the first live runs;
       follow-ups — build-reuse (replay rebuilds 3×), `corpus/regression/` for resolved
       findings, cross-repo auto-annotation.
-- [ ] **Corpus hygiene**: minimize with libFuzzer `-merge`; commit a minimized
-      regression corpus; keep `corpus/interesting`/`crashes` gitignored.
+- [ ] **Corpus hygiene**: minimize `corpus/interesting/` (43k files, never merged) with
+      libFuzzer `-merge`. (The regression corpus is done — see above; `corpus/interesting`
+      + `crashes` were already gitignored.)
 - [ ] **Structural crash minimization** (e.g. F-0003 via cargo-fuzz `-minimize` once a
       Rust fuzz target exists; the current greedy minimizer got it to 145 B).
 - [ ] **OSS-Fuzz** onboarding for continuous fuzzing (eventual).
+
+## File F-0013 / G-0013 upstream (opened 2026-07-16)
+- [ ] **Not yet filed** — decide the target and open it against `sofa-buffers/generator`:
+      the heap backends never enforce an index-keyed array's schema `count`, so an element
+      at index ≥ N is kept (the fixed profiles drop it) and the unbounded
+      `while (len <= id) push(default)` fill is a memory-amplification DoS (9 B → cpp
+      226 MB). Write-up + both reproducers ready in
+      `findings/F-0013-overindex-string-array-element-kept-vs-dropped/`; root cause and
+      fix direction in `docs/SOFABGEN.md` G-0013.
+- [ ] **Ask upstream the verdict question too:** §5.1 says drop an excess element, §3+§7
+      (via F-0003) say an over-**count** array is INVALID. Whether an over-**index**
+      element should be `R` rather than a silent drop looks like a genuine spec hole — a
+      documentation-repo proposal alongside the codegen fix (`docs/spec-proposals.md`).
+- [ ] Check the index-keyed **blob** array path: the C++ heap `_BlobSeq` has the identical
+      unguarded shape but `schema/probe.sofab.yaml` has no blob array, so it is untested.
+      Needs a schema with one (see "more corner-case schemas" below).
+- [ ] Once fixed: promote `findings/F-0013-*/overindex_clean.bin` into `corpus/regression/`
+      as `F0013_overindex_clean.bin` and drop the exclusion row from its README.
 
 ## Housekeeping
 - [ ] Verify the **devcontainer image** builds and every driver builds inside it

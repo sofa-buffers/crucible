@@ -25,6 +25,11 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
 - `./scripts/run-union.sh` — the **union suite**: points the oracles at
   `schema/probe-union.sofab.yaml` (a `probe` carrying a 4-variant union), the one
   wire feature the main `probe` lacks. 11 seeds × 12 drivers, 0 divergences.
+- `CORPUS=corpus/regression ./scripts/run.sh` — the **resolved-findings gate**: the
+  reproducer of every fixed finding (18 inputs × 12 drivers, 0 divergences). A
+  divergence here = a resolved bug came back. See `corpus/regression/README.md` for
+  what it admits, and the exclusions (a reproducer that also trips an open axis stays
+  in `findings/`).
 
 ## Current state
 - **Phase 1–2 done:** 12 drivers / 10 corelibs green (c, go, rust-std, rust-nostd,
@@ -247,8 +252,42 @@ The rest is the precedence family (other impls' skip paths lenient/eager — the
 shows the same gap in cluster 5, follow-up) + **F-0004** (UTF-8) + soft reject_class /
 incomplete_value. Green gates unaffected (all malformed-input edge cases). See CLUSTERS.md.
 
-Net open now: **F-0004** (§8 UTF-8, gen#85), **F-0012** (corelib-ts skip precedence,
-corelib-ts#49). F-0010 + F-0011 resolved.
+**Ninth change 2026-07-16 — regression corpus committed + CI wired; F-0013 found while
+building it.** Built `corpus/regression/` (the standing TODO): the reproducers of all
+nine resolved findings, **18 inputs × 12 drivers, 0 divergences**, wired into
+`replay.yml` on every push/PR — so a bump that reintroduces a fixed bug fails CI rather
+than waiting to be spotted in a manual re-run (F-0011 was caught only because someone was
+looking). Also wired the **union suite** into `replay.yml`.
+
+- **The gate admits a reproducer only when it is green *for the reason the finding is
+  about*.** F-0003's `array_overflow.bin` and F-0008's `hang_min.bin` are fixed but
+  **contaminated** — each tests its own axis *and* truncation, so both still split the
+  family on the open precedence hole (documentation#15). They stay in `findings/`; the
+  gate gets **clean isolates** instead (`engine/structured/isolates.py`, built on
+  `gen.py`'s primitives).
+- 🆕 **F-0013 (new): an over-index `string_array` element is kept (heap) vs dropped
+  (fixed-capacity)** — found by writing the *clean* F-0008 isolate (over-index **without**
+  truncation), which the contaminated original could not express. `c6 0c c2 07 0a 78 07`
+  (7 B, element index 120 ≥ the schema's `count: 5`): all 12 **accept**, but c /
+  cpp-c-cpp / rust-nostd drop the element while the 9 heap profiles keep it — a pure
+  value split, invisible to any accept/reject oracle. Root cause **codegen G-0013**: the
+  heap backends emit an unbounded container + `while (len <= id) push(default)` fill, so
+  the schema `count` is enforced nowhere. Same fill is a **memory-amplification DoS**:
+  9 B at index 2,000,000 → cpp **226 MB** / go **122 MB** vs ~8 MB fixed. **The half of
+  F-0008 that generator#126 left unfixed.** Not yet filed upstream.
+- Harness fix: `comparator.py`'s `read_corpus` now skips `*.md` + dotfiles, so a corpus
+  dir can carry a README (previously *every* file was an input, incl. a `.gitkeep`).
+
+**Tenth change 2026-07-17 — corelib bump: F-0012 (ts-skip) FIXED.** Pulled corelibs;
+`corelib-ts` advanced to `0279378` ("fix(decode): validate fixlen word in the cursor skip
+path (§5.2 precedence)") — the corelib-ts#49 fix for the fuzzer's F-0012. **Re-verified:**
+`aa7e79` / `5df35d07` → TS now `R invalid_msg` (was `I`), aligned with the family; the
+valid-skip controls stay `A`/`I`. (cs/go moved on docs/deps/test only.) PR #39 (the F-0012
+write-up) had already merged; the overindex finding it collided with was renumbered
+**F-0012 → F-0013**.
+
+Net open now: **F-0004** (§8 UTF-8, gen#85) and **F-0013** (G-0013 over-index, unfiled).
+F-0010 + F-0011 + F-0012 resolved.
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |

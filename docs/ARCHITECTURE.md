@@ -30,7 +30,7 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `drivers/c/` (pacemaker) | built | gcc replay driver (ASan/UBSan) verified; libFuzzer front-end present, `#ifdef CRUCIBLE_LIBFUZZER`, built in devcontainer (no clang in bare workspace). |
 | `drivers/go/` | built | Replay driver + native `FuzzProbe`; builds against vendored corelib-go via `replace`. |
 | `oracle/canonical.md` | built | v2 canonical form: round-trip re-encoding, three-valued verdict `A`/`I`/`R` (§7). |
-| `oracle/comparator.py` | built | N-way canonical diff, policy-aware, no external deps; parses `A`/`I`/`R`. **Crash- and hang-isolating:** a per-driver wall-clock budget (`--timeout`, default `max(30s, 0.25s × corpus)`; `TIMEOUT=` env via the scripts) via stdout-to-tempfile, so an adversarial input that hangs a driver is localized + reported `[TIMEOUT]` (a DoS finding), not a wedged run. |
+| `oracle/comparator.py` | built | N-way canonical diff, policy-aware, no external deps; parses `A`/`I`/`R`. **Crash- and hang-isolating:** a per-driver wall-clock budget (`--timeout`, default `max(30s, 0.25s × corpus)`; `TIMEOUT=` env via the scripts) via stdout-to-tempfile, so an adversarial input that hangs a driver is localized + reported `[TIMEOUT]` (a DoS finding), not a wedged run. `read_corpus` skips `*.md` + dotfiles so a corpus dir can carry a README (inputs can't be selected by extension — libFuzzer names files by content hash); this also stops the `.gitkeep` in the gitignored corpora being fed as an empty message. |
 | `oracle/policy.yaml` | built | Permissive Phase-1 policy (verdict/accept_value hard, incomplete_value/reject_class soft). |
 | `scripts/run.sh` | built | Build all drivers → differential compare over a corpus (crash-isolating). |
 | `scripts/run-union.sh` | built | Union suite: `SCHEMA=schema/probe-union.sofab.yaml CORPUS=corpus/union run.sh` — points the differential + round-trip oracles at a `probe` message carrying a 4-variant union. Drivers are schema-agnostic (round-trip form), so only the generated types change; `drivers/c/build.sh` made SCHEMA-aware to match the other 8. 11 seeds × 12 drivers, 0 divergences — the `union` wire feature `probe` lacked, now covered. |
@@ -39,6 +39,8 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `oracle/cluster.py` | built | Groups divergences by camp-partition into root causes (`CLUSTER=1 ./scripts/run.sh`); 256 divergences → 47 clusters. |
 | C pacemaker (libFuzzer) | built | `drivers/c/driver.c` `CRUCIBLE_LIBFUZZER` path; ~41k exec/s; grows the corpus fed to the differential loop. Coverage-guided but NOT yet structure-aware. |
 | `corpus/seeds/` | built | 6 agreeing seeds (the regression gate); green across all 4 drivers. |
+| `corpus/regression/` | built | **Resolved-findings gate** (18 inputs × 12 drivers, 0 divergences): the reproducer of every fixed finding (F-0001/02/03/05/06/07/09/10/11), so a bump that reintroduces one fails CI instead of waiting to be noticed in a manual re-run. Admits an input only when it is green **for the reason the finding is about** — reproducers that also trip an open axis are excluded and listed with their reason in `corpus/regression/README.md`. Runs via the documented `CORPUS=` mechanism (no new script). |
+| `engine/structured/isolates.py` | built | Minimal isolates for findings whose *original* reproducer is contaminated (tests two axes at once, so it can never be gate-green). Imports wire primitives from `gen.py` — the one reference encoder — so an encoding change cannot desync them. Emits `corpus/regression/F0003_overcount_clean.bin` (green) and the F-0013 reproducers (diverging → `findings/`). Each isolate declares its own destination. |
 | `findings/`, `results/FINDINGS.md` | built | F-0001 recorded (see below). |
 | `docs/SOFABGEN.md` | built | Generated-code weakness log (G-0001..G-0007; all fixed in sofabgen 0.15.1). |
 | `.devcontainer/` | built | Fuzzing toolchains (clang/libFuzzer, cargo-fuzz, Jazzer, Atheris, SharpFuzz, Jazzer.js). |
@@ -52,7 +54,7 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `engine/mutator/` (structure-aware) | built | `sofab_mutator.{h,c}` — grammar-aware libFuzzer custom mutator (varint truncate/extend/flip/maxout, header type/id, fixlen length, array count, sequence open/close, invalid-UTF-8, fp NaN/inf, field dup). Wired via `LLVMFuzzerCustomMutator` in `drivers/c/driver.c` (~37% byte-mutator mix-in) + `scripts/fuzz.sh`. Pure/testable; `test_mutator.c` soak = 336k mutations, 0 OOB under ASan, deterministic. See DESIGN.md "As built". |
 | Round-trip oracle | built | Folded into the canonical form (re-encoding) — found F-0002. |
 | Cross-encode oracle | built | `engine/structured/gen.py` emits valid value-rich messages → `corpus/structured/` (green gate); `scripts/cross-encode.sh` runs the round-trip+decode-agreement oracle over them. Realizes cross-encode via the byte-canonical invariant (all encoders identical → agreement = "encode in A decode in B"). Found F-0009 (blob, slice 1) + F-0010 (under-count array, slice 2) on first runs. Slice 2 covers the numeric arrays (id 100) + string_array (id 200) value space; green gate = 69 inputs. |
-| CI (`image`, `replay`, `nightly`) | in progress | `.github/workflows/` authored (Phase 4, docs/CI.md): `image.yml` builds the 12-toolchain devcontainer image → GHCR; `replay.yml` (blocking, push/PR) runs the three green gates (seeds + structured + limits); `nightly.yml` fuzzes → clusters → uploads. Needs a one-time manual `image` run to seed GHCR, then it's live. |
+| CI (`image`, `replay`, `nightly`) | in progress | `.github/workflows/` authored (Phase 4, docs/CI.md): `image.yml` builds the 12-toolchain devcontainer image → GHCR; `replay.yml` (blocking, push/PR) runs the **five** green gates (seeds + **regression** + structured + **union** + limits — union was green since 2026-07-16 but had never been wired in); `nightly.yml` fuzzes → clusters → uploads. Needs a one-time manual `image` run to seed GHCR, then it's live. Each gate rebuilds the drivers (build-reuse is an open follow-up in TODO.md; adding two gates made that cost 5× rather than 3×). |
 
 ## As-built detail
 
@@ -295,6 +297,20 @@ has no `LimitExceeded`).
   back to pure, so "cython" mode would be a false label. build.sh compiles the
   extension for the venv's interpreter and asserts `sofab.IMPL` matches the
   requested mode.
+- **2026-07-16 — the regression corpus admits an input only when it is green *for
+  the reason the finding is about*.** The tempting rule is "a finding is fixed →
+  its reproducer joins the gate." That is wrong here, because several reproducers
+  are raw fuzzer inputs that trip **two** axes: F-0003's `array_overflow.bin` is
+  over-count *and* truncated, F-0008's `hang_min.bin` is over-index *and*
+  truncated. Both findings are fixed, yet both inputs still split the family on the
+  *open* INVALID-vs-INCOMPLETE precedence hole (documentation#15). Admitting them
+  would force a choice between a red gate and a policy exception that mutes a real
+  open divergence. So a contaminated reproducer stays in `findings/` and the gate
+  gets a **clean isolate** (`engine/structured/isolates.py`) testing the one axis —
+  the F-0004 lesson ("characterize with a minimal isolate, not a raw fuzzer input")
+  applied to the gate. Corollary: **never weaken the gate to admit an input.** The
+  exclusions and their reasons are listed in `corpus/regression/README.md`, so an
+  excluded reproducer is visibly deferred rather than silently forgotten.
 
 ## Deviations from PLAN
 
