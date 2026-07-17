@@ -112,7 +112,9 @@ reproducers become a regression gate once the family converges).
 
 ## Proposal 3 — §7/§6.2: a declared bound binds **every** target; unbounded fields; receiver limits
 
-**Filed:** [documentation#19](https://github.com/sofa-buffers/documentation/issues/19).
+**Filed:** [documentation#19](https://github.com/sofa-buffers/documentation/issues/19) —
+**PR open: [documentation#20](https://github.com/sofa-buffers/documentation/pull/20)** (authored from this
+draft; closes #19).
 
 **Motivated by:** **F-0015** — a `string`/`blob` whose wire length exceeds its schema
 `maxlen` splits the family **three ways**, on every maxlen field in the schema
@@ -250,7 +252,8 @@ the R1/R2 reproducers. F-0004's §8 UTF-8 opt-in check remains unimplemented fam
 (generator#85).
 
 **Proposal 3 — filed [documentation#19](https://github.com/sofa-buffers/documentation/issues/19)
-(2026-07-17), awaiting adoption.** Motivated by **F-0015**. Filed *ahead of* an announced
+(2026-07-17); spec **PR [documentation#20](https://github.com/sofa-buffers/documentation/pull/20)** authored
+from the draft the same day, awaiting review.** Motivated by **F-0015**. Filed *ahead of* an announced
 sofabgen update reworking array/string/blob `count`/`maxlen` — deliberately, so the codegen
 implements an **adopted** rule rather than an undefined one (the F-0010 order: hole →
 proposal → adoption → codegen). Verified against the current spec (`documentation@c160838`):
@@ -258,4 +261,14 @@ of the four parts of the intended model, only **one is specified today** —
 `count` binds every target (§3/§5.1, via documentation#18); `maxlen` binding, the
 unbounded-field obligation, and the receiver-side `max_dyn_*` limits are **all
 undocumented**.
+
+**One open question raised in PR #20** (deliberately not decided unilaterally): CORELIB_PLAN
+§6.3 says the decode result is the *three-valued outcome*, not a code from the error table,
+and that the table covers "the *other* fallible operations". A receiver-limit rejection fits
+neither — it is a decode-path terminal on **well-formed** input, so it is not `INVALID`, yet
+the three-valued outcome has no value for *"valid, but more than I am configured to accept"*.
+The PR states the **requirement** (it MUST stay distinguishable from `InvalidMessage`) and
+leaves the **API shape** to the maintainers: a fourth decode outcome, or a terminal failure
+carrying the new `LimitExceeded` code. Crucible already models it as a distinct fourth
+verdict `L` (`oracle/canonical.md`), which is the fourth-outcome shape.
 

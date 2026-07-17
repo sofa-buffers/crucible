@@ -1,7 +1,8 @@
 # F-0015 — a `string`/`blob` over its schema `maxlen`: 9 accept, 2 reject `invalid_msg`, 1 rejects `buffer_full`
 
 **Status:** open — **spec hole**, family-wide. Clause drafted + filed:
-**[documentation#19](https://github.com/sofa-buffers/documentation/issues/19)**
+**[documentation#19](https://github.com/sofa-buffers/documentation/issues/19)** — with the spec
+**PR open: [documentation#20](https://github.com/sofa-buffers/documentation/pull/20)**
 (`docs/spec-proposals.md`, Proposal 3). Like F-0001 (truncation) / F-0004 (UTF-8) /
 F-0010 (under-count): resolved spec-first, then per-impl.
 **Found:** 2026-07-17, while preparing the regression for an announced sofabgen update
