@@ -1,9 +1,14 @@
 # F-0015 — a `string`/`blob` over its schema `maxlen`: 9 accept, 2 reject `invalid_msg`, 1 rejects `buffer_full`
 
-**Status:** open — **spec hole**, family-wide. Clause drafted + filed:
-**[documentation#19](https://github.com/sofa-buffers/documentation/issues/19)** — with the spec
-**PR open: [documentation#20](https://github.com/sofa-buffers/documentation/pull/20)**
-(`docs/spec-proposals.md`, Proposal 3). Like F-0001 (truncation) / F-0004 (UTF-8) /
+**Status:** **spec-RESOLVED, corelibs to converge.** The clause was **adopted** —
+**[documentation#20](https://github.com/sofa-buffers/documentation/pull/20) merged** (`49cdee9`,
+2026-07-17), closing [documentation#19](https://github.com/sofa-buffers/documentation/issues/19)
+(`docs/spec-proposals.md`, Proposal 3). **MESSAGE_SPEC §7.1 now settles it:** a declared
+`count`/`maxlen` is a wire-validity bound that binds **every target regardless of allocation
+strategy**; a decoder *"MUST NOT accept an over-bound value merely because its storage happens
+to be able to hold it"*. So the **9 heap backends must start enforcing `maxlen`**, and
+`rust-nostd`'s `buffer_full` class is now wrong (a wire-validity failure → `invalid_msg`).
+Target: **all 12 → `R invalid_msg`**. Like F-0001 (truncation) / F-0004 (UTF-8) /
 F-0010 (under-count): resolved spec-first, then per-impl.
 **Found:** 2026-07-17, while preparing the regression for an announced sofabgen update
 reworking array/string/blob `count`/`maxlen` — the audit asked "which count/maxlen axes do

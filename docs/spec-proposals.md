@@ -112,9 +112,10 @@ reproducers become a regression gate once the family converges).
 
 ## Proposal 3 — §7/§6.2: a declared bound binds **every** target; unbounded fields; receiver limits
 
-**Filed:** [documentation#19](https://github.com/sofa-buffers/documentation/issues/19) —
-**PR open: [documentation#20](https://github.com/sofa-buffers/documentation/pull/20)** (authored from this
-draft; closes #19).
+**✅ ADOPTED** — [documentation#20](https://github.com/sofa-buffers/documentation/pull/20)
+**merged** (`49cdee9`, 2026-07-17), closing
+[documentation#19](https://github.com/sofa-buffers/documentation/issues/19). The clauses below
+are now MESSAGE_SPEC §2/§7/§7.1/§7.2 and CORELIB_PLAN §6.2/§6.2.1/§6.3.
 
 **Motivated by:** **F-0015** — a `string`/`blob` whose wire length exceeds its schema
 `maxlen` splits the family **three ways**, on every maxlen field in the schema
@@ -251,9 +252,10 @@ Filed **[generator#136](https://github.com/sofa-buffers/generator/issues/136)** 
 the R1/R2 reproducers. F-0004's §8 UTF-8 opt-in check remains unimplemented family-wide
 (generator#85).
 
-**Proposal 3 — filed [documentation#19](https://github.com/sofa-buffers/documentation/issues/19)
-(2026-07-17); spec **PR [documentation#20](https://github.com/sofa-buffers/documentation/pull/20)** authored
-from the draft the same day, awaiting review.** Motivated by **F-0015**. Filed *ahead of* an announced
+**Proposal 3 — ✅ ADOPTED 2026-07-17** ([documentation#20](https://github.com/sofa-buffers/documentation/pull/20)
+merged, closing #19). Filed *ahead of* the announced sofabgen count/maxlen update — so the
+codegen now has a **defined** rule to implement rather than an undefined one. All three
+Crucible spec proposals are now adopted (#15→#17, #16→#18, #19→#20). Motivated by **F-0015**. Filed *ahead of* an announced
 sofabgen update reworking array/string/blob `count`/`maxlen` — deliberately, so the codegen
 implements an **adopted** rule rather than an undefined one (the F-0010 order: hole →
 proposal → adoption → codegen). Verified against the current spec (`documentation@c160838`):
