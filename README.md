@@ -1,6 +1,6 @@
 <p align="center"><img src="assets/sofabuffers_logo.png" alt="SofaBuffers" height="140"></p>
 
-# SofaBuffers vs. The World
+# SofaBuffers vs. The Gatekeeper
 
 <b>Structured Objects For Anyone</b><br>
 <i>... so optimized, feels amazing.</i>
