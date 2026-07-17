@@ -221,35 +221,22 @@ causes collapse to one entry, ranked by size with a minimal representative.
 CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh   # inventory → results/CLUSTERS.md
 ```
 
-## Findings
+## Findings & status
 
-The oracle has caught real disagreements across the family. Reproducers in
-`findings/`, catalog in [`results/FINDINGS.md`](results/FINDINGS.md), generated-code
-defects in [`docs/SOFABGEN.md`](docs/SOFABGEN.md). Fixes live in the **owning
-repos**; Crucible is the catalog + acceptance test.
+The oracle has caught real disagreements across the family — each minimized,
+reproducible, and attributed to the repo that owns the bug. Rather than duplicate a
+snapshot here (it goes stale), the live records are:
 
-| finding | what | status |
-|---|---|---|
-| F-0001 | truncated input → three-valued `INCOMPLETE`; lenient vs strict camps — spec §7 | ✅ resolved (family converged on `I`) |
-| F-0002 | `corelib-c-cpp` encoder left-shifts a negative value (UB) | ✅ resolved |
-| F-0003 | Rust array-fill OOB → panic; then over-count array must be `INVALID` | ✅ resolved (generator#87/#100) |
-| F-0004 | invalid UTF-8 in a string: four behaviors driven by the string type — spec §8 | ⏳ open (generator#85, `SOFAB_STRICT_UTF8`) |
-| F-0005 | `corelib-cpp` accepts malformed messages the family rejects | ✅ resolved |
-| F-0006 | `corelib-py`: truncated wrong-width fixlen fp read `I` instead of `R` | ✅ resolved (corelib-py#38) |
-| F-0007 | fixlen-fp `INVALID`-vs-`INCOMPLETE` precedence (C istream) | ✅ resolved (corelib-c-cpp#82) |
-| F-0008 | generated **fixed-capacity C++** string/blob-array fill infinite-loops (DoS) on an index ≥ capacity | ⏳ open (generator#126, G-0011) |
-| F-0009 | C object API pads a sub-`maxlen` blob to `maxlen` / drops an all-zero blob | 🔎 candidate (found by cross-encode) |
+- **[`results/FINDINGS.md`](results/FINDINGS.md)** — the findings catalog (what
+  diverged, which impls, the fix, its status), one row per finding; reproducers under
+  [`findings/`](findings/).
+- **[`docs/STATUS.md`](docs/STATUS.md)** — the current-state snapshot: what runs, the
+  latest toolchain/corelib bump, and what is open. **Start here for orientation.**
+- **[`docs/SOFABGEN.md`](docs/SOFABGEN.md)** — generated-code (codegen) defects, tracked
+  separately from corelib bugs.
 
-## Status
-
-**Phases 1–3 largely complete; Phase 4 (continuous/CI) next.** The differential
-loop runs green across **12 drivers / 10 corelibs** — C (pacemaker), Go, Rust-std,
-Rust-no-std, C++, C++/c-cpp, Python-Cython, Python-pure, Java, TypeScript, C#, Zig —
-over the full-scale `probe` schema (8 scalar widths, fp32/fp64, string, blob,
-numeric + nested-fp + string arrays). Built: the round-trip canonical form, the
-structure-aware mutator, limit mode, cross-encode/structured values, auto-clustering,
-and a crash- + hang-isolating comparator. Roadmap in [`docs/PLAN.md`](docs/PLAN.md)
-§12; open work in [`TODO.md`](TODO.md).
+Fixes live in the **owning repos** (generator / `corelib-<lang>`); Crucible is the
+catalog and the acceptance test that verifies each fix when it lands.
 
 ## Layout
 
@@ -266,7 +253,8 @@ and a crash- + hang-isolating comparator. Roadmap in [`docs/PLAN.md`](docs/PLAN.
 | `engine/mutator/` | structure-aware TLV/varint grammar mutator (+ standalone soak test) |
 | `engine/structured/` | structured-value generator (the cross-encode track) |
 | `corpus/` | `seeds/` (green gate), `structured/` (cross-encode gate), `limits/`, `interesting/`, `crashes/` |
-| `findings/` | minimized, reproducible divergences (F-0001 … F-0009) |
-| `results/` | findings catalog + cluster inventory |
+| `findings/` | one dir per finding — minimized reproducer(s) + a NOTES.md write-up |
+| `results/` | [`FINDINGS.md`](results/FINDINGS.md) (the catalog) + `CLUSTERS.md` (cluster inventory) |
+| `corpus/regression/` | resolved-findings gate — every fixed finding's reproducer, green in CI |
 | `scripts/` | `bootstrap`, `run`, `cross-encode`, `run-limits`, `fuzz` |
 | `.devcontainer/` | fuzzing toolchains (clang/libFuzzer, cargo-fuzz, Jazzer, Atheris, SharpFuzz, Jazzer.js) |

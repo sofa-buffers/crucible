@@ -26,17 +26,21 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   `schema/probe-union.sofab.yaml` (a `probe` carrying a 4-variant union), the one
   wire feature the main `probe` lacks. 11 seeds × 12 drivers, 0 divergences.
 - `CORPUS=corpus/regression ./scripts/run.sh` — the **resolved-findings gate**: the
-  reproducer of every fixed finding (18 inputs × 12 drivers, 0 divergences). A
+  reproducer of every fixed finding (26 inputs × 12 drivers, 0 divergences). A
   divergence here = a resolved bug came back. See `corpus/regression/README.md` for
   what it admits, and the exclusions (a reproducer that also trips an open axis stays
   in `findings/`).
 
 ## Current state
-- **Phase 1–2 done:** 12 drivers / 10 corelibs green (c, go, rust-std, rust-nostd,
-  cpp, cpp-c-cpp, py-cython, py-pure, java, typescript, csharp, zig) — **all 12 green
-  again as of 2026-07-15 on sofabgen 0.16.2** (the zig build break G-0010 is fixed;
-  see the re-run notes below).
-- **Phase 3 in progress:** canonical form v2 = **round-trip re-encoding** with a
+- **Phases 1–3 largely done:** 12 drivers / 10 corelibs green across all five suites on
+  **sofabgen 0.17.6** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
+  java, typescript, csharp, zig). `./scripts/bootstrap.sh` keeps sofabgen at the **latest
+  release** (sha256-verified) and the corelibs at `origin/main`.
+- **16 findings catalogued** (`results/FINDINGS.md`); most resolved upstream. Net open:
+  **F-0004** (§8 UTF-8 opt-in, generator#85) and **F-0016** (overlong >64-bit varint
+  accepted by 8 impls — corelib-side, being filed). Three Crucible-authored MESSAGE_SPEC
+  clauses adopted (documentation#17/#18/#20).
+- **Phase 3 (built):** canonical form v2 = **round-trip re-encoding** with a
   **three-valued verdict** (`A` complete / `I` incomplete / `R` reject, per
   MESSAGE_SPEC §7 — comparator + `canonical.md` updated, drivers emit `I` as each
   corelib gains INCOMPLETE; crucible#8); drivers are schema-agnostic, folds in the
