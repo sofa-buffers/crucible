@@ -1,6 +1,19 @@
 # F-0015 — a `string`/`blob` over its schema `maxlen`: 9 accept, 2 reject `invalid_msg`, 1 rejects `buffer_full`
 
-**Status:** **spec-RESOLVED, corelibs to converge.** The clause was **adopted** —
+**Status:** ✅ **FULLY RESOLVED** — spec clause adopted **and** implemented, verified against
+the pre-bump baseline. **sofabgen 0.17.5** (`b0b2832`, "feat: reject over-maxlen strings/blobs
+as INVALID on decode (Option B)") makes **all 12 drivers** answer `R invalid_msg` on all three
+over-`maxlen` vectors — the baseline was 9 accept / 2 `invalid_msg` / 1 `buffer_full`. Both
+halves landed: the 9 heap backends now enforce `maxlen`, **and** rust-nostd's `buffer_full`
+became `invalid_msg` (the class correction §7.1 implies). The within-`maxlen` control still
+accepts on all 12. All four vectors are now in the green `corpus/regression/` gate.
+
+*The whole arc closed in one day:* hole found while preparing the regression → clause filed
+(documentation#19) → spec PR authored & merged (#20) → codegen implemented (0.17.5) → verified
+against the baseline. The baseline vectors are exactly what made "fixed" distinguishable from
+"never tested".
+
+**Original status —** spec-RESOLVED, corelibs to converge. The clause was **adopted** —
 **[documentation#20](https://github.com/sofa-buffers/documentation/pull/20) merged** (`49cdee9`,
 2026-07-17), closing [documentation#19](https://github.com/sofa-buffers/documentation/issues/19)
 (`docs/spec-proposals.md`, Proposal 3). **MESSAGE_SPEC §7.1 now settles it:** a declared
