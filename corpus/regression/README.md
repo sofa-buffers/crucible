@@ -73,7 +73,7 @@ python3 engine/structured/isolates.py .    # idempotent; the committed bytes are
 
 ## Adding to this corpus
 
-When a finding's fix lands (`TODO.md` "Verify fixes as they land"):
+When a finding's fix lands (see [`docs/TODO.md`](../../docs/TODO.md)):
 
 1. Re-run the reproducer through all 12 drivers and confirm **0 divergences**.
 2. If it is green **for the reason the finding is about**, copy it here as

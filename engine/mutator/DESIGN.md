@@ -1,6 +1,6 @@
 # Structure-aware mutator — design & build note
 
-Target for `TODO.md` Phase 3 #1. A fresh session should be able to build the
+Target for [`docs/TODO.md`](../../docs/TODO.md) (engine & oracles). A fresh session should be able to build the
 mutator from this file + `docs/PLAN.md` §5 + `documentation/CORELIB_PLAN.md` §4.
 
 ## Why
