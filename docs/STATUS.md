@@ -286,9 +286,66 @@ valid-skip controls stay `A`/`I`. (cs/go moved on docs/deps/test only.) PR #39 (
 write-up) had already merged; the overindex finding it collided with was renumbered
 **F-0012 → F-0013**.
 
-Net open now: **F-0004** (§8 UTF-8, gen#85) and **F-0013** (G-0013 over-index, filed
-**[generator#142](https://github.com/sofa-buffers/generator/issues/142)**). F-0010 + F-0011
-+ F-0012 resolved.
+**Eleventh change 2026-07-17 — full box green; 1 h fuzzer round; F-0001 closed, F-0014 opened.**
+Box (all 5 suites incl. the new regression gate) **green** on current tips. Ran the pacemaker
+for **1 hour** (143 M execs @ 39.9k/s): **no new crash**, coverage saturated (cov 566, all
+REDUCE), corpus → 44.1k. Results:
+- ✅ **corelib-ts#49's effect measured:** the sample divergence rate fell **86% → 32%** and the
+  dominant cluster (TS skip-path precedence, 66%) is **gone**.
+- ✅ **F-0001 marked resolved** — its target ("every impl emits `I`") has been met since
+  2026-07-13; re-verified. Its NOTES had been badly stale ("still diverging, 7 vs 5",
+  2026-07-08). The residual java `incomplete_value` on `I` is the **soft** axis, not F-0001.
+- ✅ **F-0004 config audit contributed upstream** ([gen#85 comment](https://github.com/sofa-buffers/generator/issues/85#issuecomment-5000859662)):
+  **no corelib exposes the §6.4 opt-in toggle** — go+py validate unconditionally, the other 8
+  never do, so 8 of 10 **cannot reach the conformance-ON configuration** §8 requires. That is
+  the blocking half of that epic.
+- 🆕 **F-0014 (new):** with #49's cluster gone, the residual precedence clusters (149 py / 97
+  c-family / 94 ts) turned out to be **one class on the array path** — the `ARRAY_FIXLEN`
+  element word isn't (fully) validated at the header. Three minimal isolates, each pinning one
+  impl; filed **[corelib-c-cpp#89](https://github.com/sofa-buffers/corelib-c-cpp/issues/89)**,
+  **[corelib-py#41](https://github.com/sofa-buffers/corelib-py/issues/41)**,
+  **[corelib-ts#51](https://github.com/sofa-buffers/corelib-ts/issues/51)**. The array analogue
+  of the fixed F-0006/F-0007/F-0012.
+- **F-0013 did not surface** in fuzzing — as expected: it needs a *well-formed* over-index,
+  which byte mutation practically never produces (it was found via a structured isolate).
+
+**Twelfth change 2026-07-17 — F-0015 + spec Proposal 3 ADOPTED (ahead of the codegen bump).**
+Preparing the regression for an announced sofabgen update reworking array/string/blob
+`count`/`maxlen`, the audit asked which of those axes we actually cover — and found the
+**`maxlen` axis untested and already divergent**:
+- 🆕 **F-0015:** a `string`/`blob` over its schema `maxlen` splits **9-vs-2-vs-1** (9 heap
+  profiles accept and keep the over-long value; c/cpp-c-cpp → `invalid_msg`; rust-nostd →
+  `buffer_full`). Within `maxlen`: all 12 agree. The three "enforcers" enforce only because
+  their fixed buffer cannot hold more — an artifact of the memory model, the F-0010/F-0013
+  shape.
+- **The spec never defined it.** §7's enforced-bounds enumeration listed only `M > N` and
+  element id `≥ N`; MESSAGE_SPEC mentioned `maxlen` 5× but never normatively (§2 filed it
+  next to docs/tooling hints; §5.1 used it as a pre-sizing hint "on heap-less profiles");
+  CORELIB_PLAN mentioned it **0×**. Two adjacent holes rode along: the unbounded-field
+  obligation, and the receiver-side `max_dyn_*` limits — which the generator ships
+  (generator#102) and Crucible tests via the `L` verdict, while §6.2 listed only
+  format-wide ceilings (`policy.yaml` has flagged that since Phase 1).
+- ✅ **Proposal 3 filed *and* adopted the same day** — documentation#19 → **PR
+  [documentation#20](https://github.com/sofa-buffers/documentation/pull/20) merged**
+  (`49cdee9`; spec now at `85bb0be`). MESSAGE_SPEC §2/§7/**§7.1**/**§7.2** + CORELIB_PLAN
+  §6.2/**§6.2.1**/§6.3 (+ the new `LimitExceeded` code). §7.1 is the crux: a declared
+  `count`/`maxlen` binds **every target regardless of allocation strategy** — *"MUST NOT
+  accept an over-bound value merely because its storage happens to be able to hold it"*.
+  Writing the PR also surfaced that §6.3 had **no code** for a limit rejection, making the
+  draft's "MUST NOT report as `InvalidMessage`" unimplementable; the PR adds
+  `LimitExceeded` and raises (rather than decides) the API-shape question — fourth outcome
+  vs error channel. **All three Crucible spec proposals are now adopted** (#15→#17,
+  #16→#18, #19→#20).
+- **Timing was the point:** the clause landed **before** the codegen bump, so the update
+  implements a *defined* rule — the F-0010 order (hole → clause → adoption → codegen) that
+  made that one land uniformly. F-0015's four vectors are the **pre-bump baseline**, so the
+  update's effect is measurable rather than guessed.
+
+Net open now: **F-0004** (§8 UTF-8, gen#85), **F-0013** (G-0013 over-index,
+[generator#142](https://github.com/sofa-buffers/generator/issues/142)), **F-0014**
+(ARRAY_FIXLEN element word — corelib-c-cpp#89 / corelib-py#41 / corelib-ts#51), **F-0015**
+(maxlen — spec-resolved via documentation#20, corelibs to converge: target all 12 → `R
+invalid_msg`). F-0001 + F-0010 + F-0011 + F-0012 resolved.
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |
