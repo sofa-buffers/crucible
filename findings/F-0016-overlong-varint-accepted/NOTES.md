@@ -1,6 +1,13 @@
 # F-0016 — an overlong (>64-bit) varint is accepted and silently truncated instead of rejected
 
-**Status:** open — **corelib bug**, 7 corelibs (8 drivers). Filed per-impl (see below).
+**Status:** ✅ **RESOLVED** — all 7 corelib fixes landed and verified. **Re-measured 2026-07-17**
+(corelibs@main): both over-64-bit vectors → **all 12 `R invalid_msg`** (baseline 8A/4R), the
+2⁶⁴−1 control still `A` on all 12. All 3 vectors are in the green `corpus/regression/` gate.
+Each fix added the pre-shift room check the 3 correct impls already had. *(Harness note: java
+first read as still-broken — a stale `vendor/corelib-java/target/sofab.jar` from Jul 15; the
+driver's skip-if-present jar build masked the corelib bump. Fixed `drivers/java/build.sh` to
+rebuild when the corelib source is newer than the jar — the class of stale-cache bug that has
+bitten this repo before.)*
 **Found:** 2026-07-17 by the **coverage-guided fuzzer** (2nd 1 h round, sofabgen 0.17.5) —
 the residual cluster 2 (TS lone `I`) minimized to this, and the general isolate exposed a
 family-wide 8-vs-4 split.

@@ -17,10 +17,14 @@ JAR="$CORELIB/target/sofab.jar"
 [ -x "$SOFABGEN" ] || { echo "missing $SOFABGEN — run scripts/bootstrap.sh" >&2; exit 1; }
 [ -d "$CORELIB" ] || { echo "missing $CORELIB — run scripts/bootstrap.sh" >&2; exit 1; }
 
-# Build the corelib jar once if the vendored checkout hasn't produced it.
-if [ ! -f "$JAR" ]; then
+# Build the corelib jar if it is missing OR stale — any source (or the pom) newer than
+# the jar means the vendored corelib-java moved and the jar must be rebuilt. Skip-if-present
+# once masked an F-0016 fix: a `git reset --hard` to the fixed corelib left the Jul-15 jar
+# in place, so the driver linked the *pre-fix* corelib and the finding read as still-broken.
+# (A corelib bump sets src mtimes to checkout time, so `-newer` catches it.)
+if [ ! -f "$JAR" ] || [ -n "$(find "$CORELIB/src" "$CORELIB/pom.xml" -type f -newer "$JAR" 2>/dev/null | head -1)" ]; then
     echo "==> [java] building corelib-java jar (mvn package)" >&2
-    ( cd "$CORELIB" && mvn -q -DskipTests package >&2 )
+    ( cd "$CORELIB" && mvn -q -DskipTests clean package >&2 )
 fi
 
 echo "==> [java] generating probe classes from schema" >&2

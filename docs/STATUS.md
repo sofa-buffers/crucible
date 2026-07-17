@@ -26,7 +26,7 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   `schema/probe-union.sofab.yaml` (a `probe` carrying a 4-variant union), the one
   wire feature the main `probe` lacks. 11 seeds × 12 drivers, 0 divergences.
 - `CORPUS=corpus/regression ./scripts/run.sh` — the **resolved-findings gate**: the
-  reproducer of every fixed finding (26 inputs × 12 drivers, 0 divergences). A
+  reproducer of every fixed finding (29 inputs × 12 drivers, 0 divergences). A
   divergence here = a resolved bug came back. See `corpus/regression/README.md` for
   what it admits, and the exclusions (a reproducer that also trips an open axis stays
   in `findings/`).
@@ -36,9 +36,8 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   **sofabgen 0.17.6** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
   java, typescript, csharp, zig). `./scripts/bootstrap.sh` keeps sofabgen at the **latest
   release** (sha256-verified) and the corelibs at `origin/main`.
-- **16 findings catalogued** (`results/FINDINGS.md`); most resolved upstream. Net open:
-  **F-0004** (§8 UTF-8 opt-in, generator#85) and **F-0016** (overlong >64-bit varint
-  accepted by 8 impls — corelib-side, being filed). Three Crucible-authored MESSAGE_SPEC
+- **16 findings catalogued** (`results/FINDINGS.md`); **15 resolved.** Net open:
+  **F-0004** only (§8 UTF-8 opt-in, generator#85). Three Crucible-authored MESSAGE_SPEC
   clauses adopted (documentation#17/#18/#20).
 - **Phase 3 (built):** canonical form v2 = **round-trip re-encoding** with a
   **three-valued verdict** (`A` complete / `I` incomplete / `R` reject, per
