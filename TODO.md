@@ -94,17 +94,18 @@ corelib-c-cpp#69, corelib-cpp#22). Crucible's job is to catalog and **verify** t
 - [ ] **OSS-Fuzz** onboarding for continuous fuzzing (eventual).
 
 ## File F-0013 / G-0013 upstream (opened 2026-07-16)
-- [ ] **Not yet filed** — decide the target and open it against `sofa-buffers/generator`:
-      the heap backends never enforce an index-keyed array's schema `count`, so an element
-      at index ≥ N is kept (the fixed profiles drop it) and the unbounded
+- [x] **Filed — [generator#142](https://github.com/sofa-buffers/generator/issues/142)**
+      (2026-07-17). The heap backends never enforce an index-keyed array's schema `count`,
+      so an element at index ≥ N is kept (the fixed profiles drop it) and the unbounded
       `while (len <= id) push(default)` fill is a memory-amplification DoS (9 B → cpp
-      226 MB). Write-up + both reproducers ready in
-      `findings/F-0013-overindex-string-array-element-kept-vs-dropped/`; root cause and
-      fix direction in `docs/SOFABGEN.md` G-0013.
-- [ ] **Ask upstream the verdict question too:** §5.1 says drop an excess element, §3+§7
-      (via F-0003) say an over-**count** array is INVALID. Whether an over-**index**
-      element should be `R` rather than a silent drop looks like a genuine spec hole — a
-      documentation-repo proposal alongside the codegen fix (`docs/spec-proposals.md`).
+      226 MB). Write-up + both reproducers in
+      `findings/F-0013-overindex-string-array-element-kept-vs-dropped/`; root cause + fix
+      direction in `docs/SOFABGEN.md` G-0013.
+- [x] **Verdict question resolved by the spec, cited in the issue:** MESSAGE_SPEC §7
+      ("Enforce schema bounds as INVALID") is explicit that a wrapper-array element id ≥ N
+      is `INVALID`, *"never silently truncated to N"* — so the target is **reject** (both
+      camps are non-compliant: heap keeps, fixed silently drops). generator#142 frames the
+      fix as reject and flags the §5.1↔§7 wording tension for the maintainers to reconcile.
 - [ ] Check the index-keyed **blob** array path: the C++ heap `_BlobSeq` has the identical
       unguarded shape but `schema/probe.sofab.yaml` has no blob array, so it is untested.
       Needs a schema with one (see "more corner-case schemas" below).
