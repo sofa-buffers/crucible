@@ -110,9 +110,109 @@ reproducers become a regression gate once the family converges).
 
 ---
 
+## Proposal 3 — §7/§6.2: a declared bound binds **every** target; unbounded fields; receiver limits
+
+**Filed:** [documentation#19](https://github.com/sofa-buffers/documentation/issues/19).
+
+**Motivated by:** **F-0015** — a `string`/`blob` whose wire length exceeds its schema
+`maxlen` splits the family **three ways**, on every maxlen field in the schema
+(`nested.str` 32, `nested.bytes_field` 4, `string_array` items 64):
+
+| behavior | drivers | why |
+|---|---|---|
+| **accept, keep the over-long value** | cpp, rust-std, go, py-cython, py-pure, java, typescript, csharp, zig (9) | heap storage — `maxlen` is simply never consulted |
+| **`R invalid_msg`** | c, cpp-c-cpp (2) | fixed buffer sized from `maxlen` |
+| **`R buffer_full`** | rust-nostd (1) | fixed buffer, different error class |
+
+A value **within** `maxlen` → all 12 agree. So the three "enforcers" enforce only because
+their storage physically cannot hold more — an artifact of the memory model, not an
+implemented rule. Exactly the shape of F-0010 (under-count) and F-0013 (over-index).
+
+### The hole
+
+The spec never says what a decoder must do when a `string`/`blob` exceeds `maxlen`:
+
+- MESSAGE_SPEC mentions `maxlen` five times, **never normatively**: §2 calls it
+  *"a validation/sizing bound on string/blob byte length"* (in the list of attributes that
+  never reach the wire); §3/§6 note it is optional "like `count`"; §5.1 uses it as a
+  **pre-sizing hint** *"on heap-less profiles"*; §6 rejects it on the wrong element type
+  (schema validity, not wire enforcement).
+- **§7's "Enforce schema bounds as `INVALID`" enumerates only** `M > N` on a fixed-count
+  array and a wrapper-array element id `≥ N`. **`maxlen` is absent.**
+- **CORELIB_PLAN does not mention `maxlen` at all** (zero occurrences).
+
+Two adjacent gaps come with it:
+- **the unbounded case** — omitting `count`/`maxlen` is described for arrays (§3: *"there is
+  no `N` to fill to"*) but the receiver's obligation for a bound-less `string`/`blob` is
+  unstated;
+- **receiver-side technical limits** — the generator already ships generic caps
+  (`max_dyn_array_count` / `max_dyn_string_len` / `max_dyn_blob_len`, generator#102) and
+  Crucible tests them with a dedicated fourth verdict `L`, but **CORELIB_PLAN §6.2 "Limits &
+  Constants (normative)" lists only format-wide ceilings** (`ID_MAX`, `FIXLEN_MAX`,
+  `ARRAY_MAX`, `MAX_DEPTH`, value domains). The configurable receiver cap is undocumented —
+  Crucible's own `oracle/policy.yaml` has flagged this as a spec hole since Phase 1.
+
+### Proposed clauses
+
+> **§7.x — A declared bound binds every target (normative).**
+> A schema `count: N` on an array and a `maxlen: L` on a `string`/`blob` are **wire-validity
+> bounds**, not sizing hints. They bind **every implementation regardless of its allocation
+> strategy**: a heap-less target that pre-sizes from the bound and a heap target that
+> allocates per message **MUST both reject** input that exceeds it. A decoder **MUST NOT**
+> accept an over-bound value merely because its storage happens to be able to hold it.
+>
+> Accordingly, extend §7's enumeration — a wire element count `M > N` on a fixed-count
+> array, a wrapper-array element id `≥ N`, **or a `string`/`blob` whose wire byte length
+> exceeds its schema `maxlen`** — is malformed input and **MUST** be reported as `INVALID`.
+>
+> **§7.y — Omitting a bound declares an unbounded field (normative).**
+> A `string`/`blob` without `maxlen`, or an array without `count`, is **unbounded**: the
+> receiver **MUST** materialize as much as the received message specifies. An unbounded
+> field has no schema bound to violate, so its length alone can never yield `INVALID`
+> (the format-wide ceilings of CORELIB_PLAN §6.2 still apply). This form is available only
+> to targets that allocate dynamically; heap-less profiles require the bound in order to
+> pre-size, so a schema intended for them **MUST** declare it.
+>
+> **§6.2.x — Receiver-side technical limits are configuration, not schema (normative).**
+> Because an unbounded field lets the *sender* dictate the *receiver's* allocation, an
+> implementation **MAY** be configured with **generic maximum limits** — independent of any
+> message definition — capping the array count / string length / blob length it will
+> materialize (the generator's `max_dyn_*` options). These protect the receiver; they are
+> **not** part of the wire contract.
+>
+> Exceeding such a limit is a **policy rejection by the receiver — a category distinct from
+> `INVALID`**: the bytes are well-formed and decode successfully under a looser or unset
+> limit. An implementation **MUST NOT** conflate the two, and **MUST NOT** apply a generic
+> limit to a field whose schema already bounds it (there the schema bound governs, per
+> §7.x). Two receivers configured with **different** limits reaching different outcomes on
+> the same message is **not** an interop failure and **not** a conformance defect.
+
+### Impact
+
+- **§7.x** — validates `c`, `cpp-c-cpp`, `rust-nostd` (already reject); requires the **9 heap
+  backends** to start enforcing `maxlen`. Also makes `rust-nostd`'s `buffer_full` class wrong
+  (it is a wire-validity failure → `invalid_msg`), a small per-impl follow-up.
+- **§7.y** — codifies existing behavior; nothing changes for the heap camp on bound-less
+  fields.
+- **§6.2.x** — codifies what the generator already implements (generator#102) and what
+  Crucible already tests (limit mode, the `L` verdict), and closes the spec hole
+  `oracle/policy.yaml` has carried since Phase 1.
+
+Where the fix lands is **codegen** (as with F-0010/F-0013): `maxlen`/`count` are schema
+knowledge the schema-agnostic corelibs do not have, so generated code must enforce them —
+the same conclusion the §7 preamble already draws ("The corelib cannot know the schema").
+
+**Timing.** A sofabgen update reworking array/string/blob `count`/`maxlen` is expected. Filing
+this **first** is deliberate: F-0010 showed the working order — hole → proposal
+(documentation#16) → adopted (#18) → *then* generator#136 implemented the **adopted** rule
+uniformly. Without a clause, the codegen would implement an undefined rule and the family
+would converge on an arbitrary answer.
+
+---
+
 ## Status
 
-**Both clauses ADOPTED upstream (2026-07-16).**
+**Proposals 1 + 2 ADOPTED upstream (2026-07-16); Proposal 3 filed 2026-07-17.**
 - Proposal 1 → **documentation#17** merged (`1018e0c`): §5.2 gains the normative
   *precedence of `INVALID` over `INCOMPLETE`*; §4.6 makes wrong-width `fp32`/`fp64`
   an explicit `INVALID`; §6.3 `InvalidMessage` row + MESSAGE_SPEC §7 updated. Closes
@@ -148,3 +248,14 @@ correct; both fixes need `N` / fixed-vs-dynamic, which live only in generated co
 Filed **[generator#136](https://github.com/sofa-buffers/generator/issues/136)** with
 the R1/R2 reproducers. F-0004's §8 UTF-8 opt-in check remains unimplemented family-wide
 (generator#85).
+
+**Proposal 3 — filed [documentation#19](https://github.com/sofa-buffers/documentation/issues/19)
+(2026-07-17), awaiting adoption.** Motivated by **F-0015**. Filed *ahead of* an announced
+sofabgen update reworking array/string/blob `count`/`maxlen` — deliberately, so the codegen
+implements an **adopted** rule rather than an undefined one (the F-0010 order: hole →
+proposal → adoption → codegen). Verified against the current spec (`documentation@c160838`):
+of the four parts of the intended model, only **one is specified today** —
+`count` binds every target (§3/§5.1, via documentation#18); `maxlen` binding, the
+unbounded-field obligation, and the receiver-side `max_dyn_*` limits are **all
+undocumented**.
+
