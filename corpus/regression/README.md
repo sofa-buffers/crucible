@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (25 inputs)
+## Contents (26 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -32,6 +32,7 @@ looking. This corpus makes it automatic.
 | `F0014_c_family_subtype_string.bin`, `F0014_py_fp32_size0.bin`, `F0014_ts_reserved_subtype.bin` | F-0014 | corelib-c-cpp#89 + corelib-py#41 + corelib-ts#51 | an `ARRAY_FIXLEN` element word is validated **at the header**: a non-fp32/fp64 subtype, a wrong element width, and a reserved subtype are each `R` on all 12 — not `I` on whichever impl skipped that check |
 | `F0015_string_40_over_maxlen32.bin`, `F0015_blob_8_over_maxlen4.bin`, `F0015_strarray_elem_70_over_maxlen64.bin` | F-0015 | MESSAGE_SPEC §7.1 (documentation#20) + sofabgen 0.17.5 | a `string`/`blob` over its schema `maxlen` is `R invalid_msg` on **all 12** — the bound binds every target, not just the ones whose buffer happens to be too small |
 | `F0015_control_string_within_maxlen32.bin` | F-0015 (control) | — | the **counter-direction**: a value *within* `maxlen` is still accepted by all 12 — guards against over-rejecting |
+| `F0013_overindex_clean.bin` | F-0013 | generator#142 (0.17.4) + #149→#151/#150 (0.17.6) | a `string_array` element at index ≥ the schema `count` is `R invalid_msg` on **all 12** — heap and fixed-capacity alike; no silent drop, no DoS |
 
 Filenames are `F<nnnn>_<original-name>.bin`; the originals stay in `findings/<id>/` as the
 finding's own record. `F0003_overcount_clean.bin` has no original — see below.
@@ -51,7 +52,6 @@ excluded, each because the family still legitimately splits on it:
 | excluded | why |
 |---|---|
 | `F-0004/invalid_utf8.bin` | **open finding.** The 4-way UTF-8 split waits on the `SOFAB_STRICT_UTF8` epic (spec §8 / generator#85) |
-| `F-0013/overindex_clean.bin` | **open finding, half-fixed.** sofabgen 0.17.4 (generator#142) made the 9 heap profiles reject an over-index element — and killed the DoS (cpp 226 MB → 10 MB). But `c` / `cpp-c-cpp` / `rust-nostd` still **accept and silently drop** it via `_FixedStrSeq`'s `#126` capacity guard, so the split flipped from a value split to a verdict split (9 `R` vs 3 `A`). §7 forbids the drop ("never silently truncated to the bound") and §7.1 requires both camps to reject |
 | `F-0003/array_overflow.bin` | the original is over-count **and truncated**, so rust reports `I` and the family `R` — that is the open precedence spec-hole ([documentation#15](https://github.com/sofa-buffers/documentation/issues/15)), not the over-count axis the finding is about |
 | `F-0008/hang_min.bin`, `hang_orig.bin` | the hang is fixed (generator#126) and they terminate, but both end mid-sequence, so py says `R` (eager) and the family `I` (lazy) — documentation#15 again |
 

@@ -369,9 +369,18 @@ RESOLVED, F-0013 half. Regression gate 18 → 25.** Box green throughout.
 - ✅ No regression from `4e78b0a` (java array omit-default hoisted to a static) — F-0011's
   vectors stay green.
 
-Net open now: **F-0004** (§8 UTF-8, gen#85) and **F-0013** (residual only —
-[generator#149](https://github.com/sofa-buffers/generator/issues/149); its DoS + heap half
-are fixed). F-0001 + F-0010 + F-0011 + F-0012 + **F-0014** + **F-0015** resolved.
+**Fourteenth change 2026-07-17 — sofabgen 0.17.6: F-0013 FULLY RESOLVED; regression gate 25→26.**
+Installed via the reworked `bootstrap.sh` (latest release, sha256-verified). 0.17.6 lands
+generator#149 → #151 (fixed-capacity C family) + #150 (rust no_std): the 3 profiles that were
+still silently dropping an over-index element now **reject** it. Box green throughout.
+- ✅ **F-0013 done** — `overindex_clean` + `overindex_amplify` → **all 12 `R invalid_msg`**;
+  in-range elements still accepted by all 12; DoS gone. Closed over four releases in the
+  right order: DoS + heap half first (0.17.4, security-critical), fixed-capacity verdict half
+  last (0.17.6). Promoted `overindex_clean.bin` into the gate (now **26 inputs**).
+
+Net open now: **F-0004** (§8 UTF-8, gen#85) — and the *unfiled* **F-0016** (overlong >64-bit
+varint accepted by 8 impls, found in the 2nd 1 h fuzz round; corelib-side, not yet written up).
+F-0001 + F-0010 + F-0011 + F-0012 + F-0013 + F-0014 + F-0015 resolved.
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |
