@@ -274,7 +274,7 @@ looking). Also wired the **union suite** into `replay.yml`.
   heap backends emit an unbounded container + `while (len <= id) push(default)` fill, so
   the schema `count` is enforced nowhere. Same fill is a **memory-amplification DoS**:
   9 B at index 2,000,000 → cpp **226 MB** / go **122 MB** vs ~8 MB fixed. **The half of
-  F-0008 that generator#126 left unfixed.** Not yet filed upstream.
+  F-0008 that generator#126 left unfixed.** Filed [generator#142](https://github.com/sofa-buffers/generator/issues/142) (2026-07-17; spec target = reject per §7).
 - Harness fix: `comparator.py`'s `read_corpus` now skips `*.md` + dotfiles, so a corpus
   dir can carry a README (previously *every* file was an input, incl. a `.gitkeep`).
 
@@ -286,8 +286,9 @@ valid-skip controls stay `A`/`I`. (cs/go moved on docs/deps/test only.) PR #39 (
 write-up) had already merged; the overindex finding it collided with was renumbered
 **F-0012 → F-0013**.
 
-Net open now: **F-0004** (§8 UTF-8, gen#85) and **F-0013** (G-0013 over-index, unfiled).
-F-0010 + F-0011 + F-0012 resolved.
+Net open now: **F-0004** (§8 UTF-8, gen#85) and **F-0013** (G-0013 over-index, filed
+**[generator#142](https://github.com/sofa-buffers/generator/issues/142)**). F-0010 + F-0011
++ F-0012 resolved.
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |

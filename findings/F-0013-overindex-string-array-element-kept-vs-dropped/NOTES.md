@@ -1,8 +1,12 @@
 # F-0013 — a string_array element at an index ≥ the schema count: dropped (fixed-capacity) vs kept (heap), plus an unbounded-allocation DoS
 
-**Status:** open — **not yet filed upstream.** Codegen weakness **G-0013**
-(`docs/SOFABGEN.md`). Target repo: `sofa-buffers/generator` (sofabgen), all heap
-backends.
+**Status:** open — **filed [generator#142](https://github.com/sofa-buffers/generator/issues/142)**
+(2026-07-17). Codegen weakness **G-0013** (`docs/SOFABGEN.md`). Target repo:
+`sofa-buffers/generator` (sofabgen), all heap backends. **Spec target = reject:** the
+issue cites MESSAGE_SPEC §7 ("Enforce schema bounds as `INVALID` … a wrapper-array element
+id ≥ N … MUST be reported as `INVALID`, never silently truncated to N"), which resolves the
+"which camp is right" question below — *neither* camp is compliant (heap keeps, fixed
+silently drops); all 12 should reject. The allocation must be bounded regardless (the DoS).
 **Found:** 2026-07-16, while building `corpus/regression/` — constructing a *clean*
 isolate for the resolved F-0008 (an over-capacity element index without F-0008's
 truncation) surfaced a divergence that the contaminated original could not show.
