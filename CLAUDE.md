@@ -51,6 +51,48 @@ Everything below is only what is **not** written in those files.
   cites a spec clause (or records that none exists yet). A policy entry with no
   spec basis is a spec hole to file upstream, not a silent exception.
 
+## Attribute every finding before filing it: generated code, or the corelib?
+
+**Required triage step, not an afterthought.** A divergence is never filed against
+"SofaBuffers" — it goes to **the repo that contains the bug**. Guess wrong and you burn a
+maintainer's time and the issue gets closed as misfiled: F-0008 was first filed against
+corelib-c-cpp#84, and the maintainer had to redirect it (crucible#16) — it was codegen.
+
+**The question that decides it:** *does the fix need knowledge only the schema has?*
+
+| the bug is about… | who can even know it | file against |
+|---|---|---|
+| `count`, `maxlen`, `N`, a field's declared type — **schema** facts | only **generated code** (the corelib is schema-agnostic *by design*) | `generator` (sofabgen); log it as `G-00NN` in [`docs/SOFABGEN.md`](docs/SOFABGEN.md) |
+| varints, the `fixlen_word`, wire types, subtypes, sequence framing, INVALID-vs-INCOMPLETE precedence — **wire** mechanics | the **corelib** reader/writer | `corelib-<lang>` (one issue per affected impl) |
+
+MESSAGE_SPEC §7 states the same split from the other side: *"The corelib cannot know the
+schema, so schema-bound violations are detected — and reported — by generated code."*
+
+**Establish it, don't infer it:**
+
+1. Read the **generated** code for the field (`drivers/<lang>/gen/…`) *and* the corelib
+   function it calls.
+2. Ask which of the two had the information to reject. If the corelib was handed a
+   slice/length and faithfully used it, **the corelib is correct and its caller is the
+   bug** — that is how F-0010 was pinned (every corelib array writer correctly writes
+   `count = len(passed slice)`; only generated code knows `N`).
+3. Diff a **sibling profile** that behaves differently — `cpp` vs `cpp-c-cpp`, `rust-std`
+   vs `rust-no-std`, `py-cython` vs `py-pure`. A split *inside one language* usually
+   indicts the generated container, not the wire code. (Counting `invalidate()` calls in
+   the two generated C++ profiles — 13 vs 0 — is what pinned F-0013's residual.)
+4. Put the evidence in the issue: `file:line`, what it validates **vs what it omits**, and
+   the minimal isolate. Issues filed that way have been fixed the same day; vague ones
+   bounce.
+
+Worked examples: **F-0010 / F-0013** → codegen (`N` is schema-only) → `generator`.
+**F-0014** → corelib (each decoder's `ARRAY_FIXLEN` element-word check) → three
+`corelib-*` issues, all fixed same-day. **F-0009** → codegen (the C blob descriptor).
+**F-0016** → corelib (the varint reader's 64-bit overflow check).
+
+*Caveat:* the answer is occasionally **both** — F-0010's C slice needed corelib-c-cpp#87
+alongside the codegen fix. Attribution decides where to *start*, and the write-up should
+name the other side when it is implicated.
+
 ## Checklists
 
 The canonical **add-a-new-corelib** checklist is in
@@ -85,6 +127,18 @@ exists), then record the new driver's quirks in `ARCHITECTURE.md`.
 
 ## Status
 
-Pre-implementation. The three documents above exist; no code yet. Phase 0
-(skeleton) and Phase 1 (C + Go two-language differential loop) are the next
-steps — see `docs/PLAN.md` §12.
+**Built and running** — do not trust this line for detail, read
+[`docs/STATUS.md`](docs/STATUS.md) (it is the current-state snapshot and is kept
+current; this file only orients you).
+
+Phases 1–2 are done and Phase 3 is largely done: **12 drivers / 10 corelibs**, the
+three-valued verdict (`A`/`I`/`R`, plus `L` in limit mode), a structure-aware mutator,
+a C libFuzzer pacemaker, crash- *and* hang-isolation, auto-clustering, and five green
+suites — differential (seeds), cross-encode, union, limit mode, and the
+**resolved-findings regression gate** (`corpus/regression/`, wired into CI).
+
+Sixteen findings are catalogued (`results/FINDINGS.md`); most are fixed upstream. Three
+Crucible-authored MESSAGE_SPEC clauses have been adopted (documentation#17/#18/#20).
+`./scripts/bootstrap.sh` always installs the **latest sofabgen release** and fetches the
+corelibs to `origin/main` — there is deliberately no skip-if-present shortcut, because a
+silently stale toolchain once made this repo report the wrong versions.
