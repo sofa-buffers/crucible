@@ -5,8 +5,9 @@ Open work **on Crucible itself**. Fixes for the corelib/generator bugs Crucible 
 codegen defects: [`SOFABGEN.md`](SOFABGEN.md), spec proposals: [`spec-proposals.md`](spec-proposals.md)).
 Crucible's job is to catalog, attribute, and **verify** them.
 
-**As of 2026-07-17:** 16 findings catalogued, **15 resolved**; the only net-open finding is
-**F-0004** (§8 UTF-8 opt-in, generator#85). All three Crucible-authored MESSAGE_SPEC clauses
+**As of 2026-07-17:** 17 findings catalogued, **15 resolved**; the net-open findings are
+**F-0004** (§8 UTF-8 opt-in, generator#85) and **F-0017** (generated TypeScript decode ignores
+the header wire type, generator#160 / G-0014). All three Crucible-authored MESSAGE_SPEC clauses
 are adopted (documentation#17/#18/#20). Five green suites (seeds / cross-encode / union /
 limit / **regression**, the last at 29 inputs) run in CI. `./scripts/bootstrap.sh` keeps
 sofabgen at the latest release and the corelibs at `origin/main`.

@@ -36,9 +36,10 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   **sofabgen 0.17.6** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
   java, typescript, csharp, zig). `./scripts/bootstrap.sh` keeps sofabgen at the **latest
   release** (sha256-verified) and the corelibs at `origin/main`.
-- **16 findings catalogued** (`results/FINDINGS.md`); **15 resolved.** Net open:
-  **F-0004** only (§8 UTF-8 opt-in, generator#85). Three Crucible-authored MESSAGE_SPEC
-  clauses adopted (documentation#17/#18/#20).
+- **17 findings catalogued** (`results/FINDINGS.md`); **15 resolved.** Net open:
+  **F-0004** (§8 UTF-8 opt-in, generator#85) and **F-0017** (generated TypeScript
+  decode ignores the header wire type, generator#160 / G-0014). Three
+  Crucible-authored MESSAGE_SPEC clauses adopted (documentation#17/#18/#20).
 - **Phase 3 (built):** canonical form v2 = **round-trip re-encoding** with a
   **three-valued verdict** (`A` complete / `I` incomplete / `R` reject, per
   MESSAGE_SPEC §7 — comparator + `canonical.md` updated, drivers emit `I` as each
@@ -384,6 +385,23 @@ still silently dropping an over-index element now **reject** it. Box green throu
 Net open now: **F-0004** (§8 UTF-8, gen#85) — and the *unfiled* **F-0016** (overlong >64-bit
 varint accepted by 8 impls, found in the 2nd 1 h fuzz round; corelib-side, not yet written up).
 F-0001 + F-0010 + F-0011 + F-0012 + F-0013 + F-0014 + F-0015 resolved.
+
+**Fifteenth change 2026-07-17 — F-0016 written up + RESOLVED; F-0017 opened; regression gate 26 → 29.**
+- ✅ **F-0016 filed and resolved.** The overlong-varint divergence was written up and filed
+  per-impl against the seven lenient corelibs (the varint reader caps the byte count at 10 but
+  never checks the 10th byte's overflow bits): corelib-cpp#39, corelib-go#48, corelib-rs-no-std#45,
+  corelib-py#43, corelib-ts#53, corelib-java#41, corelib-cs#37. All seven fixed & closed;
+  **re-measured all 12 `R invalid_msg`** on both over-64-bit vectors (baseline 8A/4R), control
+  still `A`. Promoted the two vectors + the control into the **regression gate (26 → 29 inputs)**.
+  Also hardened `drivers/java/build.sh` to rebuild the corelib jar when the source is newer — a
+  cached jar had masked this fix.
+- 🆕 **F-0017 (new, open):** the generated **TypeScript** decode dispatches on the field id alone
+  and calls the schema-typed reader **without checking the header wire type**, so a type-mismatched
+  header desyncs it from the wire framing (isolate `05 00 01`: 11 → `R`, ts → `I`). Codegen defect
+  **G-0014**, filed **generator#160** — distinct from (and upstream of) the resolved corelib-ts
+  precedence family. Found by the 3 h fuzz on 0.17.7.
+
+Net open now: **F-0004** (§8 UTF-8, gen#85) and **F-0017** (generator#160 / G-0014).
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |
@@ -420,8 +438,9 @@ Both verified: full differential over the two reproducers + the F-0001 seeds acr
   `apt-get install clang libclang-rt-dev llvm` there. Replay drivers build with gcc.
 - **corelib-c-cpp** `sofab_istream_feed` asserts `datalen>0` (debug precondition);
   drivers guard `len==0` as the valid empty message.
-- **G-0006 workaround** in `drivers/go/build.sh` injects a missing `bytes` import
-  (remove once generator#84 lands).
+- **G-0006 is fixed** (sofabgen 0.15.1, generator#84): the old `drivers/go/build.sh`
+  workaround that injected a missing `bytes` import into the generated `types.go` has
+  been removed — the generator now emits the import.
 - **Characterize a divergence with a minimal isolate**, not a raw fuzzer input — the
   coarse `invalid_msg` reject class conflated reasons (F-0004 was mischaracterized
   until isolated).

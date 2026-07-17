@@ -1,10 +1,11 @@
 # Crucible — Architecture (living document)
 
-> **Status: Phase 2 complete** — the differential loop runs across all twelve
+> **Status: Phases 1–3 largely done** — the differential loop runs across all twelve
 > drivers / ten corelibs (C pacemaker, Go, Rust-std, Rust-no-std, C++, C++/c-cpp,
-> Python-Cython, Python-pure, Java, TypeScript, C#, Zig) over the minimal `probe`
-> schema. Next is Phase 3 (structure-aware engine + round-trip/cross-encode
-> oracles + schema scale-up). This describes
+> Python-Cython, Python-pure, Java, TypeScript, C#, Zig) over the full-scale `probe`
+> schema. Phase 3 is built (structure-aware mutator, round-trip + cross-encode
+> oracles, three-valued verdict `A`/`I`/`R`, schema scale-up); Phase 4 (CI) is
+> wired — see [`CI.md`](CI.md). This describes
 > architecture **as actually built**, and is updated whenever the real system
 > changes — especially when it **deviates from [`PLAN.md`](PLAN.md)**. `PLAN.md`
 > is the intended design and stays stable; this file tracks what exists and why
@@ -113,10 +114,10 @@ has no `LimitExceeded`).
   asserts still fire on real bugs for non-empty input.
 - **go** — generated visitor decode (`DecodeProbe`); decode error → `R invalid_msg`
   (coarse; reject-class soft), else re-encode → hex. Native coverage via
-  `go test -fuzz=FuzzProbe`; module resolves corelib-go via a `replace`. `build.sh`
-  carries a **G-0006 workaround**: sofabgen's generated `types.go` uses
-  `bytes.Equal` (blob in a nested struct) without importing `"bytes"`, so the
-  build injects the missing import (see docs/SOFABGEN.md).
+  `go test -fuzz=FuzzProbe`; module resolves corelib-go via a `replace`. (The old
+  **G-0006 workaround** — injecting a missing `"bytes"` import into the generated
+  `types.go` — was removed once G-0006 was fixed in sofabgen 0.15.1; see
+  docs/SOFABGEN.md.)
 - **rust (rs + rs-no-std)** — one shared `drivers/rust/driver.rs` builds against
   BOTH corelibs; `build.sh <rs|rs-no-std>` selects the vendored crate and
   prepends a per-variant `Probe` import (`mod message` for std, the lib crate

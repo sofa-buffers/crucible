@@ -7,7 +7,7 @@ as the corelibs churn. See PLAN §10/§12.
 | workflow | trigger | blocking? | what it does |
 |---|---|---|---|
 | [`image.yml`](../.github/workflows/image.yml) | `.devcontainer/Dockerfile` change · manual | — | build the 12-toolchain image, push to GHCR |
-| [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | build all drivers, run the three **green** gates |
+| [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | build all drivers, run the five **green** gates |
 | [`nightly.yml`](../.github/workflows/nightly.yml) | 03:00 UTC daily · manual | no | fuzz → grow corpus → cluster → upload artifacts |
 
 ## The image (`image.yml`) — the linchpin
@@ -32,22 +32,25 @@ changes (or on manual dispatch), with layer caching via `type=gha`.
 ## The replay gate (`replay.yml`) — blocking
 
 Bootstraps the corelibs (their `main` tips) + sofabgen, builds all 12 replay
-drivers, and runs the three **green** oracles in sequence; any divergence fails the
+drivers, and runs the five **green** oracles in sequence; any divergence fails the
 job:
 
 ```sh
 ./scripts/bootstrap.sh   # always: latest sofabgen release (checksum-verified) + corelibs@main
-./scripts/run.sh                   # seed differential           (corpus/seeds)
-REGEN=0 ./scripts/cross-encode.sh  # cross-encode / structured   (corpus/structured)
-./scripts/run-limits.sh            # limit mode                  (corpus/limits)
+./scripts/run.sh                          # seed differential            (corpus/seeds)
+CORPUS=corpus/regression ./scripts/run.sh # resolved-findings gate       (corpus/regression)
+REGEN=0 ./scripts/cross-encode.sh         # cross-encode / structured    (corpus/structured)
+./scripts/run-union.sh                    # union suite                  (corpus/union)
+./scripts/run-limits.sh                   # limit mode                   (corpus/limits)
 ```
 
 - **Corelibs pinned to `main`** on purpose: Crucible is a *conformance* fuzzer, so a
   red gate on an upstream regression is exactly the signal we want — it's how we
   work by hand.
-- **Open findings diverge by design** (F-0004, F-0008, F-0009) and are kept OUT of
+- **Open findings diverge by design** (F-0004, F-0017) and are kept OUT of
   these green corpora — they live in `findings/` until fixed. When a fix lands, its
-  reproducer converges and can be promoted into a green gate.
+  reproducer converges and can be promoted into a green gate (as F-0008/F-0009 and
+  the rest of the resolved findings already were — see `corpus/regression/`).
 - The comparator's **per-driver timeout** keeps a hanging driver from wedging the
   job (reported as a `[TIMEOUT]` finding, so a regressed DoS still fails the gate).
 
@@ -65,12 +68,10 @@ step). `FUZZ_TIME` (default 1800s) is overridable via manual dispatch.
 
 ## Follow-ups
 
-- **Build reuse:** `replay` currently runs `run.sh` three times (seeds / structured
-  via `cross-encode.sh` / limits), rebuilding drivers each time. A build-once →
-  compare-many-corpora mode would cut the gate to one build.
-- **`corpus/regression/`:** promote resolved-finding reproducers (F-0001/02/03/05/
-  06/07 …) into a committed green set so the gate also guards against regressions of
-  the *specific* fixed inputs, not just the seed/structured value space.
+- **Build reuse:** `replay` currently runs the five gates (seeds / regression /
+  structured via `cross-encode.sh` / union / limits) as separate steps, rebuilding
+  all 12 drivers each time — so the gate pays the build 5×. A build-once →
+  compare-many-corpora mode would cut it to one build.
 - **Cross-repo auto-annotation:** have `nightly` open/annotate issues on the owning
   corelib/generator repos (needs a PAT with `issues:write`), instead of only
   uploading artifacts.
