@@ -341,11 +341,37 @@ Preparing the regression for an announced sofabgen update reworking array/string
   made that one land uniformly. F-0015's four vectors are the **pre-bump baseline**, so the
   update's effect is measurable rather than guessed.
 
-Net open now: **F-0004** (§8 UTF-8, gen#85), **F-0013** (G-0013 over-index,
-[generator#142](https://github.com/sofa-buffers/generator/issues/142)), **F-0014**
-(ARRAY_FIXLEN element word — corelib-c-cpp#89 / corelib-py#41 / corelib-ts#51), **F-0015**
-(maxlen — spec-resolved via documentation#20, corelibs to converge: target all 12 → `R
-invalid_msg`). F-0001 + F-0010 + F-0011 + F-0012 resolved.
+**Thirteenth change 2026-07-17 — sofabgen 0.17.4 + 0.17.5 + corelib fixes: F-0014 & F-0015
+RESOLVED, F-0013 half. Regression gate 18 → 25.** Box green throughout.
+- ✅ **F-0015 fully resolved** — **0.17.5** (`b0b2832`, "reject over-maxlen strings/blobs as
+  INVALID on decode (Option B)"). Measured against this morning's baseline: **9 accept / 2
+  `invalid_msg` / 1 `buffer_full` → all 12 `R invalid_msg`**, on all three over-`maxlen`
+  vectors; the within-`maxlen` control still accepts on all 12. Both halves landed — the 9
+  heap backends enforce `maxlen`, *and* rust-nostd's `buffer_full` became `invalid_msg` (the
+  class correction §7.1 implies). **The whole arc closed in one day:** hole found while
+  preparing the regression → clause filed (documentation#19) → spec PR authored & merged
+  (#20) → codegen (0.17.5) → verified against the baseline. Without the baseline, "fixed"
+  and "never tested" would have been indistinguishable.
+- ✅ **F-0014 resolved** — all three corelib issues fixed & closed the same day:
+  corelib-c-cpp#89 (`ab062e3`), corelib-py#41 (`d4fe94f`), corelib-ts#51 (`7a9033f` —
+  "validate fixlen element word *before truncation guard*", the exact ordering diagnosis).
+  All three isolates → all 12 `R invalid_msg`.
+- ⚠️ **F-0013 half fixed** — **0.17.4** (generator#142, now closed) killed the **DoS** (cpp
+  **226 MB → 10 MB**) and made the 9 heap backends reject. But `c`/`cpp-c-cpp`/`rust-nostd`
+  still **accept + silently drop**, so the split **flipped** from a value split to a verdict
+  split (9 `R` vs 3 `A`). Traced: `b6da1ed`'s "never taken" holds for `_MsgSeq`, but
+  string/blob over-index goes through `_FixedStrSeq`, still carrying #126's silent `return;`
+  (c-cpp has **0** `invalidate()` calls vs cpp's **13**). Violates §7 + §7.1. Filed
+  **[generator#149](https://github.com/sofa-buffers/generator/issues/149)**.
+- **Regression gate 18 → 25 inputs**, still 0 divergences: promoted F-0014's 3 isolates +
+  F-0015's 3 over-bound vectors + its within-bound **control** (which guards the
+  counter-direction — that we don't start over-rejecting).
+- ✅ No regression from `4e78b0a` (java array omit-default hoisted to a static) — F-0011's
+  vectors stay green.
+
+Net open now: **F-0004** (§8 UTF-8, gen#85) and **F-0013** (residual only —
+[generator#149](https://github.com/sofa-buffers/generator/issues/149); its DoS + heap half
+are fixed). F-0001 + F-0010 + F-0011 + F-0012 + **F-0014** + **F-0015** resolved.
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |

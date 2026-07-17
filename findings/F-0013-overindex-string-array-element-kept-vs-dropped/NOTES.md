@@ -1,7 +1,16 @@
 # F-0013 — a string_array element at an index ≥ the schema count: dropped (fixed-capacity) vs kept (heap), plus an unbounded-allocation DoS
 
-**Status:** open — **filed [generator#142](https://github.com/sofa-buffers/generator/issues/142)**
-(2026-07-17). Codegen weakness **G-0013** (`docs/SOFABGEN.md`). Target repo:
+**Status:** open — **half fixed.** [generator#142](https://github.com/sofa-buffers/generator/issues/142)
+**closed & rightly so** (sofabgen **0.17.4**, PR #143): the **DoS is gone** (cpp **226 MB → 10 MB**
+at index 2,000,000) and the **9 heap backends now reject**. The **residual** — the 3
+fixed-capacity profiles (`c`, `cpp-c-cpp`, `rust-nostd`) still **accept and silently drop** the
+element — is filed as **[generator#149](https://github.com/sofa-buffers/generator/issues/149)**.
+The divergence *flipped* rather than closed: from an all-accept **value** split to a **verdict**
+split (9 `R` vs 3 `A`). Root cause traced: `b6da1ed`'s "never taken" reasoning holds for
+`_MsgSeq`, but a string/blob over-index goes through **`_FixedStrSeq`**, whose guard is still
+**#126's silent drop** (the F-0008 hang fix) — c-cpp's generated code has **0** `invalidate()`
+calls vs pure cpp's **13**. Violates §7 ("never silently truncated to the bound") and §7.1
+("MUST both reject"). **Re-verified on 0.17.5:** unchanged. (2026-07-17) Codegen weakness **G-0013** (`docs/SOFABGEN.md`). Target repo:
 `sofa-buffers/generator` (sofabgen), all heap backends. **Spec target = reject:** the
 issue cites MESSAGE_SPEC §7 ("Enforce schema bounds as `INVALID` … a wrapper-array element
 id ≥ N … MUST be reported as `INVALID`, never silently truncated to N"), which resolves the
@@ -12,9 +21,34 @@ isolate for the resolved F-0008 (an over-capacity element index without F-0008's
 truncation) surfaced a divergence that the contaminated original could not show.
 **Axis:** `accept_value` (round-trip) **+ resource exhaustion** (memory-amplification
 DoS).
-**Affects:** every **heap** profile — `go`, `rust-std`, `cpp`, `py-cython`, `py-pure`,
-`java`, `typescript`, `csharp`, `zig` (9 of 12). The **fixed-capacity** profiles (`c`,
-`cpp-c-cpp`, `rust-nostd`) are correct.
+**Affects (INVERTED by sofabgen 0.17.4):** now the **fixed-capacity** profiles — `c`,
+`cpp-c-cpp`, `rust-nostd` (3 of 12), which accept + silently drop. The 9 **heap** profiles
+were the offenders originally and are now **correct** (they reject). Everything below the
+"Current state" section describes the **original** (pre-0.17.4) situation and is kept as
+history — read it with that inversion in mind.
+
+## Current state (sofabgen 0.17.5, 2026-07-17) — the split flipped, it did not close
+
+| | original | **0.17.4 / 0.17.5** |
+|---|---|---|
+| cpp, rust-std, go, py×2, java, ts, cs, zig (9) | `A` + **keep** element | ✅ `R invalid_msg` |
+| **c, cpp-c-cpp, rust-nostd (3)** | `A` + **drop** element | ❌ **`A` + drop** (unchanged) |
+
+✅ **The DoS is gone** — `overindex_amplify.bin` peak RSS: cpp **226 MB → 10 MB**, go
+122 → 2 MB, rust-std 49 → 2 MB, zig 36 → 4 MB. The heap backends reject at the header
+before allocating. That was the security-critical half and #142 closed it correctly.
+
+❌ **The residual** ([generator#149](https://github.com/sofa-buffers/generator/issues/149)):
+the fixed-capacity profiles still drop. What was an all-accept **value** split is now a
+**verdict** split. Root cause: `b6da1ed` ("drop (not invalidate) … `_MsgSeq` … never taken")
+is right *about `_MsgSeq`* — but a string/blob over-index goes through **`_FixedStrSeq`**,
+still carrying **#126's silent `return;`** (the F-0008 hang guard), untouched by #143.
+Generated `invalidate()` calls: **c-cpp 0, pure cpp 13**. The blocker `b6da1ed` names is
+real — c-cpp's `IStreamImpl` has no `invalidate()` hook — but `b0b2832` (0.17.5) solved the
+equivalent problem for over-`maxlen` on the same containers (F-0015 → all 12 reject), so a
+working pattern exists in-tree.
+
+---
 
 ## Reproduce
 
@@ -39,7 +73,7 @@ well-formed otherwise** — deliberately, so it isolates the over-index axis alo
 ([documentation#15](https://github.com/sofa-buffers/documentation/issues/15)) the way
 F-0008's kept originals do.
 
-## The split — every driver ACCEPTS, the value differs (3 vs 9)
+## The split (ORIGINAL, pre-0.17.4) — every driver ACCEPTS, the value differs (3 vs 9)
 
 | behavior | canonical re-encode | drivers | memory model |
 |---|---|---|---|
@@ -51,7 +85,7 @@ Nobody rejects, so this is invisible to any accept-vs-reject oracle — it is ex
 structured track exists to catch. The split is **not** language-idiomatic drift: it falls
 out of the **memory model**, cleanly, the same axis as F-0010.
 
-## Root cause — codegen: the heap backends never enforce the schema `count`
+## Root cause (ORIGINAL) — codegen: the heap backends never enforce the schema `count`
 
 The fixed-capacity backends bound the fill by the container's capacity; the heap backends
 emit an **unbounded container** and an **unbounded fill loop**, so the schema's `count: 5`
@@ -85,7 +119,7 @@ floor** by the heap backends. The identical `_BlobSeq` fill in the C++ heap prof
 same unguarded shape, so index-keyed **blob** arrays are almost certainly affected too —
 untested here only because `schema/probe.sofab.yaml` has no blob array.
 
-## Memory-amplification DoS (the half of F-0008 that was never fixed)
+## Memory-amplification DoS (ORIGINAL — ✅ FIXED in 0.17.4; numbers kept as the before-picture)
 
 Because the fill materializes `id+1` elements and `id` is an unbounded **varint**, a tiny
 input forces an arbitrarily large allocation. `overindex_amplify.bin` — **9 bytes**,

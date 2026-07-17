@@ -1,9 +1,15 @@
 # F-0014 — the ARRAY_FIXLEN element word is not (fully) validated at the header → INCOMPLETE instead of INVALID
 
-**Status:** open — filed per-impl: **[corelib-c-cpp#89](https://github.com/sofa-buffers/corelib-c-cpp/issues/89)**,
-**[corelib-py#41](https://github.com/sofa-buffers/corelib-py/issues/41)**,
-**[corelib-ts#51](https://github.com/sofa-buffers/corelib-ts/issues/51)** (follow-up to the
-fixed corelib-ts#49).
+**Status:** ✅ **RESOLVED** — all three filed issues fixed & closed the same day:
+**[corelib-c-cpp#89](https://github.com/sofa-buffers/corelib-c-cpp/issues/89)** (`ab062e3`,
+"reject fixlen-array string/blob subtype and over-maxlen blobs"),
+**[corelib-py#41](https://github.com/sofa-buffers/corelib-py/issues/41)** (`d4fe94f`,
+"validate ARRAY_FIXLEN element width at header time"),
+**[corelib-ts#51](https://github.com/sofa-buffers/corelib-ts/issues/51)** (`7a9033f`,
+"validate fixlen element word **before truncation guard**" — the ordering diagnosis).
+**Re-verified 2026-07-17** (sofabgen 0.17.5, corelibs@main): all three isolates → **all 12
+`R invalid_msg`** (each previously had one camp on `I`). All three reproducers are now in the
+green `corpus/regression/` gate.
 **Found:** 2026-07-17 by the **coverage-guided fuzzer** (1 h round, 143 M execs) — the
 residual precedence clusters that remained after corelib-ts#49 removed the dominant one.
 **Axis:** verdict (INVALID vs INCOMPLETE — the §5.2 precedence family).
