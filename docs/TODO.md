@@ -5,10 +5,12 @@ Open work **on Crucible itself**. Fixes for the corelib/generator bugs Crucible 
 codegen defects: [`SOFABGEN.md`](SOFABGEN.md), spec proposals: [`spec-proposals.md`](spec-proposals.md)).
 Crucible's job is to catalog, attribute, and **verify** them.
 
-**As of 2026-07-18:** 18 findings catalogued, **17 resolved**; the only net-open finding is
-**F-0018** (the C object API truncates a `string` at an embedded U+0000 — a value split, the
-string analogue of F-0009). **F-0004** (strict UTF-8) and **F-0017** (TS header wire type) were
-resolved by **sofabgen 0.18.0** (crucible#55). All three Crucible-authored MESSAGE_SPEC clauses
+**As of 2026-07-18:** 18 findings catalogued, **17 resolved, 1 by-design** — **no open bug to
+fix.** F-0018 (embedded U+0000 in a `string`) is classified **by-design**: a NUL-terminated
+C-string profile projects `A\0B` → `A` on re-encode; valid on the wire, preserved by the other
+10 profiles, sanctioned as an allowed divergence in `oracle/policy.yaml` (§8). **F-0004** (strict
+UTF-8) and **F-0017** (TS header wire type) were resolved by **sofabgen 0.18.0** (crucible#55).
+All three Crucible-authored MESSAGE_SPEC clauses
 are adopted (documentation#17/#18/#20). Five green suites (seeds / cross-encode / union /
 limit / **regression**, the last at 44 inputs) run in CI. `./scripts/bootstrap.sh` keeps
 sofabgen at the latest release and the corelibs at `origin/main`.
@@ -66,11 +68,13 @@ sofabgen at the latest release and the corelibs at `origin/main`.
       added 11 invalid-UTF-8 seeds + 3 valid controls (`engine/structured/utf8_seeds.py`), and
       confirmed **all 12 `R invalid_msg`** on malformed / **all 12 `A`** on valid. Promoted into
       the regression gate (29 → 43).
-- [ ] **F-0018 (new, open)** — the C object API truncates a `string` at an embedded U+0000
-      (`A\0B` → `A`); c + cpp-c-cpp lose the tail, the other 10 preserve it. Codegen: the
-      generated descriptor uses `SOFAB_OBJECT_FIELDTYPE_STRING` (NUL-terminated) — the string
-      analogue of F-0009. **File it** (confirm whether a sized-string corelib object-field type
-      exists first → generator-only vs generator+corelib), then verify + gate the reproducer.
+- [x] **F-0018** — **CLOSED by-design 2026-07-18 (not a bug).** Embedded U+0000 in a `string`:
+      a NUL-terminated C-string profile projects `A\0B` → `A` on re-encode. The corelib receives
+      the full value; the projection is inherent to the C-string convenience (`strlen` is correct),
+      and the lossless path is the byte/length visitor API. Recorded as an allowed divergence in
+      `oracle/policy.yaml` (axis `accept_value`, MESSAGE_SPEC §8); SOFABGEN G-0015 withdrawn. A
+      one-line §8 spec note (embedded-U+0000 preservation is implementation-defined for a
+      NUL-terminated profile) is the only optional follow-up.
 - [ ] **F-0013 blob path** — once a blob-array schema exists (above), re-check the over-index
       blob path on the fixed 0.17.6 codegen (the string path is fixed + gated; blob was
       untested for lack of a field).

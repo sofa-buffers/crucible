@@ -612,23 +612,20 @@ header through `c.skip(c.wire)` so the cursor stays framed by the wire. Upstream
 resolved corelib-ts precedence family (F-0012/F-0014/F-0016): the wrong reader is selected
 before any INVALID-vs-INCOMPLETE precedence question arises.
 
-## G-0015 — generated C object descriptor stores a `string` as NUL-terminated (embedded-NUL data loss)
+## G-0015 — ~~generated C object descriptor stores a `string` as NUL-terminated~~ (WITHDRAWN)
 
-**Status:** open — not yet filed. Found 2026-07-18 while adding F-0004's embedded-U+0000
-control (crucible#55). Finding
-[`F-0018`](../findings/F-0018-c-embedded-nul-string-truncation/NOTES.md).
+**Status:** ⛔ **WITHDRAWN 2026-07-18 — not a codegen defect.** Reclassified as a **by-design
+allowed divergence**, not a bug (`oracle/policy.yaml`; finding
+[`F-0018`](../findings/F-0018-c-embedded-nul-string-truncation/NOTES.md)).
 
-The **C backend**'s generated object descriptor declares a `string` field as
-`SOFAB_OBJECT_FIELD(id, T, str, SOFAB_OBJECT_FIELDTYPE_STRING)`, and the corelib documents
-`SOFAB_OBJECT_FIELDTYPE_STRING` as *"Null-terminated string."* So a decoded value is stored
-in a NUL-terminated buffer and the re-encoder measures it up to the first NUL — dropping an
-embedded U+0000 and everything after it (`A\0B` → `A`). The wire carries an explicit length,
-so this is pure representation loss, not a schema question. It affects both corelib-c-cpp
-drivers (`c`, `cpp-c-cpp`); the 10 heap/managed profiles preserve the bytes.
-
-This is the **string analogue of G-0012** (the C blob was stored unsized and padded/dropped;
-fixed by emitting the *sized* `SOFAB_OBJECT_FIELD_BLOB_SIZED` variant). The likely fix: emit
-a sized string object-field carrying the decoded length. If the corelib exposes no
-sized-string field type yet (only `…_FIELDTYPE_STRING` = NUL-terminated), the fix spans both
-the corelib (add one, as it already has for blob) and the generator (emit it) — confirm
-before filing generator-only vs generator+corelib.
+Original hypothesis: the C backend emits `SOFAB_OBJECT_FIELDTYPE_STRING` (NUL-terminated), so
+an embedded U+0000 in a `string` is lost on re-encode (`A\0B` → `A`) — the string analogue of
+G-0012's unsized blob. **Why it is *not* a codegen bug:** the C object API deliberately models
+a `string` as a C string (`char[]` + `strlen`), and a C string's length *is* "up to the first
+NUL" — `sofab_ostream_write_string`'s `strlen` is correct, not defective. The corelib also
+receives the value in full (the istream fills the buffer and the strict-UTF-8 check validates
+all bytes); the projection to first-NUL is a property of the NUL-terminated representation, and
+the lossless path is the byte/length (visitor) API. Forcing a sized-string object field would
+de-idiomatize C strings for a pathological input. So this is a **type-representation projection**,
+tolerated in `policy.yaml` (axis `accept_value`, spec basis MESSAGE_SPEC §8), not a generator
+change. G-0015 is retired and the number is not reused.
