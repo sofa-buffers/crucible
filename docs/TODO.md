@@ -5,11 +5,12 @@ Open work **on Crucible itself**. Fixes for the corelib/generator bugs Crucible 
 codegen defects: [`SOFABGEN.md`](SOFABGEN.md), spec proposals: [`spec-proposals.md`](spec-proposals.md)).
 Crucible's job is to catalog, attribute, and **verify** them.
 
-**As of 2026-07-17:** 17 findings catalogued, **15 resolved**; the net-open findings are
-**F-0004** (§8 UTF-8 opt-in, generator#85) and **F-0017** (generated TypeScript decode ignores
-the header wire type, generator#160 / G-0014). All three Crucible-authored MESSAGE_SPEC clauses
+**As of 2026-07-18:** 18 findings catalogued, **17 resolved**; the only net-open finding is
+**F-0018** (the C object API truncates a `string` at an embedded U+0000 — a value split, the
+string analogue of F-0009). **F-0004** (strict UTF-8) and **F-0017** (TS header wire type) were
+resolved by **sofabgen 0.18.0** (crucible#55). All three Crucible-authored MESSAGE_SPEC clauses
 are adopted (documentation#17/#18/#20). Five green suites (seeds / cross-encode / union /
-limit / **regression**, the last at 29 inputs) run in CI. `./scripts/bootstrap.sh` keeps
+limit / **regression**, the last at 44 inputs) run in CI. `./scripts/bootstrap.sh` keeps
 sofabgen at the latest release and the corelibs at `origin/main`.
 
 ---
@@ -59,10 +60,17 @@ sofabgen at the latest release and the corelibs at `origin/main`.
 
 ## Open — waiting on upstream, then verify
 
-- [ ] **F-0004 / generator#85** — the only net-open finding. Once the corelibs expose the §6.4
-      opt-in strict-UTF-8 toggle (the config audit at gen#85 shows *none* do today), build all
-      drivers with it **on**, add invalid-UTF-8 seeds, and confirm F-0004 goes green
-      family-wide. Then promote the reproducer into the regression gate.
+- [x] **F-0004 / generator#85** — **DONE 2026-07-18 (crucible#55).** sofabgen 0.18.0 shipped the
+      strict-UTF-8 codegen (generator#162) + per-corelib checks; Crucible built all drivers with
+      the check ON (c/c-cpp opt in via `-DSOFAB_ENABLE_STRICT_UTF8`; zig via `build_options`),
+      added 11 invalid-UTF-8 seeds + 3 valid controls (`engine/structured/utf8_seeds.py`), and
+      confirmed **all 12 `R invalid_msg`** on malformed / **all 12 `A`** on valid. Promoted into
+      the regression gate (29 → 43).
+- [ ] **F-0018 (new, open)** — the C object API truncates a `string` at an embedded U+0000
+      (`A\0B` → `A`); c + cpp-c-cpp lose the tail, the other 10 preserve it. Codegen: the
+      generated descriptor uses `SOFAB_OBJECT_FIELDTYPE_STRING` (NUL-terminated) — the string
+      analogue of F-0009. **File it** (confirm whether a sized-string corelib object-field type
+      exists first → generator-only vs generator+corelib), then verify + gate the reproducer.
 - [ ] **F-0013 blob path** — once a blob-array schema exists (above), re-check the over-index
       blob path on the fixed 0.17.6 codegen (the string path is fixed + gated; blob was
       untested for lack of a field).

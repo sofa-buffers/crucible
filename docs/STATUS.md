@@ -26,20 +26,21 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   `schema/probe-union.sofab.yaml` (a `probe` carrying a 4-variant union), the one
   wire feature the main `probe` lacks. 11 seeds × 12 drivers, 0 divergences.
 - `CORPUS=corpus/regression ./scripts/run.sh` — the **resolved-findings gate**: the
-  reproducer of every fixed finding (29 inputs × 12 drivers, 0 divergences). A
+  reproducer of every fixed finding (44 inputs × 12 drivers, 0 divergences). A
   divergence here = a resolved bug came back. See `corpus/regression/README.md` for
   what it admits, and the exclusions (a reproducer that also trips an open axis stays
   in `findings/`).
 
 ## Current state
 - **Phases 1–3 largely done:** 12 drivers / 10 corelibs green across all five suites on
-  **sofabgen 0.17.6** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
+  **sofabgen 0.18.0** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
   java, typescript, csharp, zig). `./scripts/bootstrap.sh` keeps sofabgen at the **latest
   release** (sha256-verified) and the corelibs at `origin/main`.
-- **17 findings catalogued** (`results/FINDINGS.md`); **15 resolved.** Net open:
-  **F-0004** (§8 UTF-8 opt-in, generator#85) and **F-0017** (generated TypeScript
-  decode ignores the header wire type, generator#160 / G-0014). Three
-  Crucible-authored MESSAGE_SPEC clauses adopted (documentation#17/#18/#20).
+- **18 findings catalogued** (`results/FINDINGS.md`); **17 resolved.** Net open:
+  **F-0018** only (C object API truncates a `string` at an embedded U+0000 — a value
+  split, the string analogue of F-0009). **F-0004** (strict UTF-8) and **F-0017** (TS
+  header wire type) were both resolved by **sofabgen 0.18.0** — see the 2026-07-18
+  entry below. Three Crucible-authored MESSAGE_SPEC clauses adopted (documentation#17/#18/#20).
 - **Phase 3 (built):** canonical form v2 = **round-trip re-encoding** with a
   **three-valued verdict** (`A` complete / `I` incomplete / `R` reject, per
   MESSAGE_SPEC §7 — comparator + `canonical.md` updated, drivers emit `I` as each
@@ -402,10 +403,41 @@ F-0001 + F-0010 + F-0011 + F-0012 + F-0013 + F-0014 + F-0015 resolved.
   precedence family. Found by the 3 h fuzz on 0.17.7.
 
 Net open now: **F-0004** (§8 UTF-8, gen#85) and **F-0017** (generator#160 / G-0014).
+
+**Sixteenth change 2026-07-18 — sofabgen 0.18.0: F-0004 + F-0017 RESOLVED (crucible#55); F-0018
+opened; regression gate 29 → 44; full box green.** Polled for the announced 0.18.0 release, then
+integrated it via `SOFABGEN_VERSION=v0.18.0 ./scripts/bootstrap.sh` (sha256-verified) with the
+corelibs at their `origin/main` tips. 0.18.0 lands two fixes Crucible had open:
+- ✅ **F-0004 RESOLVED (issue #55) — strict UTF-8 ON family-wide.** 0.18.0 ships the codegen call
+  sites for rust/java/cs/zig ([generator#162](https://github.com/sofa-buffers/generator/pull/162));
+  c/cpp/go/py/ts enforce it corelib-internally; the Unicode-typed corelibs are always strict. Only
+  the C corelib defaults OFF (footprint), so **`drivers/c/build.sh` + `drivers/cpp/build.sh` (c-cpp)
+  opt in** with `-DSOFAB_ENABLE_STRICT_UTF8` and compile `corelib-c-cpp/src/utf8.c`; the **zig
+  driver** now supplies the `build_options.strict_utf8=true` module its bare `zig build-exe` needs.
+  New generator `engine/structured/utf8_seeds.py` embeds each malformed form (11 vectors from
+  corelib-c-cpp's `invalid_utf8` group) as the `nested.str` of a valid `probe`, plus 3 valid
+  controls. **Verified:** the old 4-way raw/U+FFFD/empty/reject split is gone — every malformed
+  vector → **all 12 `R invalid_msg`**, every valid control → **all 12 `A`** and round-trips. 14
+  seeds promoted into the gate.
+- ✅ **F-0017 RESOLVED** — [generator#160](https://github.com/sofa-buffers/generator/issues/160)
+  fixed in 0.18.0 ([PR #161](https://github.com/sofa-buffers/generator/pull/161), "frame each
+  decoded field by header wire type"). Isolate `05 00 01` → **all 12 `R invalid_msg`** (ts was
+  `I`); promoted `F0017_ts_wiretype_iso.bin` into the gate.
+- 🆕 **F-0018 (new, open):** adding F-0004's embedded-U+0000 control surfaced that the **C object
+  API truncates a `string` at an embedded NUL** — `A\0B` re-encodes to `A` on `c` + `cpp-c-cpp`,
+  while the other 10 preserve it; all 12 *accept*, so it is a pure **value** split. The generated
+  descriptor uses `SOFAB_OBJECT_FIELDTYPE_STRING` ("Null-terminated string"), losing the wire
+  length — the string analogue of F-0009's unsized C blob (codegen). Pre-existing, never before
+  exercised. Reproducer in `findings/F-0018-…`; kept out of the green gate.
+- ✅ **Full box green on 0.18.0:** seeds 6×12, **regression 44×12**, cross-encode 69×12, union
+  11×12, limit mode (arr/str/blb) 9-driver roster — **all 0 divergences** (3 expected soft
+  `incomplete_value` warnings on the F-0001/F-0006 truncation reproducers).
+
+Net open now: **F-0018** only.
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |
-| F-0004 | invalid UTF-8 in a string: 4 behaviors, driven by the string type | spec §8 → epic **generator#85** — **still diverges (open)** |
+| F-0004 | invalid UTF-8 in a string: 4 behaviors, driven by the string type | spec §8 → epic **generator#85** — ✅ **RESOLVED 2026-07-18** (sofabgen 0.18.0 / crucible#55): strict UTF-8 ON family-wide, all 12 `R invalid_msg` on malformed, all 12 `A` on valid; 14 seeds in the regression gate |
 | F-0002 | corelib-c-cpp encoder left-shifts a negative value (UB) | **corelib-c-cpp#70** merged — ✅ **resolved** |
 | F-0003 | Rust array-fill OOB → panic (crash/DoS) | ✅ **fully resolved.** Crash fixed by **generator#87**; the residual over-count *accept* divergence (**generator#100**) is fixed in **sofabgen 0.16.1** (commit `ca0fda7`, "reject over-count scalar arrays in every backend"). **Re-verified 2026-07-15** with a *clean non-truncated* over-count(8>5) array (`a6 06 03 08 01..08 07`): **all 12 drivers reject** (`R`) — rust-std/nostd now reject with the family. (The old 145-byte reproducer is contaminated — over-count *and* truncated — so rust/zig report `I` there; the clean isolate is the correct test.) |
 | F-0005 | corelib-cpp accepts malformed msgs the family rejects | **corelib-cpp#22** closed — ✅ **resolved** |

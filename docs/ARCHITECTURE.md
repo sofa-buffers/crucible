@@ -40,7 +40,7 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `oracle/cluster.py` | built | Groups divergences by camp-partition into root causes (`CLUSTER=1 ./scripts/run.sh`); 256 divergences → 47 clusters. |
 | C pacemaker (libFuzzer) | built | `drivers/c/driver.c` `CRUCIBLE_LIBFUZZER` path; ~41k exec/s; grows the corpus fed to the differential loop. Coverage-guided but NOT yet structure-aware. |
 | `corpus/seeds/` | built | 6 agreeing seeds (the regression gate); green across all 4 drivers. |
-| `corpus/regression/` | built | **Resolved-findings gate** (29 inputs × 12 drivers, 0 divergences): the reproducer of every fixed finding (F-0001/02/03/05/06/07/09/10/11/13/14/15/16), so a bump that reintroduces one fails CI instead of waiting to be noticed in a manual re-run. Admits an input only when it is green **for the reason the finding is about** — reproducers that also trip an open axis are excluded and listed with their reason in `corpus/regression/README.md`. Runs via the documented `CORPUS=` mechanism (no new script). |
+| `corpus/regression/` | built | **Resolved-findings gate** (44 inputs × 12 drivers, 0 divergences): the reproducer of every fixed finding (F-0001/02/03/04/05/06/07/09/10/11/13/14/15/16/17), so a bump that reintroduces one fails CI instead of waiting to be noticed in a manual re-run. Admits an input only when it is green **for the reason the finding is about** — reproducers that also trip an open axis are excluded and listed with their reason in `corpus/regression/README.md`. Runs via the documented `CORPUS=` mechanism (no new script). |
 | `engine/structured/isolates.py` | built | Minimal isolates for findings whose *original* reproducer is contaminated (tests two axes at once, so it can never be gate-green). Imports wire primitives from `gen.py` — the one reference encoder — so an encoding change cannot desync them. Emits `corpus/regression/F0003_overcount_clean.bin` (green) and the F-0013 reproducers (diverging → `findings/`). Each isolate declares its own destination. |
 | `findings/`, `results/FINDINGS.md` | built | F-0001 recorded (see below). |
 | `docs/SOFABGEN.md` | built | Generated-code weakness log (G-0001..G-0007; all fixed in sofabgen 0.15.1). |
@@ -225,6 +225,16 @@ has no `LimitExceeded`).
 
 ## Key decisions (decision log)
 
+- **2026-07-18 — drivers build with strict UTF-8 ON (F-0004 / crucible#55).** The
+  fuzzer runs the §8 `SOFAB_STRICT_UTF8` check ON so an invalid-UTF-8 `string` is
+  rejected family-uniformly. Most drivers are strict by default (go/zig/cpp default
+  ON; py/ts/java/cs/rs Unicode types always strict); the **C corelib defaults OFF**
+  for footprint, so the two corelib-c-cpp-based drivers opt in: `drivers/c/build.sh`
+  and `drivers/cpp/build.sh` (`c-cpp`) add `-DSOFAB_ENABLE_STRICT_UTF8` and compile
+  `corelib-c-cpp/src/utf8.c` (defines `sofab_utf8_valid`). The **zig** driver builds
+  the corelib as a bare module with `zig build-exe` (no `build.zig`), so it
+  synthesizes the `build_options` module corelib-zig's `utf8.zig` imports
+  (`strict_utf8 = true`). Seeds: `engine/structured/utf8_seeds.py`.
 - **Separate repo, arena-cloned structure.** Instrumented (sanitizer+coverage)
   vs arena's optimized builds; opposite configs → own repo. See PLAN §2, §11.
 - **One coverage pacemaker (C), N differential oracles.** PLAN §3.

@@ -34,12 +34,16 @@ if [ "${SANITIZE:-1}" = "1" ]; then
     SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
 fi
 
-echo "==> [c] compiling replay driver ($CC${SAN:+, sanitized})" >&2
+# Strict UTF-8 (MESSAGE_SPEC §8 / CORELIB_PLAN §6.4): the C corelib defaults the
+# check OFF (footprint), so the fuzzer must opt in — otherwise an invalid-UTF-8
+# `string` is accepted here while the strict family rejects it (F-0004). Pulls in
+# utf8.c (defines sofab_utf8_valid, referenced by istream.c/ostream.c under the flag).
+echo "==> [c] compiling replay driver ($CC${SAN:+, sanitized}, strict UTF-8)" >&2
 # shellcheck disable=SC2086
-"$CC" -std=c11 -O1 -Wall -Wextra $SAN \
+"$CC" -std=c11 -O1 -Wall -Wextra $SAN -DSOFAB_ENABLE_STRICT_UTF8 \
     -I"$GEN" -I"$CORELIB/src/include" \
     "$HERE/driver.c" "$GEN/probe.c" \
-    "$CORELIB/src/object.c" "$CORELIB/src/istream.c" "$CORELIB/src/ostream.c" \
+    "$CORELIB/src/object.c" "$CORELIB/src/istream.c" "$CORELIB/src/ostream.c" "$CORELIB/src/utf8.c" \
     -o "$OUT/driver" >&2
 
 echo "$OUT/driver"

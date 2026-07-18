@@ -137,7 +137,7 @@ a C libFuzzer pacemaker, crash- *and* hang-isolation, auto-clustering, and five 
 suites — differential (seeds), cross-encode, union, limit mode, and the
 **resolved-findings regression gate** (`corpus/regression/`, wired into CI).
 
-Seventeen findings are catalogued (`results/FINDINGS.md`); most are fixed upstream. Three
+Eighteen findings are catalogued (`results/FINDINGS.md`); most are fixed upstream. Three
 Crucible-authored MESSAGE_SPEC clauses have been adopted (documentation#17/#18/#20).
 `./scripts/bootstrap.sh` always installs the **latest sofabgen release** and fetches the
 corelibs to `origin/main` — there is deliberately no skip-if-present shortcut, because a
