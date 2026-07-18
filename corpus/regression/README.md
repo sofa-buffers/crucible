@@ -56,7 +56,7 @@ excluded, each because the family still legitimately splits on it:
 
 | excluded | why |
 |---|---|
-| `F-0018/embedded_nul.bin` | **open finding.** Embedded U+0000 is valid UTF-8 and accepted by all 12, but the C object API truncates `A\0B` → `A` on re-encode — a value split on a separate axis from UTF-8 validity (the string analogue of F-0009) |
+| `F-0018/embedded_nul.bin` | **by-design allowed divergence** (not a bug). Embedded U+0000 is valid UTF-8 and accepted by all 12; the C object API stores strings NUL-terminated (`char[]` + `strlen`), so `c`/`cpp-c-cpp` project `A\0B` → `A` on re-encode while the other 10 preserve it. Sanctioned in `oracle/policy.yaml` (axis `accept_value`, MESSAGE_SPEC §8) — see `findings/F-0018` |
 | `F-0003/array_overflow.bin` | the original is over-count **and truncated**, so rust reports `I` and the family `R` — that is the open precedence spec-hole ([documentation#15](https://github.com/sofa-buffers/documentation/issues/15)), not the over-count axis the finding is about |
 | `F-0008/hang_min.bin`, `hang_orig.bin` | the hang is fixed (generator#126) and they terminate, but both end mid-sequence, so py says `R` (eager) and the family `I` (lazy) — documentation#15 again |
 

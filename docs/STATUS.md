@@ -36,11 +36,13 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   **sofabgen 0.18.0** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
   java, typescript, csharp, zig). `./scripts/bootstrap.sh` keeps sofabgen at the **latest
   release** (sha256-verified) and the corelibs at `origin/main`.
-- **18 findings catalogued** (`results/FINDINGS.md`); **17 resolved.** Net open:
-  **F-0018** only (C object API truncates a `string` at an embedded U+0000 — a value
-  split, the string analogue of F-0009). **F-0004** (strict UTF-8) and **F-0017** (TS
-  header wire type) were both resolved by **sofabgen 0.18.0** — see the 2026-07-18
-  entry below. Three Crucible-authored MESSAGE_SPEC clauses adopted (documentation#17/#18/#20).
+- **18 findings catalogued** (`results/FINDINGS.md`); **17 resolved, 1 by-design.** No open
+  bug to fix: **F-0018** (embedded U+0000 in a `string`) is classified **by-design** — a
+  NUL-terminated C-string profile projects `A\0B` → `A` on re-encode; valid on the wire,
+  preserved by the other 10 profiles, sanctioned as an allowed divergence in
+  `oracle/policy.yaml` (§8). **F-0004** (strict UTF-8) and **F-0017** (TS header wire type)
+  were both resolved by **sofabgen 0.18.0** — see the 2026-07-18 entries below. Three
+  Crucible-authored MESSAGE_SPEC clauses adopted (documentation#17/#18/#20).
 - **Phase 3 (built):** canonical form v2 = **round-trip re-encoding** with a
   **three-valued verdict** (`A` complete / `I` incomplete / `R` reject, per
   MESSAGE_SPEC §7 — comparator + `canonical.md` updated, drivers emit `I` as each
@@ -423,17 +425,32 @@ corelibs at their `origin/main` tips. 0.18.0 lands two fixes Crucible had open:
   fixed in 0.18.0 ([PR #161](https://github.com/sofa-buffers/generator/pull/161), "frame each
   decoded field by header wire type"). Isolate `05 00 01` → **all 12 `R invalid_msg`** (ts was
   `I`); promoted `F0017_ts_wiretype_iso.bin` into the gate.
-- 🆕 **F-0018 (new, open):** adding F-0004's embedded-U+0000 control surfaced that the **C object
-  API truncates a `string` at an embedded NUL** — `A\0B` re-encodes to `A` on `c` + `cpp-c-cpp`,
-  while the other 10 preserve it; all 12 *accept*, so it is a pure **value** split. The generated
-  descriptor uses `SOFAB_OBJECT_FIELDTYPE_STRING` ("Null-terminated string"), losing the wire
-  length — the string analogue of F-0009's unsized C blob (codegen). Pre-existing, never before
-  exercised. Reproducer in `findings/F-0018-…`; kept out of the green gate.
+- 🆕 **F-0018 (new):** adding F-0004's embedded-U+0000 control surfaced that on `c` + `cpp-c-cpp`
+  a `string` with an embedded NUL re-encodes `A\0B` → `A`, while the other 10 preserve it; all 12
+  *accept*, so it is a pure **value** split. Initially filed as a codegen defect (G-0015);
+  **reclassified same day as by-design — see the Seventeenth change below.**
 - ✅ **Full box green on 0.18.0:** seeds 6×12, **regression 44×12**, cross-encode 69×12, union
   11×12, limit mode (arr/str/blb) 9-driver roster — **all 0 divergences** (3 expected soft
   `incomplete_value` warnings on the F-0001/F-0006 truncation reproducers).
 
 Net open now: **F-0018** only.
+
+**Seventeenth change 2026-07-18 — F-0018 reclassified: by-design, not a bug (allowed divergence).**
+On review, F-0018 is **not** a codegen defect. The C object API deliberately models a `string` as a
+NUL-terminated `char[]`, and a C string's length *is* `strlen` — `sofab_ostream_write_string`'s
+`strlen` (`ostream.h:302`) is correct, not defective. The corelib *receives the value in full*
+(istream copies all bytes + terminator, `istream.c:779`; the strict-UTF-8 check validates all of
+them, `istream.c:886`); the projection to first-NUL happens only when the value is read back as a
+C string. So embedded U+0000 is a **type-representation projection**, not a decode loss:
+- **not INVALID** (rejecting a fully-received value would be wrong), **not a family-wide ban**
+  (U+0000 is legal on the wire and the other 10 profiles preserve it), **not a codegen change**
+  (that would de-idiomatize C strings for a pathological input);
+- the **lossless path** is the byte/length (visitor) API, which hands the raw `{ptr,len}`.
+
+Recorded as an **allowed divergence** in `oracle/policy.yaml` (axis `accept_value`, spec basis
+MESSAGE_SPEC §8 — preservation of embedded U+0000 is implementation-defined for a NUL-terminated
+profile). SOFABGEN **G-0015 withdrawn**. F-0018 stays in `findings/` as a documented by-design
+record. **No open bug remains** — all 18 findings are resolved or by-design.
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |

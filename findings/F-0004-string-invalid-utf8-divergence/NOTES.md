@@ -107,7 +107,8 @@ the C corelib (`corelib-c-cpp`), which must opt in with `-DSOFAB_ENABLE_STRICT_U
   (no lossy U+FFFD). Promoted the 14 seeds into `corpus/regression/` (gate 29 → 43).
 
 **Note — embedded U+0000 (out of scope here).** Embedded NUL is *valid* UTF-8 and is
-correctly **accepted** by all 12 (the strict check does not over-reject). It is
-deliberately kept out of the green gate because the C object API re-encodes `A\0B`
-→ `A` (NUL-terminated string storage) — a *value* divergence on a separate axis,
-tracked as **F-0018** (the string analogue of F-0009's unsized C blob).
+correctly **accepted** by all 12 (the strict check does not over-reject). It is kept
+out of the green gate because the C object API re-encodes `A\0B` → `A` (NUL-terminated
+`char[]` storage) — a *value* divergence on a separate axis, tracked as **F-0018**,
+which is classified **by-design** (a NUL-terminated C-string profile projects to
+first-NUL; an allowed divergence in `oracle/policy.yaml`, not a bug).

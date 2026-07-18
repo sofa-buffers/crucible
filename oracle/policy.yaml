@@ -41,14 +41,30 @@ comparison:
   limit_class: soft
 
 # Specific inputs where divergence is explicitly tolerated, each with a reason
-# and (eventually) a spec citation. Empty in Phase 1.
+# and (eventually) a spec citation.
 #
 #   - id: <stable name>
 #     applies_to: [<input hash or corpus file>]
 #     axis: verdict | accept_value | reject_class
 #     reason: <why this divergence is legal>
 #     spec: <MESSAGE_SPEC.md clause, or "UNSPECIFIED — file upstream">
-allow: []
+allow:
+  - id: c-embedded-nul-string-projection
+    applies_to: [findings/F-0018-c-embedded-nul-string-truncation/embedded_nul.bin]  # probe, nested.str = "A\0B" (41 00 42)
+    axis: accept_value
+    reason: >-
+      A `string` containing an embedded U+0000 is valid on the wire (length-delimited)
+      and preserved by the 10 length-carrying profiles, but a profile that stores strings
+      NUL-terminated — the C object API: `char[]` + `strlen` on re-encode — can only
+      represent it up to the first NUL, so `c` and `cpp-c-cpp` re-encode `A\0B` -> `A`.
+      The corelib receives and stores the full bytes correctly (istream fills the buffer +
+      terminator; the strict-UTF-8 check validates all bytes); the projection to first-NUL
+      is inherent to the C-string convenience, not a decode loss. The lossless path is the
+      byte/length (visitor) API. By design, not a bug — see findings/F-0018.
+    spec: >-
+      MESSAGE_SPEC §8 — preservation of an embedded U+0000 across decode/encode is
+      implementation-defined for a NUL-terminated-string (constrained/C) profile. Proposed
+      one-line normative note; until adopted, treated as the §6.4-style profile allowance.
 
 # PLAN §8 is now RESOLVED. The open question was: is decoding of truncated input
 # specified (one correct outcome) or undefined? MESSAGE_SPEC §7 (finish-less
