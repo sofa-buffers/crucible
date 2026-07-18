@@ -1,14 +1,12 @@
 # F-0004 — invalid UTF-8 in a string: four behaviors, driven by the string type
 
-**Status:** resolved in spec — `MESSAGE_SPEC.md` §8 (opt-in strict UTF-8 check,
-default off; conformance/fuzz runs it on). Corelib work: expose the check as a
-config flag and enable it under the fuzzer — tracked in [generator#85](https://github.com/sofa-buffers/generator/issues/85).
-Re-verified 2026-07-09 (sofabgen 0.15.2 + corelibs@main): **still diverging (4
-behaviors)** — expected, as #85 (the `SOFAB_STRICT_UTF8` epic) is still open. One
-change since 0.15.1: **rust-std moved from the U+FFFD camp to the empty camp**
-(now agrees with rust-nostd) after the intra-Rust UTF-8 fix
-([generator#80/#91](https://github.com/sofa-buffers/generator/pull/91), G-0002) —
-see the dated update below.
+**Status:** ✅ **RESOLVED 2026-07-18** (sofabgen 0.18.0 + corelibs@main, Crucible
+[#55](https://github.com/sofa-buffers/crucible/issues/55)). With the strict-UTF-8
+check ON family-wide, an invalid-UTF-8 `string` is rejected `R invalid_msg` by **all
+12 drivers** (was the 4-way raw/U+FFFD/empty/reject split); valid controls still
+accept and round-trip. See the resolution section at the end. Spec basis:
+`MESSAGE_SPEC.md` §8 (opt-in strict UTF-8 check, default-off allowed; conformance +
+this fuzzer run it ON); implementation epic [generator#85](https://github.com/sofa-buffers/generator/issues/85).
 **Found:** Phase 3, C-pacemaker → differential loop; **corrected** with a clean
 isolate (the original write-up was skewed — see below)
 **Axis:** verdict + accept_value (hard, when the check is on)
@@ -81,3 +79,35 @@ rust/java/cs/zig, and Crucible verification). The check's *placement* follows ea
 corelib's memory model — corelib-internal where the corelib builds the string
 (c/cpp/go/py/ts), codegen-invoked where the generated code builds it
 (rust/java/cs/zig).
+
+## Resolution 2026-07-18 — strict UTF-8 ON family-wide (sofabgen 0.18.0, crucible#55)
+
+The `SOFAB_STRICT_UTF8` epic (generator#85) landed across the whole family:
+**sofabgen 0.18.0** ships the codegen call sites for rust/java/cs/zig
+([generator#162](https://github.com/sofa-buffers/generator/pull/162)); the
+corelib-internal builders (c/cpp/go/py/ts) enforce it directly (per-corelib PRs).
+Default strict-state per corelib: **ON** for go/zig/cpp and the Unicode-typed
+corelibs (py/ts/java/cs/rs/rs-no-std, always strict); **OFF (footprint)** only for
+the C corelib (`corelib-c-cpp`), which must opt in with `-DSOFAB_ENABLE_STRICT_UTF8`.
+
+**Crucible side (this repo):**
+- **Drivers built with the check ON.** The two corelib-c-cpp-based drivers opt in:
+  `drivers/c/build.sh` and `drivers/cpp/build.sh` (`c-cpp` variant) add
+  `-DSOFAB_ENABLE_STRICT_UTF8` and compile `corelib-c-cpp/src/utf8.c` (defines
+  `sofab_utf8_valid`). The zig driver supplies the `build_options.strict_utf8=true`
+  module its `zig build-exe` needs (corelib-zig reads it via `@import`). All others
+  are strict by default — no change.
+- **Seeds:** `engine/structured/utf8_seeds.py` embeds each malformed form as the
+  `nested.str` payload of an otherwise-valid `probe`, reusing corelib-c-cpp's
+  `assets/test_vectors.json` `invalid_utf8` group (11 vectors: overlong incl.
+  `C0 80`, lone surrogate D800/DFFF, `> U+10FFFF`, bare continuation / lone `0xFF`,
+  truncated 2-/3-byte) + 3 valid controls (`é`, `€`, ASCII).
+- **Verified green family-wide.** All 11 malformed vectors → **all 12 drivers `R
+  invalid_msg`**; all 3 valid controls → **all 12 `A`** and round-trip identically
+  (no lossy U+FFFD). Promoted the 14 seeds into `corpus/regression/` (gate 29 → 43).
+
+**Note — embedded U+0000 (out of scope here).** Embedded NUL is *valid* UTF-8 and is
+correctly **accepted** by all 12 (the strict check does not over-reject). It is
+deliberately kept out of the green gate because the C object API re-encodes `A\0B`
+→ `A` (NUL-terminated string storage) — a *value* divergence on a separate axis,
+tracked as **F-0018** (the string analogue of F-0009's unsized C blob).

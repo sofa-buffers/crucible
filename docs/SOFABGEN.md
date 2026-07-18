@@ -570,10 +570,12 @@ bounded either way. See `findings/F-0013-overindex-string-array-element-kept-vs-
 
 ## G-0014 — generated TypeScript decode ignores the header wire type (stream mis-framing)
 
-**Status:** open — [generator#160](https://github.com/sofa-buffers/generator/issues/160).
-Found 2026-07-17 by the 3 h differential fuzz on sofabgen 0.17.7 (cluster 2; minimized
-127 B → 24 B → a 3 B isolate). Finding
-[`F-0017`](../findings/F-0017-ts-decode-ignores-header-wire-type/NOTES.md).
+**Status:** ✅ **fixed in sofabgen 0.18.0** — [generator#160](https://github.com/sofa-buffers/generator/issues/160),
+PR [#161](https://github.com/sofa-buffers/generator/pull/161) ("frame each decoded field by
+header wire type"). **Re-verified 2026-07-18:** isolate `05 00 01` → **all 12 `R invalid_msg`**
+(ts was `I`); `F0017_ts_wiretype_iso.bin` promoted into the regression gate. Found 2026-07-17
+by the 3 h differential fuzz on sofabgen 0.17.7 (cluster 2; minimized 127 B → 24 B → a 3 B
+isolate). Finding [`F-0017`](../findings/F-0017-ts-decode-ignores-header-wire-type/NOTES.md).
 
 The **TypeScript backend**'s generated pull-decoder dispatches on the field **id alone**
 and calls the schema-typed reader **without checking the header's wire type** (`c.wire`).
@@ -609,3 +611,24 @@ frames by wire type, so they cannot desync — this is a TS-backend codegen defe
 header through `c.skip(c.wire)` so the cursor stays framed by the wire. Upstream of the
 resolved corelib-ts precedence family (F-0012/F-0014/F-0016): the wrong reader is selected
 before any INVALID-vs-INCOMPLETE precedence question arises.
+
+## G-0015 — generated C object descriptor stores a `string` as NUL-terminated (embedded-NUL data loss)
+
+**Status:** open — not yet filed. Found 2026-07-18 while adding F-0004's embedded-U+0000
+control (crucible#55). Finding
+[`F-0018`](../findings/F-0018-c-embedded-nul-string-truncation/NOTES.md).
+
+The **C backend**'s generated object descriptor declares a `string` field as
+`SOFAB_OBJECT_FIELD(id, T, str, SOFAB_OBJECT_FIELDTYPE_STRING)`, and the corelib documents
+`SOFAB_OBJECT_FIELDTYPE_STRING` as *"Null-terminated string."* So a decoded value is stored
+in a NUL-terminated buffer and the re-encoder measures it up to the first NUL — dropping an
+embedded U+0000 and everything after it (`A\0B` → `A`). The wire carries an explicit length,
+so this is pure representation loss, not a schema question. It affects both corelib-c-cpp
+drivers (`c`, `cpp-c-cpp`); the 10 heap/managed profiles preserve the bytes.
+
+This is the **string analogue of G-0012** (the C blob was stored unsized and padded/dropped;
+fixed by emitting the *sized* `SOFAB_OBJECT_FIELD_BLOB_SIZED` variant). The likely fix: emit
+a sized string object-field carrying the decoded length. If the corelib exposes no
+sized-string field type yet (only `…_FIELDTYPE_STRING` = NUL-terminated), the fix spans both
+the corelib (add one, as it already has for blob) and the generator (emit it) — confirm
+before filing generator-only vs generator+corelib.

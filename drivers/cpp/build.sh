@@ -21,9 +21,13 @@ CC="${CC:-cc}"
 # the shared driver.cpp guards its L verdict behind this macro. Only the cpp variant
 # is in limit mode — the c-cpp fixed-capacity profile cannot generate an unbounded
 # field (see scripts/run-limits.sh).
+# STRICT: strict UTF-8 (MESSAGE_SPEC §8 / CORELIB_PLAN §6.4). The fuzzer runs the
+# check ON so an invalid-UTF-8 `string` is family-uniformly rejected (F-0004). The
+# pure-C++ corelib (cpp) defaults SOFAB_STRICT_UTF8=1 already; only the c-cpp
+# (C-corelib) profile defaults OFF for footprint and must opt in explicitly.
 case "$VARIANT" in
-    cpp)   CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: {} }";              CSRC=""; HASLIM="-DCRUCIBLE_HAS_LIMIT_EXCEEDED" ;;
-    c-cpp) CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp } }"; CSRC="$CORELIB/src/object.c $CORELIB/src/istream.c $CORELIB/src/ostream.c"; HASLIM="" ;;
+    cpp)   CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: {} }";              CSRC=""; HASLIM="-DCRUCIBLE_HAS_LIMIT_EXCEEDED"; STRICT="" ;;
+    c-cpp) CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp } }"; CSRC="$CORELIB/src/object.c $CORELIB/src/istream.c $CORELIB/src/ostream.c $CORELIB/src/utf8.c"; HASLIM=""; STRICT="-DSOFAB_ENABLE_STRICT_UTF8" ;;
     *) echo "unknown variant '$VARIANT' (want: cpp | c-cpp)" >&2; exit 2 ;;
 esac
 
@@ -60,13 +64,13 @@ if [ -n "$CSRC" ]; then
     for c in $CSRC; do
         o="$OUT/$(basename "$c" .c).o"
         # shellcheck disable=SC2086
-        "$CC" -std=c11 -O1 $SAN -I"$CORELIB/src/include" -c "$c" -o "$o" >&2
+        "$CC" -std=c11 -O1 $SAN $STRICT -I"$CORELIB/src/include" -c "$c" -o "$o" >&2
         COBJS="$COBJS $o"
     done
 fi
 
 echo "==> [cpp:$VARIANT] compiling driver ($CXX${SAN:+, sanitized})" >&2
 # shellcheck disable=SC2086
-"$CXX" -std=c++20 -O1 -Wall $SAN $HASLIM -I"$GEN" $INC "$HERE/driver.cpp" $COBJS -o "$OUT/driver" >&2
+"$CXX" -std=c++20 -O1 -Wall $SAN $HASLIM $STRICT -I"$GEN" $INC "$HERE/driver.cpp" $COBJS -o "$OUT/driver" >&2
 
 echo "$OUT/driver"

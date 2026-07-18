@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (29 inputs)
+## Contents (44 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -35,6 +35,9 @@ looking. This corpus makes it automatic.
 | `F0013_overindex_clean.bin` | F-0013 | generator#142 (0.17.4) + #149→#151/#150 (0.17.6) | a `string_array` element at index ≥ the schema `count` is `R invalid_msg` on **all 12** — heap and fixed-capacity alike; no silent drop, no DoS |
 | `F0016_u64_over_65bit.bin`, `F0016_u64_over_70bit.bin` | F-0016 | corelib-cpp#39 / go#48 / rs-no-std#45 / py#43 / ts#53 / java#41 / cs#37 | an overlong (>64-bit) varint (u64 whose 10th byte carries bits above 64) is `R invalid_msg` on **all 12** — no silent truncation, no value corruption |
 | `F0016_control_u64_max.bin` | F-0016 (control) | — | the **counter-direction**: `2^64-1` (the valid maximum) is still accepted by all 12 — guards against over-rejecting at the boundary |
+| `F0004_utf8_*.bin` (11) | F-0004 | generator#162 (sofabgen 0.18.0) + per-corelib strict-UTF-8; Crucible builds with the check ON | an invalid-UTF-8 `string` (overlong incl. `C0 80`, lone surrogate, `> U+10FFFF`, bare continuation / lone `0xFF`, truncated 2-/3-byte) is `R invalid_msg` on **all 12** — not the old 4-way raw/U+FFFD/empty/reject split |
+| `F0004_control_utf8_valid_{2byte,3byte,ascii}.bin` (3) | F-0004 (controls) | — | the **counter-direction**: valid UTF-8 (`é`, `€`, ASCII) is still accepted and round-trips on all 12 — the strict check rejects only malformed bytes, never a lossy U+FFFD |
+| `F0017_ts_wiretype_iso.bin` | F-0017 | generator#160 (sofabgen 0.18.0, PR #161) | a header whose wire type ≠ the field's declared type (`05 00 01`) is `R invalid_msg` on **all 12** — the generated TS decode frames each field by its header wire type (was `I` on ts) |
 
 Filenames are `F<nnnn>_<original-name>.bin`; the originals stay in `findings/<id>/` as the
 finding's own record. `F0003_overcount_clean.bin` has no original — see below.
@@ -53,9 +56,13 @@ excluded, each because the family still legitimately splits on it:
 
 | excluded | why |
 |---|---|
-| `F-0004/invalid_utf8.bin` | **open finding.** The 4-way UTF-8 split waits on the `SOFAB_STRICT_UTF8` epic (spec §8 / generator#85) |
+| `F-0018/embedded_nul.bin` | **open finding.** Embedded U+0000 is valid UTF-8 and accepted by all 12, but the C object API truncates `A\0B` → `A` on re-encode — a value split on a separate axis from UTF-8 validity (the string analogue of F-0009) |
 | `F-0003/array_overflow.bin` | the original is over-count **and truncated**, so rust reports `I` and the family `R` — that is the open precedence spec-hole ([documentation#15](https://github.com/sofa-buffers/documentation/issues/15)), not the over-count axis the finding is about |
 | `F-0008/hang_min.bin`, `hang_orig.bin` | the hang is fixed (generator#126) and they terminate, but both end mid-sequence, so py says `R` (eager) and the family `I` (lazy) — documentation#15 again |
+
+(F-0004's original `invalid_utf8.bin` was the last exclusion here; it graduated in
+2026-07-18 once the strict-UTF-8 check went ON family-wide — the 11 malformed-form
+isolates above replace it.)
 
 The last two are the reason `F0003_overcount_clean.bin` exists: F-0003's fix is real, but
 its *kept* reproducer cannot demonstrate it, because the input tests two axes at once. The

@@ -31,10 +31,18 @@ fi
 "$SOFABGEN" ${LIMCFG:+--config "$LIMCFG"} --lang zig --in "$SCHEMA" --out "$BUILD" >&2  # writes $BUILD/src/message.zig
 cp "$HERE/driver.zig" "$BUILD/src/driver.zig"
 
+# Strict UTF-8 (MESSAGE_SPEC §8 / CORELIB_PLAN §6.4): corelib-zig's utf8.zig reads
+# `@import("build_options").strict_utf8`, a module `build.zig` supplies via
+# addOptions. We build the corelib as a bare module with `zig build-exe` (no
+# build.zig), so we synthesize that module here. The fuzzer runs the check ON
+# (zig's own default), so an invalid-UTF-8 string is rejected family-uniformly.
+printf 'pub const strict_utf8: bool = true;\n' > "$BUILD/src/build_options.zig"
+
 echo "==> [zig] zig build-exe (ReleaseSafe: safety checks stay on)" >&2
 "$ZIG" build-exe \
     --dep sofab -Mroot="$BUILD/src/driver.zig" \
-    -Msofab="$CORELIB/src/root.zig" \
+    --dep build_options -Msofab="$CORELIB/src/root.zig" \
+    -Mbuild_options="$BUILD/src/build_options.zig" \
     -femit-bin="$BUILD/driver" \
     -OReleaseSafe >&2
 
