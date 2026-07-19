@@ -105,9 +105,9 @@ Outstanding against the clause:
 
 | profile | today | required | where the fix goes (traced) |
 |---|---|---|---|
-| c, cpp-c-cpp | `R usage` | skip | **corelib-c-cpp only** — `object.c` compares the descriptor type against `ctx->target_opt` before registering the target; leaving `target_ptr` NULL takes the existing skip path |
-| py-cython, py-pure | `R usage` | skip | **generator only** — see below |
-| cpp | mis-decodes (`R invalid_msg` on sequences) | skip | **corelib-cpp + generator** — the accessor does not exist yet |
+| c, cpp-c-cpp | `R usage` | skip | [corelib-c-cpp#100](https://github.com/sofa-buffers/corelib-c-cpp/issues/100) — **corelib-c-cpp only** — `object.c` compares the descriptor type against `ctx->target_opt` before registering the target; leaving `target_ptr` NULL takes the existing skip path |
+| py-cython, py-pure | `R usage` | skip | [generator#174](https://github.com/sofa-buffers/generator/issues/174) — **generator only**, see below |
+| cpp | mis-decodes (`R invalid_msg` on sequences) | skip | [corelib-cpp#43](https://github.com/sofa-buffers/corelib-cpp/issues/43) (accessor, blocking) + [generator#174](https://github.com/sofa-buffers/generator/issues/174) |
 
 ### Python — generated code, and generator-only
 

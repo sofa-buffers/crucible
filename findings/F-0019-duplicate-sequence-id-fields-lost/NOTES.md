@@ -96,7 +96,11 @@ backend implemented a defined rule instead of a guess. Same order here.
 
 1. ✅ **Spec clause adopted** — [documentation#23](https://github.com/sofa-buffers/documentation/pull/23)
    merged (`0894035`), MESSAGE_SPEC §7.4, together with F-0020's §7.3.
-2. ⏳ **Codegen** — now unblocked.
+2. ⏳ **Codegen + corelib** — filed 2026-07-19:
+   [generator#175](https://github.com/sofa-buffers/generator/issues/175) (TypeScript merge, C++ wrapper clear,
+   C wrapper descriptor kind) and
+   [corelib-c-cpp#99](https://github.com/sofa-buffers/corelib-c-cpp/issues/99) (honour that kind by
+   resetting the target on open).
 
 **The adopted rule is not "reject".** An earlier draft of this note proposed rejecting as
 `INVALID`, on the reasoning that §3 already declares the encoding illegal. That was
