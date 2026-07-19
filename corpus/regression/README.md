@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (44 inputs)
+## Contents (51 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -38,6 +38,8 @@ looking. This corpus makes it automatic.
 | `F0004_utf8_*.bin` (11) | F-0004 | generator#162 (sofabgen 0.18.0) + per-corelib strict-UTF-8; Crucible builds with the check ON | an invalid-UTF-8 `string` (overlong incl. `C0 80`, lone surrogate, `> U+10FFFF`, bare continuation / lone `0xFF`, truncated 2-/3-byte) is `R invalid_msg` on **all 12** — not the old 4-way raw/U+FFFD/empty/reject split |
 | `F0004_control_utf8_valid_{2byte,3byte,ascii}.bin` (3) | F-0004 (controls) | — | the **counter-direction**: valid UTF-8 (`é`, `€`, ASCII) is still accepted and round-trips on all 12 — the strict check rejects only malformed bytes, never a lossy U+FFFD |
 | `F0017_ts_wiretype_iso.bin` | F-0017 | generator#160 (sofabgen 0.18.0, PR #161) | a header whose wire type ≠ the field's declared type (`05 00 01`) is `R invalid_msg` on **all 12** — the generated TS decode frames each field by its header wire type (was `I` on ts) |
+| `F0019_dup_struct_nested.bin`, `F0019_dup_struct_arrays.bin`, `F0019_dup_wrapper_replaced.bin` | F-0019 | MESSAGE_SPEC §7.4 (documentation#23) + generator#175 + corelib-c-cpp#99 | a field id repeated in one scope: a struct/union **merges** (last occurrence per id wins, scope continues), an **array wrapper is replaced** whole — all 12 agree (was 11-vs-1 on structs, 3-vs-9 on wrappers) |
+| `F0019_control_dup_scalar.bin`, `F0019_control_same_field.bin`, `F0019_control_single_seq.bin`, `F0019_control_wrapper_single.bin` (4) | F-0019 (controls) | — | the cases that already agreed and must stay agreeing: a repeated scalar (last wins), the same child twice, both children in one opening, a single-open wrapper — guard against a merge/replace fix regressing them |
 
 Filenames are `F<nnnn>_<original-name>.bin`; the originals stay in `findings/<id>/` as the
 finding's own record. `F0003_overcount_clean.bin` has no original — see below.

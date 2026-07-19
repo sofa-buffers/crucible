@@ -1,12 +1,16 @@
 # F-0019 — a repeated sequence (struct) field id: 11 profiles merge, TypeScript replaces
 
-**Status:** **open — spec clause adopted, codegen outstanding.** MESSAGE_SPEC **§7.4**
+**Status:** ✅ **RESOLVED (sofabgen 0.19.2, 2026-07-19).** MESSAGE_SPEC **§7.4**
 ([documentation#23](https://github.com/sofa-buffers/documentation/pull/23), merged `0894035`)
-now defines the rule: the last occurrence of each field id wins, a re-opened sequence
+defines the rule: the last occurrence of each field id wins, a re-opened sequence
 **continues** its scope (structs + unions merge), and an **array wrapper is replaced** whole.
-Non-conformant as of 2026-07-19 (after corelib-c-cpp#99): **typescript** (struct + union),
-**cpp / cpp-c-cpp** (wrapper). **c** is ✅ conformant. Remainder is entirely
-[generator#175](https://github.com/sofa-buffers/generator/issues/175).
+Both codegen halves landed — [generator#175](https://github.com/sofa-buffers/generator/issues/175)
+(TypeScript decodes into the existing member; the C++ backend clears a wrapper before filling)
+and the corelib side [corelib-c-cpp#99](https://github.com/sofa-buffers/corelib-c-cpp/issues/99).
+**Re-verified on 0.19.2:** all 7 vectors (3 reproducers + 4 controls) → **all 12 agree, 0
+divergences**; the generated TS decode now shows `decodeInto(c, new Probe())`. Promoted into the
+green `corpus/regression/` gate (44 → 51). Closed the F-0015 way: hole → clause (§7.4) →
+codegen → verified.
 **Axis:** accept_value (round-trip) — all 12 **accept**; the re-encoded value differs. Invisible
 to any accept/reject oracle.
 **Found:** 2026-07-19, by the 24 h pacemaker round (11.4 G execs); surfaced as the dominant
