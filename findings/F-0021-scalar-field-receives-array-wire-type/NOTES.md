@@ -1,7 +1,7 @@
 # F-0021 — a scalar integer field receiving an array wire type of the same signedness
 
 **Status:** **open — generator-only, one issue.** MESSAGE_SPEC §7.3 requires the field to be
-**skipped**; five backends decode it instead. Filed as [generator#TBD].
+**skipped**; five backends decode it instead. Filed as [generator#183](https://github.com/sofa-buffers/generator/issues/183).
 **Axis:** verdict (accept-with-wrong-value vs skip) — all 12 accept; the 5 write a value the
 7 do not. **Found:** 2026-07-19, re-checking F-0020 on sofabgen 0.19.2.
 
