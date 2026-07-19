@@ -100,7 +100,10 @@ through the same switch. Unknown fields *must* be skipped (§5.2 skip path), so 
 two apart requires the generator to emit a per-scope **id → declared-type table** and consult
 it before dispatch. That is a structural change across five backends.
 
-Filing is **pending review** — nothing submitted upstream.
+**Filed as [documentation#23](https://github.com/sofa-buffers/documentation/pull/23)**
+(MESSAGE_SPEC §7.3 + §7.4, together with F-0019). The codegen issues wait on that clause —
+except the C++ guard below, which is wrong under every candidate rule and can be filed
+independently.
 
 ## Reproducing
 

@@ -215,7 +215,9 @@ would converge on an arbitrary answer.
 
 ## Proposal 4 — §5.2/§4.3: a header wire type that contradicts the schema; repeated field ids
 
-**DRAFT — not filed.** Awaiting review.
+**FILED** — [documentation#23](https://github.com/sofa-buffers/documentation/pull/23)
+(2026-07-19), proposing the clauses below as MESSAGE_SPEC **§7.3** and **§7.4**. Awaiting
+review upstream.
 
 **Motivated by:** **F-0020** (header wire type ≠ declared type) and **F-0019** (a field id
 repeated in one scope). Two distinct not-well-formed inputs, one shared property: the spec

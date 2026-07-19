@@ -97,8 +97,9 @@ every backend implemented a defined rule instead of a guess. Same order here:
    schema-bound violations it can detect. That also makes merge-vs-replace moot.
 2. **Then** the codegen issue against `generator`, with the adopted clause as its basis.
 
-Filing 1 against `documentation` and 2 against `generator` is **pending review** — not yet
-submitted.
+Step 1 is **filed as [documentation#23](https://github.com/sofa-buffers/documentation/pull/23)**
+(MESSAGE_SPEC §7.3 + §7.4, together with F-0020). Step 2 — the codegen issue against
+`generator` — waits on that clause being adopted.
 
 ## Reproducing
 
