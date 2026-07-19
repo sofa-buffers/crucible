@@ -103,11 +103,35 @@ backends. "Skip" reuses a path every implementation already has.
 
 Outstanding against the clause:
 
-| profile | today | required |
-|---|---|---|
-| c, cpp-c-cpp | `R usage` | skip — corelib (`object.c`), see below |
-| py-cython, py-pure | `R usage` | skip — mechanism not yet traced |
-| cpp | mis-decodes (and `R invalid_msg` on sequences) | skip — corelib-cpp accessor + generator guard |
+| profile | today | required | where the fix goes (traced) |
+|---|---|---|---|
+| c, cpp-c-cpp | `R usage` | skip | **corelib-c-cpp only** — `object.c` compares the descriptor type against `ctx->target_opt` before registering the target; leaving `target_ptr` NULL takes the existing skip path |
+| py-cython, py-pure | `R usage` | skip | **generator only** — see below |
+| cpp | mis-decodes (`R invalid_msg` on sequences) | skip | **corelib-cpp + generator** — the accessor does not exist yet |
+
+### Python — generated code, and generator-only
+
+`drivers/python/driver.py:26` maps `SofaStateError` → `usage`. corelib-py raises it from
+`Decoder._take_scalar` (`decoder.py:509-512`): `if pending[1] != wtype: raise
+SofaStateError("no matching scalar value for the current field")` — the same design as
+corelib-cpp, where asking for a type the field does not carry is a **caller** error, not a
+message error. `_take_fixlen` (`decoder.py:534-538`) does the same for the subtype.
+
+The caller is generated code. `drivers/python/build/gen/message.py:70-115` dispatches on
+`fld.id` **alone**:
+
+```python
+fld = d.next()
+if fld is None or fld.type == WireType.SEQUENCE_END:   # <- fld.type IS available here
+    return
+if fld.id == 0:
+    self.u8 = d.read_unsigned_array()                  # <- but never checked against it
+```
+
+Note line 72: the generated loop **already reads `fld.type`** to detect the sequence end. The
+wire type is in hand; it is simply never compared with the declared type. So unlike the C++
+case, no corelib change is needed — this is **generator-only**, and the guard has everything
+it needs at the point of dispatch.
 
 ## Reproducing
 

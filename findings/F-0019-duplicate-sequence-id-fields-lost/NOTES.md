@@ -109,6 +109,28 @@ The distinction §7.4 draws is **namespace vs. value**: a struct or union sequen
 id scope "and nothing more" (CORELIB_PLAN §3) and carries no value, so re-opening continues
 it; an array wrapper *is* the array's value (§5), so a later occurrence replaces it.
 
+### Where each remaining fix goes (traced)
+
+| profile | case | today | where the fix goes |
+|---|---|---|---|
+| typescript | struct + union | replaces | **generator only** — `o.nested = ProbeNested.decodeFrom(c)` (`message.ts:351`) builds a fresh object; it must decode into the existing member |
+| cpp | array wrapper | merges | **generator only** — `case 200: { _StrSeq _r0{string_array, 5, 64}; is.read(_r0); }` (`probe.hpp:307-309`) wraps the existing vector by reference and grows it (`while (out.size() <= id) out.emplace_back(); out[id] = …`) with no clear. Go emits the clear (`m.StringArray = m.StringArray[:0]`, `probe.go:102`) and is conformant; the C++ backend simply does not |
+| c, cpp-c-cpp | array wrapper | merges | **generator + corelib-c-cpp** — see below |
+
+**The C family needs a descriptor change, not just a code change.** The C backend lowers a
+wrapper array to a nested descriptor of N fixed members —
+`SOFAB_OBJECT_FIELD_SEQUENCE(200, message_probe_t, string_array, …, 2)` over
+`items[0]…items[4]` (`drivers/c/gen/probe.c:42-49, 62`) — so **an array wrapper is
+structurally indistinguishable from a struct** in the object API. `object.c:470-491` then
+treats every `FIELDTYPE_SEQUENCE` identically: it points the nested decoder at
+`decoder->dst + field->offset` and resets nothing. Merging is the only thing it can do.
+
+Since §7.4 requires structs to merge and wrappers to be replaced, the corelib cannot comply
+without being told which it is. That needs a distinct descriptor kind emitted by the
+**generator** (e.g. a sequence-is-an-array-wrapper flag) plus **corelib-c-cpp** clearing the
+target region when such a sequence is opened. The other two profiles are generator-only —
+this one is the F-0010 shape again.
+
 ## Reproducing
 
 ```sh
