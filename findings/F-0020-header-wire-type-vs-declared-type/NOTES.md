@@ -1,8 +1,10 @@
 # F-0020 — a header wire type ≠ the field's declared type: four incompatible behaviors
 
-**Status:** **open.** Two separable parts — a C++ mis-decode that is wrong under *every*
-candidate rule (report now), and a family-wide semantics question that needs a spec clause
-first (do not touch five backends before it is decided).
+**Status:** **open — spec clause adopted, implementations outstanding.** MESSAGE_SPEC **§7.3**
+([documentation#23](https://github.com/sofa-buffers/documentation/pull/23), merged `0894035`)
+now requires a mis-typed field to be **skipped** as if its id were unknown. Non-conformant:
+**c / cpp-c-cpp / py** (reject), **cpp** (mis-decodes). The cpp defect was already wrong under
+every candidate rule and is independent of the clause.
 **Axis:** verdict (hard: accept vs reject) **+ accept_value** (silent mis-decode).
 **Found:** 2026-07-19, while checking whether repeated fields with differing types were
 covered by any existing test (they were not). The repetition framing turned out to be a red
@@ -83,27 +85,29 @@ no public accessor — so generated code cannot query the wire type today. Two p
 
 Same shape as F-0010, which needed corelib-c-cpp#87 alongside its codegen fix.
 
-## Part 2 — the semantics (spec first, then codegen)
+## Part 2 — the semantics: decided
 
-Nothing normative says what a decoder must do when the header wire type contradicts the
-schema. MESSAGE_SPEC §7 requires generated code to enforce schema-bound violations it can
-detect, but never names this case. Consequences of each candidate rule:
+**MESSAGE_SPEC §7.3** ([documentation#23](https://github.com/sofa-buffers/documentation/pull/23),
+merged `0894035`) adopts **skip**: a field whose header wire type is not the one its declared
+type maps to (§1) — for `fixlen`, including the subtype — MUST be skipped exactly as an
+unknown id is skipped, MUST NOT be reported `INVALID`, and MUST NOT be decoded into the
+declared field. The clause also bounds the check to what the wire distinguishes (wire type +
+fixlen subtype) and constrains the observable outcome rather than the layer, so the C
+object-API's descriptor-table check stays conformant.
 
-| rule | who changes | cost |
+"Reject" was considered and rejected as the resolution, for a reason worth keeping on record:
+in the visitor backends **"unknown id" and "known id, wrong type" are indistinguishable** —
+both fall through the same switch — while unknown ids *must* be skipped. Telling them apart
+would have required the generator to emit a per-scope **id → declared-type table** in five
+backends. "Skip" reuses a path every implementation already has.
+
+Outstanding against the clause:
+
+| profile | today | required |
 |---|---|---|
-| **skip** (what 7–9 already do) | c, cpp-c-cpp, py must stop rejecting | for the C family this is **corelib** (`object.c`), not generator |
-| **reject** | the 7 skipping backends | expensive — see below |
-
-The "reject" branch is the expensive one and the reason not to guess: in the visitor
-backends, **"unknown id" and "known id, wrong type" are indistinguishable** — both fall
-through the same switch. Unknown fields *must* be skipped (§5.2 skip path), so telling the
-two apart requires the generator to emit a per-scope **id → declared-type table** and consult
-it before dispatch. That is a structural change across five backends.
-
-**Filed as [documentation#23](https://github.com/sofa-buffers/documentation/pull/23)**
-(MESSAGE_SPEC §7.3 + §7.4, together with F-0019). The codegen issues wait on that clause —
-except the C++ guard below, which is wrong under every candidate rule and can be filed
-independently.
+| c, cpp-c-cpp | `R usage` | skip — corelib (`object.c`), see below |
+| py-cython, py-pure | `R usage` | skip — mechanism not yet traced |
+| cpp | mis-decodes (and `R invalid_msg` on sequences) | skip — corelib-cpp accessor + generator guard |
 
 ## Reproducing
 

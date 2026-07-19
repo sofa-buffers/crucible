@@ -215,9 +215,10 @@ would converge on an arbitrary answer.
 
 ## Proposal 4 — §5.2/§4.3: a header wire type that contradicts the schema; repeated field ids
 
-**FILED** — [documentation#23](https://github.com/sofa-buffers/documentation/pull/23)
-(2026-07-19), proposing the clauses below as MESSAGE_SPEC **§7.3** and **§7.4**. Awaiting
-review upstream.
+**✅ ADOPTED** — [documentation#23](https://github.com/sofa-buffers/documentation/pull/23)
+**merged** (`0894035`, 2026-07-19). The clauses below are now MESSAGE_SPEC **§7.3** and
+**§7.4**, adopted verbatim. All four Crucible spec proposals are now adopted
+(#15→#17, #16→#18, #19→#20, #23).
 
 **Motivated by:** **F-0020** (header wire type ≠ declared type) and **F-0019** (a field id
 repeated in one scope). Two distinct not-well-formed inputs, one shared property: the spec

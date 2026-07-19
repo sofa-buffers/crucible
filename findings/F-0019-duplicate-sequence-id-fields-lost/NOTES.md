@@ -1,7 +1,10 @@
 # F-0019 — a repeated sequence (struct) field id: 11 profiles merge, TypeScript replaces
 
-**Status:** **open — spec hole first, codegen second.** Do **not** file against the TypeScript
-backend yet: if the spec closes the hole with "reject", all 12 are wrong, not one.
+**Status:** **open — spec clause adopted, codegen outstanding.** MESSAGE_SPEC **§7.4**
+([documentation#23](https://github.com/sofa-buffers/documentation/pull/23), merged `0894035`)
+now defines the rule: the last occurrence of each field id wins, a re-opened sequence
+**continues** its scope (structs + unions merge), and an **array wrapper is replaced** whole.
+Non-conformant against it: **typescript** (struct + union), **c / cpp / cpp-c-cpp** (wrapper).
 **Axis:** accept_value (round-trip) — all 12 **accept**; the re-encoded value differs. Invisible
 to any accept/reject oracle.
 **Found:** 2026-07-19, by the 24 h pacemaker round (11.4 G execs); surfaced as the dominant
@@ -86,20 +89,25 @@ explicit that "a policy entry with no spec basis is a spec hole to file upstream
 exception". The reproducers therefore stay **out** of the green `corpus/regression/` gate until
 the hole is closed.
 
-## Proposed order (the F-0015 pattern)
+## Resolution (the F-0015 order, followed)
 
-F-0015 closed in one day precisely because the clause landed *before* the codegen change, so
-every backend implemented a defined rule instead of a guess. Same order here:
+F-0015 closed in one day because the clause landed *before* the codegen change, so every
+backend implemented a defined rule instead of a guess. Same order here.
 
-1. **Spec proposal** to `documentation`: define decoder behavior for a duplicate field id
-   within one scope. The most consistent resolution is **reject as `INVALID`** — §3 already
-   declares the encoding illegal, and §7 already requires generated code to enforce
-   schema-bound violations it can detect. That also makes merge-vs-replace moot.
-2. **Then** the codegen issue against `generator`, with the adopted clause as its basis.
+1. ✅ **Spec clause adopted** — [documentation#23](https://github.com/sofa-buffers/documentation/pull/23)
+   merged (`0894035`), MESSAGE_SPEC §7.4, together with F-0020's §7.3.
+2. ⏳ **Codegen** — now unblocked.
 
-Step 1 is **filed as [documentation#23](https://github.com/sofa-buffers/documentation/pull/23)**
-(MESSAGE_SPEC §7.3 + §7.4, together with F-0020). Step 2 — the codegen issue against
-`generator` — waits on that clause being adopted.
+**The adopted rule is not "reject".** An earlier draft of this note proposed rejecting as
+`INVALID`, on the reasoning that §3 already declares the encoding illegal. That was
+discarded during the proposal: rejecting a repeated id would oblige every decoder to track
+which ids it has already seen at every nesting level up to `MAX_DEPTH` — real cost on
+heap-less profiles — whereas "the last occurrence wins, sequences continue their scope" is
+what a streaming decoder does with *no* bookkeeping. The adopted clause takes the latter.
+
+The distinction §7.4 draws is **namespace vs. value**: a struct or union sequence opens an
+id scope "and nothing more" (CORELIB_PLAN §3) and carries no value, so re-opening continues
+it; an array wrapper *is* the array's value (§5), so a later occurrence replaces it.
 
 ## Reproducing
 
