@@ -50,12 +50,15 @@ def read_corpus(corpus_dir):
     extension instead: libFuzzer names its corpus files by content hash, with none.
 
       *.md      — a corpus README (e.g. corpus/regression/README.md)
+      *.py      — a generator script kept beside its vectors (e.g. the sweep in
+                  findings/F-0020-…/), which would otherwise be fed as an input and
+                  show up as a divergence cluster of its own
       .*        — dotfiles, notably the .gitkeep holding an empty gitignored corpus dir
                   (fed as a valid empty message before this skip, silently inflating counts)
     """
     items = []
     for name in sorted(os.listdir(corpus_dir)):
-        if name.startswith(".") or name.endswith(".md"):
+        if name.startswith(".") or name.endswith((".md", ".py")):
             continue
         p = os.path.join(corpus_dir, name)
         if os.path.isfile(p):

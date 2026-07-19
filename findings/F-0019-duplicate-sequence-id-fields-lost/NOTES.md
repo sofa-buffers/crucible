@@ -4,7 +4,9 @@
 ([documentation#23](https://github.com/sofa-buffers/documentation/pull/23), merged `0894035`)
 now defines the rule: the last occurrence of each field id wins, a re-opened sequence
 **continues** its scope (structs + unions merge), and an **array wrapper is replaced** whole.
-Non-conformant against it: **typescript** (struct + union), **c / cpp / cpp-c-cpp** (wrapper).
+Non-conformant as of 2026-07-19 (after corelib-c-cpp#99): **typescript** (struct + union),
+**cpp / cpp-c-cpp** (wrapper). **c** is ✅ conformant. Remainder is entirely
+[generator#175](https://github.com/sofa-buffers/generator/issues/175).
 **Axis:** accept_value (round-trip) — all 12 **accept**; the re-encoded value differs. Invisible
 to any accept/reject oracle.
 **Found:** 2026-07-19, by the 24 h pacemaker round (11.4 G execs); surfaced as the dominant
@@ -96,11 +98,11 @@ backend implemented a defined rule instead of a guess. Same order here.
 
 1. ✅ **Spec clause adopted** — [documentation#23](https://github.com/sofa-buffers/documentation/pull/23)
    merged (`0894035`), MESSAGE_SPEC §7.4, together with F-0020's §7.3.
-2. ⏳ **Codegen + corelib** — filed 2026-07-19:
-   [generator#175](https://github.com/sofa-buffers/generator/issues/175) (TypeScript merge, C++ wrapper clear,
-   C wrapper descriptor kind) and
-   [corelib-c-cpp#99](https://github.com/sofa-buffers/corelib-c-cpp/issues/99) (honour that kind by
-   resetting the target on open).
+2. ✅ **corelib** — [corelib-c-cpp#99](https://github.com/sofa-buffers/corelib-c-cpp/issues/99)
+   closed the same day (`fd5086a`); `c` now replaces a re-opened wrapper and merges structs.
+3. ⏳ **Codegen** — [generator#175](https://github.com/sofa-buffers/generator/issues/175)
+   still open: TypeScript must merge struct/union scopes, and the C++ backend must clear a
+   wrapper before filling (both `cpp` and `cpp-c-cpp` use it).
 
 **The adopted rule is not "reject".** An earlier draft of this note proposed rejecting as
 `INVALID`, on the reasoning that §3 already declares the encoding illegal. That was
@@ -115,19 +117,27 @@ it; an array wrapper *is* the array's value (§5), so a later occurrence replace
 
 ### Where each remaining fix goes (traced)
 
-| profile | case | today | where the fix goes |
+| profile | case | status | where the fix goes |
 |---|---|---|---|
-| typescript | struct + union | replaces | **generator only** — `o.nested = ProbeNested.decodeFrom(c)` (`message.ts:351`) builds a fresh object; it must decode into the existing member |
-| cpp | array wrapper | merges | **generator only** — `case 200: { _StrSeq _r0{string_array, 5, 64}; is.read(_r0); }` (`probe.hpp:307-309`) wraps the existing vector by reference and grows it (`while (out.size() <= id) out.emplace_back(); out[id] = …`) with no clear. Go emits the clear (`m.StringArray = m.StringArray[:0]`, `probe.go:102`) and is conformant; the C++ backend simply does not |
-| c, cpp-c-cpp | array wrapper | merges | **generator + corelib-c-cpp** — see below |
+| typescript | struct + union | ❌ replaces | **generator only** — `o.nested = ProbeNested.decodeFrom(c)` (`message.ts:351`) builds a fresh object; it must decode into the existing member |
+| cpp, cpp-c-cpp | array wrapper | ❌ merges | **generator only** — `case 200: { _StrSeq _r0{string_array, 5, 64}; is.read(_r0); }` (`probe.hpp:307-309`) wraps the existing vector by reference and grows it with no clear. Go emits the clear (`m.StringArray = m.StringArray[:0]`, `probe.go:102`) and is conformant; the C++ backend does not. Both profiles are this backend |
+| c | array wrapper | ✅ replaces | **done** — [corelib-c-cpp#99](https://github.com/sofa-buffers/corelib-c-cpp/issues/99), commit `fd5086a` |
 
-**The C family needs a descriptor change, not just a code change.** The C backend lowers a
-wrapper array to a nested descriptor of N fixed members —
-`SOFAB_OBJECT_FIELD_SEQUENCE(200, message_probe_t, string_array, …, 2)` over
-`items[0]…items[4]` (`drivers/c/gen/probe.c:42-49, 62`) — so **an array wrapper is
-structurally indistinguishable from a struct** in the object API. `object.c:470-491` then
-treats every `FIELDTYPE_SEQUENCE` identically: it points the nested decoder at
-`decoder->dst + field->offset` and resets nothing. Merging is the only thing it can do.
+**I got the C-family analysis wrong, and it is worth recording why.** I concluded that a
+wrapper array is *structurally indistinguishable from a struct* in the object API — both are
+`FIELDTYPE_SEQUENCE` with a nested descriptor — and therefore that the generator had to emit
+a **new descriptor kind** before the corelib could comply. corelib-c-cpp#99 was filed on that
+basis.
+
+The distinction already existed. The generated descriptor uses
+`SOFAB_OBJECT_DESCR_SEQ` for the wrapper (`drivers/c/gen/probe.c:49`) and plain
+`SOFAB_OBJECT_DESCR` for structs (lines 18, 24, 40, 69) — the `fixed_seq` flag from #94/#96.
+I read the *field* entry (`SOFAB_OBJECT_FIELD_SEQUENCE`, identical for both) and never
+checked the *descriptor* entry, which is where the two differ. The corelib fix
+(`fd5086a`) simply keys the reset on that flag: no generator change, no new kind, +128 B.
+
+Lesson for the next trace: when two things "look identical", check every level of the
+structure that describes them, not just the one the divergence surfaced at.
 
 Since §7.4 requires structs to merge and wrappers to be replaced, the corelib cannot comply
 without being told which it is. That needs a distinct descriptor kind emitted by the
