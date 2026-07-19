@@ -33,7 +33,7 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
 
 ## Current state
 - **Phases 1–3 largely done:** 12 drivers / 10 corelibs green across all five suites on
-  **sofabgen 0.18.0** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
+  **sofabgen 0.19.2** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
   java, typescript, csharp, zig). `./scripts/bootstrap.sh` keeps sofabgen at the **latest
   release** (sha256-verified) and the corelibs at `origin/main`.
 - **18 findings catalogued** (`results/FINDINGS.md`); **17 resolved, 1 by-design.** No open
@@ -451,6 +451,24 @@ Recorded as an **allowed divergence** in `oracle/policy.yaml` (axis `accept_valu
 MESSAGE_SPEC §8 — preservation of embedded U+0000 is implementation-defined for a NUL-terminated
 profile). SOFABGEN **G-0015 withdrawn**. F-0018 stays in `findings/` as a documented by-design
 record. **No open bug remains** — all 18 findings are resolved or by-design.
+
+**Eighteenth change 2026-07-19 — sofabgen 0.18.0 → 0.19.2; corelibs re-pulled; full box green, no regression.**
+Refreshed all corelibs to `origin/main` first, then polled for the announced 0.19.2 release and
+integrated it via `SOFABGEN_VERSION=v0.19.2 ./scripts/bootstrap.sh` (sha256-verified). No Crucible
+finding targeted this bump — installed to keep the toolchain current (the user's deliberate pin, was
+0.18.0).
+- **Corelib tips that advanced:** `corelib-c-cpp` 57dba4a → 56c88fa (`feat(cpp): expose delivered
+  wire type on IStreamImpl`, §7.3), `corelib-cpp` bc0cb05 → 2be6fe2 (`build: --parallel job count`,
+  build-only), `corelib-ts` 7bbc499 → e307a64 (`chore(devcontainer): drop CI=true`, env-only). The
+  other seven corelibs + `documentation` were already at their `origin/main` tips, unchanged. Only
+  the c-cpp change is wire-adjacent; py/java did not move, so their venv/jar caches needed no wipe.
+- ✅ **Full box green on 0.19.2:** seeds 6×12, **regression 44×12**, cross-encode 69×12, union
+  11×12, limit mode (arr/str/blb) 9-driver heap roster — **all 0 divergences** (3 expected soft
+  `incomplete_value` warnings on the regression corpus). The c-cpp "delivered wire type" change did
+  **not** perturb **F-0017** — its reproducer (`F0017_ts_wiretype_iso.bin`) is in the gate and stayed
+  at 0 divergence.
+
+Net open: still **F-0018** (by-design) only — no change.
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |
