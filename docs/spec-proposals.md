@@ -213,6 +213,185 @@ would converge on an arbitrary answer.
 
 ---
 
+## Proposal 4 — §5.2/§4.3: a header wire type that contradicts the schema; repeated field ids
+
+**DRAFT — not filed.** Awaiting review.
+
+**Motivated by:** **F-0020** (header wire type ≠ declared type) and **F-0019** (a field id
+repeated in one scope). Two distinct not-well-formed inputs, one shared property: the spec
+declares them illegal to *produce* but never says what a decoder must *do* with them. Both
+are drafted here together because they interact (a repeated occurrence may also be
+mis-typed) and a clause for one without the other leaves the combination undefined.
+
+### The measurements
+
+**F-0020** — a systematic sweep of every top-level field id × every wire type (66 vectors,
+`findings/F-0020-header-wire-type-vs-declared-type/sweep.py`):
+
+| | vectors | result |
+|---|---|---|
+| wire type **matches** the declared type (§1) | 11 | **all 12 drivers agree** |
+| wire type **differs** | 55 | **all 55 diverge** |
+
+100 % of the mismatch space is divergent, in four incompatible ways:
+
+| behavior | drivers |
+|---|---|
+| skip the field | csharp, go, java, rust-std, rust-nostd, typescript, zig (7–9, per case) |
+| `R usage` | c, cpp-c-cpp, py-cython, py-pure (4) |
+| `R invalid_msg` | cpp (1) |
+| **decode it anyway, wrong value** | cpp (1) |
+
+The last is the sharp one: `01 06` is field id 0 (declared `u8` → wire Unsigned) carrying
+wire type **Signed**, zig-zag payload `06` = 3. `cpp` re-encodes **`u8 = 6`** — the raw
+un-zig-zagged varint. No reject, no warning; a wrong value delivered as if correct.
+
+**F-0019** — a field id repeated in one scope:
+
+| case | merge | replace |
+|---|---|---|
+| struct (`nested`, `arrays`) | 11 | typescript |
+| union (`choice`) | 11 | typescript |
+| array wrapper (`string_array`) | c, cpp, cpp-c-cpp (3) | 9 |
+| **scalar** (`u8` twice) | — | **all 12 agree: last wins** |
+
+Note the array wrapper inverts the majority, and typescript changes sides. There is no
+consistent family behavior to codify by observation alone.
+
+### The hole
+
+CORELIB_PLAN §3 requires ids to be "unique within a single sequence/scope", and MESSAGE_SPEC
+§1 maps each declared type to exactly one wire type. Both are constraints on the **encoder**.
+Neither document states a **decoder** obligation for input that violates them. MESSAGE_SPEC
+§7 requires generated code to enforce schema-bound violations it can detect, but never names
+either case.
+
+Consequently `oracle/policy.yaml` has no clause to cite for either divergence, and the
+practical shape is a **parser differential**: the same bytes decode to different objects
+depending on the implementation language. Where a validating service and a processing
+service differ in language, that is the classic smuggling geometry.
+
+### Proposed clause A (add to §5.2)
+
+> **§5.2.x — A header wire type that contradicts the schema.**
+> A field whose header wire type is not the one its declared type maps to (§1) — for
+> `fixlen`, including the subtype — **MUST** be skipped exactly as a field with an unknown
+> id is skipped. A decoder **MUST NOT** report it as `INVALID`, and **MUST NOT** decode its
+> payload into the declared field.
+>
+> The check extends exactly as far as the wire format distinguishes: the 3-bit wire type,
+> plus the fixlen subtype for `fixlen` fields. It cannot extend further — `u8`, `u16`,
+> `u32`, `u64`, `boolean`, `enum` and `bitfield` all map to the same wire type (unsigned
+> varint), so a header carrying that type is well-formed for any of them. Value-range
+> conformance is not the subject of this clause.
+
+### Proposed clause B (add to §4.3)
+
+> **§4.3.x — A field id repeated within one scope.**
+> Ids are unique within a sequence scope (CORELIB_PLAN §3); an encoding repeating one is
+> **not well-formed**. A decoder **MUST** nevertheless process it deterministically, and
+> **MUST NOT** report it as `INVALID`.
+>
+> For each field id in a scope, the **last** occurrence applies. The rule binds **per field
+> id, not per sequence**: re-opening a sequence **continues** its scope. Children set in an
+> earlier opening whose ids do not recur in a later one **are retained**. This covers
+> structs and unions.
+>
+> **Array wrappers are the exception.** A wrapper carries the *value* of its array field
+> (§5), not a namespace; a later occurrence **replaces** that value, discarding elements
+> from earlier occurrences.
+>
+> *Example:* `seq[10]([3:blob] x) seq[10]([1:fp64] y)` decodes to
+> `nested{ bytes_field = x, f64 = y }`.
+
+### Interaction
+
+Clause A applies first. An occurrence skipped under Clause A is **not** an occurrence for
+Clause B, so a correctly-typed earlier occurrence survives a mis-typed later one.
+
+### Implementation layer — deliberately unconstrained
+
+Both clauses mandate the **observable outcome**, not which layer produces it. Typically
+generated code performs the check, since only it knows the schema (§7). An object-API
+profile may instead hand the schema to the corelib as a descriptor table and check there —
+that is conformant. Without this paragraph the corelib-c-cpp object API would be
+non-conformant by construction while doing the right thing.
+
+### Both clauses follow from rules the format already has
+
+Neither clause introduces a new concept; each is an existing rule applied to a case the
+spec had not yet named.
+
+**Clause A — "skip" is the mechanism the format already mandates.** A decoder must already
+handle a field it cannot use: an unknown id is skipped by wire type (§5.2), and that skip
+path exists in every implementation. A field whose wire type contradicts the schema is the
+same situation — the decoder cannot use it — and reusing the existing treatment keeps one
+rule instead of two. Choosing `INVALID` would create a *second*, divergent handling for
+"a field this decoder cannot consume", where one is already specified and implemented.
+
+**Clause B, scalars — already universal.** "Last occurrence wins" is not proposed but
+*observed*: all twelve implementations already do exactly this for a repeated scalar
+(measured, `control_dup_scalar.bin`). The clause records it so the rest can be derived
+consistently.
+
+**Clause B, sequences — follows from §3.** A sequence "opens a fresh ID scope **and nothing
+more**". It carries no value of its own, so there is nothing for a last-wins rule to
+replace; only the fields *inside* it carry values, and the rule applies to each of them by
+id. Re-opening therefore continues the scope. This is the same rule as for scalars, applied
+at the level where a value actually lives.
+
+**Clause B, array wrappers — follows from §5.** §5 introduces the wrapper precisely so that
+an array has an explicit representation of its own, including the explicitly empty array.
+The wrapper therefore *is* the array field's value, not a namespace — so last-wins applies
+to it whole. Again the same rule, applied where the value lives.
+
+The distinction running through Clause B is thus not "sequence vs. non-sequence" but
+**"namespace vs. value"**, which is exactly the distinction §3 and §5 already draw.
+
+### Who this validates vs. requires to change
+
+| clause | validated | must change |
+|---|---|---|
+| A | csharp, go, java, rust-std, rust-nostd, typescript, zig (skip) | **c, cpp-c-cpp, py** (stop rejecting) · **cpp** (currently mis-decodes) |
+| B | 11 impls on struct + union; all 12 on scalars; 9 on the wrapper | **typescript** (struct + union) · **c, cpp, cpp-c-cpp** (wrapper) |
+
+Two implementation notes, both verified against the sources:
+
+- **corelib-c-cpp is a small, local change.** `istream.c:493` presets `ctx->target_opt` to
+  the *actual* wire type before the field callback and leaves `target_ptr` NULL;
+  `sofab_object_field_cb` (`object.c:396-410`) matches on **id alone** and then overwrites
+  `target_opt` with the descriptor's *expected* type, so the post-callback comparison at
+  `istream.c:307-321` fires `SOFAB_RET_E_USAGE`. That check is correct for its intended
+  audience — a human calling the streaming API with the wrong `read` — but in the object
+  path the "caller" is a generated descriptor table, so malformed *input* surfaces as a
+  caller *usage* error. **The skip path already exists**: leaving `target_ptr` NULL skips the
+  field with no check. So Clause A needs only that `object.c` compare the descriptor type
+  against `ctx->target_opt` *before* registering the target and, on mismatch, not register.
+  No new state, no API change — `object.h:44` includes `istream.h`, whose full
+  `struct sofab_istream` (`istream.h:112`) exposes `target_opt`.
+- **corelib-cpp needs a public accessor first.** The generated C++ dispatches on id alone
+  (`probe.hpp:288-300`, `case 4: is.read(u32);`), violating the documented precondition
+  (`sofab.hpp:1619`, *"The requested type must match the field's wire type"*). It cannot
+  currently check: `deserialize(sofab::IStreamImpl &is, …)` receives the stream as a separate
+  object and `type_` is `protected` (`sofab.hpp:1074`). So this is corelib-cpp **plus**
+  generator — the F-0010 shape.
+
+**Why the clauses reject nothing.** Both could have been resolved as `INVALID`. They are not,
+for two reasons. First, rejecting a repeated id would require every decoder to track which
+ids it has already seen per scope, across `MAX_DEPTH = 255` levels — real cost on heap-less
+profiles, where "merge" is the zero-bookkeeping option a streaming decoder does by default.
+Second, the security argument cuts the other way than it first appears: the parser
+differential here comes from the rule being **undefined**, not from it being lenient. A
+precisely specified lenient rule that all twelve follow has no differential.
+
+Choosing `INVALID` for Clause A would additionally be expensive in a non-obvious way: in the
+visitor-architecture backends (go, rust, java, csharp, zig) an unknown id and a known id with
+the wrong type are **indistinguishable** — both fall through the same switch — while unknown
+ids *must* be skipped. Telling them apart would require the generator to emit a per-scope
+id → declared-type table in every backend.
+
+---
+
 ## Status
 
 **Proposals 1 + 2 ADOPTED upstream (2026-07-16); Proposal 3 filed 2026-07-17.**
