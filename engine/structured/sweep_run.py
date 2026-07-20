@@ -34,7 +34,7 @@ sys.path.insert(0, os.path.join(HERE, "..", ".."))  # repo root for oracle.compa
 
 from oracle.comparator import run_driver, parse  # noqa: E402
 
-AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserved_subtype"]
+AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserved_subtype", "sweep_truncation"]
 
 # The 12-driver roster, mirroring scripts/run.sh. Built by ./scripts/run.sh already.
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -69,16 +69,25 @@ def run_axis(name):
             print(f"  [{name}] driver {dn} {kind} on {corpus[fail_idx][0]}")
         outs[dn] = lines
 
-    divergences, conformance = [], []
+    divergences, conformance, soft = [], [], []
     for i, (fn, _) in enumerate(corpus):
         vals = {dn: (outs[dn][i] or "") for dn, _ in DRIVERS}
-        distinct = set(vals.values())
-        if len(distinct) > 1:
-            divergences.append((fn, vals))           # full canonical line per driver
-            continue                                 # a divergence; conformance moot
         verds = {dn: parse(v)[0] for dn, v in vals.items()}
-        # agreed — now check conformance for accept/reject expectations
+        pays = {dn: parse(v)[1] for dn, v in vals.items()}
+        # Axis-aware, matching oracle/policy.yaml (as comparator.py does): a verdict
+        # split (A/I/R) is HARD; an accept-value split (agreed A, differing hex) is
+        # HARD; an incomplete-value payload (agreed I) or a reject-class (agreed R)
+        # difference is SOFT — a warning, not a divergence.
+        if len(set(verds.values())) > 1:
+            divergences.append((fn, vals))
+            continue
         v = next(iter(verds.values()))
+        if v == "A" and len(set(pays.values())) > 1:
+            divergences.append((fn, vals))           # accept_value — hard
+            continue
+        if v in ("I", "R", "L") and len(set(pays.values())) > 1:
+            soft.append(fn)                          # incomplete_value / reject_class — soft
+        # agreed on the hard axes — now check conformance
         exp = expect[fn]
         if exp == "reject" and v != "R":
             conformance.append((fn, f"expected R, all 12 emit {v}"))
@@ -87,18 +96,22 @@ def run_axis(name):
         # merge/replace/lastwins -> treated as accept
         elif exp in ("merge", "replace", "lastwins") and v != "A":
             conformance.append((fn, f"expected A ({exp}), all 12 emit {v}"))
-    return len(corpus), divergences, conformance
+        # a prefix of a valid message is A (complete) or I (incomplete), never R
+        elif exp == "not_reject" and v == "R":
+            conformance.append((fn, "prefix of a valid message emitted R (INVALID)"))
+    return len(corpus), divergences, conformance, soft
 
 
 def main():
     axes = sys.argv[1:] or AXES
     total_div = total_conf = 0
     for name in axes:
-        n, div, conf = run_axis(name)
+        n, div, conf, soft = run_axis(name)
         total_div += len(div); total_conf += len(conf)
         status = "OK" if not div and not conf else "FAIL"
+        softnote = f", {len(soft)} soft (incomplete_value/reject_class)" if soft else ""
         print(f"[{name}] {n} vectors — {len(div)} divergence(s), "
-              f"{len(conf)} conformance failure(s)  [{status}]")
+              f"{len(conf)} conformance failure(s){softnote}  [{status}]")
         for fn, vals in div[:8]:
             camps = {}
             for dn, v in vals.items():
