@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (51 inputs)
+## Contents (59 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -40,6 +40,10 @@ looking. This corpus makes it automatic.
 | `F0017_ts_wiretype_iso.bin` | F-0017 | generator#160 (sofabgen 0.18.0, PR #161) | a header whose wire type ≠ the field's declared type (`05 00 01`) is `R invalid_msg` on **all 12** — the generated TS decode frames each field by its header wire type (was `I` on ts) |
 | `F0019_dup_struct_nested.bin`, `F0019_dup_struct_arrays.bin`, `F0019_dup_wrapper_replaced.bin` | F-0019 | MESSAGE_SPEC §7.4 (documentation#23) + generator#175 + corelib-c-cpp#99 | a field id repeated in one scope: a struct/union **merges** (last occurrence per id wins, scope continues), an **array wrapper is replaced** whole — all 12 agree (was 11-vs-1 on structs, 3-vs-9 on wrappers) |
 | `F0019_control_dup_scalar.bin`, `F0019_control_same_field.bin`, `F0019_control_single_seq.bin`, `F0019_control_wrapper_single.bin` (4) | F-0019 (controls) | — | the cases that already agreed and must stay agreeing: a repeated scalar (last wins), the same child twice, both children in one opening, a single-open wrapper — guard against a merge/replace fix regressing them |
+| `F0020_scalar_wrong_signedness.bin`, `F0020_struct_id_gets_scalar.bin`, `F0020_wrapper_id_gets_fixlen.bin` | F-0020 | MESSAGE_SPEC §7.3 (documentation#23) + generator#174 / corelib-c-cpp#100 / corelib-cpp#43 | a field header whose wire type ≠ its declared type is **skipped** as if the id were unknown — all 12 agree (was a 4-way skip / usage / invalid / mis-decode split) |
+| `F0020_control_scalar_correct.bin`, `F0020_control_struct_correct.bin` (2) | F-0020 (controls) | — | a correctly-typed scalar and a correctly-typed struct still decode on all 12 — the skip fires only on a mismatch |
+| `F0021_u8_recv_array_unsigned.bin`, `F0021_i8_recv_array_signed.bin` | F-0021 | generator#183 (sofabgen 0.19.3, PR #184) | a scalar field receiving an integer array of the same signedness is **skipped**, not decoded from the array's element — all 12 agree (was decoded by rust-std/rust-nostd/csharp/java/zig, the shared-callback backends) |
+| `F0021_control_legit_array.bin` | F-0021 (control) | — | a legitimate `u8` array at an actual array field still stores on all 12 — the skip does not touch real arrays |
 
 Filenames are `F<nnnn>_<original-name>.bin`; the originals stay in `findings/<id>/` as the
 finding's own record. `F0003_overcount_clean.bin` has no original — see below.
