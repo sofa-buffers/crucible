@@ -35,8 +35,17 @@ cp "$HERE/Driver.cs" "$BUILD/Driver.cs"   # only the replay driver (not Fuzz.cs)
 # built assembly — a ProjectReference into the symlinked vendor tree hit a ref-
 # assembly ordering error (CS0006). This also keeps build output out of the
 # vendored source's bin/.
-echo "==> [cs] building corelib-cs assembly" >&2
-dotnet build "$COREPROJ" -c Release -o "$BUILD/corelib" --nologo -v quiet >&2
+#
+# corelib-cs multi-targets (<TargetFrameworks>net9.0;net10.0</TargetFrameworks>,
+# corelib-cs#41) so consumers on either runtime build; `dotnet build` restores and
+# builds *every* TFM in that list and fails on whichever the installed SDK lacks
+# (net10.0 on a .NET 9 image — NETSDK1045). `-f net9.0` does not help: restore
+# still evaluates the full TargetFrameworks list. Override the property so only the
+# matching TFM is seen at all. The driver (below) targets net9.0; bump both when the
+# CI/devcontainer image gains a newer SDK.
+CS_TFM="${CS_TFM:-net9.0}"
+echo "==> [cs] building corelib-cs assembly ($CS_TFM)" >&2
+dotnet build "$COREPROJ" -c Release -p:TargetFrameworks="$CS_TFM" -o "$BUILD/corelib" --nologo -v quiet >&2
 
 # Console project referencing the built corelib DLL. InvariantGlobalization avoids
 # an ICU dependency; the compile glob picks up Message.cs + Driver.cs in $BUILD.
