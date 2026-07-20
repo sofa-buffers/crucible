@@ -1,11 +1,13 @@
 # F-0020 — a header wire type ≠ the field's declared type: four incompatible behaviors
 
-**Status:** **open — spec clause adopted, implementations outstanding.** MESSAGE_SPEC **§7.3**
-([documentation#23](https://github.com/sofa-buffers/documentation/pull/23), merged `0894035`)
-now requires a mis-typed field to be **skipped** as if its id were unknown. Non-conformant as of 2026-07-19 (after corelib-c-cpp#100):
-**cpp-c-cpp / py** (reject), **cpp** (mis-decodes). **c** is ✅ conformant. Remainder is
-entirely [generator#174](https://github.com/sofa-buffers/generator/issues/174). The cpp defect was already wrong under
-every candidate rule and is independent of the clause.
+**Status:** ✅ **RESOLVED (sofabgen 0.19.3, 2026-07-20).** MESSAGE_SPEC **§7.3**
+([documentation#23](https://github.com/sofa-buffers/documentation/pull/23), `0894035`): a field
+whose header wire type ≠ its declared type is **skipped** as if its id were unknown. Landed
+over three releases — corelib-cpp#43 + corelib-c-cpp#100 + generator#174 (0.18.x/0.19.2), and
+the final array-into-scalar corner **generator#183/#184 in 0.19.3** (split out as F-0021).
+**Re-verified on 0.19.3:** the full 66-vector sweep (every field id × every wire type) → **0
+divergences** — axis-green, not just isolate-green. 3 representative reproducers + 2 controls
+promoted into the green `corpus/regression/` gate.
 **Axis:** verdict (hard: accept vs reject) **+ accept_value** (silent mis-decode).
 **Found:** 2026-07-19, while checking whether repeated fields with differing types were
 covered by any existing test (they were not). The repetition framing turned out to be a red

@@ -1,9 +1,13 @@
 # F-0021 — a scalar integer field receiving an array wire type of the same signedness
 
-**Status:** **open — generator-only, one issue.** MESSAGE_SPEC §7.3 requires the field to be
-**skipped**; five backends decode it instead. Filed as [generator#183](https://github.com/sofa-buffers/generator/issues/183).
-**Axis:** verdict (accept-with-wrong-value vs skip) — all 12 accept; the 5 write a value the
-7 do not. **Found:** 2026-07-19, re-checking F-0020 on sofabgen 0.19.2.
+**Status:** ✅ **RESOLVED (sofabgen 0.19.3, 2026-07-20).** MESSAGE_SPEC §7.3 requires the field
+to be **skipped**; five backends decoded it. Fixed by **[generator#183](https://github.com/sofa-buffers/generator/issues/183)**
+(PR #184, "skip an integer array delivered to a scalar id") — generator-only, as predicted; no
+corelib change. **Re-verified on 0.19.3:** all 10 vectors (8 reproducers + 2 controls) → **all
+12 agree, 0 divergences**; the full §7.3 sweep is 0-divergence too. 3 vectors (one unsigned,
+one signed, the legit-array control) promoted into the green `corpus/regression/` gate.
+**Axis:** verdict (accept-with-wrong-value vs skip). **Found:** 2026-07-19, re-checking F-0020
+on sofabgen 0.19.2.
 
 ## The residual after F-0020's §7.3 fix
 
