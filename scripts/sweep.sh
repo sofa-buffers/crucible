@@ -22,8 +22,8 @@ SWEEP="$ROOT/engine/structured/sweep_run.py"
 echo "==> [sweep] building the 12 drivers against probe (seed differential)" >&2
 CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
 
-echo "==> [sweep] blocking axes: repeated-id (§7.4) + over-bound (§7.1)" >&2
-python3 "$SWEEP" sweep_repeated_id sweep_overbound
+echo "==> [sweep] blocking axes: repeated-id (§7.4) + over-bound (§7.1) + reserved-subtype (§4.6)" >&2
+python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype
 
 echo "==> [sweep] report-only: wiretype (§7.3) — known-open F-0022/F-0023" >&2
 if python3 "$SWEEP" wiretype_sweep; then

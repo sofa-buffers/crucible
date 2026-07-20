@@ -34,7 +34,7 @@ sys.path.insert(0, os.path.join(HERE, "..", ".."))  # repo root for oracle.compa
 
 from oracle.comparator import run_driver, parse  # noqa: E402
 
-AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound"]
+AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserved_subtype"]
 
 # The 12-driver roster, mirroring scripts/run.sh. Built by ./scripts/run.sh already.
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
