@@ -64,10 +64,20 @@ sed -i "s#\${SOFAB_RS_CORELIB}#$CORELIB#" "$OUT/Cargo.toml"
 # The `L` (LimitExceeded) verdict arm in driver.rs is std-only — declare + enable
 # the `limit` cargo feature that gates it for the std corelib (rs) only. rs-no-std's
 # Error has no LimitExceeded variant, so the arm must stay compiled out there.
+#
+# rs-no-std still needs the feature *declared* (not enabled): the arm uses
+# `#[cfg(feature = "limit")]`, and an undeclared feature makes that an *unknown*
+# cfg value — cargo's `unexpected_cfgs` lint then warns on every rs-no-std build
+# (noise that can mask real warnings). Declaring it silences the lint while the arm
+# stays compiled out (the feature is never enabled for rs-no-std).
 FEATURES=""
 if [ "$VARIANT" = "rs" ]; then
     printf '\n[features]\nlimit = []\n' >> "$OUT/Cargo.toml"
     FEATURES="--features limit"
+elif grep -q '^\[features\]' "$OUT/Cargo.toml"; then
+    sed -i '/^\[features\]/a limit = []' "$OUT/Cargo.toml"   # declare, don't enable
+else
+    printf '\n[features]\nlimit = []\n' >> "$OUT/Cargo.toml"
 fi
 
 echo "==> [rust:$VARIANT] cargo build${FEATURES:+ ($FEATURES)}" >&2
