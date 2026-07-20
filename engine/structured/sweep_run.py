@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Sweep runner — the two-oracle harness for the structured sweep family.
+
+A sweep vector carries an **expected behaviour**, so the runner checks *two*
+independent things the plain differential cannot:
+
+  1. **Agreement** — do all 12 drivers produce the same canonical line? A
+     disagreement is a divergence (the classic oracle; a finding).
+  2. **Conformance** — does the agreed behaviour match what the spec requires for
+     that vector? `expect=reject` means every driver MUST emit `R`; `expect=accept`
+     MUST be `A`. A *family-wide* wrong answer (all 12 uniformly accept an
+     over-bound value) is **agreement-green but conformance-red** — invisible to a
+     differential-only oracle, and exactly the gap a "must reject" sweep exists to
+     catch.
+
+(For `merge` / `replace` / `lastwins` the required *value* is intricate to recompute
+here, so those are checked as `accept` + agreement; their semantic correctness is
+asserted in the finding write-ups. Only the accept-vs-reject conformance is machine
+-checked, which is where the family-wide gaps hide.)
+
+Runs every registered axis, prints per-axis {divergences, conformance failures},
+exits non-zero if either is non-empty.
+
+Usage: python3 engine/structured/sweep_run.py [axis ...]   (default: all)
+"""
+import importlib
+import os
+import sys
+import tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(HERE, "..", ".."))  # repo root for oracle.comparator
+
+from oracle.comparator import run_driver, parse  # noqa: E402
+
+AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound"]
+
+# The 12-driver roster, mirroring scripts/run.sh. Built by ./scripts/run.sh already.
+ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
+DRIVERS = [
+    ("c",          f"{ROOT}/drivers/c/build/driver"),
+    ("go",         f"{ROOT}/drivers/go/build/driver"),
+    ("rust-std",   f"{ROOT}/drivers/rust/build/rs/target/debug/harness"),
+    ("rust-nostd", f"{ROOT}/drivers/rust/build/rs-no-std/target/debug/harness"),
+    ("cpp",        f"{ROOT}/drivers/cpp/build/cpp/driver"),
+    ("cpp-c-cpp",  f"{ROOT}/drivers/cpp/build/c-cpp/driver"),
+    ("py-cython",  f"{ROOT}/drivers/python/build/py-cython"),
+    ("py-pure",    f"{ROOT}/drivers/python/build/py-pure"),
+    ("java",       f"{ROOT}/drivers/java/build/driver"),
+    ("typescript", f"{ROOT}/drivers/ts/build/driver"),
+    ("csharp",     f"{ROOT}/drivers/cs/build/driver"),
+    ("zig",        f"{ROOT}/drivers/zig/build/driver"),
+]
+
+
+def run_axis(name):
+    mod = importlib.import_module(name)
+    with tempfile.TemporaryDirectory() as d:
+        vectors = mod.emit(d)                       # [(fname, bytes, expect)]
+    corpus = [(fn, data) for fn, data, _ in vectors]
+    expect = {fn: exp for fn, _, exp in vectors}
+
+    # verdict per driver per input
+    outs = {}
+    for dn, path in DRIVERS:
+        lines, fail_idx, _, kind = run_driver(path, corpus, timeout=60.0)
+        if fail_idx is not None:
+            print(f"  [{name}] driver {dn} {kind} on {corpus[fail_idx][0]}")
+        outs[dn] = lines
+
+    divergences, conformance = [], []
+    for i, (fn, _) in enumerate(corpus):
+        vals = {dn: (outs[dn][i] or "") for dn, _ in DRIVERS}
+        distinct = set(vals.values())
+        if len(distinct) > 1:
+            divergences.append((fn, vals))           # full canonical line per driver
+            continue                                 # a divergence; conformance moot
+        verds = {dn: parse(v)[0] for dn, v in vals.items()}
+        # agreed — now check conformance for accept/reject expectations
+        v = next(iter(verds.values()))
+        exp = expect[fn]
+        if exp == "reject" and v != "R":
+            conformance.append((fn, f"expected R, all 12 emit {v}"))
+        elif exp == "accept" and v != "A":
+            conformance.append((fn, f"expected A, all 12 emit {v}"))
+        # merge/replace/lastwins -> treated as accept
+        elif exp in ("merge", "replace", "lastwins") and v != "A":
+            conformance.append((fn, f"expected A ({exp}), all 12 emit {v}"))
+    return len(corpus), divergences, conformance
+
+
+def main():
+    axes = sys.argv[1:] or AXES
+    total_div = total_conf = 0
+    for name in axes:
+        n, div, conf = run_axis(name)
+        total_div += len(div); total_conf += len(conf)
+        status = "OK" if not div and not conf else "FAIL"
+        print(f"[{name}] {n} vectors — {len(div)} divergence(s), "
+              f"{len(conf)} conformance failure(s)  [{status}]")
+        for fn, vals in div[:8]:
+            camps = {}
+            for dn, v in vals.items():
+                camps.setdefault(v[:22] or "(empty)", []).append(dn)
+            print(f"    DIVERGE {fn}: "
+                  + " | ".join(f"[{outv}] {','.join(ds)}" for outv, ds in camps.items()))
+        for fn, msg in conf[:8]:
+            print(f"    NONCONFORM {fn}: {msg}")
+    print(f"\nTOTAL: {total_div} divergence(s), {total_conf} conformance failure(s)")
+    return 1 if (total_div or total_conf) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

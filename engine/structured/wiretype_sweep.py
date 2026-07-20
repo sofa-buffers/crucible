@@ -102,20 +102,29 @@ def scope_tag(path):
     return "root" if not path else "_".join(str(p) for p in path)
 
 
-def main():
-    out_dir = sys.argv[1] if len(sys.argv) > 1 else "corpus/wiretype-sweep"
+def emit(out_dir):
+    """Write vectors and return [(name, bytes, expect)]. A control (matching wire
+    type) and a mismatch (skipped → decodes as all-default) both yield verdict `A`,
+    so `expect="accept"` for every vector — a driver that instead rejects or
+    mis-decodes a mismatch shows up as a divergence in the runner."""
     os.makedirs(out_dir, exist_ok=True)
-    n = controls = mism = 0
+    vectors = []
     for path, fid, declared in POSITIONS:
         for cname, build in CONSTRUCTS.items():
             kind = "ctl" if cname == declared else "mism"
             name = f"{scope_tag(path)}_id{fid}_{cname}_{kind}.bin"
+            data = place(path, fid, build(fid))
             with open(os.path.join(out_dir, name), "wb") as fh:
-                fh.write(place(path, fid, build(fid)))
-            n += 1
-            controls += kind == "ctl"
-            mism += kind == "mism"
-    print(f"{n} vectors ({controls} controls, {mism} mismatches) over "
+                fh.write(data)
+            vectors.append((name, data, "accept"))
+    return vectors
+
+
+def main():
+    out_dir = sys.argv[1] if len(sys.argv) > 1 else "corpus/wiretype-sweep"
+    v = emit(out_dir)
+    ctl = sum(1 for n, _, _ in v if n.endswith("_ctl.bin"))
+    print(f"{len(v)} vectors ({ctl} controls, {len(v)-ctl} mismatches) over "
           f"{len(POSITIONS)} field positions x {len(CONSTRUCTS)} wire constructs")
 
 
