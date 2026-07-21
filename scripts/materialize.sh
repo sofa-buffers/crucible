@@ -23,6 +23,19 @@ CORPUS="${CORPUS:-$ROOT/corpus/structured}"
 
 [ -x "$ROOT/tools/sofabgen" ] || "$ROOT/scripts/bootstrap.sh"
 
+# The generated schema-type table (oracle/materialized-schema.json) is derived from
+# schema/probe.sofab.yaml by engine/structured/schema.py. The reference reads the
+# schema live, so it never drifts; this keeps the *committed* artifact honest too.
+echo "==> [materialize] checking the generated schema-type table is current" >&2
+_tmp=$(mktemp)
+python3 "$ROOT/engine/structured/schema.py" --json "$_tmp"
+if ! cmp -s "$_tmp" "$ROOT/oracle/materialized-schema.json"; then
+    echo "ERROR: oracle/materialized-schema.json is stale — regenerate:" >&2
+    echo "       python3 engine/structured/schema.py --json" >&2
+    rm -f "$_tmp"; exit 1
+fi
+rm -f "$_tmp"
+
 echo "==> [materialize] building the 12-driver roster" >&2
 C_BIN=$(sh "$ROOT/drivers/c/build.sh")
 GO_BIN=$(sh "$ROOT/drivers/go/build.sh")

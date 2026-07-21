@@ -26,9 +26,29 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from gen import SCALARS, NUM_ARRAYS, vectors  # noqa: E402
+from gen import vectors  # noqa: E402
+from schema import descriptor  # noqa: E402  (the generated schema-type table)
 
 ARR_COUNT = 5   # schema count for every array/wrapper in schema/probe.sofab.yaml
+_DESC = descriptor()
+
+# gen.py's message-dict key per schema field PATH — its value-vector naming
+# convention, the one thing NOT derivable from the schema (gen.py names arrays.u8
+# "au8", nested.f32 "f32", string_array "strarr", …). Everything structural — field
+# ids, types, counts, nesting — comes from _DESC, so a schema *type/shape* change
+# needs no edit here; only a genuinely new field that gen.py populates does.
+_MSG_KEY = {
+    ("u8",): "u8", ("i8",): "i8", ("u16",): "u16", ("i16",): "i16",
+    ("u32",): "u32", ("i32",): "i32", ("u64",): "u64", ("i64",): "i64",
+    ("nested", "f32"): "f32", ("nested", "f64"): "f64",
+    ("nested", "str"): "str", ("nested", "bytes_field"): "blob",
+    ("arrays", "u8"): "au8", ("arrays", "i8"): "ai8",
+    ("arrays", "u16"): "au16", ("arrays", "i16"): "ai16",
+    ("arrays", "u32"): "au32", ("arrays", "i32"): "ai32",
+    ("arrays", "u64"): "au64", ("arrays", "i64"): "ai64",
+    ("arrays", "nested", "fp32"): "afp32", ("arrays", "nested", "fp64"): "afp64",
+    ("string_array",): "strarr", ("blob_array",): "blobarr",
+}
 
 
 # --- value encoders (one per materialized-form leaf) -------------------------
@@ -80,39 +100,35 @@ def _wrapper(items, leaf, empty):
     return _arr(out)
 
 
+def _walk(node, msg, path):
+    """One descriptor node → its materialized value string, pulling the source value
+    from the gen.py msg via _MSG_KEY (structs recurse; the type/count come from node)."""
+    kind = node["kind"]
+    if kind == "struct":
+        return _obj([(c["id"], _walk(c, msg, path + (c["name"],))) for c in node["fields"]])
+    key = _MSG_KEY[path]
+    if kind == "u":      return _u(msg.get(key, 0))
+    if kind == "s":      return _s(msg.get(key, 0))
+    if kind == "fp32":   return _f32(_scalar_fp(msg.get(key, 0.0)))
+    if kind == "fp64":   return _f64(_scalar_fp(msg.get(key, 0.0)))
+    if kind == "string": return _text(msg.get(key, ""))
+    if kind == "blob":   return _blob(msg.get(key, b""))
+    if kind == "array":
+        vals = msg.get(key, [])
+        if node["elem"] in ("u", "s"):
+            return _num_array(vals, node["elem"] == "s")
+        return _fp_array(vals, _f32 if node["elem"] == "fp32" else _f64)
+    if kind == "wrapper":
+        items = msg.get(key, [])
+        leaf, empty = (_text, "") if node["elem"] == "string" else (_blob, b"")
+        return _wrapper(items, leaf, empty)
+    raise ValueError(f"unhandled kind {kind!r}")
+
+
 def materialize(msg):
-    """Return the materialized-form value string (no 'A ' prefix) for a gen.py msg."""
-    # top-level scalars (ids 0..7)
-    fields = []
-    for name, fid, signed in SCALARS:
-        v = msg.get(name, 0)
-        fields.append((fid, (_s if signed else _u)(v)))
-
-    # nested struct (id 10): f32(0) f64(1) str(2) blob(3)
-    nested = _obj([
-        (0, _f32(_scalar_fp(msg.get("f32", 0.0)))),
-        (1, _f64(_scalar_fp(msg.get("f64", 0.0)))),
-        (2, _text(msg.get("str", ""))),
-        (3, _blob(msg.get("blob", b""))),
-    ])
-    fields.append((10, nested))
-
-    # arrays struct (id 100): eight numeric arrays (0..7) + nested fp arrays (id 10)
-    arr_fields = []
-    for name, fid, signed in NUM_ARRAYS:
-        arr_fields.append((fid, _num_array(msg.get(name, []), signed)))
-    arr_nested = _obj([
-        (0, _fp_array(msg.get("afp32", []), _f32)),
-        (1, _fp_array(msg.get("afp64", []), _f64)),
-    ])
-    arr_fields.append((10, arr_nested))
-    fields.append((100, _obj(arr_fields)))
-
-    # wrapper arrays: string_array (id 200), blob_array (id 201)
-    fields.append((200, _wrapper(msg.get("strarr", []), _text, "")))
-    fields.append((201, _wrapper(msg.get("blobarr", []), _blob, b"")))
-
-    return _obj(fields)
+    """The materialized-form value string (no 'A ' prefix) for a gen.py msg, driven by
+    the generated schema descriptor (engine/structured/schema.py) — no hardcoded shape."""
+    return _obj([(f["id"], _walk(f, msg, (f["name"],))) for f in _DESC["fields"]])
 
 
 def main():

@@ -64,8 +64,19 @@ report-only for the residual F-0025 above).
     - [x] Wired into CI as a standing gate (`replay.yml`, 2026-07-21): the materialized differential
           (agreement, 75×12) + the C-anchor conformance check vs the reference (a family-wide-wrong
           dump is agreement-green but conformance-red).
-    - [ ] *Open refinement:* generate the per-driver **schema-type table** from the schema so the
-          11 non-C walkers become schema-agnostic (today a schema change needs each walker updated).
+    - [x] **Generated schema-type table** (2026-07-21, `engine/structured/schema.py` →
+          `oracle/materialized-schema.json`): the typed field tree (kinds/ids/counts/nesting) is now
+          derived from `schema/probe.sofab.yaml`, not hardcoded. The **reference** (`materialize.py`)
+          is driven by it — the ground truth is schema-agnostic, so a schema type/shape change updates
+          it automatically. `materialize.sh` regenerates + `cmp`-checks the committed artifact so it
+          can't drift. **This also backstops the drivers:** the CI conformance check runs every driver
+          against the schema-driven reference, so a hardcoded driver walker that fails to follow a
+          schema change now **fails the gate loudly** instead of drifting silently.
+    - [ ] *Remaining (optional):* have the 11 non-C **driver walkers themselves** consume the
+          descriptor instead of their hardcoded table. Clean for the reflection languages (go/ts/java/
+          cs/py) + zig (comptime); **rust/cpp have no runtime reflection**, so they need generated
+          walker source (the C situation — ideally sofabgen emits a descriptor for every backend, like
+          it does for C). Lower priority now that the schema-driven reference + CI catch drift.
 - [ ] **Encoder-side fuzzing.** The pacemaker is **decode-only**; encoders are only exercised
       via cross-encode's deterministic values. Mutate the *value* (floats, boundary ints, array
       sizes, unicode) and feed all 12 *encoders* → compare bytes. Reaches encoder divergences
