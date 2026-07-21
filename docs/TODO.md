@@ -5,21 +5,21 @@ Open work **on Crucible itself**. Fixes for the corelib/generator bugs Crucible 
 codegen defects: [`SOFABGEN.md`](SOFABGEN.md), spec proposals: [`spec-proposals.md`](spec-proposals.md)).
 Crucible's job is to catalog, attribute, and **verify** them.
 
-**As of 2026-07-21:** 24 findings catalogued, **22 resolved, 1 by-design, 1 open upstream**, plus
-one newly-isolated residual pending write-up (**F-0025**). The catalogued-open is **generator-only
-codegen**, filed and waiting on a sofabgen release: **F-0024** (§5.2 Rust `try_decode`
-INCOMPLETE-over-INVALID, generator#190 / G-0016). **F-0022** (§7.3 array-field←scalar, generator#188)
-and **F-0023** (§7.3 wrapper-element, generator#189) were **resolved in sofabgen 0.19.4** (2026-07-21)
-— re-verified, isolates promoted into the regression gate. The wiretype sweep is still report-only
-because of the residual **F-0025** (§7.3 fp scalar←array — the fp analogue of F-0021 generator#183
-left uncovered). When each lands: re-pull corelibs, verify its **report-only** sweep axis goes green,
-then promote it into the blocking sweep set + the regression gate. F-0018 (embedded U+0000 in a
+**As of 2026-07-21:** 24 findings catalogued, **23 resolved, 1 by-design, 0 catalogued-open**, plus
+one newly-isolated residual pending write-up (**F-0025**). **F-0022** (§7.3 array-field←scalar,
+generator#188), **F-0023** (§7.3 wrapper-element, generator#189), and **F-0024** (§5.2 Rust
+`try_decode` INCOMPLETE-over-INVALID, generator#190 / G-0016) were all **resolved in sofabgen 0.19.4**
+(2026-07-21) — re-verified, isolates promoted into the regression gate, and the malform×truncation
+sweep axis promoted from report-only to blocking. The only remaining item is the residual **F-0025**
+(§7.3 fp scalar←array — the fp analogue of F-0021 generator#183 left uncovered), which keeps the
+wiretype sweep report-only. When it lands: re-pull corelibs, verify its sweep axis goes green, then
+promote it into the blocking sweep set + the regression gate. F-0018 (embedded U+0000 in a
 `string`) is **by-design**: a NUL-terminated C-string profile projects `A\0B` → `A` on re-encode;
 valid on the wire, preserved by the other 10 profiles, sanctioned in `oracle/policy.yaml` (§8).
 All three Crucible-authored MESSAGE_SPEC clauses are adopted (documentation#17/#18/#20); §7.3/§7.4
 adopted in documentation#23. Five green suites (seeds / cross-encode / union / limit /
-**regression**, the last at **69 inputs**) run in CI, plus the **structural sweep gate** (six axes,
-`scripts/sweep.sh`; four blocking-green, two report-only for the open findings above).
+**regression**, the last at **73 inputs**) run in CI, plus the **structural sweep gate** (six axes,
+`scripts/sweep.sh`; five blocking-green, one report-only for the residual F-0025 above).
 `./scripts/bootstrap.sh` keeps sofabgen at the latest release and the corelibs at `origin/main`.
 
 ---
@@ -84,12 +84,12 @@ adopted in documentation#23. Five green suites (seeds / cross-encode / union / l
       `unsigned()`/`signed()` but not `fp32()`/`fp64()`, and `array_begin` arms `askip` only for
       `Unsigned`|`Signed`). Generator-only, same fix shape as #183/#188. **Next:** write up
       `findings/F-0025-*`, file the generator issue, then re-verify → promote as with F-0022.
-- [ ] **F-0024 / generator#190 (G-0016)** — §5.2, generated Rust `try_decode` returns INCOMPLETE
-      where INVALID must win (the `?` on `is.feed(..)?` discards the visitor's `v.inv` before it is
-      acted on). Generator-only, Rust backend only (`let r = is.feed(..); if v.inv { return
-      Err(InvalidMsg); } r?;`). When it lands: `python3 engine/structured/sweep_run.py
-      sweep_malform_truncate` → expect all 6 `_trunc` vectors go `R`; promote the axis from
-      report-only to blocking + the four vectors into the gate.
+- [x] **F-0024 / generator#190 (G-0016)** — **DONE (sofabgen 0.19.4, 2026-07-21).** The generated
+      `try_decode` now captures `feed` without `?`, checks `v.inv`, and returns `InvalidMsg` before
+      surfacing the Incomplete (`message.rs:235/242/246`) → INVALID dominates a truncated tail (§5.2).
+      Verified: 4 isolates → 0 divergences; malform×truncation sweep green (18 malformed×{complete,trunc}
+      → `R`, 0 conformance failures). **Sweep axis promoted report-only → blocking**; 4 vectors into the
+      gate (`F0024_*`, 69 → 73).
 - [x] **F-0004 / generator#85** — **DONE 2026-07-18 (crucible#55).** sofabgen 0.18.0 shipped the
       strict-UTF-8 codegen (generator#162) + per-corelib checks; Crucible built all drivers with
       the check ON (c/c-cpp opt in via `-DSOFAB_ENABLE_STRICT_UTF8`; zig via `build_options`),
