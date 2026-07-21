@@ -12,7 +12,8 @@
 # F-0024 resolved in sofabgen 0.19.4, promoted here from report-only).
 # Report-only: wiretype_sweep (§7.3) — F-0022/F-0023 resolved in sofabgen 0.19.4; one residual
 # remains, F-0025 (fp §7.3: a scalar fp field receiving an fp array — the fp analogue of F-0021
-# that generator#183 covered for integers only). Move it into the blocking set once it lands upstream.
+# that generator#183 covered for integers only; filed generator#193). Move it into the blocking
+# set once it lands upstream.
 #
 # Rebuilds the 12 drivers against schema/probe.sofab.yaml first (a seed run.sh), so
 # this is safe to run even after scripts/run-limits.sh, which leaves probe-dyn
@@ -28,7 +29,7 @@ CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
 echo "==> [sweep] blocking axes: repeated-id (§7.4) + over-bound (§7.1) + reserved-subtype (§4.6) + truncation (§7) + malform×truncate (§5.2)" >&2
 python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_truncation sweep_malform_truncate
 
-echo "==> [sweep] report-only: wiretype (§7.3) — residual F-0025 (fp scalar←array); F-0022/F-0023 resolved 0.19.4" >&2
+echo "==> [sweep] report-only: wiretype (§7.3) — residual F-0025 (fp scalar←array, generator#193); F-0022/F-0023 resolved 0.19.4" >&2
 if python3 "$SWEEP" wiretype_sweep; then
     echo "==> [sweep] wiretype is GREEN — promote it into the blocking set above" >&2
 else

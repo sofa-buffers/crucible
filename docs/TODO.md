@@ -5,15 +5,15 @@ Open work **on Crucible itself**. Fixes for the corelib/generator bugs Crucible 
 codegen defects: [`SOFABGEN.md`](SOFABGEN.md), spec proposals: [`spec-proposals.md`](spec-proposals.md)).
 Crucible's job is to catalog, attribute, and **verify** them.
 
-**As of 2026-07-21:** 24 findings catalogued, **23 resolved, 1 by-design, 0 catalogued-open**, plus
-one newly-isolated residual pending write-up (**F-0025**). **F-0022** (§7.3 array-field←scalar,
-generator#188), **F-0023** (§7.3 wrapper-element, generator#189), and **F-0024** (§5.2 Rust
-`try_decode` INCOMPLETE-over-INVALID, generator#190 / G-0016) were all **resolved in sofabgen 0.19.4**
-(2026-07-21) — re-verified, isolates promoted into the regression gate, and the malform×truncation
-sweep axis promoted from report-only to blocking. The only remaining item is the residual **F-0025**
-(§7.3 fp scalar←array — the fp analogue of F-0021 generator#183 left uncovered), which keeps the
-wiretype sweep report-only. When it lands: re-pull corelibs, verify its sweep axis goes green, then
-promote it into the blocking sweep set + the regression gate. F-0018 (embedded U+0000 in a
+**As of 2026-07-21:** 25 findings catalogued, **23 resolved, 1 by-design, 1 open upstream**. **F-0022**
+(§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element, generator#189), and
+**F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 / G-0016) were all
+**resolved in sofabgen 0.19.4** (2026-07-21) — re-verified, isolates promoted into the regression gate,
+and the malform×truncation sweep axis promoted from report-only to blocking. The one open finding is
+**F-0025** (§7.3 fp scalar←array, **generator#193**) — the fp analogue of F-0021 that generator#183
+covered for integers only, which keeps the wiretype sweep report-only. When it lands: re-pull corelibs,
+verify its sweep axis goes green, then promote it into the blocking sweep set + the regression gate.
+F-0018 (embedded U+0000 in a
 `string`) is **by-design**: a NUL-terminated C-string profile projects `A\0B` → `A` on re-encode;
 valid on the wire, preserved by the other 10 profiles, sanctioned in `oracle/policy.yaml` (§8).
 All three Crucible-authored MESSAGE_SPEC clauses are adopted (documentation#17/#18/#20); §7.3/§7.4
@@ -77,13 +77,14 @@ adopted in documentation#23. Five green suites (seeds / cross-encode / union / l
       wrapper-element loop now emits the same §7.3 guard the struct-field dispatch had (TS
       `message.ts:372`, Py `message.py:446`, C++ `_StrSeq`); a mis-typed element is skipped. All 5
       isolates → 0 divergences across 12; promoted into `corpus/regression/` (`F0023_*`, gate 64 → 69).
-- [ ] **F-0025 (to file) — §7.3 fp scalar←array.** The one residual the wiretype sweep still flags
-      after #188/#189: a **scalar fp field** (`arrays.nested.fp32`/`fp64`) fed an `ArrayFloat` stores
-      the element instead of skipping — rust-std/rust-nostd/java/csharp/zig. The **fp analogue of
-      F-0021**, which generator#183 covered for integers only (the `askip` guard is in
-      `unsigned()`/`signed()` but not `fp32()`/`fp64()`, and `array_begin` arms `askip` only for
-      `Unsigned`|`Signed`). Generator-only, same fix shape as #183/#188. **Next:** write up
-      `findings/F-0025-*`, file the generator issue, then re-verify → promote as with F-0022.
+- [ ] **F-0025 / generator#193** — §7.3, a **scalar fp field** (`nested.f32`/`f64`) receiving an fp
+      **fixlen array** stores the element instead of skipping — rust-std/rust-nostd/java/csharp/zig.
+      The **fp analogue of F-0021**, which generator#183 covered for integers only: (1) `arrayBegin`
+      arms `askip` only for `Unsigned`|`Signed`, never `Fixlen`; (2) the `fp32()`/`fp64()` callbacks
+      lack the `askip` guard `unsigned()`/`signed()` carry. Generator-only, same fix shape as #183/#188.
+      Written up (`findings/F-0025-scalar-fp-field-receives-fp-array/`) + filed. When it lands: re-pull
+      corelibs, `python3 engine/structured/sweep_run.py wiretype_sweep` → expect green, promote the axis
+      from report-only to blocking in `scripts/sweep.sh` + its isolates into `corpus/regression/`.
 - [x] **F-0024 / generator#190 (G-0016)** — **DONE (sofabgen 0.19.4, 2026-07-21).** The generated
       `try_decode` now captures `feed` without `?`, checks `v.inv`, and returns `InvalidMsg` before
       surfacing the Incomplete (`message.rs:235/242/246`) → INVALID dominates a truncated tail (§5.2).
