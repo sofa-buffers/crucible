@@ -8,8 +8,9 @@
 #                   wrong answer is agreement-green but conformance-red).
 #
 # Blocking axes (must stay green): sweep_repeated_id (§7.4), sweep_overbound (§7.1).
-# Report-only: wiretype_sweep (§7.3) — it has known-open findings F-0022/F-0023
-# (generator#188/#189). Move it into the blocking set once those land upstream.
+# Report-only: wiretype_sweep (§7.3) — known-open F-0022/F-0023 (generator#188/#189);
+# sweep_malform_truncate (§5.2) — known-open F-0024 (generator#190). Move each into the
+# blocking set once its finding lands upstream.
 #
 # Rebuilds the 12 drivers against schema/probe.sofab.yaml first (a seed run.sh), so
 # this is safe to run even after scripts/run-limits.sh, which leaves probe-dyn
@@ -30,4 +31,11 @@ if python3 "$SWEEP" wiretype_sweep; then
     echo "==> [sweep] wiretype is GREEN — promote it into the blocking set above" >&2
 else
     echo "==> [sweep] wiretype has its expected open divergences (F-0022/F-0023); not blocking" >&2
+fi
+
+echo "==> [sweep] report-only: malform×truncate (§5.2) — known-open F-0024" >&2
+if python3 "$SWEEP" sweep_malform_truncate; then
+    echo "==> [sweep] malform×truncate is GREEN — promote it into the blocking set above" >&2
+else
+    echo "==> [sweep] malform×truncate has its expected open divergences (F-0024); not blocking" >&2
 fi
