@@ -42,19 +42,18 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   over-bound (§7.1), reserved-subtype (§4.6), truncation (§7), malform×truncation (§5.2)
   **blocking + green** (five); only wiretype (§7.3) is **report-only** (it carries the one open
   finding below). This is what found F-0020–F-0024 — "isolate-green ≠ axis-green".
-- **24 findings catalogued** (`results/FINDINGS.md`); **23 resolved, 1 by-design, 0 catalogued-open**,
-  plus one newly-isolated residual pending write-up (**F-0025**). **F-0022** (§7.3
-  array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element, generator#189), and **F-0024**
-  (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 / G-0016) were all **resolved in
-  sofabgen 0.19.4** (2026-07-21) — re-verified, isolates promoted into the regression gate (`F0022_*`
-  / `F0023_*` / `F0024_*`, gate 59 → 73), and the malform×truncation sweep axis promoted from
-  report-only to blocking. **The wiretype (§7.3) sweep stays report-only** because of a **single
-  residual** — a **scalar fp field receiving an fp array** (`nested.f32`/`fp64` ← ArrayFloat), the fp
-  analogue of F-0021 that generator#183 never covered (the `askip` guard sits in `unsigned()`/
-  `signed()` but not `fp32()`/`fp64()`, and `array_begin` arms `askip` only for `Unsigned`|`Signed`
-  kinds). Not yet catalogued — see the 2026-07-21 change entries; to be filed as **F-0025**. When it
-  lands: re-pull corelibs, verify the report-only sweep axis goes green, promote it into the blocking
-  set + the regression gate. **F-0018** (embedded U+0000
+- **25 findings catalogued** (`results/FINDINGS.md`); **23 resolved, 1 by-design, 1 open upstream.**
+  **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
+  generator#189), and **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
+  G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21) — re-verified, isolates promoted into
+  the regression gate (`F0022_*` / `F0023_*` / `F0024_*`, gate 59 → 73), and the malform×truncation
+  sweep axis promoted from report-only to blocking. **The one open finding, F-0025** (§7.3 fp
+  scalar←array, generator#193), keeps the wiretype (§7.3) sweep report-only — a **scalar fp field
+  receiving an fp array** (`nested.f32`/`fp64` ← ArrayFixlen), the fp analogue of F-0021 that
+  generator#183 covered for integers only (the `askip` guard sits in `unsigned()`/`signed()` but not
+  `fp32()`/`fp64()`, and `array_begin` arms `askip` only for `Unsigned`|`Signed` kinds). Generator-only,
+  filed 2026-07-21. When it lands: re-pull corelibs, verify the report-only sweep axis goes green,
+  promote it into the blocking set + the regression gate. **F-0018** (embedded U+0000
   in a `string`) is classified **by-design** — a
   NUL-terminated C-string profile projects `A\0B` → `A` on re-encode; valid on the wire,
   preserved by the other 10 profiles, sanctioned as an allowed divergence in
@@ -574,6 +573,26 @@ also fixed** — generator#190 landed in 0.19.4 alongside #188/#189.
 
 Net open: only the newly-isolated **F-0025** (fp §7.3 scalar←array, pending write-up + generator issue).
 Plus **F-0018** (by-design). **All 24 catalogued findings are now resolved or by-design.**
+
+**Twenty-second change 2026-07-21 — F-0025 written up + filed (generator#193); catalog 24 → 25.**
+Deep-verified the wiretype sweep's last residual before filing (the F-0022/23/24 lesson: don't trust
+the label, check the build): confirmed the 2 divergences persist on the fresh 0.19.4 build, decoded
+the reproducer to an ArrayFixlen at a scalar-Fixlen fp id (§7.3 mismatch → skip is correct), and traced
+the identical **double gap** in all five storing backends — `arrayBegin` arms `askip` only for
+`Unsigned`|`Signed` (never `Fixlen`/fp), **and** the `fp32()`/`fp64()` callbacks lack the `askip` guard
+`unsigned()`/`signed()` carry. generator#183's own arrayBegin comment (*"an integer array…"*) is the
+documentary proof the fp corner was out of its scope.
+- **F-0025 catalogued** in `findings/F-0025-scalar-fp-field-receives-fp-array/` (NOTES + 2 reproducers +
+  2 controls) and `results/FINDINGS.md`; the 4 isolates via `run.sh` → the 2 reproducers diverge
+  (accept_value), the 2 controls agree.
+- **Filed [generator#193](https://github.com/sofa-buffers/generator/issues/193)** (generator-only,
+  rust-std/rust-nostd/csharp/java/zig; fix mirrors #183/#188 — arm `askip` for `Fixlen` in `arrayBegin`
+  + add the guard to `fp32()`/`fp64()`). Kept **out** of the green gate; the wiretype sweep stays
+  report-only until it lands. When it does: re-pull corelibs → sweep goes green → promote axis +
+  isolates.
+
+Net open: **F-0025** (generator-only, generator#193) + **F-0018** (by-design). **All other 23 findings
+resolved.**
 
 | finding | what | tracked in / status |
 |---|---|---|
