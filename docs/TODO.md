@@ -46,23 +46,23 @@ adopted in documentation#23. Five green suites (seeds / cross-encode / union / l
       where the family cleanly rejects is a codegen smell (the F-0003/F-0008 class) — and keep
       within-tier differences soft. Also de-noises the fuzzer clusters (a big share of residual
       "divergences" are reject_class-only, verdict-agreeing).
-- [~] **Element-access / materialized-value probe** — *foundation + prototype built 2026-07-21.*
+- [x] **Element-access / materialized-value probe** — **DONE 2026-07-21, all 12 drivers.**
       A second canonical form (`oracle/materialized.md`): `SOFAB_MATERIALIZE=1` makes a driver
       emit a full walk of the **decoded value** (every field + array element, floats as raw bits,
       `len:hex` strings/blobs) as its `A` payload, targeting the round-trip form's recorded blind
       spot (`canonical.md` §Tradeoff — a decode that differs only where the sparse wire elides,
-      F-0010's class). Reuses the comparator unchanged (`accept_value` axis); `scripts/materialize.sh`.
-      **Done:** grammar spec, `engine/structured/materialize.py` (reference/ground truth), the **C**
-      driver (schema-agnostic object-descriptor walk) + the **Python** driver (schema-type table →
-      py-cython + py-pure). 75×3 → 0 divergences, all matching the reference byte-for-byte.
-      **Measured design fact:** numeric arrays are already materialized to N in memory family-wide
-      (M is an encode-time artifact of the trim heuristic), so this form's live signal is the
-      **wrapper arrays** + **element-level fidelity** + **regression-proofing**, not F-0010's exact
-      shape (resolved). **Remaining rollout** (each needs a value-walk emitting the exact grammar;
-      not schema-agnostic outside C — a generated schema-type table would fix that): **go**
-      (reflect/json tags), **rust-std/-nostd** (serde/`Debug`), **ts** (`toJSON` walk), **cpp/c-cpp**
-      (hand walk, two container flavors), **java** / **cs** (hand walk — hardest, no reflection),
-      **zig** (comptime). Add each to `scripts/materialize.sh`'s roster as it lands.
+      F-0010's class). Reuses the comparator unchanged (`accept_value` axis); `scripts/materialize.sh`
+      runs the 12-driver differential over `corpus/structured` → **75×12, 0 divergences**, every
+      driver matching the `engine/structured/materialize.py` reference byte-for-byte; the default
+      round-trip path is unchanged. C is the schema-agnostic anchor (object-descriptor walk); the
+      other 11 hand-walk with a schema-type table. **Measured design fact:** numeric arrays are
+      already materialized to N in memory family-wide, so this form's live signal is the **wrapper
+      arrays** + **element-level fidelity** + **regression-proofing**, not F-0010's exact shape
+      (resolved). Surfaced nuance: the **Go** corelib leaves an absent numeric array `nil` (its
+      driver pads to N for the dump — same logical value, benign).
+    - [ ] *Open refinement:* generate the per-driver **schema-type table** from the schema so the
+          11 non-C walkers become schema-agnostic (today a schema change needs each walker updated);
+          and wire `materialize.sh` into CI (it is not yet a standing gate).
 - [ ] **Encoder-side fuzzing.** The pacemaker is **decode-only**; encoders are only exercised
       via cross-encode's deterministic values. Mutate the *value* (floats, boundary ints, array
       sizes, unicode) and feed all 12 *encoders* → compare bytes. Reaches encoder divergences

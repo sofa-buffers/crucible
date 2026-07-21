@@ -41,7 +41,7 @@ fi
 echo "==> [java] javac (driver + generated, against sofab.jar)" >&2
 # shellcheck disable=SC2046
 javac -cp "$JAR" -d "$CLASSES" \
-    $(find "$GEN" -name '*.java') "$HERE/Driver.java" >&2
+    $(find "$GEN" -name '*.java') "$HERE/Driver.java" "$HERE/ProbeDump.java" >&2
 
 WRAP="$HERE/build/driver"
 cat > "$WRAP" <<EOF

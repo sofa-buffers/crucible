@@ -119,8 +119,44 @@ def main():
     if len(sys.argv) >= 3 and sys.argv[1] == "--check":
         _check(sys.argv[2])
         return
+    if len(sys.argv) >= 3 and sys.argv[1] == "--driver":
+        _check_driver(sys.argv[2])
+        return
     for i, (name, msg) in enumerate(vectors()):
         print(f"{i:03d}_{name}\tA {materialize(msg)}")
+
+
+def _check_driver(driver_bin):
+    """Run a driver binary with SOFAB_MATERIALIZE=1 over corpus/structured and diff
+    every line against the reference. This is the per-driver acceptance gate for the
+    materialized rollout: 0 mismatches == the driver reproduces the form exactly."""
+    import struct
+    import subprocess
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    cdir = os.path.join(root, "corpus", "structured")
+    files = sorted(f for f in os.listdir(cdir) if f.endswith(".bin"))
+    stream = b""
+    for f in files:
+        d = open(os.path.join(cdir, f), "rb").read()
+        stream += struct.pack("<I", len(d)) + d
+    env = {**os.environ, "SOFAB_MATERIALIZE": "1"}
+    out = subprocess.run([driver_bin], input=stream, capture_output=True, env=env)
+    lines = out.stdout.decode("utf-8", "replace").splitlines()
+    vecs = vectors()
+    if len(lines) != len(vecs):
+        print(f"FAIL: driver emitted {len(lines)} lines for {len(vecs)} inputs")
+        if out.stderr:
+            print("  stderr:", out.stderr.decode("utf-8", "replace")[-400:])
+        sys.exit(1)
+    bad = 0
+    for i, (name, msg) in enumerate(vecs):
+        exp = "A " + materialize(msg)
+        if lines[i] != exp:
+            bad += 1
+            if bad <= 6:
+                print(f"MISMATCH {i:03d}_{name}\n  ref: {exp}\n  got: {lines[i]}")
+    print(f"\n{'OK' if not bad else 'FAIL'}: {bad}/{len(vecs)} mismatch(es) — {driver_bin}")
+    sys.exit(1 if bad else 0)
 
 
 def _check(driver_out_dir):

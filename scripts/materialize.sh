@@ -12,11 +12,10 @@
 #   ./scripts/materialize.sh                 # over corpus/structured (the value-rich gate)
 #   CORPUS=path ./scripts/materialize.sh     # a different corpus
 #
-# PROTOTYPE ROSTER. Only the drivers that implement the SOFAB_MATERIALIZE dump are in
-# the roster below; add each language as it gains the walk (docs/TODO.md). C is the
-# schema-agnostic anchor (object-descriptor walk); the others carry a schema-type table
-# until a generated one lands. engine/structured/materialize.py is the conformance
-# ground truth (a family-wide-wrong dump is agreement-green but reference-red).
+# The full 12-driver roster emits the SOFAB_MATERIALIZE dump. C is the schema-agnostic
+# anchor (object-descriptor walk); the others carry a schema-type table until a generated
+# one lands. engine/structured/materialize.py is the conformance ground truth (a
+# family-wide-wrong dump is agreement-green but reference-red).
 set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -24,15 +23,33 @@ CORPUS="${CORPUS:-$ROOT/corpus/structured}"
 
 [ -x "$ROOT/tools/sofabgen" ] || "$ROOT/scripts/bootstrap.sh"
 
-echo "==> [materialize] building the materialize-capable roster (c, py-cython, py-pure)" >&2
+echo "==> [materialize] building the 12-driver roster" >&2
 C_BIN=$(sh "$ROOT/drivers/c/build.sh")
+GO_BIN=$(sh "$ROOT/drivers/go/build.sh")
+RS_BIN=$(sh "$ROOT/drivers/rust/build.sh" rs)
+NOSTD_BIN=$(sh "$ROOT/drivers/rust/build.sh" rs-no-std)
+CPP_BIN=$(sh "$ROOT/drivers/cpp/build.sh" cpp)
+CCPP_BIN=$(sh "$ROOT/drivers/cpp/build.sh" c-cpp)
 PYC_BIN=$(sh "$ROOT/drivers/python/build.sh" cython)
 PYP_BIN=$(sh "$ROOT/drivers/python/build.sh" pure)
+JAVA_BIN=$(sh "$ROOT/drivers/java/build.sh")
+TS_BIN=$(sh "$ROOT/drivers/ts/build.sh")
+CS_BIN=$(sh "$ROOT/drivers/cs/build.sh")
+ZIG_BIN=$(sh "$ROOT/drivers/zig/build.sh")
 
 set -- \
     --driver "c:$C_BIN" \
+    --driver "go:$GO_BIN" \
+    --driver "rust-std:$RS_BIN" \
+    --driver "rust-nostd:$NOSTD_BIN" \
+    --driver "cpp:$CPP_BIN" \
+    --driver "cpp-c-cpp:$CCPP_BIN" \
     --driver "py-cython:$PYC_BIN" \
-    --driver "py-pure:$PYP_BIN"
+    --driver "py-pure:$PYP_BIN" \
+    --driver "java:$JAVA_BIN" \
+    --driver "typescript:$TS_BIN" \
+    --driver "csharp:$CS_BIN" \
+    --driver "zig:$ZIG_BIN"
 
 TIMEOUT_ARG=""
 [ -n "${TIMEOUT:-}" ] && TIMEOUT_ARG="--timeout $TIMEOUT"
