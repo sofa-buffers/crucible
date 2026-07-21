@@ -5,15 +5,19 @@ Open work **on Crucible itself**. Fixes for the corelib/generator bugs Crucible 
 codegen defects: [`SOFABGEN.md`](SOFABGEN.md), spec proposals: [`spec-proposals.md`](spec-proposals.md)).
 Crucible's job is to catalog, attribute, and **verify** them.
 
-**As of 2026-07-18:** 18 findings catalogued, **17 resolved, 1 by-design** — **no open bug to
-fix.** F-0018 (embedded U+0000 in a `string`) is classified **by-design**: a NUL-terminated
-C-string profile projects `A\0B` → `A` on re-encode; valid on the wire, preserved by the other
-10 profiles, sanctioned as an allowed divergence in `oracle/policy.yaml` (§8). **F-0004** (strict
-UTF-8) and **F-0017** (TS header wire type) were resolved by **sofabgen 0.18.0** (crucible#55).
-All three Crucible-authored MESSAGE_SPEC clauses
-are adopted (documentation#17/#18/#20). Five green suites (seeds / cross-encode / union /
-limit / **regression**, the last at 44 inputs) run in CI. `./scripts/bootstrap.sh` keeps
-sofabgen at the latest release and the corelibs at `origin/main`.
+**As of 2026-07-20:** 24 findings catalogued, **20 resolved, 1 by-design, 3 open upstream.**
+The three open are all **generator-only codegen**, filed and waiting on a sofabgen release:
+**F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
+generator#189), **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
+G-0016). When each lands: re-pull corelibs, verify its **report-only** sweep axis goes green,
+then promote it into the blocking sweep set + the regression gate. F-0018 (embedded U+0000 in a
+`string`) is **by-design**: a NUL-terminated C-string profile projects `A\0B` → `A` on re-encode;
+valid on the wire, preserved by the other 10 profiles, sanctioned in `oracle/policy.yaml` (§8).
+All three Crucible-authored MESSAGE_SPEC clauses are adopted (documentation#17/#18/#20); §7.3/§7.4
+adopted in documentation#23. Five green suites (seeds / cross-encode / union / limit /
+**regression**, the last at **59 inputs**) run in CI, plus the **structural sweep gate** (six axes,
+`scripts/sweep.sh`; four blocking-green, two report-only for the open findings above).
+`./scripts/bootstrap.sh` keeps sofabgen at the latest release and the corelibs at `origin/main`.
 
 ---
 
@@ -62,6 +66,21 @@ sofabgen at the latest release and the corelibs at `origin/main`.
 
 ## Open — waiting on upstream, then verify
 
+- [ ] **F-0022 / generator#188** — §7.3, an array-declared field receiving a scalar of its
+      element type is decoded (element 0) instead of skipped; rust/cs/java/zig + rust-nostd
+      (shared-callback backends). Generator-only (arm the array-fill in `array_begin`). When it
+      lands: re-pull corelibs, run `python3 engine/structured/sweep_run.py wiretype_sweep` → expect
+      green, promote `wiretype_sweep` from report-only to the blocking set in `scripts/sweep.sh` +
+      its isolates into `corpus/regression/`.
+- [ ] **F-0023 / generator#189** — §7.3, a mis-typed `string_array` wrapper element is not skipped
+      (ts/py/cpp/cpp-c-cpp). Generator-only (emit the same wire-type guard in the wrapper-element
+      loop). Verified together with F-0022 by the same `wiretype_sweep` axis going green.
+- [ ] **F-0024 / generator#190 (G-0016)** — §5.2, generated Rust `try_decode` returns INCOMPLETE
+      where INVALID must win (the `?` on `is.feed(..)?` discards the visitor's `v.inv` before it is
+      acted on). Generator-only, Rust backend only (`let r = is.feed(..); if v.inv { return
+      Err(InvalidMsg); } r?;`). When it lands: `python3 engine/structured/sweep_run.py
+      sweep_malform_truncate` → expect all 6 `_trunc` vectors go `R`; promote the axis from
+      report-only to blocking + the four vectors into the gate.
 - [x] **F-0004 / generator#85** — **DONE 2026-07-18 (crucible#55).** sofabgen 0.18.0 shipped the
       strict-UTF-8 codegen (generator#162) + per-corelib checks; Crucible built all drivers with
       the check ON (c/c-cpp opt in via `-DSOFAB_ENABLE_STRICT_UTF8`; zig via `build_options`),
