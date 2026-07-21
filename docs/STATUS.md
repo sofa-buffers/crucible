@@ -22,6 +22,11 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   (`oracle/cluster.py`); inventory in `results/CLUSTERS.md`.
 - `./scripts/cross-encode.sh` — the 3rd oracle: generate valid, value-rich `probe`
   messages (`corpus/structured/`) and run the round-trip + decode-agreement oracle.
+- `./scripts/materialize.sh` — the **element-access oracle** (`oracle/materialized.md`,
+  in progress): `SOFAB_MATERIALIZE=1` makes each driver dump the **decoded value** (all
+  fields + array elements explicit) instead of the round-trip hex, catching a decode that
+  differs only where the sparse wire elides. Prototype roster c + py-cython + py-pure
+  (75×3 green vs `engine/structured/materialize.py`); rollout of the other 9 in TODO.
 - `./scripts/run-union.sh` — the **union suite**: points the oracles at
   `schema/probe-union.sofab.yaml` (a `probe` carrying a 4-variant union), the one
   wire feature the main `probe` lacks. 11 seeds × 12 drivers, 0 divergences.

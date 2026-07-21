@@ -46,13 +46,23 @@ adopted in documentation#23. Five green suites (seeds / cross-encode / union / l
       where the family cleanly rejects is a codegen smell (the F-0003/F-0008 class) — and keep
       within-tier differences soft. Also de-noises the fuzzer clusters (a big share of residual
       "divergences" are reject_class-only, verdict-agreeing).
-- [ ] **Element-access / materialized-value probe.** The round-trip oracle is blind to one
-      class of bug: two decoders holding *different* in-memory values that re-encode to the
-      *same* canonical wire look identical. F-0010's managed camp was exactly this — it keeps
-      `M` elements instead of filling to `N`, but the wire is canonical either way, so the
-      round-trip can't see it. A probe that dumps the fully-materialised value (all `N`
-      elements explicit; length + element access) would catch it. Needs generic value traversal
-      per driver — cheapest where the corelib already has a visitor/descriptor.
+- [~] **Element-access / materialized-value probe** — *foundation + prototype built 2026-07-21.*
+      A second canonical form (`oracle/materialized.md`): `SOFAB_MATERIALIZE=1` makes a driver
+      emit a full walk of the **decoded value** (every field + array element, floats as raw bits,
+      `len:hex` strings/blobs) as its `A` payload, targeting the round-trip form's recorded blind
+      spot (`canonical.md` §Tradeoff — a decode that differs only where the sparse wire elides,
+      F-0010's class). Reuses the comparator unchanged (`accept_value` axis); `scripts/materialize.sh`.
+      **Done:** grammar spec, `engine/structured/materialize.py` (reference/ground truth), the **C**
+      driver (schema-agnostic object-descriptor walk) + the **Python** driver (schema-type table →
+      py-cython + py-pure). 75×3 → 0 divergences, all matching the reference byte-for-byte.
+      **Measured design fact:** numeric arrays are already materialized to N in memory family-wide
+      (M is an encode-time artifact of the trim heuristic), so this form's live signal is the
+      **wrapper arrays** + **element-level fidelity** + **regression-proofing**, not F-0010's exact
+      shape (resolved). **Remaining rollout** (each needs a value-walk emitting the exact grammar;
+      not schema-agnostic outside C — a generated schema-type table would fix that): **go**
+      (reflect/json tags), **rust-std/-nostd** (serde/`Debug`), **ts** (`toJSON` walk), **cpp/c-cpp**
+      (hand walk, two container flavors), **java** / **cs** (hand walk — hardest, no reflection),
+      **zig** (comptime). Add each to `scripts/materialize.sh`'s roster as it lands.
 - [ ] **Encoder-side fuzzing.** The pacemaker is **decode-only**; encoders are only exercised
       via cross-encode's deterministic values. Mutate the *value* (floats, boundary ints, array
       sizes, unicode) and feed all 12 *encoders* → compare bytes. Reaches encoder divergences

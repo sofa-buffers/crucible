@@ -31,6 +31,9 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `drivers/c/` (pacemaker) | built | gcc replay driver (ASan/UBSan) verified; libFuzzer front-end present, `#ifdef CRUCIBLE_LIBFUZZER`, built in devcontainer (no clang in bare workspace). |
 | `drivers/go/` | built | Replay driver + native `FuzzProbe`; builds against vendored corelib-go via `replace`. |
 | `oracle/canonical.md` | built | v2 canonical form: round-trip re-encoding, three-valued verdict `A`/`I`/`R` (§7). |
+| `oracle/materialized.md` | in progress | Second canonical form (element-access oracle): `SOFAB_MATERIALIZE=1` makes a driver emit a full walk of the **decoded value** (every field + array element, floats as raw bits, `len:hex` strings/blobs) as its `A` payload — targeting the round-trip form's recorded blind spot (a decode that differs only where the sparse wire elides). Reuses the comparator (`accept_value` axis) unchanged. Grammar + wiring spec. |
+| `engine/structured/materialize.py` | built | The materialized-form **reference / ground truth**: computes the exact dump for every `gen.py` vector (models `decode(encode(msg))` — fill-to-N arrays, wrapper grown to max-index+1, scalar ±0.0 normalized). Every driver's `SOFAB_MATERIALIZE` output must equal it byte-for-byte. `--check DIR` compares a driver's output. |
+| `scripts/materialize.sh` | in progress | Runs the materialized differential over the **materialize-capable roster** (prototype: `c`, `py-cython`, `py-pure`) with `SOFAB_MATERIALIZE=1`, over `corpus/structured`. C is the schema-agnostic anchor (object-descriptor walk, `drivers/c/driver.c`); Python carries a schema-type table (`drivers/python/driver.py`). 75×3 → 0 divergences. Rollout of the remaining 9 drivers: `docs/TODO.md`. |
 | `oracle/comparator.py` | built | N-way canonical diff, policy-aware, no external deps; parses `A`/`I`/`R`. **Crash- and hang-isolating:** a per-driver wall-clock budget (`--timeout`, default `max(30s, 0.25s × corpus)`; `TIMEOUT=` env via the scripts) via stdout-to-tempfile, so an adversarial input that hangs a driver is localized + reported `[TIMEOUT]` (a DoS finding), not a wedged run. `read_corpus` skips `*.md` + dotfiles so a corpus dir can carry a README (inputs can't be selected by extension — libFuzzer names files by content hash); this also stops the `.gitkeep` in the gitignored corpora being fed as an empty message. |
 | `oracle/policy.yaml` | built | Permissive Phase-1 policy (verdict/accept_value hard, incomplete_value/reject_class soft). |
 | `scripts/run.sh` | built | Build all drivers → differential compare over a corpus (crash-isolating). |
@@ -77,6 +80,26 @@ own sparse-canonical encoder, hex-printed. This makes every driver
 **schema-agnostic** (no per-field code; scaling the schema needs zero driver
 changes) and folds in the round-trip oracle. Verified: all 12 drivers emit
 byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03f1a126869`).
+
+**v2 (added, in progress) — materialized value form** (`oracle/materialized.md`,
+the element-access oracle). The round-trip form has a *recorded* blind spot
+(`canonical.md` §Tradeoff): two decoders holding different in-memory values that
+re-encode to the same sparse-canonical bytes are masked (F-0010's class — the
+sparse wire elides trailing default runs / omitted fields). Under
+`SOFAB_MATERIALIZE=1` a driver instead emits `A <dump(decode(input))>` — a full
+walk of the decoded value, every field and every array element explicit, floats as
+raw bit patterns, strings/blobs as `len:hex`. This is PLAN §7's original per-field
+form, resurrected as a *second, added* oracle (not a replacement — round-trip stays
+the default and the schema-agnostic path). It is **not schema-agnostic**: it needs
+schema-type info (fp32-vs-fp64, count N) the round-trip got free from the encoder —
+generic via C's object descriptor, a schema-type table elsewhere. **Measured caveat
+(steers the whole design):** every corelib already materializes a fixed-count
+*numeric* array to its full N in memory (the wire count M is reconstructed only at
+encode time by the trim heuristic), so this form is uniform there today; its live
+signal is the **wrapper arrays** (`string_array`/`blob_array`, genuinely dynamic),
+**element-level fidelity**, and **regression-proofing**. Prototype: `c` +
+`py-cython` + `py-pure`, 75×3 → 0 divergences, all matching the
+`engine/structured/materialize.py` reference byte-for-byte. Rollout in `docs/TODO.md`.
 
 ### Limit mode (as built)
 

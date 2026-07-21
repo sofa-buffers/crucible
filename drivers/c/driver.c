@@ -31,6 +31,133 @@ static const char *reject_class(sofab_ret_t r)
     }
 }
 
+/* ---- materialized value dump (oracle/materialized.md), SOFAB_MATERIALIZE=1 ----
+ *
+ * The default accept path re-encodes the decoded value to wire (schema-agnostic,
+ * but blind to a decode that differs only where the sparse-canonical wire elides —
+ * see canonical.md §Tradeoff). This second path instead walks the decoded value via
+ * the generic object descriptor (the one reflective surface in the family) and dumps
+ * every field + every array element explicitly. C is the descriptor anchor; the
+ * engine/structured/materialize.py reference is the ground truth every driver matches. */
+extern const sofab_object_descr_t _message_descr_message_probe;
+
+static uint64_t md_rdu(const uint8_t *p, unsigned sz)
+{
+    switch (sz) {
+        case 1: { uint8_t  t; memcpy(&t, p, 1); return t; }
+        case 2: { uint16_t t; memcpy(&t, p, 2); return t; }
+        case 4: { uint32_t t; memcpy(&t, p, 4); return t; }
+        default: { uint64_t t; memcpy(&t, p, 8); return t; }
+    }
+}
+static int64_t md_rds(const uint8_t *p, unsigned sz)
+{
+    switch (sz) {
+        case 1: { int8_t  t; memcpy(&t, p, 1); return t; }
+        case 2: { int16_t t; memcpy(&t, p, 2); return t; }
+        case 4: { int32_t t; memcpy(&t, p, 4); return t; }
+        default: { int64_t t; memcpy(&t, p, 8); return t; }
+    }
+}
+static void md_hex(FILE *o, const uint8_t *b, size_t n)
+{
+    for (size_t i = 0; i < n; i++) fprintf(o, "%02x", b[i]);
+}
+
+static void md_value(FILE *o, const sofab_object_descr_t *info,
+                     const sofab_object_descr_field_t *f, const uint8_t *base);
+static void md_obj(FILE *o, const sofab_object_descr_t *info, const uint8_t *base);
+
+/* An element slot is "empty" (its type default) — used to trim a wrapper array to
+ * highest-populated index + 1 (its in-memory length; see materialized.md). */
+static int md_slot_empty(const sofab_object_descr_field_t *f, const uint8_t *base)
+{
+    const uint8_t *p = base + f->offset;
+    if (f->type == SOFAB_OBJECT_FIELDTYPE_STRING) return p[0] == '\0';
+    if (f->type == SOFAB_OBJECT_FIELDTYPE_BLOB)
+        return f->nested_idx ? (md_rdu(base + f->offset - f->nested_idx, f->nested_idx) == 0)
+                             : (f->size == 0);
+    return 0;  /* other element kinds: treat as present */
+}
+
+static void md_value(FILE *o, const sofab_object_descr_t *info,
+                     const sofab_object_descr_field_t *f, const uint8_t *base)
+{
+    const uint8_t *p = base + f->offset;
+    switch (f->type) {
+    case SOFAB_OBJECT_FIELDTYPE_UNSIGNED:
+        fprintf(o, "u%llu", (unsigned long long)md_rdu(p, f->element_size)); break;
+    case SOFAB_OBJECT_FIELDTYPE_SIGNED:
+        fprintf(o, "s%lld", (long long)md_rds(p, f->element_size)); break;
+    case SOFAB_OBJECT_FIELDTYPE_FP32:
+        { uint32_t b; memcpy(&b, p, 4); fprintf(o, "f%08x", b); } break;
+    case SOFAB_OBJECT_FIELDTYPE_FP64:
+        { uint64_t b; memcpy(&b, p, 8); fprintf(o, "F%016llx", (unsigned long long)b); } break;
+    case SOFAB_OBJECT_FIELDTYPE_STRING:
+        { size_t n = strlen((const char *)p); fprintf(o, "t%zu:", n); md_hex(o, p, n); } break;
+    case SOFAB_OBJECT_FIELDTYPE_BLOB: {
+        size_t n = f->nested_idx ? (size_t)md_rdu(base + f->offset - f->nested_idx, f->nested_idx)
+                                 : f->size;
+        if (n > f->size) n = f->size;
+        fprintf(o, "b%zu:", n); md_hex(o, p, n);
+        } break;
+    case SOFAB_OBJECT_FIELDTYPE_ARRAY_UNSIGNED:
+    case SOFAB_OBJECT_FIELDTYPE_ARRAY_SIGNED: {
+        unsigned es = f->element_size; size_t cnt = es ? f->size / es : 0;
+        int sg = (f->type == SOFAB_OBJECT_FIELDTYPE_ARRAY_SIGNED);
+        fputc('[', o);
+        for (size_t i = 0; i < cnt; i++) {
+            if (i) fputc(',', o);
+            if (sg) fprintf(o, "s%lld", (long long)md_rds(p + i * es, es));
+            else    fprintf(o, "u%llu", (unsigned long long)md_rdu(p + i * es, es));
+        }
+        fputc(']', o);
+        } break;
+    case SOFAB_OBJECT_FIELDTYPE_ARRAY_FP32: {
+        size_t cnt = f->size / 4; fputc('[', o);
+        for (size_t i = 0; i < cnt; i++) { if (i) fputc(',', o);
+            uint32_t b; memcpy(&b, p + i * 4, 4); fprintf(o, "f%08x", b); }
+        fputc(']', o);
+        } break;
+    case SOFAB_OBJECT_FIELDTYPE_ARRAY_FP64: {
+        size_t cnt = f->size / 8; fputc('[', o);
+        for (size_t i = 0; i < cnt; i++) { if (i) fputc(',', o);
+            uint64_t b; memcpy(&b, p + i * 8, 8); fprintf(o, "F%016llx", (unsigned long long)b); }
+        fputc(']', o);
+        } break;
+    case SOFAB_OBJECT_FIELDTYPE_SEQUENCE: {
+        const sofab_object_descr_t *nested = info->nested_list[f->nested_idx];
+        if (nested->fixed_seq) {   /* a wrapper array: emit elements 0..highest-populated */
+            size_t hi = 0; int any = 0;
+            for (size_t i = 0; i < nested->field_count; i++)
+                if (!md_slot_empty(&nested->field_list[i], p)) { hi = i; any = 1; }
+            fputc('[', o);
+            if (any)
+                for (size_t i = 0; i <= hi; i++) {
+                    if (i) fputc(',', o);
+                    md_value(o, nested, &nested->field_list[i], p);
+                }
+            fputc(']', o);
+        } else {                   /* a struct/union: recurse as an object */
+            md_obj(o, nested, p);
+        }
+        } break;
+    default: fputc('?', o); break;
+    }
+}
+
+static void md_obj(FILE *o, const sofab_object_descr_t *info, const uint8_t *base)
+{
+    fputc('{', o);
+    for (size_t i = 0; i < info->field_count; i++) {
+        const sofab_object_descr_field_t *f = &info->field_list[i];
+        if (i) fputc(';', o);
+        fprintf(o, "%u:", (unsigned)f->id);
+        md_value(o, info, f, base);
+    }
+    fputc('}', o);
+}
+
 /* Decode one candidate input and write its canonical line to `out`
  * (oracle/canonical.md: decode -> re-encode -> hex). */
 static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
@@ -60,6 +187,17 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
             fprintf(out, "R %s\n", reject_class(r));
             return;
         }
+    }
+
+    /* Accept. In materialize mode (oracle/materialized.md) dump the decoded value
+     * via the object descriptor instead of re-encoding it to wire. */
+    static int materialize = -1;
+    if (materialize < 0) materialize = getenv("SOFAB_MATERIALIZE") ? 1 : 0;
+    if (materialize) {
+        fputs("A ", out);
+        md_obj(out, &_message_descr_message_probe, (const uint8_t *)&m);
+        fputc('\n', out);
+        return;
     }
 
     /* Accept: re-encode the decoded value and emit its canonical wire as hex. */
