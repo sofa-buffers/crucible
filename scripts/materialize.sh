@@ -60,5 +60,9 @@ echo "==> [materialize] differential over $(ls "$CORPUS" | grep -vc -e gitkeep -
 SOFAB_MATERIALIZE=1 python3 "$ROOT/oracle/comparator.py" \
     --corpus "$CORPUS" --policy "$ROOT/oracle/policy.yaml" $TIMEOUT_ARG "$@"
 
-echo "==> [materialize] conformance check vs the reference (engine/structured/materialize.py)" >&2
-echo "    (a differential-green but reference-red result = a family-wide-wrong dump)" >&2
+# Conformance: the differential only proves the 12 AGREE — a family-wide-wrong dump is
+# agreement-green. Anchor it by checking the schema-agnostic C driver against the
+# reference over corpus/structured (the value space the reference is defined on):
+# C == reference AND all == C  ⟹  all == reference. Fails (set -e) on any mismatch.
+echo "==> [materialize] conformance: C anchor vs the reference (engine/structured/materialize.py)" >&2
+python3 "$ROOT/engine/structured/materialize.py" --driver "$C_BIN"

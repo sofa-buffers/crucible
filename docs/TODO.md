@@ -27,9 +27,10 @@ F-0018 (embedded U+0000 in a
 `string`) is **by-design**: a NUL-terminated C-string profile projects `A\0B` → `A` on re-encode;
 valid on the wire, preserved by the other 10 profiles, sanctioned in `oracle/policy.yaml` (§8).
 All three Crucible-authored MESSAGE_SPEC clauses are adopted (documentation#17/#18/#20); §7.3/§7.4
-adopted in documentation#23. Five green suites (seeds / cross-encode / union / limit /
-**regression**, the last at **73 inputs**) run in CI, plus the **structural sweep gate** (six axes,
-`scripts/sweep.sh`; five blocking-green, one report-only for the residual F-0025 above).
+adopted in documentation#23. Six green suites (seeds / cross-encode / union / limit /
+**regression** (the last at **73 inputs**) / **materialized** (element-access, 75×12)) run in CI,
+plus the **structural sweep gate** (six axes, `scripts/sweep.sh`; five blocking-green, one
+report-only for the residual F-0025 above).
 `./scripts/bootstrap.sh` keeps sofabgen at the latest release and the corelibs at `origin/main`.
 
 ---
@@ -60,9 +61,11 @@ adopted in documentation#23. Five green suites (seeds / cross-encode / union / l
       arrays** + **element-level fidelity** + **regression-proofing**, not F-0010's exact shape
       (resolved). Surfaced nuance: the **Go** corelib leaves an absent numeric array `nil` (its
       driver pads to N for the dump — same logical value, benign).
+    - [x] Wired into CI as a standing gate (`replay.yml`, 2026-07-21): the materialized differential
+          (agreement, 75×12) + the C-anchor conformance check vs the reference (a family-wide-wrong
+          dump is agreement-green but conformance-red).
     - [ ] *Open refinement:* generate the per-driver **schema-type table** from the schema so the
-          11 non-C walkers become schema-agnostic (today a schema change needs each walker updated);
-          and wire `materialize.sh` into CI (it is not yet a standing gate).
+          11 non-C walkers become schema-agnostic (today a schema change needs each walker updated).
 - [ ] **Encoder-side fuzzing.** The pacemaker is **decode-only**; encoders are only exercised
       via cross-encode's deterministic values. Mutate the *value* (floats, boundary ints, array
       sizes, unicode) and feed all 12 *encoders* → compare bytes. Reaches encoder divergences
