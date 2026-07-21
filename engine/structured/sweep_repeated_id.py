@@ -59,6 +59,16 @@ def emit(out_dir):
             vectors.append((f"{p.tag()}_struct_reopen_merge.bin",
                             place(p.path, occ0 + occ1), "merge"))
         else:  # seq_wrapper
+            # OPEN FINDING (F-0026): the blob_array wrapper reopen-replace is a
+            # known C-only divergence — corelib-c-cpp's sofab_object_init does not
+            # reset a sized-blob's companion length on the §7.4 replace-init, so the
+            # C object API keeps a stale (zeroed) element where the family drops it.
+            # Kept OUT of this blocking axis until the corelib fix lands (mirrors how
+            # F-0025 keeps the wiretype axis report-only); the string_array wrapper
+            # (elem="str") reopen IS green and stays. Re-enable the blob wrapper here
+            # once corelib-c-cpp ships the fix, and promote the isolate into the gate.
+            if p.elem == "blob":
+                continue
             # reopen the wrapper, a different element index each time -> REPLACE
             occ0 = open_seq(p.fid, valid_field(p.elem, 0, 0))   # element id 0
             occ1 = open_seq(p.fid, valid_field(p.elem, 1, 1))   # element id 1

@@ -5,7 +5,17 @@ Open work **on Crucible itself**. Fixes for the corelib/generator bugs Crucible 
 codegen defects: [`SOFABGEN.md`](SOFABGEN.md), spec proposals: [`spec-proposals.md`](spec-proposals.md)).
 Crucible's job is to catalog, attribute, and **verify** them.
 
-**As of 2026-07-21:** 25 findings catalogued, **23 resolved, 1 by-design, 1 open upstream**. **F-0022**
+**Blob-array integration 2026-07-21 (F-0013 blob-path follow-up):** a `blob_array` (id 201, the blob
+analogue of `string_array`) was added to `schema/probe.sofab.yaml` and wired through all six sweep axes
++ `gen.py` + the truncation rich message. Drivers rebuilt schema-agnostically (no driver change). Two
+results: (1) the **over-bound §7.1 blob path is GREEN** — over-index / over-maxlen blob elements → all
+12 reject, so `_BlobSeq` enforces its `count`/`maxlen`; the long-open F-0013 blob-path re-check is
+**answered**. (2) A **new finding, F-0026** — the §7.4 `blob_array` wrapper **re-open** keeps a stale
+zeroed element on the C object API (corelib-c-cpp `sofab_object_init` never resets a sized blob's
+companion length); `string_array` is uniform. Corelib-only, minimal isolate, carved out of the blocking
+repeated-id sweep axis until fixed.
+
+**As of 2026-07-21:** 26 findings catalogued, **23 resolved, 1 by-design, 2 open (1 generator, 1 corelib)**. **F-0022**
 (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element, generator#189), and
 **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 / G-0016) were all
 **resolved in sofabgen 0.19.4** (2026-07-21) — re-verified, isolates promoted into the regression gate,
@@ -57,10 +67,11 @@ adopted in documentation#23. Five green suites (seeds / cross-encode / union / l
 
 ## Open — schemas & corpus
 
+- [x] **blob array** — **DONE 2026-07-21.** Added `blob_array` (id 201) to `probe` + all six sweep
+      axes. The over-index / `maxlen` blob paths (§7.1) that F-0013 could not test for lack of a field
+      are now **green** (all 12 reject); the §7.4 wrapper re-open surfaced **F-0026** (corelib-c-cpp,
+      open). The C++ heap `_BlobSeq` guard held.
 - [ ] **More corner-case schemas** beyond the single full-scale `probe`:
-  - a **blob array** — the C++ heap `_BlobSeq` has the same unguarded shape as the (now-fixed)
-    string-array path, but `probe` has no blob array, so the over-index / `maxlen` blob paths
-    are untested (flagged in F-0013);
   - **recursive types** (`$ref`, trees) to exercise `MAX_DEPTH`, and a **map** (`array of
     struct{k,v}`) — the last format features `probe` doesn't cover.
 - [ ] **Corpus hygiene**: minimize `corpus/interesting/` (~44k files, never merged) with
@@ -104,9 +115,18 @@ adopted in documentation#23. Five green suites (seeds / cross-encode / union / l
       `oracle/policy.yaml` (axis `accept_value`, MESSAGE_SPEC §8); SOFABGEN G-0015 withdrawn. A
       one-line §8 spec note (embedded-U+0000 preservation is implementation-defined for a
       NUL-terminated profile) is the only optional follow-up.
-- [ ] **F-0013 blob path** — once a blob-array schema exists (above), re-check the over-index
-      blob path on the fixed 0.17.6 codegen (the string path is fixed + gated; blob was
-      untested for lack of a field).
+- [x] **F-0013 blob path** — **DONE 2026-07-21.** Added the `blob_array` schema (above); the
+      over-index + over-maxlen blob paths (§7.1 over-bound sweep) are **green** — all 12 reject, so
+      the 0.17.6 fixed-capacity fix covered `_BlobSeq`, not just strings. (The same integration
+      surfaced **F-0026**, a *different* blob path — the §7.4 wrapper re-open reset — now the open
+      corelib-c-cpp item below.)
+- [ ] **F-0026 / corelib-c-cpp (open, unfiled)** — the C object API's §7.4 `blob_array` wrapper
+      **re-open** keeps a stale zeroed element: `sofab_object_init` (`object.c:242-254`) zeros a
+      sized blob's buffer but not its companion length at `offset - nested_idx` (the one function of
+      four that omits the sized-blob branch). Corelib-only, `c` driver alone; write-up +
+      2 reproducers in `findings/F-0026-c-blob-wrapper-reopen-stale-element/`. When filed & fixed:
+      re-pull corelibs, drop the `elem == "blob"` skip in `sweep_repeated_id.py`, verify the axis
+      goes green, promote `blob_reopen_empty.bin` into `corpus/regression/`.
 
 ## Open — CI / infra
 

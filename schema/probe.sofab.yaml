@@ -2,7 +2,8 @@
 #
 # This is the family's full-scale example (mirrors arena's schema/message.sofab.yaml
 # and the c-cpp fuzzer's full_scale_example): every scalar width, fp32/fp64, a
-# string, a blob, eight numeric arrays, nested fp arrays, and an array of strings.
+# string, a blob, eight numeric arrays, nested fp arrays, an array of strings, and
+# an array of blobs.
 # It exercises far more of the wire format than the Phase-1 `probe`.
 #
 # The message is intentionally still keyed `probe` so the generated type name
@@ -57,3 +58,12 @@ messages:
         id: 200
         type: array
         items: { type: string, count: 5, maxlen: 64 }
+
+      # blob analogue of string_array (id 200): the index-keyed wrapper whose heap
+      # container (_BlobSeq) has the same unguarded shape as the string-array path
+      # F-0013 hardened. `probe` had no blob array, so the over-index / over-maxlen
+      # blob-element paths were untested (F-0013 residual, docs/TODO.md).
+      blob_array:
+        id: 201
+        type: array
+        items: { type: blob, count: 5, maxlen: 64 }

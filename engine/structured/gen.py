@@ -21,9 +21,10 @@ oracle only requires the 12 drivers to agree with *each other*, so a non-canonic
 (but valid) encoding would work too.
 
 Covers the top-level scalars (u8..i64), the `nested` struct (fp32/fp64/string/blob),
-the numeric arrays (id 100: u8..i64 + nested fp32/fp64) and the `string_array`
-(id 200, the index-keyed element sequence — F-0008's neighbourhood). Writes raw wire
-(no length prefix) to corpus/structured/.
+the numeric arrays (id 100: u8..i64 + nested fp32/fp64), the `string_array` (id 200,
+the index-keyed element sequence — F-0008's neighbourhood) and the `blob_array`
+(id 201, its blob analogue — F-0013's _BlobSeq path). Writes raw wire (no length
+prefix) to corpus/structured/.
 
 Usage: python3 engine/structured/gen.py [out_dir]   (default corpus/structured)
 """
@@ -125,6 +126,13 @@ def encode(msg: dict) -> bytes:
         if sv:
             out += fstr(i, sv)
     out += bytes([WT_SEQ_END])
+    # blob_array (id 201) — the blob analogue of string_array: index-keyed fixlen-blob
+    # elements; a default (empty b'') element is omitted, stored at its wire index.
+    out += hdr(201, WT_SEQ_BEG)
+    for i, bv in enumerate(msg.get("blobarr", [])):
+        if bv:
+            out += fblob(i, bv)
+    out += bytes([WT_SEQ_END])
     return bytes(out)
 
 def _is_special(v):
@@ -198,7 +206,18 @@ def vectors():
                                   "str": "Sofab ✓", "blob": bytes([0xde, 0xad, 0xbe, 0xef])}))
     out.append(("combo_arrays", {"au8": [1, 2, 3, 4, 5], "ai32": [-1, 2, -3, 4, -5],
                                   "afp64": [1.5, -2.5, 0.0, float("inf"), float("nan")],
-                                  "strarr": ["alpha", "beta", "gamma", "delta", "epsilon"]}))
+                                  "strarr": ["alpha", "beta", "gamma", "delta", "epsilon"],
+                                  "blobarr": [b"\x00", b"\x11\x22", b"\xde\xad\xbe\xef", b"\xff", b"\x5a"]}))
+    # blob_array (id 201): the index-keyed element sequence — blob analogue of 200.
+    # Appended last so existing indices don't renumber. F-0013 hardened the string
+    # path but `probe` had no blob array; these exercise the _BlobSeq encode/decode
+    # value space (binary bytes, sub-/full-maxlen elements).
+    out.append(("ba_full", {"blobarr": [b"\x01", b"\x02\x03", b"\xde\xad", b"\xff", b"\x00\x10"]}))
+    out.append(("ba_partial", {"blobarr": [b"\xaa\xbb"]}))               # element at index 0
+    out.append(("ba_sparse", {"blobarr": [b"\x01", b"", b"\x03", b"", b"\x05"]}))  # empty middles omitted
+    out.append(("ba_last_index", {"blobarr": [b"", b"", b"", b"", b"\x04"]}))  # only max valid index (4)
+    out.append(("ba_maxlen", {"blobarr": [b"\x5a" * 64]}))              # maxlen-64 blob element
+    out.append(("ba_binary", {"blobarr": [bytes(range(8)), b"\x00\x00", b"\xff\xfe\xfd"]}))  # raw binary
     return out
 
 def main():

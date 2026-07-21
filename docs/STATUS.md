@@ -42,7 +42,7 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   over-bound (§7.1), reserved-subtype (§4.6), truncation (§7), malform×truncation (§5.2)
   **blocking + green** (five); only wiretype (§7.3) is **report-only** (it carries the one open
   finding below). This is what found F-0020–F-0024 — "isolate-green ≠ axis-green".
-- **25 findings catalogued** (`results/FINDINGS.md`); **23 resolved, 1 by-design, 1 open upstream.**
+- **26 findings catalogued** (`results/FINDINGS.md`); **23 resolved, 1 by-design, 2 open (F-0025 generator, F-0026 corelib).**
   **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
   generator#189), and **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
   G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21) — re-verified, isolates promoted into
@@ -593,6 +593,34 @@ documentary proof the fp corner was out of its scope.
 
 Net open: **F-0025** (generator-only, generator#193) + **F-0018** (by-design). **All other 23 findings
 resolved.**
+
+**Twenty-third change 2026-07-21 — blob_array added to `probe` (F-0013 blob-path follow-up); §7.1 blob path green; F-0026 opened; catalog 25 → 26.**
+Added a `blob_array` (id 201, the blob analogue of `string_array` id 200) to `schema/probe.sofab.yaml` and
+wired it through **all six sweep axes** (`sweep_positions.py` position + the overbound/wiretype/repeated-id
+element handling), `engine/structured/gen.py` (6 value-rich blob vectors + the always-emitted wrapper), and
+the truncation rich message. The 12 drivers rebuilt schema-agnostically under the round-trip canonical form —
+**no driver change**. Two results:
+- ✅ **The over-bound §7.1 blob path is GREEN** — blob-array over-index (id ≥ count) and over-maxlen elements
+  → **all 12 reject**. This answers F-0013's long-open blob question: the 0.17.6 fixed-capacity fix hardened
+  `_BlobSeq` too, not just the string path. The `docs/TODO.md` "F-0013 blob path" + "blob array schema" items
+  are now done.
+- 🆕 **F-0026 (new, open):** the §7.4 `blob_array` wrapper **re-open** (replace-whole) keeps a stale zeroed
+  element on the **C object API** — `c` alone re-encodes `blob_array{id0=0000}` where the other 11 drop it.
+  Minimal isolate `ce0c0213dead07ce0c07` (10 B). Root cause **corelib-c-cpp**, not codegen:
+  `sofab_object_init` (`object.c:242-254`) zeros a sized blob's buffer via a generic `memset(offset,size)`
+  but never its companion length at `offset - nested_idx` — the one function of four (`_field_is_default` /
+  encode / decode all honour it) that omits the sized-blob branch, so the stale `len != 0` keeps the "cleared"
+  element live. `string_array` (id 200) has no separate length → replaces correctly, so the split is
+  blob-specific; `cpp-c-cpp` (C++ `FixedBytes` over the same corelib) agrees, confirming the pure-C
+  `object.c` path only. Written up in `findings/F-0026-c-blob-wrapper-reopen-stale-element/` (NOTES +
+  2 reproducers + 2 controls) + `results/FINDINGS.md`; **not yet filed**. Carved out of the blocking
+  repeated-id sweep axis (`sweep_repeated_id.py`, `elem == "blob"` skip) and kept **out** of the gate until
+  the corelib fix lands — mirroring how F-0025 keeps the wiretype axis report-only.
+- ✅ **Box green:** seeds 6×12, cross-encode **75×12** (incl. the 6 new blob vectors + the +2-byte trailing
+  empty `blob_array` on the existing 69), regression 73×12, all five blocking sweep axes. wiretype stays
+  report-only (F-0025); repeated-id blocking-green with the blob-reopen carve-out.
+
+Net open: **F-0025** (generator#193) + **F-0026** (corelib-c-cpp, unfiled). Plus **F-0018** (by-design).
 
 | finding | what | tracked in / status |
 |---|---|---|
