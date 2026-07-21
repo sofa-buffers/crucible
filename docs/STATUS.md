@@ -613,14 +613,14 @@ the truncation rich message. The 12 drivers rebuilt schema-agnostically under th
   element live. `string_array` (id 200) has no separate length → replaces correctly, so the split is
   blob-specific; `cpp-c-cpp` (C++ `FixedBytes` over the same corelib) agrees, confirming the pure-C
   `object.c` path only. Written up in `findings/F-0026-c-blob-wrapper-reopen-stale-element/` (NOTES +
-  2 reproducers + 2 controls) + `results/FINDINGS.md`; **not yet filed**. Carved out of the blocking
+  2 reproducers + 2 controls) + `results/FINDINGS.md`; filed [corelib-c-cpp#106](https://github.com/sofa-buffers/corelib-c-cpp/issues/106). Carved out of the blocking
   repeated-id sweep axis (`sweep_repeated_id.py`, `elem == "blob"` skip) and kept **out** of the gate until
   the corelib fix lands — mirroring how F-0025 keeps the wiretype axis report-only.
 - ✅ **Box green:** seeds 6×12, cross-encode **75×12** (incl. the 6 new blob vectors + the +2-byte trailing
   empty `blob_array` on the existing 69), regression 73×12, all five blocking sweep axes. wiretype stays
   report-only (F-0025); repeated-id blocking-green with the blob-reopen carve-out.
 
-Net open: **F-0025** (generator#193) + **F-0026** (corelib-c-cpp, unfiled). Plus **F-0018** (by-design).
+Net open: **F-0025** (generator#193) + **F-0026** (corelib-c-cpp#106). Plus **F-0018** (by-design).
 
 | finding | what | tracked in / status |
 |---|---|---|

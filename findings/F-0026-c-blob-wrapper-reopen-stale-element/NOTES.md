@@ -1,6 +1,7 @@
 # F-0026 — a re-opened blob_array wrapper keeps a stale zeroed element (C object API)
 
-**Status:** 🆕 **open — not yet filed.** MESSAGE_SPEC §7.4 requires a re-opened **array wrapper**
+**Status:** 🆕 **open — filed [corelib-c-cpp#106](https://github.com/sofa-buffers/corelib-c-cpp/issues/106).**
+MESSAGE_SPEC §7.4 requires a re-opened **array wrapper**
 to be **replaced whole**; the C object API keeps the earlier occurrence's slots, zeroed, instead of
 dropping them. **Corelib-only** (`corelib-c-cpp`, the pure-C object API — the `c` driver), **not
 codegen**. **Axis:** accept_value (round-trip) — all 12 accept, `c` re-encodes a value the other 11
@@ -80,7 +81,8 @@ already flags the slot as a sized blob (`type == BLOB && nested_idx != 0`) and e
 width in `nested_idx`; `sofab_object_init` has every fact it needs. The fix is a corelib one-liner —
 give `sofab_object_init` the same `nested_idx != 0` branch its three sibling functions carry, zeroing
 the length at `offset - nested_idx`. **The generated descriptor is correct** (it faithfully describes
-the documented sized-blob ABI). Filed against **`corelib-c-cpp`** (one issue) when written up.
+the documented sized-blob ABI). Filed against **`corelib-c-cpp`**:
+[corelib-c-cpp#106](https://github.com/sofa-buffers/corelib-c-cpp/issues/106) (observed on `56c88fa`).
 
 Confirmed corelib-only by the sibling profile (CLAUDE.md diagnostic step 3): `cpp-c-cpp` — the C++
 wrapper over the *same* corelib-c-cpp `istream`/`ostream` — **agrees with the family**, because it

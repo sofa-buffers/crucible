@@ -120,11 +120,11 @@ adopted in documentation#23. Five green suites (seeds / cross-encode / union / l
       the 0.17.6 fixed-capacity fix covered `_BlobSeq`, not just strings. (The same integration
       surfaced **F-0026**, a *different* blob path — the §7.4 wrapper re-open reset — now the open
       corelib-c-cpp item below.)
-- [ ] **F-0026 / corelib-c-cpp (open, unfiled)** — the C object API's §7.4 `blob_array` wrapper
+- [ ] **F-0026 / [corelib-c-cpp#106](https://github.com/sofa-buffers/corelib-c-cpp/issues/106) (open)** — the C object API's §7.4 `blob_array` wrapper
       **re-open** keeps a stale zeroed element: `sofab_object_init` (`object.c:242-254`) zeros a
       sized blob's buffer but not its companion length at `offset - nested_idx` (the one function of
       four that omits the sized-blob branch). Corelib-only, `c` driver alone; write-up +
-      2 reproducers in `findings/F-0026-c-blob-wrapper-reopen-stale-element/`. When filed & fixed:
+      2 reproducers in `findings/F-0026-c-blob-wrapper-reopen-stale-element/`. When fixed:
       re-pull corelibs, drop the `elem == "blob"` skip in `sweep_repeated_id.py`, verify the axis
       goes green, promote `blob_reopen_empty.bin` into `corpus/regression/`.
 
