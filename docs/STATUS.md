@@ -26,18 +26,29 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   `schema/probe-union.sofab.yaml` (a `probe` carrying a 4-variant union), the one
   wire feature the main `probe` lacks. 11 seeds × 12 drivers, 0 divergences.
 - `CORPUS=corpus/regression ./scripts/run.sh` — the **resolved-findings gate**: the
-  reproducer of every fixed finding (44 inputs × 12 drivers, 0 divergences). A
+  reproducer of every fixed finding (59 inputs × 12 drivers, 0 divergences). A
   divergence here = a resolved bug came back. See `corpus/regression/README.md` for
   what it admits, and the exclusions (a reproducer that also trips an open axis stays
   in `findings/`).
 
 ## Current state
 - **Phases 1–3 largely done:** 12 drivers / 10 corelibs green across all five suites on
-  **sofabgen 0.19.2** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
+  **sofabgen 0.19.3** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
   java, typescript, csharp, zig). `./scripts/bootstrap.sh` keeps sofabgen at the **latest
   release** (sha256-verified) and the corelibs at `origin/main`.
-- **18 findings catalogued** (`results/FINDINGS.md`); **17 resolved, 1 by-design.** No open
-  bug to fix: **F-0018** (embedded U+0000 in a `string`) is classified **by-design** — a
+- **Structural sweep framework** (`engine/structured/sweep_*.py`, PLAN §6): a sweep enumerates
+  one normative rule across **every** schema position and checks two oracles (agreement +
+  conformance). **Six axes** wired via `sweep_run.py` / `scripts/sweep.sh` — repeated-id (§7.4),
+  over-bound (§7.1), reserved-subtype (§4.6), truncation (§7) **blocking + green**; wiretype
+  (§7.3) and malform×truncation (§5.2) **report-only** (they carry the open findings below).
+  This is what found F-0020–F-0024 — "isolate-green ≠ axis-green".
+- **24 findings catalogued** (`results/FINDINGS.md`); **20 resolved, 1 by-design, 3 open
+  upstream.** The three open are all **generator-only codegen**, filed and waiting on sofabgen:
+  **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
+  generator#189), **F-0024** (§5.2 Rust `try_decode` returns INCOMPLETE where INVALID must win,
+  generator#190 / G-0016). When each lands: re-pull corelibs, verify its report-only sweep axis
+  goes green, promote it into the blocking set + the regression gate. **F-0018** (embedded U+0000
+  in a `string`) is classified **by-design** — a
   NUL-terminated C-string profile projects `A\0B` → `A` on re-encode; valid on the wire,
   preserved by the other 10 profiles, sanctioned as an allowed divergence in
   `oracle/policy.yaml` (§8). **F-0004** (strict UTF-8) and **F-0017** (TS header wire type)
@@ -469,6 +480,39 @@ finding targeted this bump — installed to keep the toolchain current (the user
   at 0 divergence.
 
 Net open: still **F-0018** (by-design) only — no change.
+
+**Nineteenth change 2026-07-19/20 — structural sweep framework + 8 h fuzz round; F-0019–F-0021 resolved (0.19.3), F-0022–F-0024 opened; regression gate 44 → 59.**
+- **Structural sweep framework** landed (`engine/structured/sweep_*.py`, `scripts/sweep.sh`, CI gate
+  in `replay.yml`): a shared schema-position model + a two-oracle runner (**agreement** — all 12 same
+  line; **conformance** — accept-vs-reject matches spec, catching a family-wide-wrong answer that is
+  agreement-green but conformance-red). The runner is **axis-aware** (hard verdict/accept_value splits
+  vs soft incomplete_value/reject_class, per `policy.yaml`). **Six axes:** repeated-id (§7.4),
+  over-bound (§7.1), reserved-subtype (§4.6), truncation (§7) — **blocking + green**; wiretype (§7.3)
+  and malform×truncation (§5.2) — **report-only** (they carry the three open findings). Central lesson:
+  **isolate-green ≠ axis-green** — a fixed vector can still leave the rule broken at a position it never
+  tested.
+- **F-0019 / F-0020 / F-0021 resolved in sofabgen 0.19.3** (2026-07-19/20): §7.4 duplicate-id
+  (documentation#23 + generator#175), §7.3 mis-typed field skip (the struct-field and array-into-scalar
+  positions). Verified all-12-agree, promoted into the gate.
+- **F-0022 / F-0023 opened** by the wiretype sweep — the §7.3 guard still missing at the **array-fill
+  arm** (F-0022, generator#188) and the **wrapper-element loop** (F-0023, generator#189). Both
+  generator-only.
+- **8 h C-pacemaker round** (2026-07-20, sofabgen 0.19.3): **2.24 G executions**, **0 sanitizer
+  crashes, 0 timeouts, no memory leak**, seed suite green throughout. Three `slow-unit-*` artifacts
+  investigated → **benign** (≤ 0.03 s isolated; transient timer flags under 3-worker load, not
+  algorithmic DoS). The full differential over the divergence-enriched `corpus/interesting` surfaced one
+  dominant class (63 % of sampled verdict-splits) → **F-0024** (generator#190 / G-0016): the generated
+  Rust `try_decode` discards a detected INVALID (`v.inv`) via `?` when the input is also truncated,
+  returning `I` where §5.2 requires `R`. Delta-debugged 146 B → 11 B; the malform×truncation sweep axis
+  generalizes it (6 malformation kinds reproduce, reserved-subtype path stays green — separating the two
+  malformation paths). Filed with a four-vector control set (crucible#66/#68).
+- **Regression gate 44 → 59** (the §7.3 + §4.6 resolved isolates promoted); the three open findings kept
+  **out** of the gate until their codegen fixes land.
+
+Net open: **F-0022 / F-0023 / F-0024** — all **generator-only codegen**, filed generator#188/#189/#190;
+each waits on a sofabgen release, then re-pull + verify its report-only sweep axis goes green + promote.
+Plus **F-0018** (by-design).
+
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |
