@@ -39,21 +39,21 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
 - **Structural sweep framework** (`engine/structured/sweep_*.py`, PLAN §6): a sweep enumerates
   one normative rule across **every** schema position and checks two oracles (agreement +
   conformance). **Six axes** wired via `sweep_run.py` / `scripts/sweep.sh` — repeated-id (§7.4),
-  over-bound (§7.1), reserved-subtype (§4.6), truncation (§7) **blocking + green**; wiretype
-  (§7.3) and malform×truncation (§5.2) **report-only** (they carry the open findings below).
-  This is what found F-0020–F-0024 — "isolate-green ≠ axis-green".
-- **24 findings catalogued** (`results/FINDINGS.md`); **22 resolved, 1 by-design, 1 open
-  upstream.** The one catalogued-open is **generator-only codegen**, filed and waiting on sofabgen:
-  **F-0024** (§5.2 Rust `try_decode` returns INCOMPLETE where INVALID must win, generator#190 /
-  G-0016). **F-0022** (§7.3 array-field←scalar, generator#188) and **F-0023** (§7.3
-  wrapper-element, generator#189) were **resolved in sofabgen 0.19.4** (2026-07-21) — re-verified,
-  promoted into the regression gate (`F0022_*` / `F0023_*`, gate 59 → 69). **The wiretype (§7.3)
-  sweep is still report-only:** after those two fixes it has shrunk to a **single residual** — a
-  **scalar fp field receiving an fp array** (`nested.f32`/`fp64` ← ArrayFloat), the fp analogue of
-  F-0021 that generator#183 never covered (the `askip` guard sits in `unsigned()`/`signed()` but
-  not `fp32()`/`fp64()`, and `array_begin` arms `askip` only for `Unsigned`|`Signed` kinds). Not
-  yet catalogued — see the 2026-07-21 change entry; to be filed as **F-0025**. When it and F-0024
-  land: re-pull corelibs, verify the report-only sweep axis goes green, promote it into the blocking
+  over-bound (§7.1), reserved-subtype (§4.6), truncation (§7), malform×truncation (§5.2)
+  **blocking + green** (five); only wiretype (§7.3) is **report-only** (it carries the one open
+  finding below). This is what found F-0020–F-0024 — "isolate-green ≠ axis-green".
+- **24 findings catalogued** (`results/FINDINGS.md`); **23 resolved, 1 by-design, 0 catalogued-open**,
+  plus one newly-isolated residual pending write-up (**F-0025**). **F-0022** (§7.3
+  array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element, generator#189), and **F-0024**
+  (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 / G-0016) were all **resolved in
+  sofabgen 0.19.4** (2026-07-21) — re-verified, isolates promoted into the regression gate (`F0022_*`
+  / `F0023_*` / `F0024_*`, gate 59 → 73), and the malform×truncation sweep axis promoted from
+  report-only to blocking. **The wiretype (§7.3) sweep stays report-only** because of a **single
+  residual** — a **scalar fp field receiving an fp array** (`nested.f32`/`fp64` ← ArrayFloat), the fp
+  analogue of F-0021 that generator#183 never covered (the `askip` guard sits in `unsigned()`/
+  `signed()` but not `fp32()`/`fp64()`, and `array_begin` arms `askip` only for `Unsigned`|`Signed`
+  kinds). Not yet catalogued — see the 2026-07-21 change entries; to be filed as **F-0025**. When it
+  lands: re-pull corelibs, verify the report-only sweep axis goes green, promote it into the blocking
   set + the regression gate. **F-0018** (embedded U+0000
   in a `string`) is classified **by-design** — a
   NUL-terminated C-string profile projects `A\0B` → `A` on re-encode; valid on the wire,
@@ -553,6 +553,27 @@ advanced; the other eight were already at their tips.
 
 Net open: **F-0024** (generator-only, generator#190 / G-0016) + the newly-isolated **F-0025** (fp §7.3
 scalar←array, pending write-up + generator issue). Plus **F-0018** (by-design). F-0022/F-0023 closed.
+
+**Twenty-first change 2026-07-21 — F-0024 verified resolved on 0.19.4; malform×truncation sweep promoted to blocking; regression gate 69 → 73.**
+Re-checking the open findings on the same 0.19.4 build (drivers already rebuilt) showed **F-0024 is
+also fixed** — generator#190 landed in 0.19.4 alongside #188/#189.
+- ✅ **F-0024 resolved** ([generator#190](https://github.com/sofa-buffers/generator/issues/190) /
+  G-0016): the generated `try_decode` now captures `feed`'s result without `?`, reads `v.inv`, and
+  returns `InvalidMsg` **before** surfacing the Incomplete — `fed = is.feed(data, &mut v); … if invalid
+  { return Err(InvalidMsg); } fed?;` (rust `message.rs:235/242/246`). INVALID dominates a truncated
+  tail per §5.2. 0.19.3 had `is.feed(data, &mut v)?;` (`:234`), whose `?` discarded `v.inv` under
+  truncation — a pure ordering bug, now correctly ordered.
+- **Verified three ways:** (1) code inspection (the exact generator#190 fix); (2) the 4 isolates → 0
+  divergences across all 12; (3) the **malform×truncation sweep (§5.2)** — 20 vectors, 0 divergences,
+  **0 conformance failures**, all 18 malformed×{complete,trunc} → `R` (the `_trunc` vectors that flipped
+  rust to `I` on 0.19.3 are now `R`).
+- **malform×truncation sweep promoted report-only → blocking** in `scripts/sweep.sh` — five blocking
+  axes now, only wiretype (§7.3) remains report-only (residual F-0025). The 4 F-0024 vectors promoted
+  into the gate (`F0024_*`, 69 → 73); `CORPUS=corpus/regression ./scripts/run.sh` → 73×12, 0 divergences
+  (4 expected soft `incomplete_value` warnings).
+
+Net open: only the newly-isolated **F-0025** (fp §7.3 scalar←array, pending write-up + generator issue).
+Plus **F-0018** (by-design). **All 24 catalogued findings are now resolved or by-design.**
 
 | finding | what | tracked in / status |
 |---|---|---|

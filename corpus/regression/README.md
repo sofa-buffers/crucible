@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (69 inputs)
+## Contents (73 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -48,6 +48,8 @@ looking. This corpus makes it automatic.
 | `F0022_control_arru8_correct.bin`, `F0022_control_scalar_at_scalar.bin` (2) | F-0022 (controls) | — | a legit `u8` array at the `u8[]` field, and a legit scalar at a scalar field, still store on all 12 — the skip fires only on the array-field←scalar mismatch |
 | `F0023_strelem_recv_fixlen_blob.bin`, `F0023_strelem_recv_fixlen_fp32.bin`, `F0023_strelem_recv_scalar_signed.bin`, `F0023_strelem_recv_sequence.bin` | F-0023 | generator#189 (sofabgen 0.19.4) | a mis-typed `string_array` **wrapper element** (blob / fp32 / signed scalar / sequence where a `string` is declared) is **skipped** per §7.3 — all 12 agree (was ts/py reject, cpp mis-accept a blob as the string, cpp-c-cpp reject a subtype mismatch) |
 | `F0023_control_strelem_correct.bin` | F-0023 (control) | — | a correctly-typed `string` wrapper element still decodes into the array on all 12 — the skip fires only on a mis-typed element |
+| `F0024_repro_invalid_utf8_then_trunc.bin` | F-0024 | generator#190 (sofabgen 0.19.4) | an input that is **both malformed and truncated** (invalid UTF-8 then cut short) is `R invalid_msg` on all 12 — INVALID dominates the truncated tail per §5.2, not the old rust-only `I` |
+| `F0024_control_invalid_utf8_complete.bin`, `F0024_control_valid_complete.bin`, `F0024_control_valid_then_trunc.bin` (3) | F-0024 (controls) | — | the axes that isolate ordering from validation: a complete-but-invalid input is `R` (detection works), a complete valid input is `A`, a valid-but-truncated input is `I` (a clean truncation must still surface as INCOMPLETE, not be forced to `R`) |
 
 Filenames are `F<nnnn>_<original-name>.bin`; the originals stay in `findings/<id>/` as the
 finding's own record. `F0003_overcount_clean.bin` has no original — see below.
