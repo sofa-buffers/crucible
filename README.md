@@ -8,8 +8,9 @@
 ## Crucible
 
 **Differential fuzzing for the SofaBuffers wire format.** SofaBuffers ships one
-wire format implemented independently in many languages (`corelib-c`, `-cpp`,
-`-cs`, `-go`, `-java`, `-py`, `-rs`, `-rs-no-std`, `-ts`, `-zig`). Independent
+wire format implemented independently in many languages (`corelib-c-cpp`, `-cpp`,
+`-cs`, `-go`, `-java`, `-py`, `-rs`, `-rs-no-std`, `-ts`, `-zig` — ten corelibs, and
+`c-cpp` backs two drivers: its C object API and its C++ wrapper). Independent
 implementations of one format **drift** — and the drift that hurts is *silent*:
 two implementations both accept a byte sequence but decode it to different values,
 or one accepts what another rejects. No crash, no exception — just broken interop
@@ -117,8 +118,9 @@ they feed and how they build. Each is one command.
 | [Cross-encode / structured](#2-cross-encode--structured-values-scriptscross-encodesh) | `./scripts/cross-encode.sh` | encoder/decoder asymmetry on **valid, value-rich** messages |
 | [Union suite](#3-union-suite-scriptsrun-unionsh) | `./scripts/run-union.sh` | the `union` (tagged-variant) wire feature — variants, one-of, unknown members |
 | [Limit mode](#4-limit-mode-scriptsrun-limitssh) | `./scripts/run-limits.sh` | receiver-side decode caps (`max_dyn_*`) on unbounded fields |
-| [Coverage pacemaker (fuzz)](#4-coverage-pacemaker--fuzzing-scriptsfuzzsh) | `./scripts/fuzz.sh` | crashes, hangs, and deep-path divergence via coverage-guided + grammar-aware mutation |
-| [Clustering](#5-clustering-cluster1) | `CLUSTER=1 ./scripts/run.sh` | reduce a divergence firehose to root causes |
+| [Coverage pacemaker (fuzz)](#5-coverage-pacemaker--fuzzing-scriptsfuzzsh) | `./scripts/fuzz.sh` | crashes, hangs, and deep-path divergence via coverage-guided + grammar-aware mutation |
+| [Structural sweeps](#6-structural-sweeps-scriptssweepsh) | `./scripts/sweep.sh` | one normative rule × **every** schema position; adds a spec-**conformance** oracle |
+| [Clustering](#7-clustering-cluster1) | `CLUSTER=1 ./scripts/run.sh` | reduce a divergence firehose to root causes |
 
 ### 1. Differential loop (`scripts/run.sh`)
 
@@ -210,7 +212,40 @@ cc -std=c11 -fsanitize=address,undefined -Iengine/mutator \
    engine/mutator/test_mutator.c engine/mutator/sofab_mutator.c -o /tmp/mut && /tmp/mut
 ```
 
-### 6. Clustering (`CLUSTER=1`)
+### 6. Structural sweeps (`scripts/sweep.sh`)
+
+Where the fuzzer discovers by luck and coverage, a sweep discovers **by
+construction**. Each sweep takes one normative rule from `MESSAGE_SPEC` and
+enumerates it across **every** field position in the schema — every scalar, array,
+nested struct, and wrapper element — because a rule is usually enforced piecemeal:
+fixed for the struct-field position, still broken for the array-fill arm or the
+wrapper-element loop. The recurring lesson is **isolate-green ≠ axis-green** — a
+single passing reproducer can leave the same rule broken at a position it never
+touched.
+
+Sweeps run **two oracles**, the second of which the differential cannot provide:
+
+- **agreement** — all 12 drivers emit the same canonical line (the usual oracle);
+- **conformance** — the agreed behaviour matches what the spec *requires*. A vector
+  carries its expected outcome (`reject` / `accept` / …), so a **family-wide wrong**
+  answer — all 12 uniformly accepting what the spec says must be rejected — is
+  agreement-green but conformance-red, invisible to a disagreement-only oracle.
+
+```sh
+./scripts/sweep.sh                     # rebuild vs the probe schema, then run every axis
+python3 engine/structured/sweep_run.py [axis …]   # run one/all axes directly
+```
+
+Each axis is one rule (mis-typed wire type, a repeated field id, an over-bound
+target, a reserved fixlen subtype, truncation, a malformation followed by
+truncation, …). An axis sits in the **blocking** set once it is green family-wide,
+or stays **report-only** while a codegen fix for what it found is pending upstream —
+so the gate stays green without hiding a known-open divergence. The runner is
+**axis-aware**: a verdict or decoded-value split is a hard divergence; a
+reject-class or incomplete-payload-only difference is a soft warning (per
+`oracle/policy.yaml`). Wired into CI alongside the other gates.
+
+### 7. Clustering (`CLUSTER=1`)
 
 Over a big fuzzed corpus the comparator emits one row per (input, driver-pair) —
 thousands of rows for a handful of real bugs. Clustering groups them by
@@ -251,10 +286,10 @@ catalog and the acceptance test that verifies each fix when it lands.
 | `drivers/common/` | the driver contract |
 | `oracle/` | canonical form, comparator, clusterer, allowed-divergence policy |
 | `engine/mutator/` | structure-aware TLV/varint grammar mutator (+ standalone soak test) |
-| `engine/structured/` | structured-value generator (the cross-encode track) |
+| `engine/structured/` | structured-value generator (cross-encode) + the structural sweep framework (`sweep_*.py`, shared position model, two-oracle runner) |
 | `corpus/` | `seeds/` (green gate), `structured/` (cross-encode gate), `limits/`, `interesting/`, `crashes/` |
 | `findings/` | one dir per finding — minimized reproducer(s) + a NOTES.md write-up |
 | `results/` | [`FINDINGS.md`](results/FINDINGS.md) (the catalog) + `CLUSTERS.md` (cluster inventory) |
 | `corpus/regression/` | resolved-findings gate — every fixed finding's reproducer, green in CI |
-| `scripts/` | `bootstrap`, `run`, `cross-encode`, `run-limits`, `fuzz` |
+| `scripts/` | `bootstrap`, `run`, `cross-encode`, `run-union`, `run-limits`, `fuzz`, `sweep` |
 | `.devcontainer/` | fuzzing toolchains (clang/libFuzzer, cargo-fuzz, Jazzer, Atheris, SharpFuzz, Jazzer.js) |
