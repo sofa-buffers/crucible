@@ -5,17 +5,20 @@ Open work **on Crucible itself**. Fixes for the corelib/generator bugs Crucible 
 codegen defects: [`SOFABGEN.md`](SOFABGEN.md), spec proposals: [`spec-proposals.md`](spec-proposals.md)).
 Crucible's job is to catalog, attribute, and **verify** them.
 
-**As of 2026-07-20:** 24 findings catalogued, **20 resolved, 1 by-design, 3 open upstream.**
-The three open are all **generator-only codegen**, filed and waiting on a sofabgen release:
-**F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
-generator#189), **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
-G-0016). When each lands: re-pull corelibs, verify its **report-only** sweep axis goes green,
+**As of 2026-07-21:** 24 findings catalogued, **22 resolved, 1 by-design, 1 open upstream**, plus
+one newly-isolated residual pending write-up (**F-0025**). The catalogued-open is **generator-only
+codegen**, filed and waiting on a sofabgen release: **F-0024** (§5.2 Rust `try_decode`
+INCOMPLETE-over-INVALID, generator#190 / G-0016). **F-0022** (§7.3 array-field←scalar, generator#188)
+and **F-0023** (§7.3 wrapper-element, generator#189) were **resolved in sofabgen 0.19.4** (2026-07-21)
+— re-verified, isolates promoted into the regression gate. The wiretype sweep is still report-only
+because of the residual **F-0025** (§7.3 fp scalar←array — the fp analogue of F-0021 generator#183
+left uncovered). When each lands: re-pull corelibs, verify its **report-only** sweep axis goes green,
 then promote it into the blocking sweep set + the regression gate. F-0018 (embedded U+0000 in a
 `string`) is **by-design**: a NUL-terminated C-string profile projects `A\0B` → `A` on re-encode;
 valid on the wire, preserved by the other 10 profiles, sanctioned in `oracle/policy.yaml` (§8).
 All three Crucible-authored MESSAGE_SPEC clauses are adopted (documentation#17/#18/#20); §7.3/§7.4
 adopted in documentation#23. Five green suites (seeds / cross-encode / union / limit /
-**regression**, the last at **59 inputs**) run in CI, plus the **structural sweep gate** (six axes,
+**regression**, the last at **69 inputs**) run in CI, plus the **structural sweep gate** (six axes,
 `scripts/sweep.sh`; four blocking-green, two report-only for the open findings above).
 `./scripts/bootstrap.sh` keeps sofabgen at the latest release and the corelibs at `origin/main`.
 
@@ -66,15 +69,21 @@ adopted in documentation#23. Five green suites (seeds / cross-encode / union / l
 
 ## Open — waiting on upstream, then verify
 
-- [ ] **F-0022 / generator#188** — §7.3, an array-declared field receiving a scalar of its
-      element type is decoded (element 0) instead of skipped; rust/cs/java/zig + rust-nostd
-      (shared-callback backends). Generator-only (arm the array-fill in `array_begin`). When it
-      lands: re-pull corelibs, run `python3 engine/structured/sweep_run.py wiretype_sweep` → expect
-      green, promote `wiretype_sweep` from report-only to the blocking set in `scripts/sweep.sh` +
-      its isolates into `corpus/regression/`.
-- [ ] **F-0023 / generator#189** — §7.3, a mis-typed `string_array` wrapper element is not skipped
-      (ts/py/cpp/cpp-c-cpp). Generator-only (emit the same wire-type guard in the wrapper-element
-      loop). Verified together with F-0022 by the same `wiretype_sweep` axis going green.
+- [x] **F-0022 / generator#188** — **DONE (sofabgen 0.19.4, 2026-07-21).** The generated array-fill
+      arm now carries the §7.3 guard (`if self.afill == 0 { return; }`) and `array_begin` arms `afill`
+      only at a real array position; a bare scalar at an array id is skipped. All 5 isolates → 0
+      divergences across 12; promoted into `corpus/regression/` (`F0022_*`, gate 59 → 64).
+- [x] **F-0023 / generator#189** — **DONE (sofabgen 0.19.4, 2026-07-21).** The `string_array`
+      wrapper-element loop now emits the same §7.3 guard the struct-field dispatch had (TS
+      `message.ts:372`, Py `message.py:446`, C++ `_StrSeq`); a mis-typed element is skipped. All 5
+      isolates → 0 divergences across 12; promoted into `corpus/regression/` (`F0023_*`, gate 64 → 69).
+- [ ] **F-0025 (to file) — §7.3 fp scalar←array.** The one residual the wiretype sweep still flags
+      after #188/#189: a **scalar fp field** (`arrays.nested.fp32`/`fp64`) fed an `ArrayFloat` stores
+      the element instead of skipping — rust-std/rust-nostd/java/csharp/zig. The **fp analogue of
+      F-0021**, which generator#183 covered for integers only (the `askip` guard is in
+      `unsigned()`/`signed()` but not `fp32()`/`fp64()`, and `array_begin` arms `askip` only for
+      `Unsigned`|`Signed`). Generator-only, same fix shape as #183/#188. **Next:** write up
+      `findings/F-0025-*`, file the generator issue, then re-verify → promote as with F-0022.
 - [ ] **F-0024 / generator#190 (G-0016)** — §5.2, generated Rust `try_decode` returns INCOMPLETE
       where INVALID must win (the `?` on `is.feed(..)?` discards the visitor's `v.inv` before it is
       acted on). Generator-only, Rust backend only (`let r = is.feed(..); if v.inv { return

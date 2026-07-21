@@ -33,7 +33,7 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
 
 ## Current state
 - **Phases 1–3 largely done:** 12 drivers / 10 corelibs green across all five suites on
-  **sofabgen 0.19.3** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
+  **sofabgen 0.19.4** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
   java, typescript, csharp, zig). `./scripts/bootstrap.sh` keeps sofabgen at the **latest
   release** (sha256-verified) and the corelibs at `origin/main`.
 - **Structural sweep framework** (`engine/structured/sweep_*.py`, PLAN §6): a sweep enumerates
@@ -42,12 +42,19 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   over-bound (§7.1), reserved-subtype (§4.6), truncation (§7) **blocking + green**; wiretype
   (§7.3) and malform×truncation (§5.2) **report-only** (they carry the open findings below).
   This is what found F-0020–F-0024 — "isolate-green ≠ axis-green".
-- **24 findings catalogued** (`results/FINDINGS.md`); **20 resolved, 1 by-design, 3 open
-  upstream.** The three open are all **generator-only codegen**, filed and waiting on sofabgen:
-  **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
-  generator#189), **F-0024** (§5.2 Rust `try_decode` returns INCOMPLETE where INVALID must win,
-  generator#190 / G-0016). When each lands: re-pull corelibs, verify its report-only sweep axis
-  goes green, promote it into the blocking set + the regression gate. **F-0018** (embedded U+0000
+- **24 findings catalogued** (`results/FINDINGS.md`); **22 resolved, 1 by-design, 1 open
+  upstream.** The one catalogued-open is **generator-only codegen**, filed and waiting on sofabgen:
+  **F-0024** (§5.2 Rust `try_decode` returns INCOMPLETE where INVALID must win, generator#190 /
+  G-0016). **F-0022** (§7.3 array-field←scalar, generator#188) and **F-0023** (§7.3
+  wrapper-element, generator#189) were **resolved in sofabgen 0.19.4** (2026-07-21) — re-verified,
+  promoted into the regression gate (`F0022_*` / `F0023_*`, gate 59 → 69). **The wiretype (§7.3)
+  sweep is still report-only:** after those two fixes it has shrunk to a **single residual** — a
+  **scalar fp field receiving an fp array** (`nested.f32`/`fp64` ← ArrayFloat), the fp analogue of
+  F-0021 that generator#183 never covered (the `askip` guard sits in `unsigned()`/`signed()` but
+  not `fp32()`/`fp64()`, and `array_begin` arms `askip` only for `Unsigned`|`Signed` kinds). Not
+  yet catalogued — see the 2026-07-21 change entry; to be filed as **F-0025**. When it and F-0024
+  land: re-pull corelibs, verify the report-only sweep axis goes green, promote it into the blocking
+  set + the regression gate. **F-0018** (embedded U+0000
   in a `string`) is classified **by-design** — a
   NUL-terminated C-string profile projects `A\0B` → `A` on re-encode; valid on the wire,
   preserved by the other 10 profiles, sanctioned as an allowed divergence in
@@ -512,6 +519,40 @@ Net open: still **F-0018** (by-design) only — no change.
 Net open: **F-0022 / F-0023 / F-0024** — all **generator-only codegen**, filed generator#188/#189/#190;
 each waits on a sofabgen release, then re-pull + verify its report-only sweep axis goes green + promote.
 Plus **F-0018** (by-design).
+
+**Twentieth change 2026-07-21 — sofabgen 0.19.3 → 0.19.4; corelibs re-pulled; F-0022 + F-0023 resolved; regression gate 59 → 69; full box green.**
+Polled for the announced 0.19.4 release; it published as a **non-latest** asset (download live while
+`/releases/latest` still pointed at 0.19.3), so integrated it via `SOFABGEN_VERSION=v0.19.4
+./scripts/bootstrap.sh` (sha256-verified) rather than the plain `latest` path. Corelibs reset to
+`origin/main` first: **corelib-go** 057354a → 8dd7ddb and **corelib-rs-no-std** a55d92c → 5ff6921
+advanced; the other eight were already at their tips.
+- ✅ **F-0022 resolved** ([generator#188](https://github.com/sofa-buffers/generator/issues/188)): the
+  generated array-fill arm now carries the §7.3 guard (`if self.afill == 0 { return; }`, rust
+  `message.rs:281`) and `array_begin` arms `afill` only at a real array position — a bare scalar at an
+  array id falls through and is skipped, symmetric to the F-0021 `askip` fix; no corelib change. All 5
+  isolates → 0 divergences across 12; **the array-field←scalar half of the wiretype sweep is now clean.**
+- ✅ **F-0023 resolved** ([generator#189](https://github.com/sofa-buffers/generator/issues/189)): the
+  `string_array` wrapper-element loop now emits the same §7.3 guard the struct-field dispatch had —
+  TS `message.ts:372`, Py `message.py:446`, C++ `_StrSeq` — so a mis-typed element (blob / fp32 / signed
+  / sequence) is skipped instead of read as the declared type. All 5 isolates → 0 divergences across 12.
+- **Regression gate 59 → 69:** the F-0022 (3 mismatch + 2 control) and F-0023 (4 mismatch + 1 control)
+  isolates promoted (`F0022_*` / `F0023_*`); `CORPUS=corpus/regression ./scripts/run.sh` → 69×12,
+  0 divergences (3 expected soft `incomplete_value` warnings unchanged).
+- ⚠️ **The wiretype (§7.3) sweep is NOT yet green — one residual remains.** After #188/#189 it drops from
+  the fuller F-0022/F-0023 set to **exactly 2 vectors**: a **scalar fp field receiving an fp array**
+  (`arrays.nested.fp32`/`fp64` declared `FIX_fp32`/`fp64`, fed an `ArrayFloat` of `[1.5]`). This is the
+  **fp analogue of F-0021** (scalar←array), which generator#183 covered for **integers only** — the
+  `askip` guard sits in `unsigned()`/`signed()` (rust `message.rs:275`/`:289`) but **not** in `fp32()`/
+  `fp64()` (`:304`/`:311`), and `array_begin` arms `askip` only for `Unsigned`|`Signed` array kinds
+  (`:368`), never `Float`. 7 backends skip; rust-std/rust-nostd/java/csharp/zig store the element into
+  the scalar. **New finding, to be catalogued as F-0025** (generator-only, same fix shape as #183/#188).
+  Kept **out** of the blocking set + the gate until it lands. `sweep.sh` comment updated to point at it
+  instead of the now-resolved F-0022/F-0023.
+- ✅ **Full box green on 0.19.4:** seeds 6×12, **regression 69×12**, cross-encode 69×12, union 11×12,
+  limit mode (arr/str/blb) 9-driver heap roster, structural sweep blocking axes — **all 0 divergences**.
+
+Net open: **F-0024** (generator-only, generator#190 / G-0016) + the newly-isolated **F-0025** (fp §7.3
+scalar←array, pending write-up + generator issue). Plus **F-0018** (by-design). F-0022/F-0023 closed.
 
 | finding | what | tracked in / status |
 |---|---|---|
