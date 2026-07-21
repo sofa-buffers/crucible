@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (59 inputs)
+## Contents (69 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -44,6 +44,10 @@ looking. This corpus makes it automatic.
 | `F0020_control_scalar_correct.bin`, `F0020_control_struct_correct.bin` (2) | F-0020 (controls) | — | a correctly-typed scalar and a correctly-typed struct still decode on all 12 — the skip fires only on a mismatch |
 | `F0021_u8_recv_array_unsigned.bin`, `F0021_i8_recv_array_signed.bin` | F-0021 | generator#183 (sofabgen 0.19.3, PR #184) | a scalar field receiving an integer array of the same signedness is **skipped**, not decoded from the array's element — all 12 agree (was decoded by rust-std/rust-nostd/csharp/java/zig, the shared-callback backends) |
 | `F0021_control_legit_array.bin` | F-0021 (control) | — | a legitimate `u8` array at an actual array field still stores on all 12 — the skip does not touch real arrays |
+| `F0022_arru8_recv_scalar.bin`, `F0022_arri8_recv_scalar.bin`, `F0022_arrfp32_recv_scalar.bin` | F-0022 | generator#188 (sofabgen 0.19.4) | an **array-declared** field (`u8[]` / `i8[]` / `fp32[]`) receiving a bare scalar of its element type is **skipped**, not stored as a one-element array — all 12 agree (was decoded by rust-std/rust-nostd/csharp/java/zig, the shared-callback backends) |
+| `F0022_control_arru8_correct.bin`, `F0022_control_scalar_at_scalar.bin` (2) | F-0022 (controls) | — | a legit `u8` array at the `u8[]` field, and a legit scalar at a scalar field, still store on all 12 — the skip fires only on the array-field←scalar mismatch |
+| `F0023_strelem_recv_fixlen_blob.bin`, `F0023_strelem_recv_fixlen_fp32.bin`, `F0023_strelem_recv_scalar_signed.bin`, `F0023_strelem_recv_sequence.bin` | F-0023 | generator#189 (sofabgen 0.19.4) | a mis-typed `string_array` **wrapper element** (blob / fp32 / signed scalar / sequence where a `string` is declared) is **skipped** per §7.3 — all 12 agree (was ts/py reject, cpp mis-accept a blob as the string, cpp-c-cpp reject a subtype mismatch) |
+| `F0023_control_strelem_correct.bin` | F-0023 (control) | — | a correctly-typed `string` wrapper element still decodes into the array on all 12 — the skip fires only on a mis-typed element |
 
 Filenames are `F<nnnn>_<original-name>.bin`; the originals stay in `findings/<id>/` as the
 finding's own record. `F0003_overcount_clean.bin` has no original — see below.
