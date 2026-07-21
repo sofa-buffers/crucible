@@ -3,7 +3,7 @@
 **Impls:** rust-std, rust-nostd (lone `I`; the other 10 emit `R`)
 **Axis:** verdict (INVALID-vs-INCOMPLETE precedence)
 **Attribution:** **generator (sofabgen Rust backend)** — codegen defect **G-0016**. Generator-only; no corelib change.
-**Status:** 🆕 open. Found 2026-07-20 by the 8 h pacemaker round (2.24 G execs); dominant divergence
+**Status:** 🆕 open — filed [generator#190](https://github.com/sofa-buffers/generator/issues/190). Found 2026-07-20 by the 8 h pacemaker round (2.24 G execs); dominant divergence
 class of the run (**63 %** of sampled verdict-splits). Delta-debugged 146 B → **11 B**.
 
 ## The divergence

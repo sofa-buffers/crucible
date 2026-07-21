@@ -632,7 +632,7 @@ change. G-0015 is retired and the number is not reused.
 
 ## G-0016 — generated Rust `try_decode` discards INVALID via `?` when the message is also truncated
 
-**Status:** 🆕 **open (2026-07-20).** Finding
+**Status:** 🆕 **open — filed [generator#190](https://github.com/sofa-buffers/generator/issues/190) (2026-07-20).** Finding
 [`F-0024`](../findings/F-0024-rust-trydecode-incomplete-over-invalid/NOTES.md). Generator-only
 (sofabgen **Rust backend**); no corelib change.
 
