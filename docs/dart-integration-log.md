@@ -50,3 +50,28 @@ only (no `dart run` anywhere), and the artifact is a native ELF
 Roster is now **13 drivers / 11 corelibs**. No finding. The schema-agnostic round-trip
 form paid off exactly as planned: one replay driver, four suites green, zero per-field
 Dart code.
+
+---
+
+## Stage 2 — Limit mode (`L` verdict)
+
+**Goal:** add Dart to the heap-only roster in `scripts/run-limits.sh`. Dart uses
+growable `List<...>`, so it can represent a schema-unbounded field (unlike the
+fixed-capacity c/c-cpp/rust-nostd) and belongs in the roster.
+
+### Verification of the codegen path
+Generating with a `max_dyn_*` config shows the Dart backend bakes a
+`const sofab.DecoderLimits _limits = DecoderLimits(maxArrayCount: …, …)` and passes
+it to `Decoder.decode(data, visitor, limits: _limits)`, returning
+`DecodeStatus.limitExceeded` when a cap is exceeded — my driver already maps that to
+`L`. **No driver change needed.**
+
+### Steps
+1. `scripts/run-limits.sh` — build `DART_BIN` under the exported `SCHEMA=probe-dyn`
+   / `LIMITS`, add `dart:` to the echo loop and the `ALL` driver list.
+
+### Results — GREEN
+- **arr** 3 × 10, **str** 2 × 10, **blb** 2 × 10 — **0 divergences** (roster now 10
+  heap drivers incl. dart).
+- Explicit `L` check (cap = 8, `corpus/limits/arr`): `under_arr → A`, `at_arr_8 → A`,
+  `over_arr → L`. Dart agrees with the family on the fourth verdict. No finding.
