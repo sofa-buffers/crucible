@@ -631,6 +631,32 @@ the truncation rich message. The 12 drivers rebuilt schema-agnostically under th
 
 Net open: **F-0025** (generator#193) + **F-0026** (corelib-c-cpp#106). Plus **F-0018** (by-design).
 
+**Twenty-fourth change 2026-07-21/22 — the materialized-value (element-access) oracle: a second canonical form, all 12 drivers, CI-gated, schema-agnostic. Merged to `main` (PR #75), `main` CI green.**
+Added a **second canonical form** (`oracle/materialized.md`) beside the round-trip re-encode, targeting the
+round-trip form's *recorded* blind spot (`oracle/canonical.md` §Tradeoff — two decoders that hold different
+in-memory values but re-encode to the same sparse-canonical bytes are masked, F-0010's class). Under
+`SOFAB_MATERIALIZE=1` each driver emits `A <dump(decode(input))>` — a full walk of the **decoded value** (every
+field + array element explicit, floats as raw bit patterns, `len:hex` strings/blobs) — reusing the comparator's
+`accept_value` axis unchanged; `scripts/materialize.sh` runs it over `corpus/structured`.
+- **All 12 drivers** implement it: **75×12 → 0 divergences**, each matching the `engine/structured/materialize.py`
+  reference (ground truth) byte-for-byte; the default round-trip path is unchanged.
+- **Wired into CI** (`replay.yml`) as a standing gate — agreement (the 12-way differential) **+** conformance
+  (the schema-agnostic C anchor vs the reference, so a *family-wide-wrong* dump — agreement-green — is caught).
+- **Generated schema-type table** (`engine/structured/schema.py` → `oracle/materialized-schema.json`): the
+  typed field tree (kinds/ids/counts/nesting) a value walk needs is derived from the schema, not hardcoded, and
+  drives the reference (schema-agnostic ground truth); `cmp`-checked each run so it can't drift.
+- **All 12 walkers are schema-agnostic:** C via sofabgen's object descriptor; go/ts/java/cs/python consume the
+  descriptor at runtime (reflection); rust/cpp/zig **generate their walker source** from it at build time
+  (`drivers/<lang>/materialize_gen.py`, unrolled straight-line — a compile-only stub for the non-`probe`
+  union/limit schemas). A schema change reflows to every walker with **zero hand-editing**.
+- **Measured design note:** numeric arrays are already materialized to N in memory family-wide, so this form's
+  live signal is the **wrapper arrays** + **element-level fidelity** + **regression-proofing**, not F-0010's
+  exact shape (resolved). The build broke the union/limit suites once (the static generators emitted a
+  default-`probe` walker for a mismatched Probe); fixed with the per-schema stub, verified across the full
+  `replay.yml` sequence before merge.
+
+Net open unchanged: **F-0025** (generator#193) + **F-0026** (corelib-c-cpp#106); **F-0018** by-design.
+
 | finding | what | tracked in / status |
 |---|---|---|
 | F-0001 | truncated input: lenient (C/C++/Rust/Java/C#) vs strict (Go/Py/TS/Zig) | spec §7 (finish-less); all 10 corelibs + all 12 drivers implement `I`. **✅ verified green 2026-07-13** — every driver emits `I` on the F-0001 seeds (0 divergences). Was 7-accept/5-reject. |

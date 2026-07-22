@@ -66,6 +66,12 @@ drivers.
 3. **Cross-encode** — a value encoded in impl A must decode identically in impl B
    (the [cross-encode / structured suite](#2-cross-encode--structured-values-scriptscross-encodesh)).
 
+A **fourth, element-access oracle** closes the round-trip form's one recorded blind
+spot: two decoders that hold *different* in-memory values but re-encode to the *same*
+sparse-canonical bytes look identical. The [materialized suite](#7-materialized-value--element-access-scriptsmaterializesh)
+dumps the fully-expanded decoded value — every field and array element explicit,
+floats as raw bit patterns — so that class is caught too.
+
 **Verdicts** (`oracle/canonical.md`) are three-valued per MESSAGE_SPEC §7, plus a
 limit-mode fourth:
 
@@ -120,7 +126,8 @@ they feed and how they build. Each is one command.
 | [Limit mode](#4-limit-mode-scriptsrun-limitssh) | `./scripts/run-limits.sh` | receiver-side decode caps (`max_dyn_*`) on unbounded fields |
 | [Coverage pacemaker (fuzz)](#5-coverage-pacemaker--fuzzing-scriptsfuzzsh) | `./scripts/fuzz.sh` | crashes, hangs, and deep-path divergence via coverage-guided + grammar-aware mutation |
 | [Structural sweeps](#6-structural-sweeps-scriptssweepsh) | `./scripts/sweep.sh` | one normative rule × **every** schema position; adds a spec-**conformance** oracle |
-| [Clustering](#7-clustering-cluster1) | `CLUSTER=1 ./scripts/run.sh` | reduce a divergence firehose to root causes |
+| [Materialized value](#7-materialized-value--element-access-scriptsmaterializesh) | `./scripts/materialize.sh` | element-access oracle — the decoded value dumped field-by-field, catching a decode the round-trip masks |
+| [Clustering](#8-clustering-cluster1) | `CLUSTER=1 ./scripts/run.sh` | reduce a divergence firehose to root causes |
 
 ### 1. Differential loop (`scripts/run.sh`)
 
@@ -245,7 +252,30 @@ so the gate stays green without hiding a known-open divergence. The runner is
 reject-class or incomplete-payload-only difference is a soft warning (per
 `oracle/policy.yaml`). Wired into CI alongside the other gates.
 
-### 7. Clustering (`CLUSTER=1`)
+### 7. Materialized value / element access (`scripts/materialize.sh`)
+
+The round-trip canonical form has one recorded blind spot: a decoder that materializes
+a *different* in-memory value which its encoder then normalizes back to the same
+sparse-canonical bytes is invisible to it (F-0010's class — the sparse wire elides
+trailing default runs and omitted fields). This suite adds a **second canonical form**:
+with `SOFAB_MATERIALIZE=1` each driver emits `A <dump(decode(input))>` — the
+fully-expanded decoded value, every field and array element explicit, floats as raw bit
+patterns, strings/blobs as `len:hex` — so a decode divergence surfaces directly, whether
+or not the re-encoding would hide it.
+
+```sh
+./scripts/materialize.sh               # 12-way materialized differential over corpus/structured
+```
+
+It checks **both** axes: agreement (all 12 emit the same dump) and conformance (the
+schema-agnostic C anchor vs the `engine/structured/materialize.py` reference, so a
+family-wide-wrong dump is caught). The schema-type table a value walk needs is
+*generated* from the schema (`engine/structured/schema.py` → `oracle/materialized-schema.json`),
+so **every walker is schema-agnostic** — C via the corelib object descriptor,
+go/ts/java/cs/python by consuming the descriptor at runtime, rust/cpp/zig by generating
+their walker source from it at build time. Wired into CI alongside the other gates.
+
+### 8. Clustering (`CLUSTER=1`)
 
 Over a big fuzzed corpus the comparator emits one row per (input, driver-pair) —
 thousands of rows for a handful of real bugs. Clustering groups them by
@@ -284,12 +314,12 @@ catalog and the acceptance test that verifies each fix when it lands.
 | `schema/` | the fuzzed message(s), single source of truth |
 | `drivers/<lang>/` | per-language replay driver + coverage front-end (12 drivers) |
 | `drivers/common/` | the driver contract |
-| `oracle/` | canonical form, comparator, clusterer, allowed-divergence policy |
+| `oracle/` | the two canonical forms (round-trip `canonical.md` + materialized/element-access `materialized.md` and its generated `materialized-schema.json`), comparator, clusterer, allowed-divergence policy |
 | `engine/mutator/` | structure-aware TLV/varint grammar mutator (+ standalone soak test) |
-| `engine/structured/` | structured-value generator (cross-encode) + the structural sweep framework (`sweep_*.py`, shared position model, two-oracle runner) |
+| `engine/structured/` | structured-value generator (cross-encode) + the structural sweep framework (`sweep_*.py`, shared position model, two-oracle runner) + the materialized-value reference (`materialize.py`) and schema-type-table generator (`schema.py`) |
 | `corpus/` | `seeds/` (green gate), `structured/` (cross-encode gate), `limits/`, `interesting/`, `crashes/` |
 | `findings/` | one dir per finding — minimized reproducer(s) + a NOTES.md write-up |
 | `results/` | [`FINDINGS.md`](results/FINDINGS.md) (the catalog) + `CLUSTERS.md` (cluster inventory) |
 | `corpus/regression/` | resolved-findings gate — every fixed finding's reproducer, green in CI |
-| `scripts/` | `bootstrap`, `run`, `cross-encode`, `run-union`, `run-limits`, `fuzz`, `sweep` |
+| `scripts/` | `bootstrap`, `run`, `cross-encode`, `run-union`, `run-limits`, `fuzz`, `sweep`, `materialize` |
 | `.devcontainer/` | fuzzing toolchains (clang/libFuzzer, cargo-fuzz, Jazzer, Atheris, SharpFuzz, Jazzer.js) |
