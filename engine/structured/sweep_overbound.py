@@ -96,6 +96,33 @@ def emit(out_dir):
     return vectors
 
 
+# --- union pass (schema/probe-union.sofab.yaml) ------------------------------
+# WP-01: §7.1 over the union schema's bounded members — as_text (maxlen 16) and
+# as_blob (maxlen 8). A member over its maxlen is malformed input and MUST decode as
+# INVALID on all implementations, exactly like a bounded field at any other position;
+# an at-bound member is a valid single-member union (accept control). maxlen is a
+# schema fact, so a divergence here points at generated code, not the corelib.
+def emit_union(out_dir):
+    from sweep_positions import UNION_MEMBER_POSITIONS, place  # noqa: E402
+    vectors = []
+    for p in UNION_MEMBER_POSITIONS:
+        if p.cat not in ("str", "blob"):
+            continue
+        st = FL_STRING if p.cat == "str" else FL_BLOB
+        fill = b"A" if p.cat == "str" else b"\x11"
+        m = p.maxlen
+        vectors.append((f"u_{p.tag()}_overmaxlen.bin",
+                        place(p.path, fixlen(p.fid, st, fill * (m + 1))), "reject"))
+        vectors.append((f"u_{p.tag()}_atmaxlen_ctl.bin",
+                        place(p.path, fixlen(p.fid, st, fill * m)), "accept"))
+
+    os.makedirs(out_dir, exist_ok=True)
+    for name, data, _ in vectors:
+        with open(os.path.join(out_dir, name), "wb") as fh:
+            fh.write(data)
+    return vectors
+
+
 if __name__ == "__main__":
     out = sys.argv[1] if len(sys.argv) > 1 else "corpus/overbound-sweep"
     emit(out)
