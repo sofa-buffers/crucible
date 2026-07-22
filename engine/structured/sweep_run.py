@@ -4,11 +4,11 @@
 A sweep vector carries an **expected behaviour**, so the runner checks *two*
 independent things the plain differential cannot:
 
-  1. **Agreement** — do all 12 drivers produce the same canonical line? A
+  1. **Agreement** — do all 13 drivers produce the same canonical line? A
      disagreement is a divergence (the classic oracle; a finding).
   2. **Conformance** — does the agreed behaviour match what the spec requires for
      that vector? `expect=reject` means every driver MUST emit `R`; `expect=accept`
-     MUST be `A`. A *family-wide* wrong answer (all 12 uniformly accept an
+     MUST be `A`. A *family-wide* wrong answer (all 13 uniformly accept an
      over-bound value) is **agreement-green but conformance-red** — invisible to a
      differential-only oracle, and exactly the gap a "must reject" sweep exists to
      catch.
@@ -37,7 +37,7 @@ from oracle.comparator import run_driver, parse  # noqa: E402
 AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserved_subtype",
         "sweep_truncation", "sweep_malform_truncate"]
 
-# The 12-driver roster, mirroring scripts/run.sh. Built by ./scripts/run.sh already.
+# The 13-driver roster, mirroring scripts/run.sh. Built by ./scripts/run.sh already.
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 DRIVERS = [
     ("c",          f"{ROOT}/drivers/c/build/driver"),
@@ -52,6 +52,7 @@ DRIVERS = [
     ("typescript", f"{ROOT}/drivers/ts/build/driver"),
     ("csharp",     f"{ROOT}/drivers/cs/build/driver"),
     ("zig",        f"{ROOT}/drivers/zig/build/driver"),
+    ("dart",       f"{ROOT}/drivers/dart/build/driver"),
 ]
 
 
@@ -91,12 +92,12 @@ def run_axis(name):
         # agreed on the hard axes — now check conformance
         exp = expect[fn]
         if exp == "reject" and v != "R":
-            conformance.append((fn, f"expected R, all 12 emit {v}"))
+            conformance.append((fn, f"expected R, all 13 emit {v}"))
         elif exp == "accept" and v != "A":
-            conformance.append((fn, f"expected A, all 12 emit {v}"))
+            conformance.append((fn, f"expected A, all 13 emit {v}"))
         # merge/replace/lastwins -> treated as accept
         elif exp in ("merge", "replace", "lastwins") and v != "A":
-            conformance.append((fn, f"expected A ({exp}), all 12 emit {v}"))
+            conformance.append((fn, f"expected A ({exp}), all 13 emit {v}"))
         # a prefix of a valid message is A (complete) or I (incomplete), never R
         elif exp == "not_reject" and v == "R":
             conformance.append((fn, "prefix of a valid message emitted R (INVALID)"))

@@ -1,0 +1,4 @@
+lang=dart
+corelib=corelib-dart
+framework=dart-ffi-libfuzzer
+pacemaker=false

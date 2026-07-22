@@ -43,19 +43,24 @@ JAVA_BIN=$(sh "$ROOT/drivers/java/build.sh")
 TS_BIN=$(sh "$ROOT/drivers/ts/build.sh")
 CS_BIN=$(sh "$ROOT/drivers/cs/build.sh")
 ZIG_BIN=$(sh "$ROOT/drivers/zig/build.sh")
+# dart is a heap profile (growable List<...>), so it joins the limit-mode roster;
+# its generated tryDecode bakes the max_dyn_* caps into a DecoderLimits and returns
+# limitExceeded (-> L) when a schema-unbounded field exceeds one.
+DART_BIN=$(sh "$ROOT/drivers/dart/build.sh")
 unset SCHEMA LIMITS  # don't leak the limit config into anything downstream
 
 for line in \
     "go:$GO_BIN" "rust-std:$RS_BIN" "cpp:$CPP_BIN" \
     "py-cython:$PYC_BIN" "py-pure:$PYP_BIN" "java:$JAVA_BIN" \
-    "typescript:$TS_BIN" "csharp:$CS_BIN" "zig:$ZIG_BIN"; do
+    "typescript:$TS_BIN" "csharp:$CS_BIN" "zig:$ZIG_BIN" "dart:$DART_BIN"; do
     echo "==> ${line%%:*}: ${line#*:}" >&2
 done
 
 # The full heap roster runs every dimension (arr included — G-0009 fixed @0.16.1).
 ALL="--driver go:$GO_BIN --driver rust-std:$RS_BIN --driver cpp:$CPP_BIN \
      --driver py-cython:$PYC_BIN --driver py-pure:$PYP_BIN --driver java:$JAVA_BIN \
-     --driver typescript:$TS_BIN --driver csharp:$CS_BIN --driver zig:$ZIG_BIN"
+     --driver typescript:$TS_BIN --driver csharp:$CS_BIN --driver zig:$ZIG_BIN \
+     --driver dart:$DART_BIN"
 
 # Optional per-driver hang budget (seconds); unset → comparator defaults to
 # max(30, 0.25 x corpus size).

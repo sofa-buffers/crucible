@@ -2,7 +2,7 @@
 # divergences (what a human otherwise does by hand).
 #
 # The C pacemaker (libFuzzer + the structure-aware mutator, engine/mutator) grows
-# corpus/interesting; that grown corpus is then replayed through all 12 drivers and
+# corpus/interesting; that grown corpus is then replayed through all 13 drivers and
 # auto-clustered by root cause. Crashes, the new interesting corpus, and the cluster
 # inventory are uploaded as artifacts for a human to triage (F-0006/7/8/9 workflow).
 # The corpus is cached between runs so coverage compounds night over night.
