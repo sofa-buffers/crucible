@@ -50,21 +50,19 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
 - **Structural sweep framework** (`engine/structured/sweep_*.py`, PLAN §6): a sweep enumerates
   one normative rule across **every** schema position and checks two oracles (agreement +
   conformance). **Six axes** wired via `sweep_run.py` / `scripts/sweep.sh` — repeated-id (§7.4),
-  over-bound (§7.1), reserved-subtype (§4.6), truncation (§7), malform×truncation (§5.2)
-  **blocking + green** (five); only wiretype (§7.3) is **report-only** (it carries the one open
-  finding below). This is what found F-0020–F-0024 — "isolate-green ≠ axis-green".
-- **26 findings catalogued** (`results/FINDINGS.md`); **23 resolved, 1 by-design, 2 open (F-0025 generator, F-0026 corelib).**
+  over-bound (§7.1), reserved-subtype (§4.6), truncation (§7), malform×truncation (§5.2),
+  wiretype (§7.3) — **all six blocking + green** (wiretype promoted from report-only 2026-07-22
+  once F-0025 landed; `sweep_repeated_id` keeps only the F-0026 blob-reopen carve-out). This is
+  what found F-0020–F-0025 — "isolate-green ≠ axis-green".
+- **26 findings catalogued** (`results/FINDINGS.md`); **24 resolved, 1 by-design, 1 open (F-0026 corelib).**
   **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
   generator#189), and **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
-  G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21) — re-verified, isolates promoted into
-  the regression gate (`F0022_*` / `F0023_*` / `F0024_*`, gate 59 → 73), and the malform×truncation
-  sweep axis promoted from report-only to blocking. **The one open finding, F-0025** (§7.3 fp
-  scalar←array, generator#193), keeps the wiretype (§7.3) sweep report-only — a **scalar fp field
-  receiving an fp array** (`nested.f32`/`fp64` ← ArrayFixlen), the fp analogue of F-0021 that
-  generator#183 covered for integers only (the `askip` guard sits in `unsigned()`/`signed()` but not
-  `fp32()`/`fp64()`, and `array_begin` arms `askip` only for `Unsigned`|`Signed` kinds). Generator-only,
-  filed 2026-07-21. When it lands: re-pull corelibs, verify the report-only sweep axis goes green,
-  promote it into the blocking set + the regression gate. **F-0018** (embedded U+0000
+  G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21); **F-0025** (§7.3 fp scalar←array,
+  generator#193 — the fp analogue of F-0021 that generator#183 covered for integers only) was
+  **resolved 2026-07-22** on the latest green sofabgen CI build, promoting the wiretype (§7.3) sweep
+  axis report-only → blocking and its isolates into the regression gate (73 → 77). **The one open
+  finding, F-0026** (corelib-c-cpp#106), is the §7.4 `blob_array` wrapper re-open keeping a stale
+  zeroed element on the C object API. **F-0018** (embedded U+0000
   in a `string`) is classified **by-design** — a
   NUL-terminated C-string profile projects `A\0B` → `A` on re-encode; valid on the wire,
   preserved by the other 10 profiles, sanctioned as an allowed divergence in
@@ -681,11 +679,29 @@ round-trip form needed **zero per-field Dart code**. Full log: `docs/dart-integr
 - 🔎 **Side-result (toolchain, not Dart): F-0025 is resolved on this CI build.** The wiretype (§7.3)
   sweep axis went **green** (was report-only); both F-0025 reproducers now show all 13 drivers agreeing
   (the fp array at a scalar-fp id is skipped, including the formerly-storing rust/java/csharp/zig) —
-  generator#193 landed in the CI build post-0.19.4. **Left to a separate follow-up** to promote the
-  wiretype axis to blocking, mark F-0025 resolved in `results/FINDINGS.md`, and promote its isolates
-  into `corpus/regression/` (not bundled into the Dart branch).
+  generator#193 landed in the CI build post-0.19.4. **Promoted in the Twenty-sixth change below** (this
+  branch includes the F-0025 cleanup): the wiretype axis is now blocking, F-0025 is marked resolved, and
+  its isolates are in `corpus/regression/`.
 - **CI:** the gates invoke the scripts (which now carry Dart), so no per-gate edit; the CI image's
   Dockerfile already installs the Dart SDK — it needs the standing one-time `image.yml` rebuild.
+**Twenty-sixth change 2026-07-22 — F-0025 verified resolved; wiretype (§7.3) sweep promoted report-only → blocking; regression gate 73 → 77 (branch `f0025-cleanup`, rebased on `dart-integration`).**
+Re-checking the open findings on the latest green sofabgen CI build
+(`0.0.0-20260722065611-f61a29b31c01`, which carries generator#193 post-0.19.4) showed **F-0025
+is fixed** — [generator#193](https://github.com/sofa-buffers/generator/issues/193) closed.
+- ✅ **F-0025 resolved:** the generated `arrayBegin` now arms the discard counter (`askip`) for the
+  **fp** array kinds (not only `Unsigned`/`Signed`), and the `fp32()`/`fp64()` callbacks carry the same
+  `askip` guard `unsigned()`/`signed()` had — so a scalar fp field fed an fp fixlen array **skips** it
+  per §7.3 instead of storing the element. Generator-only, no corelib change (mirrors #183/#188).
+- **Verified two ways:** (1) the 2 reproducers → **all 13 skip** (re-encode to `5607a606560707c60c07ce0c07`),
+  the 2 controls agree; (2) the **wiretype (§7.3) sweep is green** — 319 vectors, 0 divergences,
+  0 conformance failures.
+- **Sweep axis promoted report-only → blocking** in `scripts/sweep.sh` — **all six axes now blocking**;
+  no report-only residual remains (F-0026 stays carved out of the repeated-id axis until its corelib fix).
+- **Regression gate 73 → 77:** the 2 F-0025 reproducers + 2 controls promoted (`F0025_*`);
+  `CORPUS=corpus/regression ./scripts/run.sh` → 77×13, 0 divergences.
+
+Net open: only **F-0026** (corelib-c-cpp#106). Plus **F-0018** (by-design). **All 25 other catalogued
+findings are resolved or by-design.**
 
 | finding | what | tracked in / status |
 |---|---|---|

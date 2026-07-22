@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (73 inputs)
+## Contents (77 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -50,6 +50,8 @@ looking. This corpus makes it automatic.
 | `F0023_control_strelem_correct.bin` | F-0023 (control) | — | a correctly-typed `string` wrapper element still decodes into the array on all 12 — the skip fires only on a mis-typed element |
 | `F0024_repro_invalid_utf8_then_trunc.bin` | F-0024 | generator#190 (sofabgen 0.19.4) | an input that is **both malformed and truncated** (invalid UTF-8 then cut short) is `R invalid_msg` on all 12 — INVALID dominates the truncated tail per §5.2, not the old rust-only `I` |
 | `F0024_control_invalid_utf8_complete.bin`, `F0024_control_valid_complete.bin`, `F0024_control_valid_then_trunc.bin` (3) | F-0024 (controls) | — | the axes that isolate ordering from validation: a complete-but-invalid input is `R` (detection works), a complete valid input is `A`, a valid-but-truncated input is `I` (a clean truncation must still surface as INCOMPLETE, not be forced to `R`) |
+| `F0025_fp32_scalar_recv_array.bin`, `F0025_fp64_scalar_recv_array.bin` | F-0025 | generator#193 (post-0.19.4 sofabgen) | a **scalar fp field** (`nested.f32` / `f64`) receiving an fp **fixlen array** is **skipped** per §7.3, not decoded from the array's element — all 12 agree (was decoded by rust-std/rust-nostd/csharp/java/zig; the fp analogue of F-0021, which #183 fixed for integers only) |
+| `F0025_control_fp32_scalar.bin`, `F0025_control_array_field.bin` (2) | F-0025 (controls) | — | a correctly-typed fp scalar, and a legit fp array at the actual array field, still store on all 12 — the skip fires only on the fp-scalar←fp-array mismatch |
 
 Filenames are `F<nnnn>_<original-name>.bin`; the originals stay in `findings/<id>/` as the
 finding's own record. `F0003_overcount_clean.bin` has no original — see below.

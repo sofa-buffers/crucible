@@ -15,22 +15,22 @@ zeroed element on the C object API (corelib-c-cpp `sofab_object_init` never rese
 companion length); `string_array` is uniform. Corelib-only, minimal isolate, carved out of the blocking
 repeated-id sweep axis until fixed.
 
-**As of 2026-07-21:** 26 findings catalogued, **23 resolved, 1 by-design, 2 open (1 generator, 1 corelib)**. **F-0022**
+**As of 2026-07-22:** 26 findings catalogued, **24 resolved, 1 by-design, 1 open (corelib)**. **F-0022**
 (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element, generator#189), and
 **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 / G-0016) were all
 **resolved in sofabgen 0.19.4** (2026-07-21) — re-verified, isolates promoted into the regression gate,
-and the malform×truncation sweep axis promoted from report-only to blocking. The one open finding is
-**F-0025** (§7.3 fp scalar←array, **generator#193**) — the fp analogue of F-0021 that generator#183
-covered for integers only, which keeps the wiretype sweep report-only. When it lands: re-pull corelibs,
-verify its sweep axis goes green, then promote it into the blocking sweep set + the regression gate.
-F-0018 (embedded U+0000 in a
+and the malform×truncation sweep axis promoted from report-only to blocking. **F-0025** (§7.3 fp
+scalar←array, **generator#193**) — the fp analogue of F-0021 that generator#183 covered for integers
+only — is **resolved 2026-07-22** on the latest green sofabgen CI build: verified all-12-agree, the
+wiretype (§7.3) sweep promoted **report-only → blocking**, and its isolates promoted into the regression
+gate (73 → 77). The one open finding is **F-0026** (corelib-c-cpp#106). F-0018 (embedded U+0000 in a
 `string`) is **by-design**: a NUL-terminated C-string profile projects `A\0B` → `A` on re-encode;
 valid on the wire, preserved by the other 10 profiles, sanctioned in `oracle/policy.yaml` (§8).
 All three Crucible-authored MESSAGE_SPEC clauses are adopted (documentation#17/#18/#20); §7.3/§7.4
 adopted in documentation#23. Six green suites (seeds / cross-encode / union / limit /
-**regression** (the last at **73 inputs**) / **materialized** (element-access, 75×12)) run in CI,
-plus the **structural sweep gate** (six axes, `scripts/sweep.sh`; five blocking-green, one
-report-only for the residual F-0025 above).
+**regression** (the last at **77 inputs**) / **materialized** (element-access, 75×12)) run in CI,
+plus the **structural sweep gate** (`scripts/sweep.sh`; **all six axes now blocking-green** —
+repeated-id keeps only the F-0026 blob-reopen carve-out).
 `./scripts/bootstrap.sh` keeps sofabgen at the latest release and the corelibs at `origin/main`.
 
 ---
@@ -118,14 +118,14 @@ report-only for the residual F-0025 above).
       wrapper-element loop now emits the same §7.3 guard the struct-field dispatch had (TS
       `message.ts:372`, Py `message.py:446`, C++ `_StrSeq`); a mis-typed element is skipped. All 5
       isolates → 0 divergences across 12; promoted into `corpus/regression/` (`F0023_*`, gate 64 → 69).
-- [ ] **F-0025 / generator#193** — §7.3, a **scalar fp field** (`nested.f32`/`f64`) receiving an fp
-      **fixlen array** stores the element instead of skipping — rust-std/rust-nostd/java/csharp/zig.
-      The **fp analogue of F-0021**, which generator#183 covered for integers only: (1) `arrayBegin`
-      arms `askip` only for `Unsigned`|`Signed`, never `Fixlen`; (2) the `fp32()`/`fp64()` callbacks
-      lack the `askip` guard `unsigned()`/`signed()` carry. Generator-only, same fix shape as #183/#188.
-      Written up (`findings/F-0025-scalar-fp-field-receives-fp-array/`) + filed. When it lands: re-pull
-      corelibs, `python3 engine/structured/sweep_run.py wiretype_sweep` → expect green, promote the axis
-      from report-only to blocking in `scripts/sweep.sh` + its isolates into `corpus/regression/`.
+- [x] **F-0025 / generator#193** — **DONE (post-0.19.4 sofabgen CI build, 2026-07-22).** §7.3, a
+      **scalar fp field** (`nested.f32`/`f64`) receiving an fp **fixlen array** stored the element
+      instead of skipping (rust-std/rust-nostd/java/csharp/zig). The **fp analogue of F-0021** (generator#183
+      covered integers only): the generated `arrayBegin` now arms `askip` for the fp array kinds too, and
+      the `fp32()`/`fp64()` callbacks carry the `askip` guard. **Verified:** `sweep_run.py wiretype_sweep`
+      → green (319 vectors, 0 div); both reproducers → all-12-skip. Promoted the wiretype (§7.3) axis
+      **report-only → blocking** in `scripts/sweep.sh`; the 2 reproducers + 2 controls into
+      `corpus/regression/` (`F0025_*`, gate 73 → 77). generator#193 closed.
 - [x] **F-0024 / generator#190 (G-0016)** — **DONE (sofabgen 0.19.4, 2026-07-21).** The generated
       `try_decode` now captures `feed` without `?`, checks `v.inv`, and returns `InvalidMsg` before
       surfacing the Incomplete (`message.rs:235/242/246`) → INVALID dominates a truncated tail (§5.2).
