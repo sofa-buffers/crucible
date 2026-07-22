@@ -131,7 +131,7 @@ exists), then record the new driver's quirks in `ARCHITECTURE.md`.
 [`docs/STATUS.md`](docs/STATUS.md) (it is the current-state snapshot and is kept
 current; this file only orients you).
 
-Phases 1–2 are done and Phase 3 is largely done: **12 drivers / 10 corelibs**, the
+Phases 1–2 are done and Phase 3 is largely done: **13 drivers / 11 corelibs**, the
 three-valued verdict (`A`/`I`/`R`, plus `L` in limit mode), a structure-aware mutator,
 a C libFuzzer pacemaker, crash- *and* hang-isolation, auto-clustering, and five green
 suites — differential (seeds), cross-encode, union, limit mode, and the

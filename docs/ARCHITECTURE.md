@@ -1,9 +1,9 @@
 # Crucible — Architecture (living document)
 
-> **Status: Phases 1–3 largely done** — the differential loop runs across all twelve
-> drivers / ten corelibs (C pacemaker, Go, Rust-std, Rust-no-std, C++, C++/c-cpp,
-> Python-Cython, Python-pure, Java, TypeScript, C#, Zig) over the full-scale `probe`
-> schema. Phase 3 is built (structure-aware mutator, round-trip + cross-encode
+> **Status: Phases 1–3 largely done** — the differential loop runs across all thirteen
+> drivers / eleven corelibs (C pacemaker, Go, Rust-std, Rust-no-std, C++, C++/c-cpp,
+> Python-Cython, Python-pure, Java, TypeScript, C#, Zig, **Dart**) over the full-scale
+> `probe` schema. Phase 3 is built (structure-aware mutator, round-trip + cross-encode
 > oracles, three-valued verdict `A`/`I`/`R`, schema scale-up); Phase 4 (CI) is
 > wired — see [`CI.md`](CI.md). This describes
 > architecture **as actually built**, and is updated whenever the real system
@@ -31,21 +31,21 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `drivers/c/` (pacemaker) | built | gcc replay driver (ASan/UBSan) verified; libFuzzer front-end present, `#ifdef CRUCIBLE_LIBFUZZER`, built in devcontainer (no clang in bare workspace). |
 | `drivers/go/` | built | Replay driver + native `FuzzProbe`; builds against vendored corelib-go via `replace`. |
 | `oracle/canonical.md` | built | v2 canonical form: round-trip re-encoding, three-valued verdict `A`/`I`/`R` (§7). |
-| `oracle/materialized.md` | built | Second canonical form (element-access oracle): `SOFAB_MATERIALIZE=1` makes a driver emit a full walk of the **decoded value** (every field + array element, floats as raw bits, `len:hex` strings/blobs) as its `A` payload — targeting the round-trip form's recorded blind spot (a decode that differs only where the sparse wire elides). Reuses the comparator (`accept_value` axis) unchanged. Grammar + wiring spec; **all 12 drivers implement it**. |
+| `oracle/materialized.md` | built | Second canonical form (element-access oracle): `SOFAB_MATERIALIZE=1` makes a driver emit a full walk of the **decoded value** (every field + array element, floats as raw bits, `len:hex` strings/blobs) as its `A` payload — targeting the round-trip form's recorded blind spot (a decode that differs only where the sparse wire elides). Reuses the comparator (`accept_value` axis) unchanged. Grammar + wiring spec; **all 13 drivers implement it**. |
 | `engine/structured/schema.py` | built | The **generated schema-type table**: parses `schema/probe.sofab.yaml` into a language-neutral typed field tree (kinds `u`/`s`/`fp32`/`fp64`/`string`/`blob`/`struct`/`array`/`wrapper`, ids, counts, nesting) — the schema-type info a value walk needs but the wire does not carry (the C driver gets it free from sofabgen's object descriptor; this derives it for everyone else from the one schema source). `--json` writes the artifact. |
 | `oracle/materialized-schema.json` | built | The committed artifact `schema.py` emits — the schema-type table drivers/tools consume without re-parsing YAML. `materialize.sh` regenerates + `cmp`-checks it each run so it cannot drift from the schema. |
 | `engine/structured/materialize.py` | built | The materialized-form **reference / ground truth**, now **driven by the generated schema descriptor** (`schema.py`) — no hardcoded message shape; only gen.py's value-vector key convention remains. Models `decode(encode(msg))` (fill-to-N arrays, wrapper grown to max-index+1, scalar ±0.0 normalized). Every driver's `SOFAB_MATERIALIZE` output must equal it byte-for-byte. `--driver PATH` runs a driver binary over `corpus/structured` and diffs it (the per-driver acceptance gate); `--check DIR` compares a dump dir. |
-| `scripts/materialize.sh` | built | Runs the materialized differential over the **full 12-driver roster** with `SOFAB_MATERIALIZE=1`, over `corpus/structured` — **75×12 → 0 divergences** (agreement) **+ a C-anchor conformance check** vs the reference (a family-wide-wrong dump is agreement-green, conformance-red). **A standing CI gate** (`replay.yml`); exports `SOFAB_MATERIALIZE_SCHEMA` for the descriptor-driven drivers. **Every walker is schema-agnostic:** C (sofabgen object descriptor); **go/ts/java/cs/python** consume the generated `materialized-schema.json` at runtime (reflection); **rust/cpp/zig** — no runtime reflection — instead **generate their walker source at build time** from the descriptor (`drivers/<lang>/materialize_gen.py`, run by `build.sh`, unrolling the descriptor into straight-line access code). A schema change reflows to all 12 with zero hand-editing. |
+| `scripts/materialize.sh` | built | Runs the materialized differential over the **full 13-driver roster** with `SOFAB_MATERIALIZE=1`, over `corpus/structured` — **75×13 → 0 divergences** (agreement) **+ a C-anchor conformance check** vs the reference (a family-wide-wrong dump is agreement-green, conformance-red). **A standing CI gate** (`replay.yml`); exports `SOFAB_MATERIALIZE_SCHEMA` for the descriptor-driven drivers. **Every walker is schema-agnostic:** C (sofabgen object descriptor); **go/ts/java/cs/python** consume the generated `materialized-schema.json` at runtime (reflection); **rust/cpp/zig** — no runtime reflection — instead **generate their walker source at build time** from the descriptor (`drivers/<lang>/materialize_gen.py`, run by `build.sh`, unrolling the descriptor into straight-line access code). A schema change reflows to all 13 with zero hand-editing. |
 | `oracle/comparator.py` | built | N-way canonical diff, policy-aware, no external deps; parses `A`/`I`/`R`. **Crash- and hang-isolating:** a per-driver wall-clock budget (`--timeout`, default `max(30s, 0.25s × corpus)`; `TIMEOUT=` env via the scripts) via stdout-to-tempfile, so an adversarial input that hangs a driver is localized + reported `[TIMEOUT]` (a DoS finding), not a wedged run. `read_corpus` skips `*.md` + dotfiles so a corpus dir can carry a README (inputs can't be selected by extension — libFuzzer names files by content hash); this also stops the `.gitkeep` in the gitignored corpora being fed as an empty message. |
 | `oracle/policy.yaml` | built | Permissive Phase-1 policy (verdict/accept_value hard, incomplete_value/reject_class soft). |
 | `scripts/run.sh` | built | Build all drivers → differential compare over a corpus (crash-isolating). |
-| `scripts/run-union.sh` | built | Union suite: `SCHEMA=schema/probe-union.sofab.yaml CORPUS=corpus/union run.sh` — points the differential + round-trip oracles at a `probe` message carrying a 4-variant union. Drivers are schema-agnostic (round-trip form), so only the generated types change; `drivers/c/build.sh` made SCHEMA-aware to match the other 8. 11 seeds × 12 drivers, 0 divergences — the `union` wire feature `probe` lacked, now covered. |
+| `scripts/run-union.sh` | built | Union suite: `SCHEMA=schema/probe-union.sofab.yaml CORPUS=corpus/union run.sh` — points the differential + round-trip oracles at a `probe` message carrying a 4-variant union. Drivers are schema-agnostic (round-trip form), so only the generated types change; `drivers/c/build.sh` made SCHEMA-aware to match the other 8. 11 seeds × 13 drivers, 0 divergences — the `union` wire feature `probe` lacked, now covered. |
 | `scripts/run-limits.sh` | built | Limit-mode loop (crucible#10 / generator#102): heap roster built from `schema/probe-dyn.sofab.yaml` with identical `max_dyn_*` caps, compared per dimension over `corpus/limits/{arr,str,blb}`. Full heap roster (incl. cpp) in all three dimensions since sofabgen 0.16.1 fixed G-0009. |
 | `scripts/fuzz.sh` | built | The C pacemaker: build the libFuzzer target (clang) + run + grow corpus/interesting. |
 | `oracle/cluster.py` | built | Groups divergences by camp-partition into root causes (`CLUSTER=1 ./scripts/run.sh`); 256 divergences → 47 clusters. |
 | C pacemaker (libFuzzer) | built | `drivers/c/driver.c` `CRUCIBLE_LIBFUZZER` path; ~41k exec/s; grows the corpus fed to the differential loop. Coverage-guided but NOT yet structure-aware. |
 | `corpus/seeds/` | built | 6 agreeing seeds (the regression gate); green across all 4 drivers. |
-| `corpus/regression/` | built | **Resolved-findings gate** (44 inputs × 12 drivers, 0 divergences): the reproducer of every fixed finding (F-0001/02/03/04/05/06/07/09/10/11/13/14/15/16/17), so a bump that reintroduces one fails CI instead of waiting to be noticed in a manual re-run. Admits an input only when it is green **for the reason the finding is about** — reproducers that also trip an open axis are excluded and listed with their reason in `corpus/regression/README.md`. Runs via the documented `CORPUS=` mechanism (no new script). |
+| `corpus/regression/` | built | **Resolved-findings gate** (73 inputs × 13 drivers, 0 divergences): the reproducer of every fixed finding (F-0001/02/03/04/05/06/07/09/10/11/13/14/15/16/17), so a bump that reintroduces one fails CI instead of waiting to be noticed in a manual re-run. Admits an input only when it is green **for the reason the finding is about** — reproducers that also trip an open axis are excluded and listed with their reason in `corpus/regression/README.md`. Runs via the documented `CORPUS=` mechanism (no new script). |
 | `engine/structured/isolates.py` | built | Minimal isolates for findings whose *original* reproducer is contaminated (tests two axes at once, so it can never be gate-green). Imports wire primitives from `gen.py` — the one reference encoder — so an encoding change cannot desync them. Emits `corpus/regression/F0003_overcount_clean.bin` (green) and the F-0013 reproducers (diverging → `findings/`). Each isolate declares its own destination. |
 | `findings/`, `results/FINDINGS.md` | built | F-0001 recorded (see below). |
 | `docs/SOFABGEN.md` | built | Generated-code weakness log (G-0001..G-0007; all fixed in sofabgen 0.15.1). |
@@ -57,6 +57,7 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `drivers/ts/` | built | Node replay driver, esbuild-bundled from corelib-ts source; fallible decode (try/catch); Jazzer.js coverage target. |
 | `drivers/cs/` | built | .NET replay driver referencing corelib-cs's built DLL; fallible decode (try/catch); SharpFuzz coverage target. |
 | `drivers/zig/` | built | Zig 0.16 replay driver, corelib wired as the `sofab` module. Consumes corelib-zig's finish-less `feed→Status` decode via the generated `DecodeError!Probe` (`.incomplete` → `error.IncompleteMessage` → `I`); coverage target is a placeholder (Zig fuzzing immature). Rebuilt green on sofabgen 0.16.2 (G-0010 fixed). |
+| `drivers/dart/` | built | Dart replay driver against corelib-dart (crucible#77 / generator#211, the 10th target). **AOT** (`dart compile exe`, native ELF — never `dart run`/JIT); a pub path-dependency wires the vendored corelib. Status-returning single-pass decode: the generated `Probe.tryDecode(Uint8List, Probe) → DecodeStatus` maps 1:1 to `A`/`I`/`R`/`L` (`limitExceeded`→`L`), with schema-bound violations folded into `invalid` via the generated sticky flag (the Rust/Zig model). Heap profile (growable `List`) → in the limit-mode roster. Materialize walker is **build-time generated** (`materialize_gen.py`, like rust/cpp/zig — no `dart:mirrors` under AOT). Coverage front-end is a placeholder (`fuzz.dart`, not built by `build.sh`) — Dart has no first-party libFuzzer. |
 | `engine/mutator/` (structure-aware) | built | `sofab_mutator.{h,c}` — grammar-aware libFuzzer custom mutator (varint truncate/extend/flip/maxout, header type/id, fixlen length, array count, sequence open/close, invalid-UTF-8, fp NaN/inf, field dup). Wired via `LLVMFuzzerCustomMutator` in `drivers/c/driver.c` (~37% byte-mutator mix-in) + `scripts/fuzz.sh`. Pure/testable; `test_mutator.c` soak = 336k mutations, 0 OOB under ASan, deterministic. See DESIGN.md "As built". |
 | Round-trip oracle | built | Folded into the canonical form (re-encoding) — found F-0002. |
 | Cross-encode oracle | built | `engine/structured/gen.py` emits valid value-rich messages → `corpus/structured/` (green gate); `scripts/cross-encode.sh` runs the round-trip+decode-agreement oracle over them. Realizes cross-encode via the byte-canonical invariant (all encoders identical → agreement = "encode in A decode in B"). Found F-0009 (blob, slice 1) + F-0010 (under-count array, slice 2) on first runs. Slice 2 covers the numeric arrays (id 100) + string_array (id 200) value space; green gate = 69 inputs. |
@@ -80,7 +81,7 @@ Per `oracle/canonical.md`: each driver emits `A <hex(encode(decode(input)))>` on
 accept, `R <class>` on reject — the decoded value re-encoded with the corelib's
 own sparse-canonical encoder, hex-printed. This makes every driver
 **schema-agnostic** (no per-field code; scaling the schema needs zero driver
-changes) and folds in the round-trip oracle. Verified: all 12 drivers emit
+changes) and folds in the round-trip oracle. Verified: all 13 drivers emit
 byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03f1a126869`).
 
 **v2 (added, built) — materialized value form** (`oracle/materialized.md`,
@@ -99,10 +100,10 @@ generic via C's object descriptor, a schema-type table elsewhere. **Measured cav
 *numeric* array to its full N in memory (the wire count M is reconstructed only at
 encode time by the trim heuristic), so this form is uniform there today; its live
 signal is the **wrapper arrays** (`string_array`/`blob_array`, genuinely dynamic),
-**element-level fidelity**, and **regression-proofing**. **All 12 drivers** implement
+**element-level fidelity**, and **regression-proofing**. **All 13 drivers** implement
 it, **all schema-agnostic** — C via the object descriptor, go/ts/java/cs/python by
 consuming the generated `materialized-schema.json` at runtime, rust/cpp/zig by
-generating their walker source from the descriptor at build time: **75×12 → 0
+generating their walker source from the descriptor at build time: **75×13 → 0
 divergences**, all matching the
 `engine/structured/materialize.py` reference byte-for-byte, with the default round-trip
 path unchanged. One surfaced nuance: the **Go** corelib leaves an absent numeric array
@@ -253,6 +254,28 @@ has no `LimitExceeded`).
   Coverage front-end is unresolved (PLAN §14): Zig 0.16 exposes no stable
   `std.testing.fuzz`, so `drivers/zig/fuzz.zig` is a placeholder with decode smoke
   tests; coverage-guided fuzzing will likely need libFuzzer via C interop.
+- **dart** — `drivers/dart/driver.dart` AOT-compiled with `dart compile exe`
+  (native ELF; **never** `dart run`/JIT). `build.sh` generates `message.dart`
+  (`sofabgen --lang dart`), writes a minimal `pubspec.yaml` with a **path
+  dependency** on `vendor/corelib-dart` (the corelib's dev-deps are not fetched
+  transitively, so `dart pub get` needs nothing hosted), then compiles. **Fallible,
+  status-returning single-pass decode:** `Probe.tryDecode(Uint8List, Probe)` returns
+  `sofab.DecodeStatus` — `complete`→`A <hex>`, `incomplete`→`I`, `invalid`→`R
+  invalid_msg`, `limitExceeded`→`L` — with schema-bound violations (over-count /
+  over-index / over-maxlen) folded into `invalid` by the generated sticky `_Dec.inv`
+  flag (the Rust/Zig model). Reject class is coarse (the status carries no finer
+  code; soft axis). Dart is a **heap** profile (growable `List<...>`), so it joins the
+  limit-mode roster and its generated `tryDecode` bakes the `max_dyn_*` caps into a
+  `DecoderLimits`. The driver reads the whole framed stdin stream then emits all
+  lines (the comparator writes-all-then-reads; the TS pattern). **Materialize
+  (`SOFAB_MATERIALIZE=1`)** uses a **build-time-generated walker**
+  (`materialize_gen.py` → `materialize_gen.dart`, regenerated every build) because
+  AOT Dart has no `dart:mirrors` — the rust/cpp/zig camp. Dart type care: fp32 stored
+  as a 64-bit `double` is repacked to the 32-bit pattern, fp64 printed as two uint32
+  halves, and **u64** (signed 64-bit `int`) is reinterpreted unsigned via `BigInt`.
+  Coverage engine is a placeholder (`fuzz.dart`, not built by `build.sh`): Dart has no
+  first-party libFuzzer, and the intended dart:ffi + C-libFuzzer path (like Zig) is
+  unresolved (PLAN §14).
 
 ## Key decisions (decision log)
 
@@ -355,6 +378,30 @@ has no `LimitExceeded`).
   excluded reproducer is visibly deferred rather than silently forgotten.
 
 ## Deviations from PLAN
+
+### 2026-07-22b — Dart added as the 11th corelib / 13th driver (roster 12→13)
+- **PLAN says:** `drivers/` lists c/rust/go/java/python + cpp/cs/ts/zig (PLAN §11);
+  onboarding a new language follows the §13 checklist.
+- **Change:** `drivers/dart/` added (crucible#77 / generator#211, sofabgen's 10th
+  language target). Roster is now **13 drivers / 11 corelibs**. Registered in every
+  suite: `run.sh` (seeds/regression/cross-encode/union), `run-limits.sh` (heap
+  roster), `engine/structured/sweep_run.py` (structural sweep), `materialize.sh`
+  (element-access). No PLAN revision — this is the §13 checklist executed; PLAN's
+  "N drivers" abstraction is unchanged.
+- **Why it slots in cleanly:** the schema-agnostic round-trip form means the replay
+  driver needs zero per-field code; the generated `Probe.tryDecode → DecodeStatus`
+  maps 1:1 to `A`/`I`/`R`/`L`. Only the materialized oracle needs schema knowledge,
+  supplied by a build-time-generated walker (AOT Dart has no `dart:mirrors`).
+- **AOT, never JIT** — the suite runs the native `dart compile exe` binary, not
+  `dart run`/VM (operator constraint).
+- **CI:** the gates invoke the scripts (which carry Dart), so **no per-gate edit**;
+  the CI image already installs the Dart SDK (`.devcontainer/Dockerfile`), so it only
+  needs the standing one-time `image.yml` rebuild to carry it into `replay`/`nightly`.
+- **Result:** all suites green — seeds 6×13, regression 73×13, cross-encode 75×13,
+  union 11×13, limit mode (arr/str/blb) 10-heap-driver roster, structural sweep
+  (5 blocking axes), materialized 75×13. See `docs/dart-integration-log.md`. No
+  Dart-attributable finding. (One Crucible-side walker bug found+fixed during
+  Stage 4; one toolchain-bump side-result: F-0025 now resolved on the CI build.)
 
 ### 2026-07-22a — bootstrap installs the latest sofabgen *CI build*, not the latest *release*
 - **PLAN/prior as-built:** `scripts/bootstrap.sh` installed the latest published

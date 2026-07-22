@@ -170,3 +170,60 @@ C-interop plan as Zig, and like Zig's it is **unresolved** (PLAN §14).
   native end-to-end — no VM/JIT, per the operator constraint.
 - `build.sh` has zero references to `fuzz.dart` (builds only the replay driver). No
   finding.
+
+---
+
+## Stage 6 — CI + docs
+
+**Goal:** make the roster change durable and honest.
+
+### CI — no per-gate edit needed
+`replay.yml` and `nightly.yml` invoke the **scripts** (`run.sh`, `cross-encode.sh`,
+`run-union.sh`, `run-limits.sh`, `sweep.sh`, `materialize.sh`), all of which now build
+and register Dart — so Dart flows into every CI gate automatically. The only
+requirement is the Dart SDK in the CI container image; `.devcontainer/Dockerfile`
+already installs it (commit `9f85232`), so the standing one-time `image.yml` rebuild
+carries it into `crucible-ci:latest`. Bootstrap already lists `corelib-dart` and pulls
+the CI sofabgen build (needs `SOFABGEN_TOKEN`, already wired). Updated the stale "12
+drivers" line in `nightly.yml`.
+
+### Docs
+- `docs/ARCHITECTURE.md` — header 12→13 / 10→11 + Dart; `drivers/dart/` component-table
+  row; a full **per-language dart driver note**; present-tense count bumps
+  (materialize/union/regression rows); **Deviation 2026-07-22b**.
+- `docs/STATUS.md` — Current-state bullet refreshed to 13/11 on the CI build; a
+  **Twenty-fifth change** entry (this integration + the F-0025 side-result).
+- `README.md`, `CLAUDE.md` — driver/corelib counts and the sample output → 13 (+dart).
+- Historical/dated narrative (past first-run descriptions, resolved-deviation notes) is
+  **left intact** — those record what was true then; only present-tense capability
+  claims were updated (prime directive: keep the as-built doc honest without rewriting
+  history).
+
+### Final consolidated verification (13 drivers)
+| suite | result |
+|---|---|
+| seeds (`run.sh`) | 6×13, 0 div |
+| regression gate | 73×13, 0 div (4 expected soft `incomplete_value`) |
+| cross-encode | 75×13, 0 div |
+| union | 11×13, 0 div |
+| limit mode | arr 3×10 / str 2×10 / blb 2×10, 0 div |
+| structural sweep | 5 blocking axes 0/0; wiretype now green (F-0025) |
+| materialized | 75×13, 0 div + C-anchor 0/75 |
+
+---
+
+## Summary
+
+**corelib-dart is integrated into every Crucible feature.** Roster: **13 drivers / 11
+corelibs**. All suites green; Dart is AOT end-to-end (`dart compile exe`), never JIT.
+
+- **No Dart-attributable finding** — the new corelib + generated Dart backend agree
+  with the family on every suite, including the §7.3/§7.4 structural-skip and the
+  INVALID-precedence edges the issue flagged.
+- **One Crucible-side bug** (my materialize walker's missing `u`/`s` type tag), found
+  and fixed in Stage 4 by the C-anchor conformance gate.
+- **One toolchain side-result:** F-0025 (generator#193) is resolved on the current
+  sofabgen CI build — verified, documented, recommended for a separate promotion
+  follow-up (not bundled here).
+
+Per-stage commits on branch `dart-integration`.

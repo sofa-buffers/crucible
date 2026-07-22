@@ -36,7 +36,7 @@ coverage) instead of optimized, which is why it lives in its own repo.
    seed / structured / mutated bytes
                  │
                  ▼   fan out the SAME bytes to every implementation
-   ┌────────┬────────┬────────┬───────┬──────── … 12 drivers
+   ┌────────┬────────┬────────┬───────┬──────── … 13 drivers
    ▼        ▼        ▼        ▼       ▼
  C(san)   Rust      Go      Java   Python   …        each: decode → re-encode
    │        │        │        │       │                    → one canonical line
@@ -104,8 +104,8 @@ everyone else's.
 `run.sh` prints, per driver, its built binary, then the differential result:
 
 ```
-6 inputs × 12 drivers (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython,
-  py-pure, java, typescript, csharp, zig): 0 divergence(s) (0 crash, 0 timeout), 0 warning(s)
+6 inputs × 13 drivers (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython,
+  py-pure, java, typescript, csharp, zig, dart): 0 divergence(s) (0 crash, 0 timeout), 0 warning(s)
 ```
 
 No toolchains in the bare workspace — everything runs inside
@@ -115,7 +115,7 @@ toolchain.
 
 ## Test suites
 
-All suites share the same 12 drivers and the same comparator; they differ in what
+All suites share the same 13 drivers and the same comparator; they differ in what
 they feed and how they build. Each is one command.
 
 | suite | command | what it hunts |
@@ -175,7 +175,7 @@ drivers are schema-agnostic, no driver code changes — they are just rebuilt ag
 the union schema.
 
 ```sh
-./scripts/run-union.sh                 # build all 12 drivers on the union schema, differential over corpus/union
+./scripts/run-union.sh                 # build all 13 drivers on the union schema, differential over corpus/union
 ```
 
 It exercises each variant, the tag/​trailer around the union, and the union failure
@@ -208,7 +208,7 @@ crashes land in `corpus/crashes/`.
 ```sh
 ./scripts/fuzz.sh                              # C pacemaker; grow corpus/interesting
 FUZZ_TIME=300 ./scripts/fuzz.sh                # wall-clock budget in seconds (default 120)
-CORPUS=corpus/interesting ./scripts/run.sh     # replay what it found through all 12 drivers
+CORPUS=corpus/interesting ./scripts/run.sh     # replay what it found through all 13 drivers
 ```
 
 The mutator is a pure, standalone-testable unit; its safety/determinism soak
@@ -232,7 +232,7 @@ touched.
 
 Sweeps run **two oracles**, the second of which the differential cannot provide:
 
-- **agreement** — all 12 drivers emit the same canonical line (the usual oracle);
+- **agreement** — all 13 drivers emit the same canonical line (the usual oracle);
 - **conformance** — the agreed behaviour matches what the spec *requires*. A vector
   carries its expected outcome (`reject` / `accept` / …), so a **family-wide wrong**
   answer — all 12 uniformly accepting what the spec says must be rejected — is
@@ -312,7 +312,7 @@ catalog and the acceptance test that verifies each fix when it lands.
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | living as-built architecture + deviations from PLAN |
 | [`docs/SOFABGEN.md`](docs/SOFABGEN.md) | generated-code weakness log (codegen defects → the generator) |
 | `schema/` | the fuzzed message(s), single source of truth |
-| `drivers/<lang>/` | per-language replay driver + coverage front-end (12 drivers) |
+| `drivers/<lang>/` | per-language replay driver + coverage front-end (13 drivers) |
 | `drivers/common/` | the driver contract |
 | `oracle/` | the two canonical forms (round-trip `canonical.md` + materialized/element-access `materialized.md` and its generated `materialized-schema.json`), comparator, clusterer, allowed-divergence policy |
 | `engine/mutator/` | structure-aware TLV/varint grammar mutator (+ standalone soak test) |

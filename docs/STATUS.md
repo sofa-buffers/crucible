@@ -41,10 +41,12 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   in `findings/`).
 
 ## Current state
-- **Phases 1–3 largely done:** 12 drivers / 10 corelibs green across all five suites on
-  **sofabgen 0.19.4** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython, py-pure,
-  java, typescript, csharp, zig). `./scripts/bootstrap.sh` keeps sofabgen at the **latest
-  release** (sha256-verified) and the corelibs at `origin/main`.
+- **Phases 1–3 largely done:** 13 drivers / 11 corelibs green across all suites on the
+  latest green **sofabgen CI build** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp,
+  py-cython, py-pure, java, typescript, csharp, zig, **dart**). `./scripts/bootstrap.sh`
+  keeps sofabgen at the latest green CI build (sha256-verified) and the corelibs at
+  `origin/main`. **Dart** (crucible#77) was integrated 2026-07-22 — see the Twenty-fifth
+  change below and `docs/dart-integration-log.md`.
 - **Structural sweep framework** (`engine/structured/sweep_*.py`, PLAN §6): a sweep enumerates
   one normative rule across **every** schema position and checks two oracles (agreement +
   conformance). **Six axes** wired via `sweep_run.py` / `scripts/sweep.sh` — repeated-id (§7.4),
@@ -656,6 +658,34 @@ field + array element explicit, floats as raw bit patterns, `len:hex` strings/bl
   `replay.yml` sequence before merge.
 
 Net open unchanged: **F-0025** (generator#193) + **F-0026** (corelib-c-cpp#106); **F-0018** by-design.
+
+**Twenty-fifth change 2026-07-22 — corelib-dart integrated into every suite; roster 12→13 drivers / 10→11 corelibs (branch `dart-integration`).**
+Wired sofabgen's 10th language target (crucible#77 / generator#211) into the whole harness on the
+latest green sofabgen CI build (`0.0.0-20260722065611-f61a29b31c01`). New `drivers/dart/`
+(`driver.dart` + `build.sh` + `meta` + `materialize_gen.py` + `fuzz.dart`), **AOT** end-to-end
+(`dart compile exe`, native ELF — never `dart run`/JIT). Registered in `run.sh` (seeds/regression/
+cross-encode/union), `run-limits.sh` (heap roster), `sweep_run.py` (structural sweep), `materialize.sh`
+(element-access). The generated `Probe.tryDecode → DecodeStatus` maps 1:1 to `A`/`I`/`R`/`L` (sticky
+`_Dec.inv` folds schema-bound violations into INVALID, the Rust/Zig model), so the schema-agnostic
+round-trip form needed **zero per-field Dart code**. Full log: `docs/dart-integration-log.md`.
+- ✅ **Every suite green with 13 drivers:** seeds 6×13, regression 73×13, cross-encode 75×13, union
+  11×13, limit mode (arr/str/blb) 10-heap-driver roster, structural sweep (5 blocking axes),
+  materialized 75×13 + C-anchor conformance 0/75. Dart is byte-identical to Go on every seed.
+- **Dart-specific care (all verified):** u64 printed unsigned via `BigInt` (`02_full` → `u18446744073709551615`,
+  matches C), fp32 repacked to the 32-bit pattern, fp64 as two uint32 halves; heap profile → bakes
+  `max_dyn_*` into `DecoderLimits` and emits `L` on over-cap (`over_arr → L`); §7.3/§7.4 dispatch-by-type
+  skip matches the family (no desync). No Dart-attributable finding.
+- 🐞 One **Crucible-side** walker bug found + fixed in Stage 4 (the `u`/`s` materialize leaves lacked
+  their type-tag prefix — `0:0` vs C's `0:u0`), caught by the C-anchor conformance gate. Not a
+  corelib/generator finding.
+- 🔎 **Side-result (toolchain, not Dart): F-0025 is resolved on this CI build.** The wiretype (§7.3)
+  sweep axis went **green** (was report-only); both F-0025 reproducers now show all 13 drivers agreeing
+  (the fp array at a scalar-fp id is skipped, including the formerly-storing rust/java/csharp/zig) —
+  generator#193 landed in the CI build post-0.19.4. **Left to a separate follow-up** to promote the
+  wiretype axis to blocking, mark F-0025 resolved in `results/FINDINGS.md`, and promote its isolates
+  into `corpus/regression/` (not bundled into the Dart branch).
+- **CI:** the gates invoke the scripts (which now carry Dart), so no per-gate edit; the CI image's
+  Dockerfile already installs the Dart SDK — it needs the standing one-time `image.yml` rebuild.
 
 | finding | what | tracked in / status |
 |---|---|---|
