@@ -36,7 +36,7 @@ cp "$HERE/driver.zig" "$BUILD/src/driver.zig"
 # reshapes the walker with zero hand-editing. driver.zig @import("materialize_gen.zig")
 # resolves to this file (same $BUILD/src dir as the copied driver.zig).
 echo "==> [zig] generating materialized-value walker from descriptor" >&2
-python3 "$HERE/materialize_gen.py" "$BUILD/src/materialize_gen.zig" >&2
+python3 "$HERE/materialize_gen.py" "$BUILD/src/materialize_gen.zig" "$SCHEMA" >&2
 
 # Strict UTF-8 (MESSAGE_SPEC §8 / CORELIB_PLAN §6.4): corelib-zig's utf8.zig reads
 # `@import("build_options").strict_utf8`, a module `build.zig` supplies via

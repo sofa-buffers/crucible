@@ -63,7 +63,7 @@ cat "$HERE/driver.rs" >> "$OUT/src/main.rs"
 # descriptor — a schema change regenerates it here with no hand-editing. Runs every
 # build ($OUT is wiped above), for both variants, from the one generator.
 echo "==> [rust:$VARIANT] generating materialized walker (materialize_gen.rs)" >&2
-python3 "$HERE/materialize_gen.py" "$OUT/src/materialize_gen.rs"
+python3 "$HERE/materialize_gen.py" "$OUT/src/materialize_gen.rs" "$SCHEMA"
 
 # Point the crate at the vendored corelib (the generated Cargo.toml has a
 # ${SOFAB_RS_CORELIB} placeholder).

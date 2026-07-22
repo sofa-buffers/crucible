@@ -58,7 +58,7 @@ fi
 # descriptor — straight-line, schema-agnostic, variant-agnostic C++ that driver.cpp
 # #includes. Regenerated every build so a schema change needs zero hand-editing.
 echo "==> [cpp:$VARIANT] generating materialized walker (materialize_gen.inc)" >&2
-python3 "$HERE/materialize_gen.py" "$GEN/materialize_gen.inc" >&2
+python3 "$HERE/materialize_gen.py" "$GEN/materialize_gen.inc" "$SCHEMA" >&2
 
 SAN=""
 [ "${SANITIZE:-1}" = "1" ] && SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g"

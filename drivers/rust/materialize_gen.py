@@ -154,9 +154,28 @@ def generate(desc):
     return "\n".join(lines)
 
 
+# When the driver is built against a NON-default schema (the union suite's
+# probe-union, limit mode's probe-dyn), the materialized oracle does not apply — its
+# reference is probe-only and materialize mode is never enabled there. The walker only
+# needs to COMPILE (dead code), so emit a stub for the mismatched Probe shape instead
+# of a walker that references the default probe's fields.
+_STUB = ("// GENERATED stub — this schema is not the materialized oracle's probe.\n"
+         "#[allow(dead_code)]\n"
+         "pub fn materialize(_m: &Probe) -> String { String::new() }\n")
+
+
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.abspath(os.path.join(here, "..", ".."))
+    built = sys.argv[2] if len(sys.argv) >= 3 else None
+    if built and os.path.basename(built) != "probe.sofab.yaml":
+        src = _STUB
+        if len(sys.argv) >= 2:
+            with open(sys.argv[1], "w") as f:
+                f.write(src)
+        else:
+            sys.stdout.write(src)
+        return
     schema = os.environ.get("SOFAB_MATERIALIZE_SCHEMA") or os.path.join(
         root, "oracle", "materialized-schema.json"
     )

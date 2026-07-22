@@ -185,9 +185,21 @@ def generate(desc):
     return _PRELUDE + "\n" + "\n".join(body) + "\n"
 
 
+# A non-default schema (union suite / limit mode) does not use the materialized oracle
+# (probe-only reference; materialize mode off there). The walker only needs to compile,
+# so emit a stub for the mismatched Probe shape instead of default-probe field access.
+_STUB = ("// GENERATED stub — this schema is not the materialized oracle's probe.\n"
+         "#include <string>\n"
+         "std::string materialize(const message::Probe &m) { (void)m; return std::string(); }\n")
+
+
 def main():
-    desc, _path = _load_descriptor()
-    src = generate(desc)
+    built = sys.argv[2] if len(sys.argv) >= 3 else None
+    if built and os.path.basename(built) != "probe.sofab.yaml":
+        src = _STUB
+    else:
+        desc, _path = _load_descriptor()
+        src = generate(desc)
     if len(sys.argv) >= 2 and sys.argv[1] != "-":
         with open(sys.argv[1], "w") as f:
             f.write(src)

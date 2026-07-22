@@ -211,9 +211,20 @@ pub fn materialize(out: anytype, m: *const message.Probe) !void {{
 '''
 
 
+# A non-default schema (union suite / limit mode) does not use the materialized oracle
+# (probe-only reference; materialize mode off there). The walker only needs to compile,
+# so emit a stub for the mismatched Probe shape instead of default-probe field access.
+_STUB = ('const message = @import("message.zig");\n'
+         "pub fn materialize(out: anytype, m: *const message.Probe) !void { _ = out; _ = m; }\n")
+
+
 def main():
-    desc, path = _load_descriptor()
-    src = generate(desc)
+    built = sys.argv[2] if len(sys.argv) >= 3 else None
+    if built and os.path.basename(built) != "probe.sofab.yaml":
+        src, path = _STUB, "stub (non-probe schema)"
+    else:
+        desc, path = _load_descriptor()
+        src = generate(desc)
     if len(sys.argv) >= 2:
         out_path = sys.argv[1]
     else:
