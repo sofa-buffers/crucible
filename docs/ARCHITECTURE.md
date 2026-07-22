@@ -379,6 +379,32 @@ has no `LimitExceeded`).
 
 ## Deviations from PLAN
 
+### 2026-07-22d — non-minimal varint sweep axis added (WP-03; sweep gate 6→7 axes)
+- **PLAN says:** the sweep family (PLAN §6) enumerates each normative rule across every
+  schema position; a divergence is a finding, a spec-silent case is a spec hole (§8).
+- **Change (docs/improvements.md WP-03):** a seventh sweep axis
+  `engine/structured/sweep_varint.py` (§2 varint canonicality). A varint admits
+  non-minimal forms (redundant continuation bytes adding zero high bits); `gen.varint`
+  emits only minimal ones, so no corpus reached this class (F-0016 covered only the
+  >64-bit overflow). The axis places a non-minimal varint at every varint **role**
+  (field-id header, fixlen length word, array count, array element, and inside a skipped
+  field) with minimal-accept controls and an overflow-reject contrast. Registered in
+  `sweep_run.py` `AXES`, blocking in `scripts/sweep.sh`, gated by `replay.yml` (which runs
+  `sweep.sh`). `gen.varint` is left untouched — it is the canonical reference encoder;
+  the non-minimal forms are hand-built in the axis.
+- **Blocking but agreement-only:** the spec is **silent** on a non-minimal-but-≤64-bit
+  varint (CORELIB_PLAN §4.1 guards only overflow; MESSAGE_SPEC §2 constrains the encoder,
+  not the decoder). Per ground rule 6 the 18 non-minimal vectors carry `expect="agree"` —
+  the runner asserts only that all 13 agree (and, for free, that the round-trip normalizes
+  them to the one canonical form), **not** accept-vs-reject conformance — until a clause
+  lands. Filed [documentation#24](https://github.com/sofa-buffers/documentation/issues/24)
+  (spec-proposals Proposal 5) proposing the observed consensus (accept + normalize; reject
+  overflow). On adoption the vectors tighten to `expect="accept"` and the axis becomes a
+  conformance gate.
+- **Result:** green — all 13 accept every non-minimal varint and re-encode identically to
+  the minimal canonical form; all 13 reject the overflow. 23 vectors, 0 divergences. No
+  finding.
+
 ### 2026-07-22b — Dart added as the 11th corelib / 13th driver (roster 12→13)
 - **PLAN says:** `drivers/` lists c/rust/go/java/python + cpp/cs/ts/zig (PLAN §11);
   onboarding a new language follows the §13 checklist.

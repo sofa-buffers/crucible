@@ -28,5 +28,5 @@ SWEEP="$ROOT/engine/structured/sweep_run.py"
 echo "==> [sweep] building the 13 drivers against probe (seed differential)" >&2
 CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
 
-echo "==> [sweep] blocking axes: repeated-id (§7.4) + over-bound (§7.1) + reserved-subtype (§4.6) + truncation (§7) + malform×truncate (§5.2) + wiretype (§7.3)" >&2
-python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_truncation sweep_malform_truncate wiretype_sweep
+echo "==> [sweep] blocking axes: repeated-id (§7.4) + over-bound (§7.1) + reserved-subtype (§4.6) + truncation (§7) + malform×truncate (§5.2) + wiretype (§7.3) + varint (§2 canonicality, agreement-only)" >&2
+python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_truncation sweep_malform_truncate wiretype_sweep sweep_varint

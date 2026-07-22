@@ -456,3 +456,44 @@ leaves the **API shape** to the maintainers: a fourth decode outcome, or a termi
 carrying the new `LimitExceeded` code. Crucible already models it as a distinct fourth
 verdict `L` (`oracle/canonical.md`), which is the fourth-outcome shape.
 
+---
+
+## Proposal 5 — §2/§4.1: a non-minimal (but ≤64-bit) varint is accepted and normalized
+
+**Filed:** [documentation#24](https://github.com/sofa-buffers/documentation/issues/24).
+
+**Motivated by:** the **WP-03 non-minimal varint sweep** (`engine/structured/sweep_varint.py`).
+The spec is **silent** on a varint that carries redundant continuation bytes but still
+decodes to a value ≤ 64 bits (e.g. value `5` as `85 00` instead of `05`). CORELIB_PLAN §4.1
+guards only the **overflow** case — "overlong / overflowing … more bytes than a 64-bit value
+can hold" (that is F-0016, resolved: >64-bit → INVALID). MESSAGE_SPEC §2 makes the *encoder*
+canonical ("exactly one canonical encoding") but states **no decoder rule** for a non-minimal
+input, and §3 (:193) establishes the family pattern in the neighbouring case — a decoder
+*accepts* a non-canonical form and re-encodes it canonically.
+
+**De-facto consensus (already unanimous — no divergence).** The sweep places a non-minimal
+varint at every varint role (field-id header, fixlen length word, array count, array element,
+and inside a skipped field), padded +1/+3 bytes and up to the 10-byte ≤64-bit maximum. **All
+13 drivers accept every one and re-encode to the identical minimal canonical form** (verified
+2026-07-22; agreement-only, 0 divergences), and **all 13 reject** the 11-byte >64-bit overflow
+contrast. So the family already agrees; this clause records the rule the implementations
+implement, removing the ambiguity before a future codegen bump can split it (the F-0015 order:
+hole → proposal → adoption → verify → promote conformance).
+
+### Proposed clause (add to §2, or CORELIB_PLAN §4.1)
+
+> **§2.x — Varint minimality on decode (normative).** An encoder **MUST** emit each varint in
+> its minimal form (no continuation byte that contributes only zero high bits) — this follows
+> from the single-canonical-encoding rule (§2). A **decoder MUST accept** a non-minimal varint
+> whose decoded value fits the 64-bit value range, decode it to that value, and — because the
+> re-encoding is canonical — emit it in minimal form on any re-encode. A non-minimal encoding
+> is therefore **not** `INVALID`; it is normalized away, exactly as a non-canonical
+> trailing-default array run is (§3). A varint whose encoding **exceeds** the 64-bit range
+> (more 7-bit groups than a 64-bit value can hold) remains **`INVALID`** (CORELIB_PLAN §4.1).
+
+**Validates (no change required):** all 13 drivers — they already accept-and-normalize and
+reject overflow. **Requires to change:** none today. The value of adopting it is a *standing*
+guarantee: the Crucible axis is blocking **agreement-only** until this clause lands, at which
+point its 18 non-minimal vectors tighten from `expect="agree"` to `expect="accept"` (full
+accept-and-normalize conformance) and the axis becomes a conformance gate.
+
