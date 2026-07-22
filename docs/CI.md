@@ -6,8 +6,8 @@ as the corelibs churn. See PLAN §10/§12.
 
 | workflow | trigger | blocking? | what it does |
 |---|---|---|---|
-| [`image.yml`](../.github/workflows/image.yml) | `.devcontainer/Dockerfile` change · manual | — | build the 12-toolchain image, push to GHCR |
-| [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | build all drivers, run the five **green** gates |
+| [`image.yml`](../.github/workflows/image.yml) | `.devcontainer/Dockerfile` change · manual | — | build the 13-toolchain image (incl. the Dart SDK), push to GHCR |
+| [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | build all drivers, run the seven **green** gates |
 | [`nightly.yml`](../.github/workflows/nightly.yml) | 03:00 UTC daily · manual | no | fuzz → grow corpus → cluster → upload artifacts |
 
 ## The image (`image.yml`) — the linchpin
@@ -57,7 +57,7 @@ REGEN=0 ./scripts/cross-encode.sh         # cross-encode / structured    (corpus
 ## The nightly (`nightly.yml`) — continuous discovery, non-blocking
 
 The C pacemaker (libFuzzer + the structure-aware mutator, `engine/mutator/`) grows
-`corpus/interesting`; that grown corpus is replayed through all 12 drivers and
+`corpus/interesting`; that grown corpus is replayed through all 13 drivers and
 auto-clustered by root cause. Crashes, the interesting corpus, and
 `results/CLUSTERS.md` are uploaded as artifacts. The corpus is `actions/cache`d so
 coverage **compounds** night over night.
@@ -68,9 +68,9 @@ step). `FUZZ_TIME` (default 1800s) is overridable via manual dispatch.
 
 ## Follow-ups
 
-- **Build reuse:** `replay` currently runs the five gates (seeds / regression /
-  structured via `cross-encode.sh` / union / limits) as separate steps, rebuilding
-  all 12 drivers each time — so the gate pays the build 5×. A build-once →
+- **Build reuse:** `replay` currently runs the seven gates (seeds / regression /
+  structured via `cross-encode.sh` / union / limits / structural sweep / materialized)
+  as separate steps, rebuilding all 13 drivers each time — so the gate pays the build 7×. A build-once →
   compare-many-corpora mode would cut it to one build.
 - **Cross-repo auto-annotation:** have `nightly` open/annotate issues on the owning
   corelib/generator repos (needs a PAT with `issues:write`), instead of only

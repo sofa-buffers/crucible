@@ -9,8 +9,8 @@
 
 **Differential fuzzing for the SofaBuffers wire format.** SofaBuffers ships one
 wire format implemented independently in many languages (`corelib-c-cpp`, `-cpp`,
-`-cs`, `-go`, `-java`, `-py`, `-rs`, `-rs-no-std`, `-ts`, `-zig` — ten corelibs, and
-`c-cpp` backs two drivers: its C object API and its C++ wrapper). Independent
+`-cs`, `-go`, `-java`, `-py`, `-rs`, `-rs-no-std`, `-ts`, `-zig`, `-dart` — eleven
+corelibs, and `c-cpp` backs two drivers: its C object API and its C++ wrapper). Independent
 implementations of one format **drift** — and the drift that hurts is *silent*:
 two implementations both accept a byte sequence but decode it to different values,
 or one accepts what another rejects. No crash, no exception — just broken interop

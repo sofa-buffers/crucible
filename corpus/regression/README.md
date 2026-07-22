@@ -1,7 +1,7 @@
 # `corpus/regression/` — the resolved-findings green gate
 
 Every input here is a **reproducer for a finding that is now fixed**, and every input must
-produce **0 divergences across all 12 drivers**. A divergence here means a resolved bug
+produce **0 divergences across all 13 drivers**. A divergence here means a resolved bug
 came back — that is the whole point of the directory.
 
 ```sh
@@ -98,7 +98,7 @@ python3 engine/structured/isolates.py .    # idempotent; the committed bytes are
 
 When a finding's fix lands (see [`docs/TODO.md`](../../docs/TODO.md)):
 
-1. Re-run the reproducer through all 12 drivers and confirm **0 divergences**.
+1. Re-run the reproducer through all 13 drivers and confirm **0 divergences**.
 2. If it is green **for the reason the finding is about**, copy it here as
    `F<nnnn>_<name>.bin` and add a row above. If it is green only incidentally, or still
    splits on an unrelated open axis, write a **clean isolate** in `isolates.py` instead —
