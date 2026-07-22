@@ -68,9 +68,12 @@ TIMEOUT_ARG=""
 [ -n "${TIMEOUT:-}" ] && TIMEOUT_ARG="--timeout $TIMEOUT"
 
 echo "==> [materialize] differential over $(ls "$CORPUS" | grep -vc -e gitkeep -e '\.md$') input(s) — SOFAB_MATERIALIZE=1" >&2
-# The comparator inherits the environment, so the drivers see SOFAB_MATERIALIZE.
+# The comparator inherits the environment, so the drivers see SOFAB_MATERIALIZE and
+# the descriptor path (drivers that consume the generated table read the latter;
+# the C descriptor / hardcoded walkers ignore it).
 # shellcheck disable=SC2086
-SOFAB_MATERIALIZE=1 python3 "$ROOT/oracle/comparator.py" \
+SOFAB_MATERIALIZE=1 SOFAB_MATERIALIZE_SCHEMA="$ROOT/oracle/materialized-schema.json" \
+    python3 "$ROOT/oracle/comparator.py" \
     --corpus "$CORPUS" --policy "$ROOT/oracle/policy.yaml" $TIMEOUT_ARG "$@"
 
 # Conformance: the differential only proves the 12 AGREE — a family-wide-wrong dump is

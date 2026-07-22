@@ -155,7 +155,8 @@ def _check_driver(driver_bin):
     for f in files:
         d = open(os.path.join(cdir, f), "rb").read()
         stream += struct.pack("<I", len(d)) + d
-    env = {**os.environ, "SOFAB_MATERIALIZE": "1"}
+    schema_json = os.path.join(root, "oracle", "materialized-schema.json")
+    env = {**os.environ, "SOFAB_MATERIALIZE": "1", "SOFAB_MATERIALIZE_SCHEMA": schema_json}
     out = subprocess.run([driver_bin], input=stream, capture_output=True, env=env)
     lines = out.stdout.decode("utf-8", "replace").splitlines()
     vecs = vectors()

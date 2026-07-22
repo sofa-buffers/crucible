@@ -16,9 +16,11 @@
 //
 // The C# coverage engine is SharpFuzz — see Fuzz.cs.
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using sofab;
 using Message;
 
@@ -28,14 +30,63 @@ internal static class Driver
 {
     // Materialized value dump (oracle/materialized.md), SOFAB_MATERIALIZE=1.
     // On a COMPLETE decode this walks the DECODED value and dumps every field +
-    // every array element explicitly, instead of re-encoding to wire hex. corelib-cs
-    // has no reflective descriptor, so every field is hand-walked from the generated
-    // Message.cs classes. The engine/structured/materialize.py reference is ground
-    // truth; this output must equal it byte-for-byte. fp32 is printed straight from
-    // its float bit pattern (the corelib decodes it as a native float, so no widen/
-    // repack fidelity caveat applies here — contrast the Python driver).
+    // every array element explicitly, instead of re-encoding to wire hex. The walk
+    // is SCHEMA-AGNOSTIC: it is driven entirely by the generated descriptor
+    // (engine/structured/schema.py → oracle/materialized-schema.json), reflecting
+    // field values out of the generated Message.cs classes by name. Nothing about
+    // the message's structure is hardcoded here — only the per-kind LEAF formatting
+    // is (u/s/fp32/fp64/string/blob). The engine/structured/materialize.py reference
+    // is ground truth; this output must equal it byte-for-byte. fp32 is printed
+    // straight from its float bit pattern (the corelib decodes it as a native float,
+    // so no widen/repack fidelity caveat applies here — contrast the Python driver).
     private static readonly bool Materialize =
         Environment.GetEnvironmentVariable("SOFAB_MATERIALIZE") == "1";
+
+    // A descriptor node (recursive): the generated schema shape, loaded at startup.
+    // Leaf: id/name/kind. struct: +fields. array: +elem(u|s|fp32|fp64)+count.
+    // wrapper: +elem(string|blob)+count.
+    private sealed class SchemaNode
+    {
+        public int Id;
+        public string Name;
+        public string Kind;
+        public string Elem;
+        public int Count;
+        public List<SchemaNode> Fields;
+    }
+
+    // The generated message descriptor's top-level fields, loaded only in
+    // materialize mode (parsing is skipped entirely on the default hex path).
+    private static readonly List<SchemaNode> Schema = Materialize ? LoadSchema() : null;
+
+    private static List<SchemaNode> LoadSchema()
+    {
+        string path = Environment.GetEnvironmentVariable("SOFAB_MATERIALIZE_SCHEMA")
+            ?? "oracle/materialized-schema.json";
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var fields = new List<SchemaNode>();
+        foreach (var f in doc.RootElement.GetProperty("fields").EnumerateArray())
+            fields.Add(ParseNode(f));
+        return fields;
+    }
+
+    private static SchemaNode ParseNode(JsonElement e)
+    {
+        var n = new SchemaNode
+        {
+            Id = e.GetProperty("id").GetInt32(),
+            Kind = e.GetProperty("kind").GetString(),
+        };
+        if (e.TryGetProperty("name", out var nm)) n.Name = nm.GetString();
+        if (e.TryGetProperty("elem", out var el)) n.Elem = el.GetString();
+        if (e.TryGetProperty("count", out var ct)) n.Count = ct.GetInt32();
+        if (e.TryGetProperty("fields", out var fs))
+        {
+            n.Fields = new List<SchemaNode>();
+            foreach (var c in fs.EnumerateArray()) n.Fields.Add(ParseNode(c));
+        }
+        return n;
+    }
 
     private static string Hex(byte[] b)
     {
@@ -63,99 +114,93 @@ internal static class Driver
         return "b" + bb.Length.ToString(CultureInfo.InvariantCulture) + ":" + Hex(bb);
     }
 
-    // Fixed-count numeric arrays (materialized to their full N in memory): every
-    // element emitted, no trailing trim (that only elides on the wire).
-    private static string ArrU<T>(T[] arr) where T : struct
+    // Format one leaf value per its descriptor kind (oracle/materialized.md §Grammar).
+    // The element declared type (u/s/fp32/fp64/string/blob) comes from the schema, so
+    // array/wrapper elements reuse this exactly as scalar leaves do.
+    private static string Leaf(string kind, object v) => kind switch
     {
-        var sb = new StringBuilder("[");
-        for (int i = 0; i < arr.Length; i++)
+        "u" => U(Convert.ToUInt64(v, CultureInfo.InvariantCulture)),
+        "s" => S(Convert.ToInt64(v, CultureInfo.InvariantCulture)),
+        "fp32" => F32(Convert.ToSingle(v, CultureInfo.InvariantCulture)),
+        "fp64" => F64(Convert.ToDouble(v, CultureInfo.InvariantCulture)),
+        "string" => T((string)v),
+        "blob" => B((byte[])v),
+        _ => throw new InvalidOperationException("unhandled leaf kind " + kind),
+    };
+
+    // Read a message field/property by its schema name via reflection. corelib-cs's
+    // generated Message.cs names members with the schema's exact casing (snake_case,
+    // e.g. bytes_field / string_array) and exposes them as public fields; a property
+    // is accepted too, so this survives a codegen convention change.
+    private static object GetMember(object obj, string name, out Type declared)
+    {
+        Type t = obj.GetType();
+        var f = t.GetField(name);
+        if (f != null) { declared = f.FieldType; return f.GetValue(obj); }
+        var p = t.GetProperty(name);
+        if (p != null) { declared = p.PropertyType; return p.GetValue(obj); }
+        throw new MissingMemberException(t.Name, name);
+    }
+
+    // Generic, schema-driven walk of the decoded value. Structure comes entirely from
+    // the descriptor node; only Leaf() is schema-specific (per-kind formatting).
+    private static string Walk(SchemaNode node, object value)
+    {
+        switch (node.Kind)
         {
-            if (i > 0) sb.Append(',');
-            sb.Append(U(Convert.ToUInt64(arr[i], CultureInfo.InvariantCulture)));
+            case "struct":
+                return WalkStruct(node.Fields, value);
+            case "array":
+            {
+                // Fixed-count numeric/fp array, materialized to its full N in memory:
+                // every element emitted, no trailing trim (that only elides on the wire).
+                var arr = (Array)value;
+                var sb = new StringBuilder("[");
+                for (int i = 0; i < arr.Length; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append(Leaf(node.Elem, arr.GetValue(i)));
+                }
+                return sb.Append(']').ToString();
+            }
+            case "wrapper":
+            {
+                // string_array / blob_array: the decoded container is already grown to
+                // highest-populated index + 1 with interior gaps as empty elements —
+                // emit all Count elements in index order.
+                var list = (System.Collections.IList)value;
+                var sb = new StringBuilder("[");
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append(Leaf(node.Elem, list[i]));
+                }
+                return sb.Append(']').ToString();
+            }
+            default:
+                return Leaf(node.Kind, value);
         }
-        return sb.Append(']').ToString();
     }
 
-    private static string ArrS<T>(T[] arr) where T : struct
+    private static string WalkStruct(List<SchemaNode> fields, object value)
     {
-        var sb = new StringBuilder("[");
-        for (int i = 0; i < arr.Length; i++)
+        var sb = new StringBuilder("{");
+        for (int i = 0; i < fields.Count; i++)
         {
-            if (i > 0) sb.Append(',');
-            sb.Append(S(Convert.ToInt64(arr[i], CultureInfo.InvariantCulture)));
+            SchemaNode c = fields[i];
+            if (i > 0) sb.Append(';');
+            object cv = GetMember(value, c.Name, out Type ct);
+            // A nested struct member is initialized non-null by the generated code, but
+            // guard defensively (mirrors the old `?? new` walk) so a null never NREs.
+            if (c.Kind == "struct" && cv == null) cv = Activator.CreateInstance(ct);
+            sb.Append(c.Id.ToString(CultureInfo.InvariantCulture)).Append(':').Append(Walk(c, cv));
         }
-        return sb.Append(']').ToString();
+        return sb.Append('}').ToString();
     }
 
-    private static string ArrF32(float[] arr)
-    {
-        var sb = new StringBuilder("[");
-        for (int i = 0; i < arr.Length; i++) { if (i > 0) sb.Append(','); sb.Append(F32(arr[i])); }
-        return sb.Append(']').ToString();
-    }
-
-    private static string ArrF64(double[] arr)
-    {
-        var sb = new StringBuilder("[");
-        for (int i = 0; i < arr.Length; i++) { if (i > 0) sb.Append(','); sb.Append(F64(arr[i])); }
-        return sb.Append(']').ToString();
-    }
-
-    // Dump the decoded value per oracle/materialized.md: a single-line object,
-    // fields in ascending id order, no field ever omitted.
-    private static string MaterializeValue(Probe m)
-    {
-        var sb = new StringBuilder();
-        sb.Append('{');
-        // top-level scalars (ids 0..7): unsigned via their unsigned type, signed via signed.
-        sb.Append("0:").Append(U(m.u8)).Append(';');
-        sb.Append("1:").Append(S(m.i8)).Append(';');
-        sb.Append("2:").Append(U(m.u16)).Append(';');
-        sb.Append("3:").Append(S(m.i16)).Append(';');
-        sb.Append("4:").Append(U(m.u32)).Append(';');
-        sb.Append("5:").Append(S(m.i32)).Append(';');
-        sb.Append("6:").Append(U(m.u64)).Append(';');
-        sb.Append("7:").Append(S(m.i64)).Append(';');
-
-        // nested struct (id 10): f32(0) f64(1) str(2) bytes_field(3).
-        ProbeNested n = m.nested ?? new ProbeNested();
-        sb.Append("10:{");
-        sb.Append("0:").Append(F32(n.f32)).Append(';');
-        sb.Append("1:").Append(F64(n.f64)).Append(';');
-        sb.Append("2:").Append(T(n.str)).Append(';');
-        sb.Append("3:").Append(B(n.bytes_field));
-        sb.Append("};");
-
-        // arrays struct (id 100): eight numeric arrays (0..7) + nested fp arrays (id 10).
-        ProbeArrays a = m.arrays ?? new ProbeArrays();
-        sb.Append("100:{");
-        sb.Append("0:").Append(ArrU(a.u8)).Append(';');
-        sb.Append("1:").Append(ArrS(a.i8)).Append(';');
-        sb.Append("2:").Append(ArrU(a.u16)).Append(';');
-        sb.Append("3:").Append(ArrS(a.i16)).Append(';');
-        sb.Append("4:").Append(ArrU(a.u32)).Append(';');
-        sb.Append("5:").Append(ArrS(a.i32)).Append(';');
-        sb.Append("6:").Append(ArrU(a.u64)).Append(';');
-        sb.Append("7:").Append(ArrS(a.i64)).Append(';');
-        ProbeArraysNested an = a.nested ?? new ProbeArraysNested();
-        sb.Append("10:{");
-        sb.Append("0:").Append(ArrF32(an.fp32)).Append(';');
-        sb.Append("1:").Append(ArrF64(an.fp64));
-        sb.Append("}};");
-
-        // wrapper arrays: string_array (id 200), blob_array (id 201). The decoded
-        // container is already grown to highest-populated index + 1 with interior
-        // gaps as empty elements — emit all Count elements in index order.
-        sb.Append("200:[");
-        for (int i = 0; i < m.string_array.Count; i++) { if (i > 0) sb.Append(','); sb.Append(T(m.string_array[i])); }
-        sb.Append("];");
-        sb.Append("201:[");
-        for (int i = 0; i < m.blob_array.Count; i++) { if (i > 0) sb.Append(','); sb.Append(B(m.blob_array[i])); }
-        sb.Append(']');
-
-        sb.Append('}');
-        return sb.ToString();
-    }
+    // Dump the decoded value per oracle/materialized.md: a single-line object, fields
+    // in ascending id order (the descriptor's order), no field ever omitted.
+    private static string MaterializeValue(Probe m) => WalkStruct(Schema, m);
 
     private static string RejectClass(SofabException e) => e.Error switch
     {

@@ -26,7 +26,10 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   `SOFAB_MATERIALIZE=1` makes each driver dump the **decoded value** (all fields + array
   elements explicit, floats as raw bits) instead of the round-trip hex, catching a decode
   that differs only where the sparse wire elides. **All 12 drivers** implement it — 75×12
-  green vs the `engine/structured/materialize.py` reference; default round-trip path unchanged.
+  green vs the `engine/structured/materialize.py` reference (a **standing CI gate**); default
+  round-trip path unchanged. The **table** (`engine/structured/schema.py` →
+  `oracle/materialized-schema.json`) is generated from the schema and drives the reference; C +
+  go/ts/java/cs/python walk schema-agnostically by consuming it, rust/cpp/zig hardcode (CI-guarded).
 - `./scripts/run-union.sh` — the **union suite**: points the oracles at
   `schema/probe-union.sofab.yaml` (a `probe` carrying a 4-variant union), the one
   wire feature the main `probe` lacks. 11 seeds × 12 drivers, 0 divergences.

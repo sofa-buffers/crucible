@@ -72,11 +72,18 @@ report-only for the residual F-0025 above).
           can't drift. **This also backstops the drivers:** the CI conformance check runs every driver
           against the schema-driven reference, so a hardcoded driver walker that fails to follow a
           schema change now **fails the gate loudly** instead of drifting silently.
-    - [ ] *Remaining (optional):* have the 11 non-C **driver walkers themselves** consume the
-          descriptor instead of their hardcoded table. Clean for the reflection languages (go/ts/java/
-          cs/py) + zig (comptime); **rust/cpp have no runtime reflection**, so they need generated
-          walker source (the C situation — ideally sofabgen emits a descriptor for every backend, like
-          it does for C). Lower priority now that the schema-driven reference + CI catch drift.
+    - [x] **Reflection-language walkers consume the descriptor** (2026-07-21): go/ts/java/cs/python
+          now load `oracle/materialized-schema.json` at runtime and walk the decoded value generically
+          (reflection by field name) — **schema-agnostic**, no hardcoded shape. `materialize.sh` exports
+          `SOFAB_MATERIALIZE_SCHEMA`; 75×12 stays 0-divergence. So the schema-agnostic set is now C +
+          go/ts/java/cs/python (7 of 12 targets).
+    - [ ] *Remaining (needs generated source, not a runtime table):* **rust / cpp / zig** keep a
+          hardcoded walker — they have no usable runtime reflection (zig comptime can't consume a
+          runtime descriptor, and `string` vs `blob` are both `[]const u8`, indistinguishable by type;
+          rust/cpp have none). Closing them means **generating their walker source** from the descriptor
+          at build time — ideally by sofabgen emitting a per-backend descriptor like C's, rather than a
+          Crucible-side code generator. Low priority: the schema-driven reference + CI conformance check
+          already fail loudly if a hardcoded walker drifts from the schema.
 - [ ] **Encoder-side fuzzing.** The pacemaker is **decode-only**; encoders are only exercised
       via cross-encode's deterministic values. Mutate the *value* (floats, boundary ints, array
       sizes, unicode) and feed all 12 *encoders* → compare bytes. Reaches encoder divergences

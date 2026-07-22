@@ -11,11 +11,13 @@ import (
 	"bufio"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
+	"reflect"
 	"strings"
 
 	sofab "github.com/sofa-buffers/corelib-go"
@@ -25,10 +27,55 @@ import (
 
 // materialize (oracle/materialized.md), gated by SOFAB_MATERIALIZE=1. Instead of
 // the round-trip hex, dump the DECODED value: every field, every array element made
-// explicit. The generated struct carries no schema-type tag, so this walker holds
-// the schema layout directly (like the C driver's descriptor walk). Floats are raw
-// IEEE-754 bit patterns (math.Float32bits/Float64bits), never a decimal rendering.
+// explicit. Floats are raw IEEE-754 bit patterns (math.Float32bits/Float64bits),
+// never a decimal rendering.
+//
+// The walk is schema-AGNOSTIC: it holds no hardcoded field layout. The structure —
+// field ids, names, kinds, array counts, nesting — is driven entirely by the
+// generated descriptor (engine/structured/schema.py → oracle/materialized-schema.json),
+// loaded at startup. The generated Go struct is navigated by reflection, resolving
+// each descriptor node's schema name against the field's `json:"<schema-name>"` tag.
+// Only the per-kind LEAF formatting below is schema-specific.
 var materialized = os.Getenv("SOFAB_MATERIALIZE") == "1"
+
+// schemaNode is one node of the materialized descriptor (oracle/materialized-schema.json).
+// A leaf carries only kind; struct carries fields; array/wrapper carry elem + count.
+type schemaNode struct {
+	ID     int          `json:"id"`
+	Name   string       `json:"name"`
+	Kind   string       `json:"kind"`
+	Elem   string       `json:"elem"`
+	Count  int          `json:"count"`
+	Fields []schemaNode `json:"fields"`
+}
+
+// schemaDoc is the top of the descriptor: { "message": ..., "fields": [node,...] }.
+type schemaDoc struct {
+	Message string       `json:"message"`
+	Fields  []schemaNode `json:"fields"`
+}
+
+// schema is the parsed descriptor, populated at startup in materialize mode only.
+var schema schemaDoc
+
+// loadSchema reads the descriptor from $SOFAB_MATERIALIZE_SCHEMA (fallback
+// oracle/materialized-schema.json) and parses it. Fatal on failure — a materialize
+// run with no descriptor cannot produce a correct dump.
+func loadSchema() {
+	path := os.Getenv("SOFAB_MATERIALIZE_SCHEMA")
+	if path == "" {
+		path = "oracle/materialized-schema.json"
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "crucible-go: cannot read materialize schema:", err)
+		os.Exit(1)
+	}
+	if err := json.Unmarshal(data, &schema); err != nil {
+		fmt.Fprintln(os.Stderr, "crucible-go: cannot parse materialize schema:", err)
+		os.Exit(1)
+	}
+}
 
 func mF32(x float32) string { return fmt.Sprintf("f%08x", math.Float32bits(x)) }
 func mF64(x float64) string { return fmt.Sprintf("F%016x", math.Float64bits(x)) }
@@ -38,95 +85,104 @@ func mText(s string) string {
 func mBlob(b []byte) string {
 	return fmt.Sprintf("b%d:%s", len(b), hex.EncodeToString(b))
 }
-func mArr(vals []string) string { return "[" + strings.Join(vals, ",") + "]" }
 
+// mLeaf formats one scalar value per its schema kind (u|s|fp32|fp64|string|blob),
+// pulling the concrete value out of the reflected field. This is the only
+// schema-specific formatting left; every leaf and every array element flows here.
+func mLeaf(kind string, v reflect.Value) string {
+	switch kind {
+	case "u":
+		return fmt.Sprintf("u%d", v.Uint())
+	case "s":
+		return fmt.Sprintf("s%d", v.Int())
+	case "fp32":
+		return mF32(float32(v.Float()))
+	case "fp64":
+		return mF64(v.Float())
+	case "string":
+		return mText(v.String())
+	case "blob":
+		return mBlob(v.Bytes())
+	}
+	panic("materialize: unhandled leaf kind " + kind)
+}
+
+// mDefault is the materialized type default for a numeric/fp array element, used to
+// fill-to-N when the Go corelib leaves an absent array nil (short of its schema count).
+func mDefault(elem string) string {
+	switch elem {
+	case "u":
+		return "u0"
+	case "s":
+		return "s0"
+	case "fp32":
+		return "f00000000"
+	case "fp64":
+		return "F0000000000000000"
+	}
+	panic("materialize: unhandled array elem " + elem)
+}
+
+// fieldByTag returns the struct field of v whose `json` tag equals the schema name.
+// The generated struct exports PascalCase names but tags each with its schema name,
+// so this is the schema-name → Go-field bridge that keeps the walk schema-agnostic.
+func fieldByTag(v reflect.Value, name string) reflect.Value {
+	t := v.Type()
+	for i := 0; i < t.NumField(); i++ {
+		tag := t.Field(i).Tag.Get("json")
+		if i := strings.IndexByte(tag, ','); i >= 0 {
+			tag = tag[:i]
+		}
+		if tag == name {
+			return v.Field(i)
+		}
+	}
+	panic("materialize: no struct field with json tag " + name)
+}
+
+// walk renders one descriptor node against its reflected value (oracle/materialized.md).
+func walk(n *schemaNode, v reflect.Value) string {
+	switch n.Kind {
+	case "struct":
+		parts := make([]string, len(n.Fields))
+		for i := range n.Fields {
+			c := &n.Fields[i]
+			parts[i] = fmt.Sprintf("%d:%s", c.ID, walk(c, fieldByTag(v, c.Name)))
+		}
+		return "{" + strings.Join(parts, ";") + "}"
+	case "array":
+		// numeric/fp fixed-count array: emit in-memory elements, then fill-to-N.
+		out := make([]string, 0, n.Count)
+		for i := 0; i < v.Len(); i++ {
+			out = append(out, mLeaf(n.Elem, v.Index(i)))
+		}
+		for len(out) < n.Count {
+			out = append(out, mDefault(n.Elem))
+		}
+		return "[" + strings.Join(out, ",") + "]"
+	case "wrapper":
+		// string_array/blob_array: emit the container's actual elements in index
+		// order (its length is itself the signal — no fill-to-N).
+		out := make([]string, v.Len())
+		for i := range out {
+			out[i] = mLeaf(n.Elem, v.Index(i))
+		}
+		return "[" + strings.Join(out, ",") + "]"
+	default:
+		return mLeaf(n.Kind, v)
+	}
+}
+
+// materialize walks the whole message: the descriptor's top `fields` list against
+// the decoded msg.Probe value (oracle/materialized.md).
 func materialize(m *msg.Probe) string {
-	// top-level scalars (ids 0..7): u8 i8 u16 i16 u32 i32 u64 i64
-	f := []string{
-		fmt.Sprintf("0:u%d", m.U8),
-		fmt.Sprintf("1:s%d", m.I8),
-		fmt.Sprintf("2:u%d", m.U16),
-		fmt.Sprintf("3:s%d", m.I16),
-		fmt.Sprintf("4:u%d", m.U32),
-		fmt.Sprintf("5:s%d", m.I32),
-		fmt.Sprintf("6:u%d", m.U64),
-		fmt.Sprintf("7:s%d", m.I64),
+	v := reflect.ValueOf(m).Elem()
+	parts := make([]string, len(schema.Fields))
+	for i := range schema.Fields {
+		c := &schema.Fields[i]
+		parts[i] = fmt.Sprintf("%d:%s", c.ID, walk(c, fieldByTag(v, c.Name)))
 	}
-
-	// nested struct (id 10): f32(0) f64(1) str(2) blob(3)
-	n := &m.Nested
-	f = append(f, "10:{"+strings.Join([]string{
-		"0:" + mF32(n.F32),
-		"1:" + mF64(n.F64),
-		"2:" + mText(n.Str),
-		"3:" + mBlob(n.BytesField),
-	}, ";")+"}")
-
-	// arrays struct (id 100): eight numeric arrays (0..7) + nested fp arrays (id 10)
-	a := &m.Arrays
-	af := make([]string, 0, 9)
-	af = append(af, "0:"+mUArr(a.U8), "1:"+mSArr(a.I8), "2:"+mUArr(a.U16),
-		"3:"+mSArr(a.I16), "4:"+mUArr(a.U32), "5:"+mSArr(a.I32),
-		"6:"+mUArr(a.U64), "7:"+mSArr(a.I64))
-	an := &a.Nested
-	fp32s := make([]string, 0, arrN)
-	for _, x := range an.Fp32 {
-		fp32s = append(fp32s, mF32(x))
-	}
-	fp32s = padArr(fp32s, "f00000000")
-	fp64s := make([]string, 0, arrN)
-	for _, x := range an.Fp64 {
-		fp64s = append(fp64s, mF64(x))
-	}
-	fp64s = padArr(fp64s, "F0000000000000000")
-	af = append(af, "10:{"+strings.Join([]string{
-		"0:" + mArr(fp32s), "1:" + mArr(fp64s),
-	}, ";")+"}")
-	f = append(f, "100:{"+strings.Join(af, ";")+"}")
-
-	// wrapper arrays: string_array (id 200), blob_array (id 201)
-	sa := make([]string, len(m.StringArray))
-	for i, s := range m.StringArray {
-		sa[i] = mText(s)
-	}
-	f = append(f, "200:"+mArr(sa))
-	ba := make([]string, len(m.BlobArray))
-	for i, b := range m.BlobArray {
-		ba[i] = mBlob(b)
-	}
-	f = append(f, "201:"+mArr(ba))
-
-	return "{" + strings.Join(f, ";") + "}"
-}
-
-// arrN is the schema count for every id-100 numeric/fp array. The oracle
-// materializes these to their full N (MESSAGE_SPEC §5.1); the Go corelib only
-// fills-to-N when the field is present on the wire, leaving nil when absent, so
-// the dump pads to N here to match the reference for absent (default) arrays.
-const arrN = 5
-
-func padArr(out []string, def string) []string {
-	for len(out) < arrN {
-		out = append(out, def)
-	}
-	return out
-}
-
-// mUArr / mSArr materialize a fixed-count numeric array as u/s elements, filled to N.
-func mUArr[T uint8 | uint16 | uint32 | uint64](v []T) string {
-	out := make([]string, 0, arrN)
-	for _, x := range v {
-		out = append(out, fmt.Sprintf("u%d", x))
-	}
-	return mArr(padArr(out, "u0"))
-}
-
-func mSArr[T int8 | int16 | int32 | int64](v []T) string {
-	out := make([]string, 0, arrN)
-	for _, x := range v {
-		out = append(out, fmt.Sprintf("s%d", x))
-	}
-	return mArr(padArr(out, "s0"))
+	return "{" + strings.Join(parts, ";") + "}"
 }
 
 // canonical writes the canonical line for one candidate input
@@ -166,6 +222,10 @@ func canonical(w *bufio.Writer, data []byte) {
 }
 
 func main() {
+	if materialized {
+		loadSchema()
+	}
+
 	r := bufio.NewReader(os.Stdin)
 	w := bufio.NewWriter(os.Stdout)
 	defer w.Flush()
