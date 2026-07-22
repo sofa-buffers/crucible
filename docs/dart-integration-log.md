@@ -75,3 +75,37 @@ it to `Decoder.decode(data, visitor, limits: _limits)`, returning
   heap drivers incl. dart).
 - Explicit `L` check (cap = 8, `corpus/limits/arr`): `under_arr → A`, `at_arr_8 → A`,
   `over_arr → L`. Dart agrees with the family on the fourth verdict. No finding.
+
+---
+
+## Stage 3 — Structural sweep (6 axes)
+
+**Goal:** add Dart to `engine/structured/sweep_run.py`'s hardcoded `DRIVERS` roster
+(it does *not* reuse run.sh's list — confirmed) and the cosmetic 12→13 strings.
+
+### Steps
+1. `engine/structured/sweep_run.py` — add `("dart", …/drivers/dart/build/driver)`.
+2. `sweep_run.py` + `scripts/sweep.sh` — 12→13 in docstrings/log lines.
+
+### Results — GREEN, incl. the §7.3/§7.4 structural-skip the issue flagged
+All five **blocking** axes 0 divergences / 0 conformance failures **with 13 drivers**:
+repeated-id (§7.4) 15, over-bound (§7.1) 30, reserved-subtype (§4.6) 110,
+truncation (§7) 179, malform×truncate (§5.2) 20. Dart's dispatch-by-resolved-type
+skip on a contradictory wire type / array-at-scalar-id / fixlen-subtype mismatch
+matches the family — no desync, no Dart-specific split. No finding for Dart.
+
+### 🔎 Bonus finding (NOT Dart) — **F-0025 resolved on the current toolchain**
+The **wiretype (§7.3) axis came back GREEN** (319 vectors, 0/0), where it was
+report-only for the open **F-0025** (fp scalar field receiving an fp array —
+rust-std/rust-nostd/java/csharp/zig stored the element; generator#193). Cause: the
+bootstrapped **sofabgen CI build `0.0.0-20260722065611-f61a29b31c01`** is newer than
+0.19.4 and carries generator#193. **Verified three ways:** (1) sweep wiretype green;
+(2) both reproducers (`f32_recv_array_fp32`, `f64_recv_array_fp64`) now show **all 13
+drivers agree** — the fp array is skipped, re-encoding to the empty-scalar form
+`5607a606560707c60c07ce0c07` — including the five formerly-storing backends; (3) both
+controls still agree. Dart also skips correctly.
+
+This is a toolchain-bump result, independent of Dart, so it is **left out of this
+branch's scope**. Recommended separate follow-up (per `docs/TODO.md`): promote the
+wiretype axis from report-only → blocking in `scripts/sweep.sh`, mark F-0025 resolved
+in `results/FINDINGS.md`/`STATUS.md`, and promote its isolates into `corpus/regression/`.
