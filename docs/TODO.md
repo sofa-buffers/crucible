@@ -42,7 +42,7 @@ plus the **structural sweep gate** (`scripts/sweep.sh`; **all six axes now block
       Investigated 2026-07-17: the corelibs collapse *all* malformed-wire reasons into one
       `InvalidMessage` (spec §6.3), so a *semantic* taxonomy (truncated / bad-varint / depth /
       …) is **not** available from return codes. The achievable, valuable version is a
-      **two-tier grade**: normalise the class mapping across all 12 drivers, then distinguish
+      **two-tier grade**: normalise the class mapping across all 13 drivers, then distinguish
       `invalid_msg` (a clean wire-reject) from `usage`/`argument`/`other` (a generated-layer /
       API error). Make the **cross-tier** case hard — an impl whose generated layer errors
       where the family cleanly rejects is a codegen smell (the F-0003/F-0008 class) — and keep
@@ -162,8 +162,8 @@ plus the **structural sweep gate** (`scripts/sweep.sh`; **all six axes now block
 
 - [ ] **`image.yml`**: confirm the GHCR toolchain image is seeded and the live runs are green
       (authored + run once; verify it's actually driving `replay`/`nightly`).
-- [ ] **Build-reuse in `replay.yml`**: each of the five gates rebuilds all 12 drivers, so CI
-      pays the build 5×. Cache/reuse the built drivers across gates.
+- [ ] **Build-reuse in `replay.yml`**: each of the seven gates rebuilds all 13 drivers, so CI
+      pays the build 7×. Cache/reuse the built drivers across gates.
 - [ ] **Devcontainer image**: verify it builds and every driver builds *inside* it (so far
       spot-verified in the bare workspace + hand-installed clang).
 - [ ] **OSS-Fuzz** onboarding for continuous fuzzing (eventual).

@@ -59,7 +59,7 @@ blob    := "b" 1*DIGIT ":" *(2HEXDIG)            ; an opaque blob: byte length, 
 arr     := "[" [ value *( "," value ) ] "]"      ; an array — every element present in memory, in index order
 ```
 
-Rules that make it byte-reproducible across 12 languages:
+Rules that make it byte-reproducible across 13 languages:
 
 - **Every schema field is emitted, always**, in ascending field-id order — a field at
   its default is emitted with its default value, not omitted. (The family carries no

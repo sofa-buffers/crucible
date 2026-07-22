@@ -25,17 +25,17 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
 - `./scripts/materialize.sh` — the **element-access oracle** (`oracle/materialized.md`):
   `SOFAB_MATERIALIZE=1` makes each driver dump the **decoded value** (all fields + array
   elements explicit, floats as raw bits) instead of the round-trip hex, catching a decode
-  that differs only where the sparse wire elides. **All 12 drivers** implement it — 75×12
+  that differs only where the sparse wire elides. **All 13 drivers** implement it — 75×13
   green vs the `engine/structured/materialize.py` reference (a **standing CI gate**); default
   round-trip path unchanged. The **table** (`engine/structured/schema.py` →
-  `oracle/materialized-schema.json`) is generated from the schema and drives the reference; **all 12
+  `oracle/materialized-schema.json`) is generated from the schema and drives the reference; **all 13
   walkers are schema-agnostic** — C via the object descriptor, go/ts/java/cs/python consume the
-  descriptor at runtime, rust/cpp/zig generate their walker source from it at build time.
+  descriptor at runtime, rust/cpp/zig/dart generate their walker source from it at build time.
 - `./scripts/run-union.sh` — the **union suite**: points the oracles at
   `schema/probe-union.sofab.yaml` (a `probe` carrying a 4-variant union), the one
-  wire feature the main `probe` lacks. 11 seeds × 12 drivers, 0 divergences.
+  wire feature the main `probe` lacks. 11 seeds × 13 drivers, 0 divergences.
 - `CORPUS=corpus/regression ./scripts/run.sh` — the **resolved-findings gate**: the
-  reproducer of every fixed finding (59 inputs × 12 drivers, 0 divergences). A
+  reproducer of every fixed finding (81 inputs × 13 drivers, 0 divergences). A
   divergence here = a resolved bug came back. See `corpus/regression/README.md` for
   what it admits, and the exclusions (a reproducer that also trips an open axis stays
   in `findings/`).
