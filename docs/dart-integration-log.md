@@ -227,3 +227,36 @@ corelibs**. All suites green; Dart is AOT end-to-end (`dart compile exe`), never
   follow-up (not bundled here).
 
 Per-stage commits on branch `dart-integration`.
+
+---
+
+## Post-integration finding hunt (attribution due-diligence)
+
+The curated gates are green, but real divergences surface on the raw fuzz corpus, so
+before concluding "no Dart finding" I ran the accumulated `corpus/interesting`
+(388 coverage-distinct inputs) through all 13 drivers and attributed every split.
+
+**Method:** for each input, compute the hard-axis key (verdict `A/I/R/L` always;
+`accept_value` payload when mutual-accept) for the **12 non-Dart** drivers and for Dart.
+A **Dart-caused** finding = the 12 agree on the hard axes **but Dart differs**.
+
+**Result:**
+- **0 Dart-caused hard divergences.** In every split, the other 12 already disagree —
+  Dart only ever lands in a pre-existing camp.
+- 33 verdict-splits + 0 pure accept_value-splits exist among the 12 — the known
+  **documentation#15 INVALID-vs-INCOMPLETE precedence spec-hole** on raw (contaminated:
+  malformed *and* truncated) fuzz inputs. Pre-existing, tracked, **not** from this work
+  and **not** Dart-specific. (The curated `sweep_malform_truncate` isolate for exactly
+  this rule is green; only the raw two-axis inputs split.)
+
+**Conclusion on issues to file:** **none in corelib-dart or the generator.**
+- No divergence is attributable to corelib-dart or the generated Dart backend — both
+  agree with the family on every suite and add no new divergence on the fuzz corpus.
+- The only defect this session was **Crucible-internal** (the `u`/`s` materialize-walker
+  tag), fixed in Stage 4 of this branch — not an upstream repo.
+- **F-0025** is already **generator#193** and is now verifiably **resolved** on the CI
+  build (all 13 agree; recommended follow-up = promote the sweep axis + close #193, done
+  separately from this branch).
+
+Per the CLAUDE.md triage doctrine, filing a non-finding burns a maintainer's time, so no
+corelib/generator issue is opened for the Dart work.
