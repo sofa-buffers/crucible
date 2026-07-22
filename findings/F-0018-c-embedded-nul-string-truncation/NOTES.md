@@ -54,7 +54,7 @@ boundary; that is what makes it a projection rather than a lossless store.)
 - **Not INVALID.** Rejecting a value the corelib received and stored in full would be wrong.
 - **Not a family-wide ban.** U+0000 is legal on the wire; the 10 length-carrying profiles
   preserve it correctly and must keep doing so.
-- **Not a codegen bug.** (The earlier `docs/SOFABGEN.md` G-0015 entry is withdrawn.)
+- **Not a codegen bug.** (The earlier `results/SOFABGEN.md` G-0015 entry is withdrawn.)
 - **Sanctioned in `oracle/policy.yaml`** as an allowed `accept_value` divergence for the
   NUL-terminated C profile — spec basis MESSAGE_SPEC §8 (string preservation across
   decode/encode is implementation-defined for a NUL-terminated / constrained profile; a
