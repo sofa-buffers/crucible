@@ -16,7 +16,7 @@ against the baseline. The baseline vectors are exactly what made "fixed" disting
 **Original status —** spec-RESOLVED, corelibs to converge. The clause was **adopted** —
 **[documentation#20](https://github.com/sofa-buffers/documentation/pull/20) merged** (`49cdee9`,
 2026-07-17), closing [documentation#19](https://github.com/sofa-buffers/documentation/issues/19)
-(`docs/spec-proposals.md`, Proposal 3). **MESSAGE_SPEC §7.1 now settles it:** a declared
+(Crucible spec Proposal 3). **MESSAGE_SPEC §7.1 now settles it:** a declared
 `count`/`maxlen` is a wire-validity bound that binds **every target regardless of allocation
 strategy**; a decoder *"MUST NOT accept an over-bound value merely because its storage happens
 to be able to hold it"*. So the **9 heap backends must start enforcing `maxlen`**, and
