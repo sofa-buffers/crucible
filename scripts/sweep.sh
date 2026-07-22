@@ -12,10 +12,10 @@
 # F-0024 resolved in sofabgen 0.19.4, promoted from report-only), wiretype_sweep (§7.3 —
 # F-0022/F-0023 resolved in 0.19.4 and F-0025 (fp scalar←array, generator#193) resolved in
 # the post-0.19.4 CI build; promoted from report-only 2026-07-22, verified all-12-agree).
-#   NB: sweep_repeated_id excludes the blob_array wrapper re-open (elem=="blob") pending
-#   F-0026 (corelib-c-cpp §7.4 sized-blob reset, open); the string_array re-open stays.
-#   Drop that skip in sweep_repeated_id.py once the corelib fix lands.
-# All six axes are now blocking; no report-only residual remains.
+# All six axes are now blocking; no report-only residual and no carve-out remains
+# (F-0026, the blob_array §7.4 wrapper re-open, was resolved in corelib-c-cpp#106 / `2416a2b`
+# on 2026-07-22 — the elem=="blob" skip in sweep_repeated_id.py was dropped and its isolates
+# promoted into corpus/regression/).
 #
 # Rebuilds the 13 drivers against schema/probe.sofab.yaml first (a seed run.sh), so
 # this is safe to run even after scripts/run-limits.sh, which leaves probe-dyn

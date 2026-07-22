@@ -15,22 +15,23 @@ zeroed element on the C object API (corelib-c-cpp `sofab_object_init` never rese
 companion length); `string_array` is uniform. Corelib-only, minimal isolate, carved out of the blocking
 repeated-id sweep axis until fixed.
 
-**As of 2026-07-22:** 26 findings catalogued, **24 resolved, 1 by-design, 1 open (corelib)**. **F-0022**
+**As of 2026-07-22:** 26 findings catalogued, **25 resolved, 1 by-design, 0 open**. **F-0022**
 (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element, generator#189), and
 **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 / G-0016) were all
 **resolved in sofabgen 0.19.4** (2026-07-21) — re-verified, isolates promoted into the regression gate,
 and the malform×truncation sweep axis promoted from report-only to blocking. **F-0025** (§7.3 fp
-scalar←array, **generator#193**) — the fp analogue of F-0021 that generator#183 covered for integers
-only — is **resolved 2026-07-22** on the latest green sofabgen CI build: verified all-12-agree, the
-wiretype (§7.3) sweep promoted **report-only → blocking**, and its isolates promoted into the regression
-gate (73 → 77). The one open finding is **F-0026** (corelib-c-cpp#106). F-0018 (embedded U+0000 in a
+scalar←array, **generator#193**) is **resolved 2026-07-22** on the latest green sofabgen CI build:
+verified all-agree, the wiretype (§7.3) sweep promoted **report-only → blocking**, isolates into the
+gate (73 → 77). **F-0026** (corelib-c-cpp#106 — §7.4 `blob_array` wrapper re-open stale element) is
+**resolved 2026-07-22** (corelib-c-cpp `2416a2b`): verified all-13-agree, the last sweep carve-out
+(`elem=="blob"` in `sweep_repeated_id.py`) dropped, isolates into the gate (77 → 81). **No open finding
+remains.** F-0018 (embedded U+0000 in a
 `string`) is **by-design**: a NUL-terminated C-string profile projects `A\0B` → `A` on re-encode;
 valid on the wire, preserved by the other 10 profiles, sanctioned in `oracle/policy.yaml` (§8).
 All three Crucible-authored MESSAGE_SPEC clauses are adopted (documentation#17/#18/#20); §7.3/§7.4
 adopted in documentation#23. Six green suites (seeds / cross-encode / union / limit /
-**regression** (the last at **77 inputs**) / **materialized** (element-access, 75×12)) run in CI,
-plus the **structural sweep gate** (`scripts/sweep.sh`; **all six axes now blocking-green** —
-repeated-id keeps only the F-0026 blob-reopen carve-out).
+**regression** (the last at **81 inputs**) / **materialized** (element-access, 75×12)) run in CI,
+plus the **structural sweep gate** (`scripts/sweep.sh`; **all six axes now blocking-green, no carve-out**).
 `./scripts/bootstrap.sh` keeps sofabgen at the latest release and the corelibs at `origin/main`.
 
 ---
@@ -150,13 +151,12 @@ repeated-id keeps only the F-0026 blob-reopen carve-out).
       the 0.17.6 fixed-capacity fix covered `_BlobSeq`, not just strings. (The same integration
       surfaced **F-0026**, a *different* blob path — the §7.4 wrapper re-open reset — now the open
       corelib-c-cpp item below.)
-- [ ] **F-0026 / [corelib-c-cpp#106](https://github.com/sofa-buffers/corelib-c-cpp/issues/106) (open)** — the C object API's §7.4 `blob_array` wrapper
-      **re-open** keeps a stale zeroed element: `sofab_object_init` (`object.c:242-254`) zeros a
-      sized blob's buffer but not its companion length at `offset - nested_idx` (the one function of
-      four that omits the sized-blob branch). Corelib-only, `c` driver alone; write-up +
-      2 reproducers in `findings/F-0026-c-blob-wrapper-reopen-stale-element/`. When fixed:
-      re-pull corelibs, drop the `elem == "blob"` skip in `sweep_repeated_id.py`, verify the axis
-      goes green, promote `blob_reopen_empty.bin` into `corpus/regression/`.
+- [x] **F-0026 / [corelib-c-cpp#106](https://github.com/sofa-buffers/corelib-c-cpp/issues/106)** — **DONE (corelib-c-cpp `2416a2b`, 2026-07-22).** The C object API's §7.4
+      `blob_array` wrapper **re-open** kept a stale zeroed element: `sofab_object_init` zeroed a sized
+      blob's buffer but not its companion length. The fix resets that length on the replace-init.
+      **Verified:** all 4 isolates → all-13-agree; the `elem == "blob"` skip in `sweep_repeated_id.py`
+      was dropped and the repeated-id (§7.4) sweep is green with the blob wrapper (16 vectors); the 2
+      reproducers + 2 controls promoted into `corpus/regression/` (`F0026_*`, gate 77 → 81). Issue closed.
 
 ## Open — CI / infra
 
