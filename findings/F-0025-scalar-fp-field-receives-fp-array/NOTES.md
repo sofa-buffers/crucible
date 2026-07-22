@@ -1,13 +1,18 @@
 # F-0025 — a scalar fp field receiving an fp (fixlen) array wire type
 
-**Status:** 🆕 **open — filed [generator#193](https://github.com/sofa-buffers/generator/issues/193).**
-MESSAGE_SPEC §7.3 requires the field to be **skipped**; five backends decode the array's element
+**Status:** ✅ **RESOLVED — [generator#193](https://github.com/sofa-buffers/generator/issues/193) fixed & closed**
+(post-0.19.4 sofabgen; verified 2026-07-22 on the CI build `0.0.0-20260722065611-f61a29b31c01`).
+MESSAGE_SPEC §7.3 requires the field to be **skipped**; five backends were decoding the array's element
 into the scalar. **Generator-only** (rust-std / rust-nostd / csharp / java / zig backends), the
 **fp analogue of F-0021** — which [generator#183](https://github.com/sofa-buffers/generator/issues/183)
-(0.19.3) fixed for **integer** arrays only. **Axis:** accept_value (accept-with-wrong-value vs
-skip) — all 12 accept, the five store a value the seven leave default. **Found:** 2026-07-21 by
-the wire-type sweep (`engine/structured/wiretype_sweep.py`) — the one residual after F-0022/F-0023
-were resolved in 0.19.4.
+(0.19.3) fixed for **integer** arrays only. The fix arms the discard counter (`askip`) for the fp
+array kinds in `arrayBegin` and adds the `askip` guard to the `fp32()`/`fp64()` callbacks (mirroring
+#183/#188), so a scalar fp field fed an fp fixlen array now **skips** it. **Verified:** both reproducers
+→ **all 12 skip** (re-encode to `5607a606560707c60c07ce0c07`); the wire-type (§7.3) sweep is green
+(319 vectors, 0 divergences) and is now **blocking**; the 2 reproducers + 2 controls are in the
+`corpus/regression/` gate (`F0025_*`). **Axis:** accept_value (accept-with-wrong-value vs skip). **Found:**
+2026-07-21 by the wire-type sweep (`engine/structured/wiretype_sweep.py`) — the one residual after
+F-0022/F-0023 were resolved in 0.19.4. **Resolved:** 2026-07-22.
 
 ## The residual after the §7.3 fixes landed
 
