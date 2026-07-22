@@ -109,3 +109,43 @@ This is a toolchain-bump result, independent of Dart, so it is **left out of thi
 branch's scope**. Recommended separate follow-up (per `docs/TODO.md`): promote the
 wiretype axis from report-only → blocking in `scripts/sweep.sh`, mark F-0025 resolved
 in `results/FINDINGS.md`/`STATUS.md`, and promote its isolates into `corpus/regression/`.
+
+---
+
+## Stage 4 — Materialized (element-access) oracle
+
+**Goal:** the only suite needing Dart-specific schema knowledge. Dart AOT has no
+`dart:mirrors`, so Dart joins the **build-time-generated-walker camp** (rust/cpp/zig),
+not the runtime-reflection camp (go/ts/java/cs/py).
+
+### Steps
+1. `drivers/dart/materialize_gen.py` — unrolls `oracle/materialized-schema.json` into
+   `materialize_gen.dart` (`String materialize(Probe m)`), straight-line field access.
+   Non-probe schema → compile-only stub (union/limit don't materialize).
+2. `drivers/dart/driver.dart` — import the walker; on COMPLETE + `SOFAB_MATERIALIZE=1`
+   emit `A <materialize(out)>` instead of the round-trip hex.
+3. `drivers/dart/build.sh` — run the generator each build.
+4. `scripts/materialize.sh` — add `dart` to the roster; 12→13 strings.
+
+### Dart type gotchas handled in the walker
+- **u64** — Dart `int` is signed 64-bit; a high-bit value prints negative. `_u()`
+  reinterprets via `BigInt.from(v) + (1<<64)`. **Verified** on `02_full` (u64 = max):
+  Dart emits `u18446744073709551615`, byte-identical to C.
+- **fp32** — stored as a Dart `double`; `_f32` repacks to the 32-bit IEEE pattern via
+  `ByteData.setFloat32` (the mandated repack, `materialized.md` §floats).
+- **fp64** — emitted as two `getUint32` halves so `toRadixString(16)` never sees a
+  negative int (which would prepend `-`).
+
+### 🐞 Finding (my driver, fixed same step — NOT a corelib/generator bug)
+First materialize run diverged on **every** vector: Dart emitted integer leaves
+**without the `u`/`s` type-tag prefix** (`0:0` vs C's `0:u0`) — I omitted the prefix in
+the walker's `u`/`s` leaf emitters (the fp/string/blob helpers already tagged). Fixed
+`materialize_gen.py` to prepend `u`/`s`; rebuilt. This is a **driver-side defect in
+Crucible's own walker**, caught by the C-anchor conformance gate exactly as designed —
+not attributable to corelib-dart or the generator.
+
+### Results — GREEN
+- **materialize differential** — 75 × 13, **0 divergences**.
+- **C-anchor conformance** vs `engine/structured/materialize.py` — **0/75 mismatch**.
+- Default round-trip path unregressed after the driver edits (seeds 6 × 13, 0 div).
+- All 13 walkers remain schema-agnostic; Dart reflows from the descriptor at build time.

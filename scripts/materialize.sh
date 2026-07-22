@@ -12,7 +12,7 @@
 #   ./scripts/materialize.sh                 # over corpus/structured (the value-rich gate)
 #   CORPUS=path ./scripts/materialize.sh     # a different corpus
 #
-# The full 12-driver roster emits the SOFAB_MATERIALIZE dump. C is the schema-agnostic
+# The full 13-driver roster emits the SOFAB_MATERIALIZE dump. C is the schema-agnostic
 # anchor (object-descriptor walk); the others carry a schema-type table until a generated
 # one lands. engine/structured/materialize.py is the conformance ground truth (a
 # family-wide-wrong dump is agreement-green but reference-red).
@@ -36,7 +36,7 @@ if ! cmp -s "$_tmp" "$ROOT/oracle/materialized-schema.json"; then
 fi
 rm -f "$_tmp"
 
-echo "==> [materialize] building the 12-driver roster" >&2
+echo "==> [materialize] building the 13-driver roster" >&2
 C_BIN=$(sh "$ROOT/drivers/c/build.sh")
 GO_BIN=$(sh "$ROOT/drivers/go/build.sh")
 RS_BIN=$(sh "$ROOT/drivers/rust/build.sh" rs)
@@ -49,6 +49,7 @@ JAVA_BIN=$(sh "$ROOT/drivers/java/build.sh")
 TS_BIN=$(sh "$ROOT/drivers/ts/build.sh")
 CS_BIN=$(sh "$ROOT/drivers/cs/build.sh")
 ZIG_BIN=$(sh "$ROOT/drivers/zig/build.sh")
+DART_BIN=$(sh "$ROOT/drivers/dart/build.sh")
 
 set -- \
     --driver "c:$C_BIN" \
@@ -62,7 +63,8 @@ set -- \
     --driver "java:$JAVA_BIN" \
     --driver "typescript:$TS_BIN" \
     --driver "csharp:$CS_BIN" \
-    --driver "zig:$ZIG_BIN"
+    --driver "zig:$ZIG_BIN" \
+    --driver "dart:$DART_BIN"
 
 TIMEOUT_ARG=""
 [ -n "${TIMEOUT:-}" ] && TIMEOUT_ARG="--timeout $TIMEOUT"
@@ -76,7 +78,7 @@ SOFAB_MATERIALIZE=1 SOFAB_MATERIALIZE_SCHEMA="$ROOT/oracle/materialized-schema.j
     python3 "$ROOT/oracle/comparator.py" \
     --corpus "$CORPUS" --policy "$ROOT/oracle/policy.yaml" $TIMEOUT_ARG "$@"
 
-# Conformance: the differential only proves the 12 AGREE — a family-wide-wrong dump is
+# Conformance: the differential only proves the 13 AGREE — a family-wide-wrong dump is
 # agreement-green. Anchor it by checking the schema-agnostic C driver against the
 # reference over corpus/structured (the value space the reference is defined on):
 # C == reference AND all == C  ⟹  all == reference. Fails (set -e) on any mismatch.

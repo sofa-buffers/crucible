@@ -18,6 +18,12 @@ import 'dart:typed_data';
 
 import 'package:sofabuffers/sofabuffers.dart' as sofab;
 import 'message.dart';
+import 'materialize_gen.dart';
+
+// SOFAB_MATERIALIZE=1 selects the materialized-value dump (oracle/materialized.md)
+// on a COMPLETE decode instead of the round-trip hex; unset keeps the default
+// round-trip path. Only the `A` payload changes.
+final bool _materialize = Platform.environment['SOFAB_MATERIALIZE'] == '1';
 
 const _hexDigits = '0123456789abcdef';
 
@@ -54,9 +60,10 @@ String canonical(Uint8List data) {
   // (soft axis, see oracle/policy.yaml) — the status carries no finer code.
   if (st == sofab.DecodeStatus.invalid) return 'R invalid_msg';
 
-  // COMPLETE: re-encode the decoded value with the corelib's own sparse-canonical
-  // encoder and emit its lowercase hex (schema-agnostic; folds in the round-trip
-  // oracle).
+  // COMPLETE. In materialize mode, dump the decoded value (oracle/materialized.md);
+  // otherwise re-encode with the corelib's own sparse-canonical encoder and emit the
+  // lowercase hex (schema-agnostic; folds in the round-trip oracle).
+  if (_materialize) return 'A ${materialize(out)}';
   try {
     return 'A ${_hex(out.encode())}';
   } catch (_) {

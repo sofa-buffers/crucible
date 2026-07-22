@@ -36,6 +36,13 @@ fi
 # its `import 'message.dart';` resolves relatively.
 cp "$HERE/driver.dart" "$BIN/driver.dart"
 
+# Generate the schema-agnostic materialized-value walker from the descriptor
+# (oracle/materialized-schema.json) — regenerated every build so a schema change
+# reshapes the walker with zero hand-editing. driver.dart imports it. A non-probe
+# schema (union/limit) gets a compile-only stub (those suites don't materialize).
+echo "==> [dart] generating materialized-value walker from descriptor" >&2
+python3 "$HERE/materialize_gen.py" "$BIN/materialize_gen.dart" "$SCHEMA" >&2
+
 # A minimal package with a path dependency on the vendored corelib. dev deps of
 # the corelib (test/lints) are not fetched transitively, so pub get needs nothing
 # hosted.
