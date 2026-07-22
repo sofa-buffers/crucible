@@ -14,8 +14,33 @@
 const std = @import("std");
 const message = @import("message.zig");
 
+// --- materialized value dump (oracle/materialized.md), SOFAB_MATERIALIZE=1 ------
+//
+// The default accept path re-encodes the decoded value to wire (schema-agnostic,
+// but blind to a decode that differs only where the sparse-canonical wire elides —
+// see canonical.md §Tradeoff). This second path instead walks the decoded Probe
+// value directly and dumps every field + every array element explicitly, matching
+// engine/structured/materialize.py byte-for-byte.
+//
+// The walker is SCHEMA-AGNOSTIC: it is generated at build time from the descriptor
+// oracle/materialized-schema.json by materialize_gen.py (run by build.sh), which
+// unrolls the descriptor into straight-line field-access code. A schema change
+// reshapes materialize_gen.zig with zero hand-editing here. (Zig 0.16 comptime
+// field access needs field names at compile time, and string vs blob are both
+// []const u8 — so the descriptor is unrolled to source rather than walked at
+// runtime.) Strings/blobs borrow `data` (zero-copy), so the dump is written while
+// `data` is still alive (before reset).
+const matgen = @import("materialize_gen.zig");
+
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
+
+    // SOFAB_MATERIALIZE=1 selects the materialized-value dump on accept
+    // (oracle/materialized.md); unset keeps the default round-trip hex path.
+    const materialize_mode = if (init.environ_map.get("SOFAB_MATERIALIZE")) |v|
+        std.mem.eql(u8, v, "1")
+    else
+        false;
 
     var inbuf: [8192]u8 = undefined;
     var stdin_reader = std.Io.File.stdin().readerStreaming(io, &inbuf);
@@ -76,6 +101,18 @@ pub fn main(init: std.process.Init) !void {
             try out.flush();
             continue;
         };
+        // Accept. In materialize mode (oracle/materialized.md) dump the decoded
+        // value's fields/elements explicitly instead of re-encoding to wire. m
+        // borrows string/blob bytes from `data` (alive until the next reset), so
+        // the whole dump is written now, before the loop resets the arena.
+        if (materialize_mode) {
+            try out.writeAll("A ");
+            try matgen.materialize(out, &m);
+            try out.writeAll("\n");
+            try out.flush();
+            continue;
+        }
+
         const enc = m.encode(a) catch {
             try out.writeAll("R other\n");
             try out.flush();

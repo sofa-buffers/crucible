@@ -10,6 +10,9 @@
 # Blocking axes (must stay green): sweep_repeated_id (§7.4), sweep_overbound (§7.1),
 # sweep_reserved_subtype (§4.6), sweep_truncation (§7), sweep_malform_truncate (§5.2 —
 # F-0024 resolved in sofabgen 0.19.4, promoted here from report-only).
+#   NB: sweep_repeated_id excludes the blob_array wrapper re-open (elem=="blob") pending
+#   F-0026 (corelib-c-cpp §7.4 sized-blob reset, open); the string_array re-open stays.
+#   Drop that skip in sweep_repeated_id.py once the corelib fix lands.
 # Report-only: wiretype_sweep (§7.3) — F-0022/F-0023 resolved in sofabgen 0.19.4; one residual
 # remains, F-0025 (fp §7.3: a scalar fp field receiving an fp array — the fp analogue of F-0021
 # that generator#183 covered for integers only; filed generator#193). Move it into the blocking

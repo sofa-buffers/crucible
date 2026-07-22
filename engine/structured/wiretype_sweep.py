@@ -72,7 +72,7 @@ POSITIONS = [
     ([], 0, "U"), ([], 1, "S"), ([], 2, "U"), ([], 3, "S"),
     ([], 4, "U"), ([], 5, "S"), ([], 6, "U"), ([], 7, "S"),
     # root sequences
-    ([], 10, "SEQ"), ([], 100, "SEQ"), ([], 200, "SEQ"),
+    ([], 10, "SEQ"), ([], 100, "SEQ"), ([], 200, "SEQ"), ([], 201, "SEQ"),
     # nested struct (id 10): fp32 / fp64 / string / blob
     ([10], 0, "FIX_fp32"), ([10], 1, "FIX_fp64"),
     ([10], 2, "FIX_str"),  ([10], 3, "FIX_blob"),
@@ -84,6 +84,8 @@ POSITIONS = [
     ([100, 10], 0, "ARR_fp32"), ([100, 10], 1, "ARR_fp64"),
     # string_array (id 200): an index-keyed element; every element is a string
     ([200], 0, "FIX_str"),
+    # blob_array (id 201): an index-keyed element; every element is a blob
+    ([201], 0, "FIX_blob"),
 ]
 
 

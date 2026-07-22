@@ -7,8 +7,8 @@ COMPLETE (`A`) nor INVALID (`R`). F-0001 established this at the top level (all 
 emit `I` on a truncated message; corelib-ts once accepted an unterminated nested
 sequence as `A`). This sweep generalizes it: take a **structurally rich, valid**
 message and truncate it at **every byte offset**, so every field boundary and every
-nesting depth (nested struct, arrays struct, arrays.nested, string_array wrapper) is
-a truncation point.
+nesting depth (nested struct, arrays struct, arrays.nested, string_array and
+blob_array wrappers) is a truncation point.
 
 Two oracles (engine/structured/sweep_run.py):
   * agreement   — at each offset all 12 must emit the SAME verdict. A split
@@ -48,6 +48,7 @@ def rich_message():
         "au32": [7, 8], "ai32": [-8], "au64": [9], "ai64": [-10],
         "afp32": [1.0, 2.0], "afp64": [3.0, 4.0],
         "strarr": ["alpha", "beta", "gamma"],
+        "blobarr": [b"\xde\xad", b"\xbe\xef", b"\x01\x02\x03"],
     })
 
 

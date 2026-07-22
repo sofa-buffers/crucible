@@ -29,6 +29,11 @@ import org.sofabuffers.sofab.SofabException;
 
 public final class Driver {
 
+    // Materialized value dump mode (oracle/materialized.md): when SOFAB_MATERIALIZE=1,
+    // an A (COMPLETE) decode emits a full walk of the decoded value instead of the
+    // re-encoded wire hex. I/R/L and the default (env unset) path are unchanged.
+    private static final boolean MATERIALIZE = "1".equals(System.getenv("SOFAB_MATERIALIZE"));
+
     private static String rejectClass(SofabException e) {
         // corelib-java carries the canonical category on the exception itself
         // (SofabError), so branch on it rather than string-matching class names.
@@ -96,6 +101,11 @@ public final class Driver {
         // INCOMPLETE (MESSAGE_SPEC §7): bytes end mid-message — the third canonical
         // verdict, neither accept (A) nor reject (R). Not an error. COMPLETE emits A.
         char verdict = (status == DecodeStatus.INCOMPLETE) ? 'I' : 'A';
+        // Materialized mode replaces only the A payload with the decoded-value dump
+        // (oracle/materialized.md); I keeps the round-trip hex of its partial value.
+        if (verdict == 'A' && MATERIALIZE) {
+            return "A " + message.ProbeDump.dump(m);
+        }
         return hexValue(verdict, m);
     }
 

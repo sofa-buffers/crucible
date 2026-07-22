@@ -1,0 +1,170 @@
+{
+  "message": "probe",
+  "fields": [
+    {
+      "id": 0,
+      "name": "u8",
+      "kind": "u"
+    },
+    {
+      "id": 1,
+      "name": "i8",
+      "kind": "s"
+    },
+    {
+      "id": 2,
+      "name": "u16",
+      "kind": "u"
+    },
+    {
+      "id": 3,
+      "name": "i16",
+      "kind": "s"
+    },
+    {
+      "id": 4,
+      "name": "u32",
+      "kind": "u"
+    },
+    {
+      "id": 5,
+      "name": "i32",
+      "kind": "s"
+    },
+    {
+      "id": 6,
+      "name": "u64",
+      "kind": "u"
+    },
+    {
+      "id": 7,
+      "name": "i64",
+      "kind": "s"
+    },
+    {
+      "id": 10,
+      "name": "nested",
+      "kind": "struct",
+      "fields": [
+        {
+          "id": 0,
+          "name": "f32",
+          "kind": "fp32"
+        },
+        {
+          "id": 1,
+          "name": "f64",
+          "kind": "fp64"
+        },
+        {
+          "id": 2,
+          "name": "str",
+          "kind": "string"
+        },
+        {
+          "id": 3,
+          "name": "bytes_field",
+          "kind": "blob"
+        }
+      ]
+    },
+    {
+      "id": 100,
+      "name": "arrays",
+      "kind": "struct",
+      "fields": [
+        {
+          "id": 0,
+          "name": "u8",
+          "kind": "array",
+          "elem": "u",
+          "count": 5
+        },
+        {
+          "id": 1,
+          "name": "i8",
+          "kind": "array",
+          "elem": "s",
+          "count": 5
+        },
+        {
+          "id": 2,
+          "name": "u16",
+          "kind": "array",
+          "elem": "u",
+          "count": 5
+        },
+        {
+          "id": 3,
+          "name": "i16",
+          "kind": "array",
+          "elem": "s",
+          "count": 5
+        },
+        {
+          "id": 4,
+          "name": "u32",
+          "kind": "array",
+          "elem": "u",
+          "count": 5
+        },
+        {
+          "id": 5,
+          "name": "i32",
+          "kind": "array",
+          "elem": "s",
+          "count": 5
+        },
+        {
+          "id": 6,
+          "name": "u64",
+          "kind": "array",
+          "elem": "u",
+          "count": 5
+        },
+        {
+          "id": 7,
+          "name": "i64",
+          "kind": "array",
+          "elem": "s",
+          "count": 5
+        },
+        {
+          "id": 10,
+          "name": "nested",
+          "kind": "struct",
+          "fields": [
+            {
+              "id": 0,
+              "name": "fp32",
+              "kind": "array",
+              "elem": "fp32",
+              "count": 5
+            },
+            {
+              "id": 1,
+              "name": "fp64",
+              "kind": "array",
+              "elem": "fp64",
+              "count": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 200,
+      "name": "string_array",
+      "kind": "wrapper",
+      "elem": "string",
+      "count": 5
+    },
+    {
+      "id": 201,
+      "name": "blob_array",
+      "kind": "wrapper",
+      "elem": "blob",
+      "count": 5
+    }
+  ]
+}

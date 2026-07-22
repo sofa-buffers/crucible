@@ -31,6 +31,11 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `drivers/c/` (pacemaker) | built | gcc replay driver (ASan/UBSan) verified; libFuzzer front-end present, `#ifdef CRUCIBLE_LIBFUZZER`, built in devcontainer (no clang in bare workspace). |
 | `drivers/go/` | built | Replay driver + native `FuzzProbe`; builds against vendored corelib-go via `replace`. |
 | `oracle/canonical.md` | built | v2 canonical form: round-trip re-encoding, three-valued verdict `A`/`I`/`R` (§7). |
+| `oracle/materialized.md` | built | Second canonical form (element-access oracle): `SOFAB_MATERIALIZE=1` makes a driver emit a full walk of the **decoded value** (every field + array element, floats as raw bits, `len:hex` strings/blobs) as its `A` payload — targeting the round-trip form's recorded blind spot (a decode that differs only where the sparse wire elides). Reuses the comparator (`accept_value` axis) unchanged. Grammar + wiring spec; **all 12 drivers implement it**. |
+| `engine/structured/schema.py` | built | The **generated schema-type table**: parses `schema/probe.sofab.yaml` into a language-neutral typed field tree (kinds `u`/`s`/`fp32`/`fp64`/`string`/`blob`/`struct`/`array`/`wrapper`, ids, counts, nesting) — the schema-type info a value walk needs but the wire does not carry (the C driver gets it free from sofabgen's object descriptor; this derives it for everyone else from the one schema source). `--json` writes the artifact. |
+| `oracle/materialized-schema.json` | built | The committed artifact `schema.py` emits — the schema-type table drivers/tools consume without re-parsing YAML. `materialize.sh` regenerates + `cmp`-checks it each run so it cannot drift from the schema. |
+| `engine/structured/materialize.py` | built | The materialized-form **reference / ground truth**, now **driven by the generated schema descriptor** (`schema.py`) — no hardcoded message shape; only gen.py's value-vector key convention remains. Models `decode(encode(msg))` (fill-to-N arrays, wrapper grown to max-index+1, scalar ±0.0 normalized). Every driver's `SOFAB_MATERIALIZE` output must equal it byte-for-byte. `--driver PATH` runs a driver binary over `corpus/structured` and diffs it (the per-driver acceptance gate); `--check DIR` compares a dump dir. |
+| `scripts/materialize.sh` | built | Runs the materialized differential over the **full 12-driver roster** with `SOFAB_MATERIALIZE=1`, over `corpus/structured` — **75×12 → 0 divergences** (agreement) **+ a C-anchor conformance check** vs the reference (a family-wide-wrong dump is agreement-green, conformance-red). **A standing CI gate** (`replay.yml`); exports `SOFAB_MATERIALIZE_SCHEMA` for the descriptor-driven drivers. **Every walker is schema-agnostic:** C (sofabgen object descriptor); **go/ts/java/cs/python** consume the generated `materialized-schema.json` at runtime (reflection); **rust/cpp/zig** — no runtime reflection — instead **generate their walker source at build time** from the descriptor (`drivers/<lang>/materialize_gen.py`, run by `build.sh`, unrolling the descriptor into straight-line access code). A schema change reflows to all 12 with zero hand-editing. |
 | `oracle/comparator.py` | built | N-way canonical diff, policy-aware, no external deps; parses `A`/`I`/`R`. **Crash- and hang-isolating:** a per-driver wall-clock budget (`--timeout`, default `max(30s, 0.25s × corpus)`; `TIMEOUT=` env via the scripts) via stdout-to-tempfile, so an adversarial input that hangs a driver is localized + reported `[TIMEOUT]` (a DoS finding), not a wedged run. `read_corpus` skips `*.md` + dotfiles so a corpus dir can carry a README (inputs can't be selected by extension — libFuzzer names files by content hash); this also stops the `.gitkeep` in the gitignored corpora being fed as an empty message. |
 | `oracle/policy.yaml` | built | Permissive Phase-1 policy (verdict/accept_value hard, incomplete_value/reject_class soft). |
 | `scripts/run.sh` | built | Build all drivers → differential compare over a corpus (crash-isolating). |
@@ -77,6 +82,32 @@ own sparse-canonical encoder, hex-printed. This makes every driver
 **schema-agnostic** (no per-field code; scaling the schema needs zero driver
 changes) and folds in the round-trip oracle. Verified: all 12 drivers emit
 byte-identical hex for the seed corpus (e.g. `02_basic → A 002a090d12200000c03f1a126869`).
+
+**v2 (added, built) — materialized value form** (`oracle/materialized.md`,
+the element-access oracle). The round-trip form has a *recorded* blind spot
+(`canonical.md` §Tradeoff): two decoders holding different in-memory values that
+re-encode to the same sparse-canonical bytes are masked (F-0010's class — the
+sparse wire elides trailing default runs / omitted fields). Under
+`SOFAB_MATERIALIZE=1` a driver instead emits `A <dump(decode(input))>` — a full
+walk of the decoded value, every field and every array element explicit, floats as
+raw bit patterns, strings/blobs as `len:hex`. This is PLAN §7's original per-field
+form, resurrected as a *second, added* oracle (not a replacement — round-trip stays
+the default and the schema-agnostic path). It is **not schema-agnostic**: it needs
+schema-type info (fp32-vs-fp64, count N) the round-trip got free from the encoder —
+generic via C's object descriptor, a schema-type table elsewhere. **Measured caveat
+(steers the whole design):** every corelib already materializes a fixed-count
+*numeric* array to its full N in memory (the wire count M is reconstructed only at
+encode time by the trim heuristic), so this form is uniform there today; its live
+signal is the **wrapper arrays** (`string_array`/`blob_array`, genuinely dynamic),
+**element-level fidelity**, and **regression-proofing**. **All 12 drivers** implement
+it, **all schema-agnostic** — C via the object descriptor, go/ts/java/cs/python by
+consuming the generated `materialized-schema.json` at runtime, rust/cpp/zig by
+generating their walker source from the descriptor at build time: **75×12 → 0
+divergences**, all matching the
+`engine/structured/materialize.py` reference byte-for-byte, with the default round-trip
+path unchanged. One surfaced nuance: the **Go** corelib leaves an absent numeric array
+`nil` rather than filling to N in memory, so its driver pads to N for the dump (the
+logical fill-to-N value is identical — benign; noted, not a finding).
 
 ### Limit mode (as built)
 

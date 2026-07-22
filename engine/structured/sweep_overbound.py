@@ -17,6 +17,8 @@ reject** (`R`), plus an at-bound control that all 12 must **accept**:
   * maxlen:4  blob         -> 5 bytes                    expect R ; control: 4
   * string_array element   -> a 65-byte element (maxlen 64)  expect R ; control: 64
   * string_array           -> an element id >= count 5 (over-index)  expect R
+  * blob_array element      -> the blob analogue of both (over-maxlen + over-index);
+                              exercises the _BlobSeq heap path F-0013 left untested.
 
 Positions and wire primitives come from `sweep_positions.py` / `gen.py`.
 
@@ -70,14 +72,17 @@ def emit(out_dir):
             vectors.append((f"{tag}_atmaxlen_ctl.bin", place(p.path, at), "accept"))
         elif p.cat == "seq_wrapper":
             m, n = p.maxlen, p.count
+            # element fixlen subtype follows the wrapper's declared element type
+            # (str -> FL_STRING, blob -> FL_BLOB) so the ONLY irregularity is the bound.
+            st = FL_BLOB if p.elem == "blob" else FL_STRING
             # over-maxlen element (element 0, m+1 bytes) -> reject
-            over_len = hdr(p.fid, WT_SEQ_BEG) + fixlen(0, FL_STRING, b"A" * (m + 1)) + bytes([WT_SEQ_END])
+            over_len = hdr(p.fid, WT_SEQ_BEG) + fixlen(0, st, b"A" * (m + 1)) + bytes([WT_SEQ_END])
             vectors.append((f"{tag}_elem_overmaxlen.bin", place(p.path, over_len), "reject"))
             # over-index element (id == count n, i.e. >= n) -> reject
-            over_idx = hdr(p.fid, WT_SEQ_BEG) + fixlen(n, FL_STRING, b"A") + bytes([WT_SEQ_END])
+            over_idx = hdr(p.fid, WT_SEQ_BEG) + fixlen(n, st, b"A") + bytes([WT_SEQ_END])
             vectors.append((f"{tag}_elem_overindex.bin", place(p.path, over_idx), "reject"))
             # at-bound control: element 0, m bytes -> accept
-            at = hdr(p.fid, WT_SEQ_BEG) + fixlen(0, FL_STRING, b"A" * m) + bytes([WT_SEQ_END])
+            at = hdr(p.fid, WT_SEQ_BEG) + fixlen(0, st, b"A" * m) + bytes([WT_SEQ_END])
             vectors.append((f"{tag}_elem_atmaxlen_ctl.bin", place(p.path, at), "accept"))
 
     os.makedirs(out_dir, exist_ok=True)

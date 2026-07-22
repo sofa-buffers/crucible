@@ -1,9 +1,10 @@
 # Fast, blocking regression gate — runs on every push and PR.
 #
 # Bootstraps the corelibs (their `main` tips) + sofabgen, builds all 12 replay
-# drivers, and runs the five GREEN oracles: the seed differential, the resolved-
-# findings regression corpus, the cross-encode / structured-value differential,
-# the union suite, and limit mode. Any divergence fails the run — so a corelib bump
+# drivers, and runs the GREEN oracles: the seed differential, the resolved-findings
+# regression corpus, the cross-encode / structured-value differential, the union
+# suite, limit mode, the structural sweep gate, and the materialized-value
+# (element-access) differential. Any divergence fails the run — so a corelib bump
 # (or a Crucible change) that reintroduces a resolved finding is caught the moment
 # it lands. Runs in the prebuilt toolchain image (see image.yml); the per-driver
 # timeout keeps a hanging driver from wedging the job (it is reported as a finding
@@ -64,3 +65,11 @@ jobs:
       # after limit mode (which leaves probe-dyn binaries).
       - name: Structural sweep gate (§7.4 + §7.1 blocking; §7.3 report-only)
         run: ./scripts/sweep.sh
+
+      # Element-access oracle (oracle/materialized.md): every driver dumps the DECODED
+      # value (all fields + array elements explicit, floats as raw bits) under
+      # SOFAB_MATERIALIZE=1, catching a decode that differs only where the sparse
+      # round-trip wire elides. Checks agreement (all 12) AND conformance (the C anchor
+      # vs the reference). 75×12 → 0 divergences. Rebuilds vs probe, safe after limit mode.
+      - name: Materialized-value differential (element-access oracle)
+        run: ./scripts/materialize.sh

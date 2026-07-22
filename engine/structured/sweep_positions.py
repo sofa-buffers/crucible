@@ -19,7 +19,8 @@ A `Position` is one field slot in `schema/probe.sofab.yaml`:
            'arr_u' 'arr_s' 'arr_fp32' 'arr_fp64'     compact/fixlen arrays
            'seq_struct'                               a struct sequence (opens a scope)
            'seq_wrapper'                              an array-wrapper sequence (a value)
-  elem   for a wrapper, the element category ('str' for string_array)
+  elem   for a wrapper, the element category ('str' for string_array,
+         'blob' for blob_array)
 
 Every axis filters positions by `cat` (e.g. §7.4 repeated-id cares about the
 sequence positions; §7.1 over-bound cares about arrays and bounded strings/blobs).
@@ -65,6 +66,7 @@ POSITIONS = [
     Position((), 10, "seq_struct"),
     Position((), 100, "seq_struct"),
     Position((), 200, "seq_wrapper", elem="str", count=5, maxlen=64),
+    Position((), 201, "seq_wrapper", elem="blob", count=5, maxlen=64),
     # nested struct (id 10): fixlen leaves
     Position((10,), 0, "fp32"), Position((10,), 1, "fp64"),
     Position((10,), 2, "str", maxlen=32), Position((10,), 3, "blob", maxlen=4),

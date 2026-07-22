@@ -37,9 +37,41 @@ fn reject_class(e: Error) -> &'static str {
     }
 }
 
-fn canonical(out: &mut impl Write, data: &[u8]) {
+// ---- materialized value dump (oracle/materialized.md), SOFAB_MATERIALIZE=1 -------
+//
+// The default accept path re-encodes the decoded value to wire (schema-agnostic,
+// but blind to a decode that differs only where the sparse-canonical wire elides —
+// canonical.md §Tradeoff). This path instead walks the DECODED value and dumps every
+// field + every array element explicitly, matching engine/structured/materialize.py
+// byte-for-byte. The value is already faithful (the decoder fills numeric/fp arrays
+// to N, grows the wrapper Vecs to highest-populated-index + 1, and omitted scalar
+// fp fields decode to their +0.0 default), so we dump it as-is with no normalization.
+//
+// The walker itself is NOT hand-written: `materialize_gen.py` unrolls the schema
+// descriptor (oracle/materialized-schema.json) into straight-line field-access code
+// at build time, and build.sh drops it beside this file as `materialize_gen.rs`
+// (Rust has no runtime reflection, so a runtime table cannot drive it — the source is
+// generated instead). A schema change regenerates the walker with zero edits here.
+//
+// The generated `pub fn materialize(m: &Probe) -> String` compiles for BOTH corelibs:
+// it touches only member APIs shared by the std and no_std container flavors
+// (`.as_bytes()` on strings, slice-deref `&x[..]` on blobs, `.iter()` over the
+// wrappers — the numeric/fp scalar and array fields are identical in both) and builds
+// its output with `core::fmt::Write` into a `String` (the driver binary is always std
+// for both corelib variants). We then write those bytes to the std::io sink exactly as
+// the round-trip path does.
+include!("materialize_gen.rs");
+
+fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool) {
     match Probe::try_decode(data) {
         Ok(m) => {
+            if materialize_mode {
+                // COMPLETE, materialize mode: dump the decoded value (materialized.md).
+                let _ = write!(out, "A ");
+                let _ = out.write_all(materialize(&m).as_bytes());
+                let _ = writeln!(out);
+                return;
+            }
             // COMPLETE: re-encode the decoded value -> hex.
             let bytes = m.encode();
             let _ = write!(out, "A ");
@@ -67,6 +99,12 @@ fn canonical(out: &mut impl Write, data: &[u8]) {
 }
 
 fn main() {
+    // Materialize mode (oracle/materialized.md): on a COMPLETE decode, emit a value
+    // dump instead of the re-encoded wire hex. Read once at startup; every other
+    // verdict path is unaffected. The driver binary is std for both corelib variants,
+    // so std::env is available under the no_std corelib too.
+    let materialize_mode = std::env::var("SOFAB_MATERIALIZE").as_deref() == Ok("1");
+
     let stdin = std::io::stdin();
     let mut r = stdin.lock();
     let stdout = std::io::stdout();
@@ -90,7 +128,7 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        canonical(&mut w, &data);
+        canonical(&mut w, &data, materialize_mode);
         w.flush().ok();
     }
 }
