@@ -149,3 +149,24 @@ not attributable to corelib-dart or the generator.
 - **C-anchor conformance** vs `engine/structured/materialize.py` — **0/75 mismatch**.
 - Default round-trip path unregressed after the driver edits (seeds 6 × 13, 0 div).
 - All 13 walkers remain schema-agnostic; Dart reflows from the descriptor at build time.
+
+---
+
+## Stage 5 — Coverage front-end (placeholder, mirrors Zig)
+
+**Goal:** a coverage target skeleton. The C corelib stays the pacemaker (PLAN §3);
+a Dart coverage engine is a stretch goal. Dart has no first-party libFuzzer, so the
+intended path (per `.devcontainer/Dockerfile`) is a dart:ffi native-callable decode
+core AOT-compiled into a shared lib and driven by a C libFuzzer harness — the same
+C-interop plan as Zig, and like Zig's it is **unresolved** (PLAN §14).
+
+### Steps
+1. `drivers/dart/fuzz.dart` — documented placeholder smoke check exercising the decode
+   core (empty→complete, `0x80`→incomplete, crash-freedom over all 1/4-byte prefixes).
+   **Not** built by `build.sh` (matches Zig's `fuzz.zig`).
+
+### Results
+- **AOT-compiled** (`dart compile exe fuzz.dart`) and run: `dart fuzz smoke: OK`. Stays
+  native end-to-end — no VM/JIT, per the operator constraint.
+- `build.sh` has zero references to `fuzz.dart` (builds only the replay driver). No
+  finding.
