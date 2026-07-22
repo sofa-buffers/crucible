@@ -399,7 +399,7 @@ has no `LimitExceeded`).
   needs the standing one-time `image.yml` rebuild to carry it into `replay`/`nightly`.
 - **Result:** all suites green — seeds 6×13, regression 73×13, cross-encode 75×13,
   union 11×13, limit mode (arr/str/blb) 10-heap-driver roster, structural sweep
-  (5 blocking axes), materialized 75×13. See `docs/dart-integration-log.md`. No
+  (5 blocking axes), materialized 75×13. No
   Dart-attributable finding. (One Crucible-side walker bug found+fixed during
   Stage 4; one toolchain-bump side-result: F-0025 now resolved on the CI build.)
 

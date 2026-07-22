@@ -46,7 +46,7 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   py-cython, py-pure, java, typescript, csharp, zig, **dart**). `./scripts/bootstrap.sh`
   keeps sofabgen at the latest green CI build (sha256-verified) and the corelibs at
   `origin/main`. **Dart** (crucible#77) was integrated 2026-07-22 — see the Twenty-fifth
-  change below and `docs/dart-integration-log.md`.
+  change below.
 - **Structural sweep framework** (`engine/structured/sweep_*.py`, PLAN §6): a sweep enumerates
   one normative rule across **every** schema position and checks two oracles (agreement +
   conformance). **Six axes** wired via `sweep_run.py` / `scripts/sweep.sh` — repeated-id (§7.4),
@@ -666,7 +666,7 @@ latest green sofabgen CI build (`0.0.0-20260722065611-f61a29b31c01`). New `drive
 cross-encode/union), `run-limits.sh` (heap roster), `sweep_run.py` (structural sweep), `materialize.sh`
 (element-access). The generated `Probe.tryDecode → DecodeStatus` maps 1:1 to `A`/`I`/`R`/`L` (sticky
 `_Dec.inv` folds schema-bound violations into INVALID, the Rust/Zig model), so the schema-agnostic
-round-trip form needed **zero per-field Dart code**. Full log: `docs/dart-integration-log.md`.
+round-trip form needed **zero per-field Dart code**.
 - ✅ **Every suite green with 13 drivers:** seeds 6×13, regression 73×13, cross-encode 75×13, union
   11×13, limit mode (arr/str/blb) 10-heap-driver roster, structural sweep (5 blocking axes),
   materialized 75×13 + C-anchor conformance 0/75. Dart is byte-identical to Go on every seed.
