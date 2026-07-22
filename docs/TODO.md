@@ -77,13 +77,12 @@ report-only for the residual F-0025 above).
           (reflection by field name) — **schema-agnostic**, no hardcoded shape. `materialize.sh` exports
           `SOFAB_MATERIALIZE_SCHEMA`; 75×12 stays 0-divergence. So the schema-agnostic set is now C +
           go/ts/java/cs/python (7 of 12 targets).
-    - [ ] *Remaining (needs generated source, not a runtime table):* **rust / cpp / zig** keep a
-          hardcoded walker — they have no usable runtime reflection (zig comptime can't consume a
-          runtime descriptor, and `string` vs `blob` are both `[]const u8`, indistinguishable by type;
-          rust/cpp have none). Closing them means **generating their walker source** from the descriptor
-          at build time — ideally by sofabgen emitting a per-backend descriptor like C's, rather than a
-          Crucible-side code generator. Low priority: the schema-driven reference + CI conformance check
-          already fail loudly if a hardcoded walker drifts from the schema.
+    - [x] **rust / cpp / zig generate their walker source** (2026-07-21): no usable runtime reflection,
+          so each has a build-time generator (`drivers/<lang>/materialize_gen.py`, run by `build.sh`)
+          that unrolls the descriptor into straight-line walker source — regenerated every build. All 12
+          drivers are now **schema-agnostic**: a schema change reflows to every walker with zero
+          hand-editing. 75×12 stays 0-divergence; the generators run cleanly during the default `run.sh`
+          builds too. **The materialized-value oracle is fully complete** — no open refinements.
 - [ ] **Encoder-side fuzzing.** The pacemaker is **decode-only**; encoders are only exercised
       via cross-encode's deterministic values. Mutate the *value* (floats, boundary ints, array
       sizes, unicode) and feed all 12 *encoders* → compare bytes. Reaches encoder divergences

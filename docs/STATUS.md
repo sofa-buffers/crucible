@@ -28,8 +28,9 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   that differs only where the sparse wire elides. **All 12 drivers** implement it — 75×12
   green vs the `engine/structured/materialize.py` reference (a **standing CI gate**); default
   round-trip path unchanged. The **table** (`engine/structured/schema.py` →
-  `oracle/materialized-schema.json`) is generated from the schema and drives the reference; C +
-  go/ts/java/cs/python walk schema-agnostically by consuming it, rust/cpp/zig hardcode (CI-guarded).
+  `oracle/materialized-schema.json`) is generated from the schema and drives the reference; **all 12
+  walkers are schema-agnostic** — C via the object descriptor, go/ts/java/cs/python consume the
+  descriptor at runtime, rust/cpp/zig generate their walker source from it at build time.
 - `./scripts/run-union.sh` — the **union suite**: points the oracles at
   `schema/probe-union.sofab.yaml` (a `probe` carrying a 4-variant union), the one
   wire feature the main `probe` lacks. 11 seeds × 12 drivers, 0 divergences.

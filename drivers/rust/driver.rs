@@ -47,114 +47,20 @@ fn reject_class(e: Error) -> &'static str {
 // to N, grows the wrapper Vecs to highest-populated-index + 1, and omitted scalar
 // fp fields decode to their +0.0 default), so we dump it as-is with no normalization.
 //
-// This is a MANUAL walker over the generated `Probe` struct (no serde/reflection),
-// so it compiles for BOTH corelibs: the string/blob/wrapper fields are `String`/`Vec`
-// under std and `heapless::String`/`heapless::Vec` under no_std, but both expose
-// `.as_bytes()` (strings) and slice-deref `&x[..]` (blobs), and `.iter()` over the
-// wrappers — the numeric/fp scalar and array fields are identical in both. The driver
-// binary itself is always std (main.rs uses std::io), so we write straight to the
-// std::io::Write sink exactly as the round-trip path does.
-fn md_hex(out: &mut impl Write, b: &[u8]) {
-    for x in b {
-        let _ = write!(out, "{:02x}", x);
-    }
-}
-fn md_text(out: &mut impl Write, b: &[u8]) {
-    let _ = write!(out, "t{}:", b.len());
-    md_hex(out, b);
-}
-fn md_blob(out: &mut impl Write, b: &[u8]) {
-    let _ = write!(out, "b{}:", b.len());
-    md_hex(out, b);
-}
-fn md_arr_u<T: core::fmt::Display>(out: &mut impl Write, a: &[T]) {
-    let _ = write!(out, "[");
-    for (i, v) in a.iter().enumerate() {
-        let _ = write!(out, "{}u{}", if i > 0 { "," } else { "" }, v);
-    }
-    let _ = write!(out, "]");
-}
-fn md_arr_s<T: core::fmt::Display>(out: &mut impl Write, a: &[T]) {
-    let _ = write!(out, "[");
-    for (i, v) in a.iter().enumerate() {
-        let _ = write!(out, "{}s{}", if i > 0 { "," } else { "" }, v);
-    }
-    let _ = write!(out, "]");
-}
-fn md_arr_f32(out: &mut impl Write, a: &[f32]) {
-    let _ = write!(out, "[");
-    for (i, v) in a.iter().enumerate() {
-        let _ = write!(out, "{}f{:08x}", if i > 0 { "," } else { "" }, v.to_bits());
-    }
-    let _ = write!(out, "]");
-}
-fn md_arr_f64(out: &mut impl Write, a: &[f64]) {
-    let _ = write!(out, "[");
-    for (i, v) in a.iter().enumerate() {
-        let _ = write!(out, "{}F{:016x}", if i > 0 { "," } else { "" }, v.to_bits());
-    }
-    let _ = write!(out, "]");
-}
-
-fn materialize(out: &mut impl Write, m: &Probe) {
-    // top-level scalars (ids 0..7)
-    let _ = write!(
-        out,
-        "{{0:u{};1:s{};2:u{};3:s{};4:u{};5:s{};6:u{};7:s{};",
-        m.u8, m.i8, m.u16, m.i16, m.u32, m.i32, m.u64, m.i64
-    );
-    // nested struct (id 10): f32(0) f64(1) str(2) blob(3)
-    let _ = write!(
-        out,
-        "10:{{0:f{:08x};1:F{:016x};2:",
-        m.nested.f32.to_bits(),
-        m.nested.f64.to_bits()
-    );
-    md_text(out, m.nested.str.as_bytes());
-    let _ = write!(out, ";3:");
-    md_blob(out, &m.nested.bytes_field[..]);
-    let _ = write!(out, "}};");
-    // arrays struct (id 100): eight numeric arrays (0..7) + nested fp arrays (id 10)
-    let _ = write!(out, "100:{{0:");
-    md_arr_u(out, &m.arrays.u8[..]);
-    let _ = write!(out, ";1:");
-    md_arr_s(out, &m.arrays.i8[..]);
-    let _ = write!(out, ";2:");
-    md_arr_u(out, &m.arrays.u16[..]);
-    let _ = write!(out, ";3:");
-    md_arr_s(out, &m.arrays.i16[..]);
-    let _ = write!(out, ";4:");
-    md_arr_u(out, &m.arrays.u32[..]);
-    let _ = write!(out, ";5:");
-    md_arr_s(out, &m.arrays.i32[..]);
-    let _ = write!(out, ";6:");
-    md_arr_u(out, &m.arrays.u64[..]);
-    let _ = write!(out, ";7:");
-    md_arr_s(out, &m.arrays.i64[..]);
-    let _ = write!(out, ";10:{{0:");
-    md_arr_f32(out, &m.arrays.nested.fp32[..]);
-    let _ = write!(out, ";1:");
-    md_arr_f64(out, &m.arrays.nested.fp64[..]);
-    let _ = write!(out, "}}}};");
-    // wrapper arrays: string_array (id 200), blob_array (id 201). The decoded Vec
-    // length is already highest-populated-index + 1 (interior gaps as empty), so we
-    // emit every element in index order.
-    let _ = write!(out, "200:[");
-    for (i, s) in m.string_array.iter().enumerate() {
-        if i > 0 {
-            let _ = write!(out, ",");
-        }
-        md_text(out, s.as_bytes());
-    }
-    let _ = write!(out, "];201:[");
-    for (i, b) in m.blob_array.iter().enumerate() {
-        if i > 0 {
-            let _ = write!(out, ",");
-        }
-        md_blob(out, &b[..]);
-    }
-    let _ = write!(out, "]}}");
-}
+// The walker itself is NOT hand-written: `materialize_gen.py` unrolls the schema
+// descriptor (oracle/materialized-schema.json) into straight-line field-access code
+// at build time, and build.sh drops it beside this file as `materialize_gen.rs`
+// (Rust has no runtime reflection, so a runtime table cannot drive it — the source is
+// generated instead). A schema change regenerates the walker with zero edits here.
+//
+// The generated `pub fn materialize(m: &Probe) -> String` compiles for BOTH corelibs:
+// it touches only member APIs shared by the std and no_std container flavors
+// (`.as_bytes()` on strings, slice-deref `&x[..]` on blobs, `.iter()` over the
+// wrappers — the numeric/fp scalar and array fields are identical in both) and builds
+// its output with `core::fmt::Write` into a `String` (the driver binary is always std
+// for both corelib variants). We then write those bytes to the std::io sink exactly as
+// the round-trip path does.
+include!("materialize_gen.rs");
 
 fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool) {
     match Probe::try_decode(data) {
@@ -162,7 +68,7 @@ fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool) {
             if materialize_mode {
                 // COMPLETE, materialize mode: dump the decoded value (materialized.md).
                 let _ = write!(out, "A ");
-                materialize(out, &m);
+                let _ = out.write_all(materialize(&m).as_bytes());
                 let _ = writeln!(out);
                 return;
             }
