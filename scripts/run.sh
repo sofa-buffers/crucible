@@ -25,6 +25,7 @@ JAVA_BIN=$(sh "$ROOT/drivers/java/build.sh")
 TS_BIN=$(sh "$ROOT/drivers/ts/build.sh")
 CS_BIN=$(sh "$ROOT/drivers/cs/build.sh")
 ZIG_BIN=$(sh "$ROOT/drivers/zig/build.sh")
+DART_BIN=$(sh "$ROOT/drivers/dart/build.sh")
 echo "==> c:          $C_BIN" >&2
 echo "==> go:         $GO_BIN" >&2
 echo "==> rust-std:   $RS_BIN" >&2
@@ -37,6 +38,7 @@ echo "==> java:       $JAVA_BIN" >&2
 echo "==> typescript: $TS_BIN" >&2
 echo "==> csharp:     $CS_BIN" >&2
 echo "==> zig:        $ZIG_BIN" >&2
+echo "==> dart:       $DART_BIN" >&2
 
 # The driver roster, shared by the comparator and the clusterer.
 set -- \
@@ -51,7 +53,8 @@ set -- \
     --driver "java:$JAVA_BIN" \
     --driver "typescript:$TS_BIN" \
     --driver "csharp:$CS_BIN" \
-    --driver "zig:$ZIG_BIN"
+    --driver "zig:$ZIG_BIN" \
+    --driver "dart:$DART_BIN"
 
 # Optional per-driver hang budget (seconds); unset → the tools compute
 # max(30, 0.25 x corpus size). A hanging driver is a finding, not a wedged run.
