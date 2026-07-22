@@ -51,18 +51,19 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   one normative rule across **every** schema position and checks two oracles (agreement +
   conformance). **Six axes** wired via `sweep_run.py` / `scripts/sweep.sh` — repeated-id (§7.4),
   over-bound (§7.1), reserved-subtype (§4.6), truncation (§7), malform×truncation (§5.2),
-  wiretype (§7.3) — **all six blocking + green** (wiretype promoted from report-only 2026-07-22
-  once F-0025 landed; `sweep_repeated_id` keeps only the F-0026 blob-reopen carve-out). This is
-  what found F-0020–F-0025 — "isolate-green ≠ axis-green".
-- **26 findings catalogued** (`results/FINDINGS.md`); **24 resolved, 1 by-design, 1 open (F-0026 corelib).**
+  wiretype (§7.3) — **all six blocking + green, no carve-out** (wiretype promoted from report-only
+  2026-07-22 once F-0025 landed; the `sweep_repeated_id` blob-reopen carve-out dropped once F-0026
+  landed). This is what found F-0020–F-0025 — "isolate-green ≠ axis-green".
+- **26 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 0 open.**
   **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
   generator#189), and **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
   G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21); **F-0025** (§7.3 fp scalar←array,
   generator#193 — the fp analogue of F-0021 that generator#183 covered for integers only) was
   **resolved 2026-07-22** on the latest green sofabgen CI build, promoting the wiretype (§7.3) sweep
-  axis report-only → blocking and its isolates into the regression gate (73 → 77). **The one open
-  finding, F-0026** (corelib-c-cpp#106), is the §7.4 `blob_array` wrapper re-open keeping a stale
-  zeroed element on the C object API. **F-0018** (embedded U+0000
+  axis report-only → blocking and its isolates into the regression gate (73 → 77); **F-0026**
+  (corelib-c-cpp#106 — the §7.4 `blob_array` wrapper re-open keeping a stale zeroed element on the C
+  object API) was **resolved 2026-07-22** (corelib-c-cpp `2416a2b`), dropping the last sweep carve-out
+  and taking the gate 77 → 81. **No open finding remains.** **F-0018** (embedded U+0000
   in a `string`) is classified **by-design** — a
   NUL-terminated C-string profile projects `A\0B` → `A` on re-encode; valid on the wire,
   preserved by the other 10 profiles, sanctioned as an allowed divergence in
@@ -702,6 +703,25 @@ is fixed** — [generator#193](https://github.com/sofa-buffers/generator/issues/
 
 Net open: only **F-0026** (corelib-c-cpp#106). Plus **F-0018** (by-design). **All 25 other catalogued
 findings are resolved or by-design.**
+
+**Twenty-seventh change 2026-07-22 — F-0026 verified resolved; last sweep carve-out dropped; regression gate 77 → 81 (branch `f0026-cleanup`). Zero open findings.**
+Verifying "F-0026 is the only open finding" surfaced that it, too, is **already fixed**:
+[corelib-c-cpp#106](https://github.com/sofa-buffers/corelib-c-cpp/issues/106) is closed and its fix
+(`2416a2b`, "reset sized-blob used-length in `sofab_object_init` (§7.4 re-open)") has been on
+`origin/main` — so it landed silently during the Dart session, masked because F-0026's sweep axis was
+carved out and its reproducer kept out of the gate.
+- ✅ **F-0026 resolved:** the C object API's `sofab_object_init` now resets a sized blob's companion
+  length on a §7.4 wrapper replace-init, so a re-opened `blob_array` no longer keeps a stale zeroed
+  element. Corelib-only, no codegen change.
+- **Verified two ways:** (1) all 4 isolates (`blob_reopen_empty`, `blob_reopen_two` + 2 controls) →
+  **all 13 drivers agree** (`c` now drops the re-opened element); (2) the `elem=="blob"` carve-out was
+  removed from `sweep_repeated_id.py` and the **repeated-id (§7.4) sweep is green with the blob wrapper
+  included** — 16 vectors, 0 divergences.
+- **Last carve-out gone:** all six sweep axes are now blocking **with no exclusions**.
+- **Regression gate 77 → 81:** the 2 F-0026 reproducers + 2 controls promoted (`F0026_*`);
+  `CORPUS=corpus/regression ./scripts/run.sh` → 81×13, 0 divergences.
+
+Net open: **none.** Plus **F-0018** (by-design). **All 25 catalogued findings are resolved; 1 by-design.**
 
 | finding | what | tracked in / status |
 |---|---|---|

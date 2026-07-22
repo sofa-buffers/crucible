@@ -1,8 +1,12 @@
 # F-0026 — a re-opened blob_array wrapper keeps a stale zeroed element (C object API)
 
-**Status:** 🆕 **open — filed [corelib-c-cpp#106](https://github.com/sofa-buffers/corelib-c-cpp/issues/106).**
+**Status:** ✅ **RESOLVED — [corelib-c-cpp#106](https://github.com/sofa-buffers/corelib-c-cpp/issues/106) fixed & closed**
+(commit `2416a2b`, "reset sized-blob used-length in `sofab_object_init` (§7.4 re-open)"; verified
+2026-07-22 on `origin/main`). All 4 isolates → **all 13 drivers agree** (`c` now drops the re-opened
+element); the `elem=="blob"` carve-out was removed from the repeated-id (§7.4) sweep (green with the
+blob wrapper, 16 vectors) and the isolates promoted into `corpus/regression/` (`F0026_*`).
 MESSAGE_SPEC §7.4 requires a re-opened **array wrapper**
-to be **replaced whole**; the C object API keeps the earlier occurrence's slots, zeroed, instead of
+to be **replaced whole**; the C object API had kept the earlier occurrence's slots, zeroed, instead of
 dropping them. **Corelib-only** (`corelib-c-cpp`, the pure-C object API — the `c` driver), **not
 codegen**. **Axis:** accept_value (round-trip) — all 12 accept, `c` re-encodes a value the other 11
 drop. **Found:** 2026-07-21 by the repeated-id sweep (`engine/structured/sweep_repeated_id.py`, §7.4)

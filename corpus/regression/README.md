@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (77 inputs)
+## Contents (81 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -52,6 +52,8 @@ looking. This corpus makes it automatic.
 | `F0024_control_invalid_utf8_complete.bin`, `F0024_control_valid_complete.bin`, `F0024_control_valid_then_trunc.bin` (3) | F-0024 (controls) | — | the axes that isolate ordering from validation: a complete-but-invalid input is `R` (detection works), a complete valid input is `A`, a valid-but-truncated input is `I` (a clean truncation must still surface as INCOMPLETE, not be forced to `R`) |
 | `F0025_fp32_scalar_recv_array.bin`, `F0025_fp64_scalar_recv_array.bin` | F-0025 | generator#193 (post-0.19.4 sofabgen) | a **scalar fp field** (`nested.f32` / `f64`) receiving an fp **fixlen array** is **skipped** per §7.3, not decoded from the array's element — all 12 agree (was decoded by rust-std/rust-nostd/csharp/java/zig; the fp analogue of F-0021, which #183 fixed for integers only) |
 | `F0025_control_fp32_scalar.bin`, `F0025_control_array_field.bin` (2) | F-0025 (controls) | — | a correctly-typed fp scalar, and a legit fp array at the actual array field, still store on all 12 — the skip fires only on the fp-scalar←fp-array mismatch |
+| `F0026_blob_reopen_empty.bin`, `F0026_blob_reopen_two.bin` | F-0026 | corelib-c-cpp#106 (`2416a2b`) | a re-opened `blob_array` wrapper (§7.4 replace) drops the earlier occurrence's element on **all 13** — the C object API's `sofab_object_init` now resets a sized blob's companion length, so no stale zeroed element survives |
+| `F0026_control_blob_single.bin`, `F0026_control_str_reopen.bin` (2) | F-0026 (controls) | — | a single (non-reopened) `blob_array` element, and a `string_array` reopen (never buggy), still agree on all 13 — the reset touches only the sized-blob reopen path |
 
 Filenames are `F<nnnn>_<original-name>.bin`; the originals stay in `findings/<id>/` as the
 finding's own record. `F0003_overcount_clean.bin` has no original — see below.
