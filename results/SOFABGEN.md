@@ -677,7 +677,7 @@ ordering from validation.
 
 ## G-0017 — sofabgen provisions the rust-nostd corelib features from the schema's *used* wire types, so the decoder can't §7.3-skip an array / fp64 field
 
-**Status:** 🔴 **OPEN** — issue against `generator`. Finding
+**Status:** 🔴 **OPEN** — [generator#215](https://github.com/sofa-buffers/generator/issues/215). Finding
 [`F-0027`](../findings/F-0027-nostd-feature-gated-skip-rejects-array-fp64/NOTES.md). Generator-primary,
 **corelib-rs-no-std implicated** (the F-0010 "occasionally both" shape). Found 2026-07-22 by the WP-01
 union pass of the wiretype (§7.3) sweep — the first sweep run against a schema (`probe-union`) that
