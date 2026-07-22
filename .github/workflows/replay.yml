@@ -39,7 +39,13 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Bootstrap (corelibs@main + sofabgen)
-        run: ./scripts/bootstrap.sh   # always: latest sofabgen release + corelibs@main
+        env:
+          # actions:read on sofa-buffers/generator so bootstrap can pull the latest green
+          # sofabgen CI build. The repo-scoped GITHUB_TOKEN cannot read another repo's
+          # artifacts, so create a PAT secret SOFABGEN_TOKEN. Without it, bootstrap falls
+          # back — loudly — to the latest tagged release (the run still bootstraps).
+          SOFABGEN_TOKEN: ${{ secrets.SOFABGEN_TOKEN }}
+        run: ./scripts/bootstrap.sh   # latest green sofabgen CI build (else release) + corelibs@main
 
       - name: Differential over seeds (the green gate)
         run: ./scripts/run.sh

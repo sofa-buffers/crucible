@@ -24,7 +24,7 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 
 | Component | Status | Notes |
 |---|---|---|
-| `scripts/bootstrap.sh` | built | **Always current**: fetches every cloned corelib to `origin/main` and installs the **latest published sofabgen release** binary (sha256-verified against the release's checksum). Symlinked sibling `../corelib-*` checkouts are left alone (live working copies), and a *dirty* vendored checkout is warned about, never reset — the script must not silently destroy a corelib patch under test. `SOFABGEN_VERSION=vX.Y.Z` pins a release (reproduce an old finding), `=main` builds from source (unreleased fixes, needs Go), `NO_FETCH=1` goes offline. **Deliberately no skip-if-present shortcut**: a silently stale toolchain already produced a wrong claim once (a vendored sofabgen sat at 0.15.2 while findings were re-verified "on 0.16.1" — STATUS.md), and a differential fuzzer that misreports which versions it compared is worse than a slow one. Replaces the old `REFRESH=1` opt-in and the arena-prebuilt shortcut that caused that staleness. |
+| `scripts/bootstrap.sh` | changed | **Always current**: fetches every cloned corelib to `origin/main` and installs the **latest green sofabgen CI build** — the platform binary the generator's `ci.yml` attaches to every successful run on `main` (sha256-verified against the `.sha256` shipped alongside it in the artifact). This is fresher than the tagged-release cadence and carries merged-but-unreleased backends (it is how the Dart target became usable in Crucible before any sofabgen release — see Deviation 2026-07-22a). Downloading a workflow-run artifact needs auth, so a token with `actions:read` on `sofa-buffers/generator` is resolved from `SOFABGEN_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN`/`gh auth token`; when none is available, or the artifact is missing, bootstrap **falls back — loudly — to the latest published release** (never silently, so the run always states which build it installed). Symlinked sibling `../corelib-*` checkouts are left alone (live working copies), and a *dirty* vendored checkout is warned about, never reset — the script must not silently destroy a corelib patch under test. `SOFABGEN_VERSION=vX.Y.Z` pins a release (reproduce an old finding), `=main` builds from source (needs Go), `SOFABGEN_RUN=<id>` pins a specific CI run, `SOFABGEN_ARTIFACT=<name>` overrides the artifact name, `SOFABGEN_CI_REQUIRED=1` hard-fails instead of falling back, `NO_FETCH=1` goes offline. **Deliberately no skip-if-present shortcut**: a silently stale toolchain already produced a wrong claim once (a vendored sofabgen sat at 0.15.2 while findings were re-verified "on 0.16.1" — STATUS.md), and a differential fuzzer that misreports which versions it compared is worse than a slow one. |
 | `schema/probe.sofab.yaml` | built | **Full-scale** message (Phase 3): 8 scalar widths, fp32/fp64, string, blob, 8 numeric arrays, nested fp arrays, string array. Still keyed `probe` (stable type name). |
 | `schema/probe-union.sofab.yaml` | built | `probe` message carrying a **union** (`choice`: `as_u16`/`as_i32`/`as_text`/`as_blob`) between a scalar `tag` and `trailer` — the one wire feature the full-scale `probe` lacks. Drives `scripts/run-union.sh`. |
 | `drivers/common/CONTRACT.md` | built | Persistent length-prefixed protocol + canonical output. |
@@ -355,6 +355,28 @@ has no `LimitExceeded`).
   excluded reproducer is visibly deferred rather than silently forgotten.
 
 ## Deviations from PLAN
+
+### 2026-07-22a — bootstrap installs the latest sofabgen *CI build*, not the latest *release*
+- **PLAN/prior as-built:** `scripts/bootstrap.sh` installed the latest published
+  sofabgen **release** binary (checksum-verified) — see the `bootstrap.sh` row above
+  as it was before this entry.
+- **Change:** bootstrap now installs the binary the generator's `ci.yml` attaches to
+  its latest **green run on `main`** (still sha256-verified, via the `.sha256` shipped
+  in the same artifact). The tagged-release path is preserved but demoted to an
+  explicit opt-in (`SOFABGEN_VERSION=vX.Y.Z`); it is also the **loud fallback** when no
+  cross-repo token is present or the artifact is missing, so the tree never wedges and
+  every run says which build it used.
+- **Why:** the release cadence lagged behind merged generator work. The trigger was
+  **Dart** (crucible#77): `corelib-dart` + the `dart` backend (generator#211) landed on
+  generator `main` and CI began attaching a `dart`-capable `sofabgen` (target list now
+  `…|dart|…`) and a `generated-dart` artifact — but no *release* carried it yet. Pulling
+  the CI build lets Crucible exercise the newest family members as they merge, which is
+  the whole point of a conformance fuzzer, without pinning to an *unmerged* PR (rejected
+  — that would violate the "never lie about what it compiled" invariant).
+- **Cost / caveat:** workflow-run artifacts are not anonymously downloadable, so CI needs
+  a PAT secret (`SOFABGEN_TOKEN`, `actions:read` on `sofa-buffers/generator`) — wired into
+  `replay.yml`/`nightly.yml`; absent it, CI degrades loudly to the latest release. CI
+  builds carry a pseudo-version (`0.0.0-<ts>-<sha>`) rather than a semver tag.
 
 ### 2026-07-08a — Phase 1 used a minimal `probe` schema (RESOLVED in Phase 3)
 - **PLAN says:** the fuzzed message is the "full scale" message (every width,
