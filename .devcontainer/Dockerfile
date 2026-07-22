@@ -23,6 +23,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 #   (nodejs) + @jazzer.js      TypeScript target (corelib-ts)
 #   (zig tarball)              Zig target (corelib-zig) — built-in fuzzing is young,
 #                                the driver may fall back to libFuzzer via C interop
+#   (dart sdk tarball)         Dart target (corelib-dart) — no first-party libFuzzer;
+#                                the driver AOT-compiles via dart:ffi and is driven by
+#                                a C libFuzzer harness (like Zig). `dart pub` fetches
+#                                the driver's package deps per build (like Jazzer).
 #   binutils / llvm-symbolizer readable sanitizer + coverage reports
 #   gh, jq, git                repo + findings plumbing
 #
@@ -30,7 +34,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # and the bare-metal cross toolchains (fuzzing runs hosted, not on Cortex-M/RISC-V).
 # =============================================================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl wget unzip git jq time pkg-config \
+    ca-certificates curl wget unzip git jq time pkg-config ripgrep \
     build-essential cmake make gcc g++ \
     clang lld llvm llvm-dev libclang-rt-dev \
     python3 python3-venv python3-pip python3-dev \
@@ -78,6 +82,23 @@ RUN ZIG_VERSION=0.16.0 && case "$(dpkg --print-architecture)" in \
     && tar -C /usr/local/zig --strip-components=1 -xJf /tmp/zig.txz \
     && rm /tmp/zig.txz \
     && zig version
+
+# --- Dart SDK -----------------------------------------------------------------
+# The Debian/APT dart channel is amd64-only, so (like Go/Zig/.NET) install the
+# official SDK archive with an arch case for x64/arm64 parity. The SDK bundles the
+# `dart` CLI, `dart pub` (package manager — the driver's pub deps are fetched per
+# build), `dart compile` (AOT/exe + shared lib via dart:ffi), and `dart test`.
+# Tracks the latest *stable* SDK — there is no corelib-dart yet to pin against; pin
+# DART_VERSION to that corelib's SDK constraint once the Dart driver lands.
+ENV DART_SDK=/usr/local/dart-sdk \
+    PUB_CACHE=/usr/local/pub-cache \
+    PATH=/usr/local/dart-sdk/bin:/usr/local/pub-cache/bin:$PATH
+RUN DART_VERSION=latest && case "$(dpkg --print-architecture)" in \
+        amd64) DA=x64;; arm64) DA=arm64;; *) DA=x64;; esac \
+    && curl -fsSL "https://storage.googleapis.com/dart-archive/channels/stable/release/${DART_VERSION}/sdk/dartsdk-linux-${DA}-release.zip" -o /tmp/dartsdk.zip \
+    && unzip -q /tmp/dartsdk.zip -d /usr/local \
+    && rm /tmp/dartsdk.zip \
+    && dart --version
 
 # --- Node.js LTS + Jazzer.js + Claude Code ------------------------------------
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
