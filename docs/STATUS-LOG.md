@@ -1,14 +1,13 @@
 # Crucible — status log (chronological journal)
 
-The dated, session-by-session work journal, moved out of [`STATUS.md`](STATUS.md)
-so that file can stay a lean current-state snapshot. This is **history**, not the
-authoritative record:
+The **changelog + decision log**: dated, session-by-session history of what changed,
+which decisions were taken and why, and where the build deviates from PLAN. This is
+**history**, not the authoritative current state:
 
-- Per-finding truth (root cause, resolution, verification, issue links) lives in
-  [`../results/FINDINGS.md`](../results/FINDINGS.md).
-- Codegen weaknesses live in [`../results/FINDINGS.md`](../results/FINDINGS.md).
-- Root-cause clusters live in [`../results/CLUSTERS.md`](../results/CLUSTERS.md).
-- Design decisions live in [`ARCHITECTURE.md`](ARCHITECTURE.md).
+- The current as-built state (IST) is [`ARCHITECTURE.md`](ARCHITECTURE.md).
+- Per-finding truth (root cause, resolution, links) and codegen defects (G-00NN) are
+  in [`../results/FINDINGS.md`](../results/FINDINGS.md).
+- Root-cause clusters are in [`../results/CLUSTERS.md`](../results/CLUSTERS.md).
 
 Entries below are append-only and may contain running totals that were later
 superseded; trust `FINDINGS.md` for the current tally.
@@ -1244,3 +1243,16 @@ accept, so the split is per-decoder-design, not systems-vs-managed. Four
 unrelated implementations rejecting is strong evidence the lenient camp is wrong —
 exactly the pressure the PLAN §8 spec decision needs.
 See `results/FINDINGS.md` and `findings/F-0001-truncated-trailing-varint/`.
+
+## Spec decisions (adopted MESSAGE_SPEC clauses)
+- **§7** (finish-less, documentation PR #12) — decode is three-valued
+  COMPLETE/INCOMPLETE/INVALID, returned identically by one-shot `decode` and every
+  streaming `feed`. **There is no `finish`/`finalize`/`end`**, and **INCOMPLETE is
+  an explicit non-error outcome** — whether a trailing INCOMPLETE is a truncation
+  error is the caller's decision (its own framing: length prefix, datagram, EOF).
+  A truncated message (e.g. a lone `0x80`) is INCOMPLETE, not INVALID. Family
+  implementation: epic **generator#86** + 10 per-corelib issues; Crucible-side
+  verification (third verdict `I`): **crucible#8**.
+- **§8** — `string` is UTF-8, `blob` is opaque bytes; strict-reject is conformant but
+  gated behind a corelib flag (`SOFAB_STRICT_UTF8`) that may default OFF; conformance
+  + the fuzzer run it ON.

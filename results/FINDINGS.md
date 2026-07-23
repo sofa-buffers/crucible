@@ -129,7 +129,7 @@ now **single-pass** on `try_decode` — the two-pass workaround is **removed** �
 mirroring the cs/java G-0008 fix. `Ok`→`A <hex>`, `Err(Incomplete)`→`I`, else
 `R <class>`. Because `try_decode` runs the real generated visitor, rust now also
 applies the over-count-array check (F-0003 / generator#100 re-triage — see
-STATUS.md). The C (`sofab_ret_t`), Go (`error`), Python (`Probe.decode` raises),
+STATUS-LOG.md). The C (`sofab_ret_t`), Go (`error`), Python (`Probe.decode` raises),
 and C++ (G-0005) backends all surface the result the same way.
 
 ## G-0002 — std vs no-std Rust diverge on invalid UTF-8 in a string
