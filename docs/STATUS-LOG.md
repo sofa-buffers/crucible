@@ -4,7 +4,7 @@ The **changelog + decision log**: dated, session-by-session history of what chan
 which decisions were taken and why, and where the build deviates from PLAN. This is
 **history**, not the authoritative current state:
 
-- The current as-built state (IST) is [`ARCHITECTURE.md`](ARCHITECTURE.md).
+- The current as-built state is [`ARCHITECTURE.md`](ARCHITECTURE.md).
 - Per-finding truth (root cause, resolution, links) and codegen defects (G-00NN) are
   in [`../results/FINDINGS.md`](../results/FINDINGS.md).
 - Root-cause clusters are in [`../results/CLUSTERS.md`](../results/CLUSTERS.md).
@@ -846,7 +846,7 @@ hand-built value corpus never emits an over-width scalar — only fuzzing reache
 # Decision log & deviations (moved from ARCHITECTURE.md)
 
 These dated decisions, PLAN-deviations, and the first-finding narrative used to live
-in `ARCHITECTURE.md`. Per the SSOT split (ARCHITECTURE describes only the IST state),
+in `ARCHITECTURE.md`. Per the SSOT split (ARCHITECTURE describes only the current as-built state),
 the *when/why* history belongs here with the rest of the chronological log; the
 resulting *what-is* stays in ARCHITECTURE.
 

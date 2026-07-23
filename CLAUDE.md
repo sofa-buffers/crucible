@@ -13,11 +13,11 @@ Each row below names a file and the **one** purpose it owns. That purpose is def
 
 | read | its one job |
 |---|---|
-| [`docs/PLAN.md`](docs/PLAN.md) | **SOLL** — the intended design: mission, scope, driver ABI, oracles, add-a-corelib checklist, roadmap. Read-only; never edited to match drift. |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **IST** — the current as-built design + component status. *Only* the present state: no decisions, no changelog, no dated entries. |
+| [`docs/PLAN.md`](docs/PLAN.md) | the **intended** design (the target): mission, scope, driver ABI, oracles, add-a-corelib checklist, roadmap. Read-only; never edited to match drift. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the **as-built** design (the current, actual state) + component status. *Only* the present state: no decisions, no changelog, no dated entries. |
 | [`docs/STATUS-LOG.md`](docs/STATUS-LOG.md) | the **changelog + decision log** — dated, session-by-session: what changed, and which decisions were taken and why. |
 | [`docs/TODO.md`](docs/TODO.md) | open work on the suite / test depth, as a `[ ]` checklist (fixes for found bugs live in the owning repos, not here). |
-| [`docs/CI.md`](docs/CI.md) | the CI workflows (image / replay / nightly) — which gates block; the CI architecture (IST). |
+| [`docs/CI.md`](docs/CI.md) | the CI workflows (image / replay / nightly) — which gates block; the CI architecture. |
 | [`oracle/canonical.md`](oracle/canonical.md) | the round-trip canonical form every driver must emit. |
 | [`oracle/materialized.md`](oracle/materialized.md) | the second (element-access) canonical form — the fully-expanded decoded value. |
 | [`oracle/policy.yaml`](oracle/policy.yaml) | which divergences are legal vs bugs; each entry cites `MESSAGE_SPEC.md`. |
@@ -31,19 +31,24 @@ Each row below names a file and the **one** purpose it owns. That purpose is def
 for. State a file's purpose — and its counts/state — in its one owner only, never
 restated in another file: a description kept in two places **always** drifts on change.
 
+**Write in English.** Every file authored or generated in this repo is in English —
+docs, comments, commit messages, code — regardless of the language a task is
+discussed in (a request in German still produces English artifacts). Do not use
+non-English jargon (e.g. write "as-built / intended", not "IST / SOLL").
+
 Everything below is only what is **not** written in those files.
 
-## Prime directive: PLAN is SOLL, ARCHITECTURE is IST, STATUS-LOG is the log
+## Prime directive: PLAN is the intended design, ARCHITECTURE is as-built, STATUS-LOG is the log
 
-- `PLAN.md` is the **intended** design (SOLL) and stays stable. Do not edit it to
-  match code that drifted — the drift is recorded elsewhere, not by rewriting SOLL.
-- `ARCHITECTURE.md` is the **as-built** design (IST) and *only* that — no decision
+- `PLAN.md` is the **intended** design (the target) and stays stable. Do not edit it
+  to match code that drifted — the drift is recorded elsewhere, not by rewriting it.
+- `ARCHITECTURE.md` is the **as-built** design and *only* that — no decision
   log, no dated history. Any change that alters a component boundary, a contract, a
   build flag, or a data format updates `ARCHITECTURE.md` in the *same* change, so it
   always describes exactly what exists today.
 - `STATUS-LOG.md` is where a **decision and its rationale are recorded** (dated).
   When a decision changes the design, log it there *and* fold its effect into
-  `ARCHITECTURE.md`'s IST: the log carries the *when/why*, ARCHITECTURE the *what is*.
+  `ARCHITECTURE.md`'s as-built state: the log carries the *when/why*, ARCHITECTURE the *what is*.
   Neither restates the other.
 
 ## Invariants with multiple sync points
@@ -148,7 +153,7 @@ exists), then record the new driver's quirks in `ARCHITECTURE.md`.
 
 **Built and running.** This file only orients you — read the owners for detail: the
 current state (roster, suites, gates) is [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-(IST); how a finding was resolved is [`docs/STATUS-LOG.md`](docs/STATUS-LOG.md); the
+how a finding was resolved is [`docs/STATUS-LOG.md`](docs/STATUS-LOG.md); the
 findings tally is [`results/FINDINGS.md`](results/FINDINGS.md); open work is
 [`docs/TODO.md`](docs/TODO.md). Counts stated here would only drift stale, so they are
 deliberately omitted.

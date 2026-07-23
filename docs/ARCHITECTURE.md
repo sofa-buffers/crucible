@@ -1,4 +1,4 @@
-# Crucible — Architecture (as-built / IST)
+# Crucible — Architecture (as-built)
 
 > **Status: Phases 1–3 largely done** — the differential loop runs across all thirteen
 > drivers / eleven corelibs (C pacemaker, Go, Rust-std, Rust-no-std, C++, C++/c-cpp,
@@ -6,7 +6,7 @@
 > `probe` schema. Phase 3 is built (structure-aware mutator, round-trip + cross-encode
 > oracles, three-valued verdict `A`/`I`/`R`, schema scale-up); Phase 4 (CI) is
 > wired — see [`CI.md`](CI.md). This describes the architecture **as actually
-> built** (the IST state) and *only* that. `PLAN.md` is the intended design (SOLL)
+> built** (the current, actual state) and *only* that. `PLAN.md` is the intended design
 > and stays stable; the **dated record of what changed, why, and where the build
 > deviates from PLAN lives in [`STATUS-LOG.md`](STATUS-LOG.md)** — not here.
 >

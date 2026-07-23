@@ -307,8 +307,8 @@ catalog and the acceptance test that verifies each fix when it lands.
 
 | path | what |
 |---|---|
-| [`docs/PLAN.md`](docs/PLAN.md) | the intended design (SOLL) — everything is built from here |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the current as-built architecture (IST) — start here for orientation |
+| [`docs/PLAN.md`](docs/PLAN.md) | the intended design — everything is built from here |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the current as-built architecture — start here for orientation |
 | [`docs/STATUS-LOG.md`](docs/STATUS-LOG.md) | the changelog + decision log (dated history) |
 | [`docs/TODO.md`](docs/TODO.md) | open work on the suite (a `[ ]` checklist) |
 | [`docs/CI.md`](docs/CI.md) | the CI workflows (image / replay / nightly) |
