@@ -28,6 +28,25 @@ lands:** re-bootstrap, add the `struct_array` field at id 202, wire it through t
 step 4) + the §5.1 trailing-elision vectors, and verify all 13 agree. Array-of-union / array-of-array are
 follow-ups (WP-05 note).
 
+**docs/improvements.md work packages — COMPLETE 2026-07-23 (all 11 landed or deferred-with-reason).**
+The 2026-07-22 coverage-audit backlog is cleared: WP-01/02A/03/04/05/06/07/08/09/10/11 all merged (PRs
+#88,#94,#90,#91,#93,#95,#96,#97,#98,#99,#92). Surfaced findings **F-0027..F-0032** (+ spec hole
+documentation#24), 10 upstream issues. `docs/improvements.md` is retired; the **deferred residue** lives
+here:
+- **WP-02 Part B** — union *materialized* (element-access) oracle: the C anchor materializes a union
+  out-of-the-box (form `{opt_id:value}` per member), but the 6 runtime + 6 generated walkers need the
+  `union` descriptor node + a `materialize.py` union reference (~12 walkers across 10 langs). Part A
+  (union cross-encode) is green and gated.
+- **WP-05 completion** — fold `struct_array` into `schema/probe.sofab.yaml` (id 202) + wire the six sweep
+  axes + gen/materialize + §5.1 trailing-elision vectors, **once corelib-c-cpp#109 (F-0030) lands** (else
+  the base round-trip reddens). `schema.py` composite-element support is already in place.
+- **WP-08(c)** — §2:112-121 (explicit `[]` overrides a **non-empty** field default): needs a schema field
+  with a non-zero `default:`; lands with WP-05 (its `struct{k,v}` element can carry one).
+- **WP-10 Part B phase 2** — an opt-in `STRICT_UTF8=OFF` suite (env-gated build variant + per-profile-class
+  `policy.yaml` allowances citing §8): deferred as a non-default-config follow-up; needs the gen#85
+  Unicode-string config audit first. Phase-1 reachability audit is done (byte-container profiles OFF-capable
+  → raw bytes; audit table was in improvements.md WP-10, mirrored in git history).
+
 **As of 2026-07-22:** 26 findings catalogued, **25 resolved, 1 by-design, 0 open**. **F-0022**
 (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element, generator#189), and
 **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 / G-0016) were all
