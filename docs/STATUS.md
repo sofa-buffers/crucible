@@ -66,7 +66,7 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   from `schema.py` which learned the `union` kind) driven by `sweep_run.py --union` and a **report-only**
   pass in `scripts/sweep.sh` (rebuilds the roster to probe-union, runs, rebuilds back to probe). 130 union
   vectors; 4 of 5 axes green across 13, the wiretype pass surfaced **F-0027** on its first run.
-- **31 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 5 open (F-0027, F-0028, F-0029, F-0030, F-0031).**
+- **32 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 6 open (F-0027..F-0032).**
   **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
   generator#189), and **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
   G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21); **F-0025** (§7.3 fp scalar←array,
@@ -901,6 +901,18 @@ array run and re-encodes it canonically (trailing run trimmed, the F-0010 rule).
 (b) verified re-encodes to count 3 `[1,2,3]` = the canonical control. **(c)** (explicit `[]` overrides a
 non-empty field default, §2:112-121) is **blocked on WP-05** — no `probe` field has a non-zero `default:`
 yet; lands when `struct_array` folds in (corelib-c-cpp#109). No finding.
+
+**Thirty-sixth change 2026-07-23 — WP-09: broadened malform×truncation; F-0032 opened (§5.2 schema-bound precedence).**
+(`docs/improvements.md` WP-09.) `sweep_malform_truncate` sampled 9 malformations × one tail byte. Added
+malformations (blob_array over-id, array fixlen element-word/F-0014, reserved-subtype in each wrapper) and
+broadened truncation to **every offset from each malformation's INVALID-point**. **Structural**
+malformations (reserved subtype, bad array element-word — INVALID at the word) → all 13 `R` at every
+truncation (blocking, green). **Schema-bound** malformations (over-maxlen/count/index) checked after
+reading → **F-0032**: go/cpp/ts/dart (and more, varying by bound) report `I` where §5.2 requires `R`
+(documentation#15 adopted; the F-0024 class still open for schema-bound checks). Codegen →
+[generator#216](https://github.com/sofa-buffers/generator/issues/216) / **G-0018**. Their into-payload
+truncations are carved out (the axis `STRUCTURAL` set); `_complete` controls + structural truncations stay
+blocking (axis 20 → 43 vectors, green). Finding count 31 → 32, open 5 → 6.
 
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued

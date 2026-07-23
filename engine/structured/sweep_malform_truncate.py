@@ -42,62 +42,110 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from gen import hdr, varint, WT_FIX, WT_SEQ_BEG, WT_SEQ_END, FL_STRING, FL_BLOB, arr_u  # noqa: E402
-from sweep_positions import place  # noqa: E402
+from gen import (  # noqa: E402
+    hdr, varint, WT_FIX, WT_ARR_FIX, WT_SEQ_BEG, WT_SEQ_END, FL_FP32, FL_STRING, FL_BLOB, arr_u,
+)
+from sweep_positions import place, open_path  # noqa: E402
 
 TRUNC = b"\x8a"  # opens a varint header, no continuation byte → mid-varint EOF
 
 
+# --- malformed field builders: each returns (field_bytes, invalid_within) ----
+# invalid_within = the offset in field_bytes AT/AFTER which the construct is
+# definitively INVALID (so any truncation keeping >= that many bytes must still be R,
+# §5.2). For a bad *word/count* that is right after the header+word; for a bad *payload*
+# (invalid UTF-8) it is only after the whole payload is read + checked.
 def fixlen_reserved(fid, subtype=0x5, payload=b"\x00\x00"):
-    """A fixlen field carrying a reserved subtype (0x4-0x7) — INVALID per §4.6."""
-    return hdr(fid, WT_FIX) + varint((len(payload) << 3) | subtype) + payload
+    """A fixlen field carrying a reserved subtype (0x4-0x7) — INVALID at the word (§4.6)."""
+    h = hdr(fid, WT_FIX) + varint((len(payload) << 3) | subtype)
+    return h + payload, len(h)
 
 
 def invalid_utf8_str(fid, payload=b"\xff\xff"):
-    """A string field whose bytes are not valid UTF-8 — INVALID per §8 (F-0004)."""
-    return hdr(fid, WT_FIX) + varint((len(payload) << 3) | FL_STRING) + payload
+    """A string whose bytes are not valid UTF-8 — INVALID only after the payload (§8)."""
+    f = hdr(fid, WT_FIX) + varint((len(payload) << 3) | FL_STRING) + payload
+    return f, len(f)
 
 
 def over_len_str(fid, n):
-    """A string longer than the field's maxlen — INVALID (schema bound)."""
-    return hdr(fid, WT_FIX) + varint((n << 3) | FL_STRING) + b"A" * n
+    """A string longer than maxlen — INVALID at the word (schema bound)."""
+    h = hdr(fid, WT_FIX) + varint((n << 3) | FL_STRING)
+    return h + b"A" * n, len(h)
 
 
 def over_len_blob(fid, n):
-    """A blob longer than the field's maxlen — INVALID (schema bound)."""
-    return hdr(fid, WT_FIX) + varint((n << 3) | FL_BLOB) + b"\x00" * n
+    h = hdr(fid, WT_FIX) + varint((n << 3) | FL_BLOB)
+    return h + b"\x00" * n, len(h)
 
 
 def over_count_arr(fid, n):
-    """An unsigned array with more elements than the schema count — INVALID (F-0003)."""
-    return arr_u(fid, list(range(1, n + 1)))
+    """An unsigned array with count > the schema count — INVALID at the count (F-0003)."""
+    from gen import WT_ARR_U
+    h = hdr(fid, WT_ARR_U) + varint(n)
+    return h + b"".join(varint(v) for v in range(1, n + 1)), len(h)
 
 
-def string_array_over_id(idx=5):
-    """A string_array wrapper element at id >= count (5) — INVALID (schema bound)."""
-    elem = hdr(idx, WT_FIX) + varint((1 << 3) | FL_STRING) + b"A"
-    return hdr(200, WT_SEQ_BEG) + elem + bytes([WT_SEQ_END])
+def array_fixlen_bad_word(fid, subtype=0x5):
+    """A fixlen ARRAY whose element fixlen-word carries a reserved subtype — INVALID at
+    the element word (the F-0014 class: array element-word not validated)."""
+    h = hdr(fid, WT_ARR_FIX) + varint(1) + varint((4 << 3) | subtype)
+    return h + b"\x00\x00\x00\x00", len(h)
 
 
-# Each entry: (name, definitively-INVALID complete message body).
-# Placed at a schema-appropriate position so the *only* irregularity is the malformation.
+def wrapper_over_id(wrapper_id, subtype, idx=5):
+    """A wrapper element at id >= count (5) — INVALID at the element header (schema bound)."""
+    open_b = hdr(wrapper_id, WT_SEQ_BEG)
+    elem_h = hdr(idx, WT_FIX) + varint((1 << 3) | subtype)
+    body = open_b + elem_h + b"A" + bytes([WT_SEQ_END])
+    return body, len(open_b) + len(elem_h)
+
+
+# Each entry: (name, complete INVALID message body, invalid_at offset in that body).
 def malformations():
+    def placed(path, field, inv_within):
+        return place(path, field), len(open_path(path)) + inv_within
+
     out = []
-    # reserved fixlen subtype — invalid anywhere; test at a scalar id and inside a scope
-    out.append(("reserved_subtype_top",      fixlen_reserved(0)))
-    out.append(("reserved_subtype_nested",   place((10,), fixlen_reserved(2))))
-    out.append(("reserved_subtype_wrapper",  place((200,), fixlen_reserved(0))))
-    # invalid UTF-8 — at the nested string field and at a string_array element
-    out.append(("invalid_utf8_nested_str",   place((10,), invalid_utf8_str(2))))
-    out.append(("invalid_utf8_wrapper_elem", place((200,), invalid_utf8_str(0))))
+    # reserved fixlen subtype — at a scalar id, inside the nested struct, and inside each wrapper
+    for name, path, fid in [("reserved_subtype_top", (), 0), ("reserved_subtype_nested", (10,), 2),
+                            ("reserved_subtype_str_wrapper", (200,), 0),
+                            ("reserved_subtype_blob_wrapper", (201,), 0)]:
+        f, iw = fixlen_reserved(fid)
+        b, at = placed(path, f, iw)
+        out.append((name, b, at))
+    # invalid UTF-8 — nested string + a string_array element (invalid only after payload)
+    for name, path, fid in [("invalid_utf8_nested_str", (10,), 2), ("invalid_utf8_wrapper_elem", (200,), 0)]:
+        f, iw = invalid_utf8_str(fid)
+        b, at = placed(path, f, iw)
+        out.append((name, b, at))
     # over-length string / blob (nested.str maxlen 32, nested.bytes_field maxlen 4)
-    out.append(("over_len_string",           place((10,), over_len_str(2, 33))))
-    out.append(("over_len_blob",             place((10,), over_len_blob(3, 5))))
-    # over-count numeric array (arrays.u8 count 5) — 6 elements
-    out.append(("over_count_array",          place((100,), over_count_arr(0, 6))))
-    # string_array element id >= count
-    out.append(("string_array_over_id",      string_array_over_id(5)))
+    f, iw = over_len_str(2, 33);  b, at = placed((10,), f, iw); out.append(("over_len_string", b, at))
+    f, iw = over_len_blob(3, 5);  b, at = placed((10,), f, iw); out.append(("over_len_blob", b, at))
+    # over-count numeric array (arrays.u8 count 5) — NB: over-count + truncation is the OPEN
+    # documentation#15 precedence corner, so this one's truncations are report-only (see emit).
+    f, iw = over_count_arr(0, 6); b, at = placed((100,), f, iw); out.append(("over_count_array", b, at))
+    # array fixlen-word malformation (F-0014) — arrays.nested fp32[] (id 100->10->0)
+    f, iw = array_fixlen_bad_word(0); b, at = placed((100, 10), f, iw); out.append(("array_fixlen_bad_word", b, at))
+    # wrapper element id >= count — string_array (200) and blob_array (201)
+    b, at = wrapper_over_id(200, FL_STRING); out.append(("string_array_over_id", b, at))
+    b, at = wrapper_over_id(201, FL_BLOB);   out.append(("blob_array_over_id", b, at))
     return out
+
+
+# A malformation is "structural" when it is INVALID at the field's WORD (a reserved
+# subtype, a bad array element-word) — every decoder rejects it before reading the
+# payload, so truncating INTO the payload still gives R. A "schema-bound" malformation
+# (over-maxlen/count/index, invalid UTF-8) is only INVALID after the content is read; the
+# check + its ordering are generated code (maxlen/count/id are schema facts). Truncating
+# such a malformation INTO its payload is **F-0032**: go/cpp/ts/dart report INCOMPLETE
+# instead of the INVALID that §5.2 requires (documentation#15, adopted) — the F-0024 class
+# for 4 more backends. Those into-payload truncations are carved OUT of this blocking axis
+# (reproducers in findings/F-0032) until the generator fix lands; the `_complete` control
+# and the mid-varint `_trunc_tail` (the malformation fully present, then a stray tail) stay
+# blocking on all, and the structural malformations get the full broadened truncation.
+STRUCTURAL = {"reserved_subtype_top", "reserved_subtype_nested",
+              "reserved_subtype_str_wrapper", "reserved_subtype_blob_wrapper",
+              "array_fixlen_bad_word"}
 
 
 def valid_probe():
@@ -109,9 +157,17 @@ def valid_probe():
 def emit(out_dir):
     os.makedirs(out_dir, exist_ok=True)
     vectors = []
-    for name, body in malformations():
+    for name, body, invalid_at in malformations():
         vectors.append((f"{name}_complete.bin", body, "reject"))
-        vectors.append((f"{name}_trunc.bin", body + TRUNC, "reject"))
+        # the mid-varint tail (malformation fully present, then a stray incomplete varint):
+        # R on all — INVALID dominates the trailing incomplete varint.
+        vectors.append((f"{name}_trunc_tail.bin", body + TRUNC, "reject"))
+        # broaden truncation (WP-09): truncate INTO the field at every offset from the
+        # malformation point. For a STRUCTURAL malformation (INVALID at the word) this is R
+        # on all; for a schema-bound one it is F-0032 (go/cpp/ts/dart report I) — carved out.
+        if name in STRUCTURAL:
+            for k in range(invalid_at, len(body)):
+                vectors.append((f"{name}_trunc_{k:03d}.bin", body[:k], "reject"))
     # tail-alone controls: the truncation byte must not, by itself, force a reject
     v = valid_probe()
     vectors.append(("valid_complete.bin", v, "accept"))
@@ -124,7 +180,7 @@ def emit(out_dir):
     for _, _, e in vectors:
         by[e] = by.get(e, 0) + 1
     print(f"{len(vectors)} vectors: " + ", ".join(f"{k}={v}" for k, v in sorted(by.items()))
-          + f"  ({len(malformations())} malformations × {{complete, trunc}} + 2 controls)")
+          + f"  ({len(malformations())} malformations, truncated at every offset ≥ malformation)")
     return vectors
 
 
