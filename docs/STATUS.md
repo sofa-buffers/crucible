@@ -883,6 +883,16 @@ files** before regenerating (vector indices shift when the set grows). Corpus 75
   carved out of the green gate (reproducer `findings/F-0031-*`) until fixed; the quiet-payload/negative/f64
   NaN variants stay in the gate (all preserve).
 
+**Thirty-fourth change 2026-07-23 — WP-07: over-bound magnitude (mid + large) added to the §7.1 sweep.**
+(`docs/improvements.md` WP-07.) `sweep_overbound` tested only bound+1 / id==count. Added per bounded
+position a **mid** over (2×bound) and a **large** over-INDEX (element id 100_000 — declared, well-formed,
+small input): F-0013's memory-amplification bug is the large-index class, and a decoder must reject at the
+header word without sizing a container to the index. Axis **30 → 46 vectors, green, sub-second** (no
+allocation/DoS). The large *over-maxlen* case (declared-huge length + short payload) is inherently
+over-maxlen AND truncated — the §5.2 over-length-vs-INCOMPLETE precedence corner (it split R-vs-I in
+testing) — so it is deferred to the malform×truncation axis (WP-09), not this clean-magnitude axis. No
+finding.
+
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued
   COMPLETE/INCOMPLETE/INVALID, returned identically by one-shot `decode` and every
