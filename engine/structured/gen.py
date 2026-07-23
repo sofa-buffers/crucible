@@ -220,7 +220,73 @@ def vectors():
     out.append(("ba_binary", {"blobarr": [bytes(range(8)), b"\x00\x00", b"\xff\xfe\xfd"]}))  # raw binary
     return out
 
+# --- union message (schema/probe-union.sofab.yaml) — WP-02 ------------------
+# The union probe: tag (id 0, u32), choice (id 1, union), trailer (id 2, u8). The
+# union `choice` is a sequence carrying at most one member; member ids select the
+# option: as_u16=0 (WT_U), as_i32=1 (WT_S), as_text=2 (fixlen string maxlen16),
+# as_blob=3 (fixlen blob maxlen8). An empty union → default_id (as_u16 = 0). The
+# sequence is always framed (§2), even when empty.
+def encode_union(msg: dict) -> bytes:
+    """msg: {'tag': int, 'member': (kind, value)|None, 'trailer': int}. kind in
+    {'u16','i32','text','blob'}; member=None → empty union (default_id). tag/trailer
+    are omitted when default (sparse-canonical)."""
+    out = bytearray()
+    if msg.get("tag"):
+        out += scalar_u(0, msg["tag"])
+    out += hdr(1, WT_SEQ_BEG)                     # union `choice` — always framed
+    m = msg.get("member")
+    if m is not None:
+        kind, v = m
+        if kind == "u16":    out += scalar_u(0, v)
+        elif kind == "i32":  out += scalar_s(1, v)
+        elif kind == "text": out += fstr(2, v)
+        elif kind == "blob": out += fblob(3, v)
+        else: raise ValueError(f"unknown union member {kind!r}")
+    out += bytes([WT_SEQ_END])
+    if msg.get("trailer"):
+        out += scalar_u(2, msg["trailer"])
+    return bytes(out)
+
+
+def union_vectors():
+    """Value-rich union vectors: each member at boundary values, the default_id
+    (empty) case, and tag+member+trailer combos. All valid → all 13 must agree on the
+    re-encoded hex (the cross-encode invariant)."""
+    out = []
+    out.append(("00_default", {}))                        # empty union → default_id
+    # as_u16 (u16): 0 / 1 / max
+    for tag, v in (("zero", 0), ("one", 1), ("max", 0xFFFF)):
+        out.append((f"u16_{tag}", {"member": ("u16", v)}))
+    # as_i32 (i32): min / -1 / 1 / max
+    for tag, v in (("min", -2**31), ("neg1", -1), ("one", 1), ("max", 2**31 - 1)):
+        out.append((f"i32_{tag}", {"member": ("i32", v)}))
+    # as_text (string maxlen16): empty / ascii / unicode / exactly-maxlen16
+    out.append(("text_empty", {"member": ("text", "")}))
+    out.append(("text_ascii", {"member": ("text", "hello")}))
+    out.append(("text_unicode", {"member": ("text", "äöü\U0001F600")}))
+    out.append(("text_max16", {"member": ("text", "x" * 16)}))
+    # as_blob (blob maxlen8): 1-byte / exactly-maxlen8 / binary
+    out.append(("blob_one", {"member": ("blob", b"\x5a")}))
+    out.append(("blob_max8", {"member": ("blob", bytes(range(8)))}))
+    out.append(("blob_bin", {"member": ("blob", b"\x00\xff\x7f\x80")}))
+    # tag + member + trailer all set (combos)
+    out.append(("combo_tag_i32_trailer", {"tag": 5, "member": ("i32", 42), "trailer": 12}))
+    out.append(("combo_tag_text", {"tag": 0xFFFFFFFF, "member": ("text", "Sofab ✓")}))
+    out.append(("combo_tag_trailer_default", {"tag": 7, "member": None, "trailer": 200}))
+    return out
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--union":
+        out_dir = sys.argv[2] if len(sys.argv) > 2 else "corpus/structured-union"
+        os.makedirs(out_dir, exist_ok=True)
+        n = 0
+        for i, (name, msg) in enumerate(union_vectors()):
+            with open(os.path.join(out_dir, f"{i:03d}_{name}.bin"), "wb") as fh:
+                fh.write(encode_union(msg))
+            n += 1
+        sys.stderr.write(f"[structured-union] wrote {n} valid union messages to {out_dir}\n")
+        return
     out_dir = sys.argv[1] if len(sys.argv) > 1 else "corpus/structured"
     os.makedirs(out_dir, exist_ok=True)
     n = 0

@@ -129,7 +129,26 @@ failure here means your harness change, not codegen.
 
 ---
 
-## WP-02 — Union value corpus, cross-encode, materialized oracle  *(P2, depends on WP-01 step 1)*
+## WP-02 — Union value corpus, cross-encode, materialized oracle  *(P2, depends on WP-01 step 1)*  ◑ PART A LANDED 2026-07-23
+
+**Status (2026-07-23).** ◑ **Part A (cross-encode) landed; Part B (materialized) scoped as a follow-up.**
+- **Part A — union cross-encode (DONE, green):** `gen.py` gained `encode_union` + `union_vectors` (18
+  value-rich vectors: each member at boundary values — u16 0/1/max, i32 min/-1/1/max, as_text
+  empty/ascii/unicode/maxlen16, as_blob 1-byte/maxlen8/binary — the default_id case, and tag+member+trailer
+  combos), written to `corpus/structured-union/` via `gen.py --union`. `scripts/cross-encode.sh` now runs a
+  second **union pass** (rebuild → probe-union → differential → restore probe). **18 × 13 → 0 divergences**
+  — the union value space round-trips identically across all 13. Blocking (green), gated by `replay.yml`
+  (which runs `cross-encode.sh`).
+- **Part B — union materialized (FOLLOW-UP, scoped):** the C anchor materializes a union out-of-the-box
+  (sofabgen object descriptor) → the target form `{opt_id:value}` for every member (active = value, inactive
+  = default; e.g. `{0:u5;1:{0:u0;1:s42;2:t0:;3:b0:};2:u12}`). But the other 12 walkers do **not** handle the
+  `union` descriptor node: the **6 runtime walkers** (go, py-cython, py-pure, java, ts, cs) emit no output,
+  and the **6 generated walkers** (rust-std, rust-nostd, cpp, cpp-c-cpp, zig, dart) emit an empty payload.
+  Part B = extend `materialize.py` (a union reference) + the 6 runtime walkers + the 4 `materialize_gen.py`
+  generators to walk a union node, add a materialized union pass, and update `oracle/materialized.md` — a
+  ~12-walker sub-project across 10 languages, deferred to its own change. (The union *value space* is
+  already cross-checked by Part A; Part B adds the element-access dimension.)
+
 
 **Problem.** `engine/structured/gen.py` and `engine/structured/materialize.py` are
 probe-only; union values are never cross-encoded and never materialized. Also, the only
