@@ -67,3 +67,11 @@ messages:
         id: 201
         type: array
         items: { type: blob, count: 5, maxlen: 64 }
+
+      # NOTE (WP-05, held): an `array of struct{k,v}` (id 202, the map pattern) is the
+      # planned next feature, and `engine/structured/schema.py` already models it (the
+      # `struct_wrapper` descriptor kind). It is **kept out of `probe` for now** because
+      # adding it turns the base round-trip red on every message: the C object encoder
+      # does not elide the trailing all-default struct run (§5.1), re-encoding an
+      # all-default array-of-struct as N empty frames — **F-0030 / corelib-c-cpp#109**.
+      # Fold it in here (id 202) once that fix lands; all 13 then agree. See docs/TODO.md.

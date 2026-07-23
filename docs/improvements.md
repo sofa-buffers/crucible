@@ -227,7 +227,20 @@ and memory; F-0013 is the precedent for declared-size amplification).
 
 ---
 
-## WP-05 — Composite-element array schema: array-of-struct (map pattern)  *(P2)*
+## WP-05 — Composite-element array schema: array-of-struct (map pattern)  *(P2)*  ⏸ HELD 2026-07-23 (blocked on corelib-c-cpp#109)
+
+**Status (2026-07-23).** ⏸ **Started, then held.** `engine/structured/schema.py` learned the
+composite-element wrapper (the `struct_wrapper` descriptor kind), and sofabgen generates array-of-struct
+for all 13 languages. Adding `struct_array` (id 202) to `probe` immediately surfaced **F-0030 /
+[corelib-c-cpp#109](https://github.com/sofa-buffers/corelib-c-cpp/issues/109)** — the C object encoder
+does not apply §5.1 trailing-default elision to *sequence-form* wrapper elements, re-encoding an
+all-default array-of-struct as N empty struct frames instead of the canonical empty wrapper (breaking the
+base round-trip on *every* message). Per the decision to fold the feature in cleanly rather than run a red
+gate or a separate schema, `struct_array` is **held out of `probe`** (id 202 reserved via a NOTE) until
+the fix lands; then the field is added and wired through the axes below. The `schema.py` support is landed
+and dormant. `results/FINDINGS.md` F-0030; tracked in `docs/TODO.md`. Remaining steps unchanged below.
+
+
 
 **Problem.** MESSAGE_SPEC §5.2 (:323-346) defines array-of-struct, array-of-union,
 array-of-array, and the map pattern (array of struct{k,v}); §5.1 (:309-321) defines
