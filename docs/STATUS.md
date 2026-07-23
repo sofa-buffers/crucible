@@ -741,6 +741,23 @@ Net open: **none.** Plus **F-0018** (by-design). **All 25 catalogued findings ar
 
 Both verified: full differential over the two reproducers + the F-0001 seeds across all 12 drivers = **0 divergences**.
 
+**Twenty-eighth change 2026-07-23 — WP-11: harness hygiene (one position model, schema-derived bounds); no finding.**
+(`docs/improvements.md` WP-11 — parallel ordinal, reconcile at merge.) Removes three silent-desync risks
+in the sweep harness before WP-05's schema growth lands:
+- **One position model.** `wiretype_sweep.py`'s private 29-entry position list (which uniquely carried the
+  wrapper-**element** positions) is gone; the wrapper elements (`welem_str`/`welem_blob`) now live in
+  `sweep_positions.POSITIONS` (27→29) and `wiretype_sweep` consumes it via a new `CAT_TO_CONSTRUCT` map.
+  **Gap closed:** reserved-subtype (§4.6) now sweeps the wrapper elements too — 110→**118** vectors; all
+  +8 reject uniformly (green). wiretype stays 319; every other axis unchanged — **no count dropped** (the
+  WP-11 hard-fail guard).
+- **Schema-derived bounds.** `count`/`maxlen` come from `schema/probe.sofab.yaml` (`_BOUNDS`), not literals
+  `5`/`64`/`32`/`4`; `materialize.py`'s `ARR_COUNT` is derived from the descriptor + a uniform-count
+  assertion. Committed `oracle/materialized-schema.json` unchanged.
+- **`STRUCT_CHILDREN`** for id 100 now lists all eight arrays (was two); the §7.4 merge test still samples
+  the first two (documented as sufficient). Doc drift "all 12"→"all 13" swept across `engine/structured/*.py`.
+- **Verified:** all six blocking axes green; derived bounds byte-match the old literals; materialize
+  reference byte-identical (ARR_COUNT still 5). Pure hygiene — no behavior change beyond the one gap closed.
+
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued
   COMPLETE/INCOMPLETE/INVALID, returned identically by one-shot `decode` and every

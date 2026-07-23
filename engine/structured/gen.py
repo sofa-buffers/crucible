@@ -11,13 +11,13 @@ wire-mutation almost never reaches.
 Because the family is byte-canonical (every corelib's encoder emits identical wire
 for a value — the arena reference-wire invariant), the cross-encode invariant
 "encode in A, decode in B, compare" is realized by feeding these messages through
-the existing round-trip + decode-agreement oracle (`scripts/run.sh`): all 12 drivers
+the existing round-trip + decode-agreement oracle (`scripts/run.sh`): all 13 drivers
 must emit the same `A <hex>`. A divergence is a real encoder/decoder asymmetry.
 
 This is a *reference* encoder for the full-scale `schema/probe.sofab.yaml`. It is
 deliberately canonical (fields in id order, defaults omitted, the struct/array
 sequences always emitted) so its output equals each corelib's re-encoding — but the
-oracle only requires the 12 drivers to agree with *each other*, so a non-canonical
+oracle only requires the 13 drivers to agree with *each other*, so a non-canonical
 (but valid) encoding would work too.
 
 Covers the top-level scalars (u8..i64), the `nested` struct (fp32/fp64/string/blob),

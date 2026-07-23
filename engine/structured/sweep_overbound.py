@@ -8,8 +8,8 @@ F-0015 (over-maxlen) established this at specific positions. This sweep applies 
 **every** bounded position and every depth, to catch a codegen that enforces the
 bound at some positions but not others (the §7.3 piecemeal-guard pattern).
 
-For each bounded position it emits an over-bound value and expects **all 12 to
-reject** (`R`), plus an at-bound control that all 12 must **accept**:
+For each bounded position it emits an over-bound value and expects **all 13 to
+reject** (`R`), plus an at-bound control that all 13 must **accept**:
 
   * count:5 numeric array  -> 6 elements (M>N)          expect R ; control: 5 elements
   * count:5 fp array       -> 6 elements                expect R ; control: 5

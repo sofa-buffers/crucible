@@ -3,7 +3,7 @@
 
 §7: decoding is three-valued. A message whose bytes end mid-field, mid-varint, or
 with an open sequence is **INCOMPLETE** (`I`) — a first-class non-error, neither
-COMPLETE (`A`) nor INVALID (`R`). F-0001 established this at the top level (all 12
+COMPLETE (`A`) nor INVALID (`R`). F-0001 established this at the top level (all 13
 emit `I` on a truncated message; corelib-ts once accepted an unterminated nested
 sequence as `A`). This sweep generalizes it: take a **structurally rich, valid**
 message and truncate it at **every byte offset**, so every field boundary and every
@@ -11,7 +11,7 @@ nesting depth (nested struct, arrays struct, arrays.nested, string_array and
 blob_array wrappers) is a truncation point.
 
 Two oracles (engine/structured/sweep_run.py):
-  * agreement   — at each offset all 12 must emit the SAME verdict. A split
+  * agreement   — at each offset all 13 must emit the SAME verdict. A split
                   (some `A`, some `I`, some `R`) is a finding — F-0001's shape a
                   level deeper (an impl that accepts an unterminated inner sequence,
                   or rejects an incomplete one).
