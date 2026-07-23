@@ -309,6 +309,7 @@ catalog and the acceptance test that verifies each fix when it lands.
 |---|---|
 | [`docs/PLAN.md`](docs/PLAN.md) | the master plan — everything is built from here |
 | [`docs/STATUS.md`](docs/STATUS.md) | current-state snapshot — start here for orientation |
+| [`docs/STATUS-LOG.md`](docs/STATUS-LOG.md) | the dated, session-by-session work journal (history behind STATUS.md) |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | living as-built architecture + deviations from PLAN |
 | [`results/SOFABGEN.md`](results/SOFABGEN.md) | generated-code weakness log (codegen defects → the generator) |
 | `schema/` | the fuzzed message(s), single source of truth |
