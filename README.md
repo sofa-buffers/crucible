@@ -293,12 +293,12 @@ reproducible, and attributed to the repo that owns the bug. Rather than duplicat
 snapshot here (it goes stale), the live records are:
 
 - **[`results/FINDINGS.md`](results/FINDINGS.md)** — the findings catalog (what
-  diverged, which impls, the fix, its status), one row per finding; reproducers under
-  [`findings/`](findings/).
-- **[`docs/STATUS.md`](docs/STATUS.md)** — the current-state snapshot: what runs, the
-  latest toolchain/corelib bump, and what is open. **Start here for orientation.**
-- **[`results/SOFABGEN.md`](results/SOFABGEN.md)** — generated-code (codegen) defects, tracked
-  separately from corelib bugs.
+  diverged, which impls, the fix, its status), one row per finding, including
+  generated-code (codegen) defects `G-00NN`; reproducers under [`findings/`](findings/).
+- **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** — the current as-built state
+  (driver/corelib roster, the suites, the gates). **Start here for orientation.**
+- **[`docs/STATUS-LOG.md`](docs/STATUS-LOG.md)** — the dated history: how each finding
+  was resolved and which decisions were taken.
 
 Fixes live in the **owning repos** (generator / `corelib-<lang>`); Crucible is the
 catalog and the acceptance test that verifies each fix when it lands.
@@ -307,10 +307,11 @@ catalog and the acceptance test that verifies each fix when it lands.
 
 | path | what |
 |---|---|
-| [`docs/PLAN.md`](docs/PLAN.md) | the master plan — everything is built from here |
-| [`docs/STATUS.md`](docs/STATUS.md) | current-state snapshot — start here for orientation |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | living as-built architecture + deviations from PLAN |
-| [`results/SOFABGEN.md`](results/SOFABGEN.md) | generated-code weakness log (codegen defects → the generator) |
+| [`docs/PLAN.md`](docs/PLAN.md) | the intended design — everything is built from here |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the current as-built architecture — start here for orientation |
+| [`docs/STATUS-LOG.md`](docs/STATUS-LOG.md) | the changelog + decision log (dated history) |
+| [`docs/TODO.md`](docs/TODO.md) | open work on the suite (a `[ ]` checklist) |
+| [`docs/CI.md`](docs/CI.md) | the CI workflows (image / replay / nightly) |
 | `schema/` | the fuzzed message(s), single source of truth |
 | `drivers/<lang>/` | per-language replay driver + coverage front-end (13 drivers) |
 | `drivers/common/` | the driver contract |

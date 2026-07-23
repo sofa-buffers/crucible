@@ -12,7 +12,7 @@
 #   - fetches every cloned corelib to **origin/main**.
 # There is no skip-if-present shortcut: a silently stale toolchain has bitten this repo
 # before (a vendored sofabgen sat at 0.15.2 while the findings were being re-verified
-# "on 0.16.1" — see docs/STATUS.md), and a differential fuzzer that lies about which
+# "on 0.16.1" — see docs/STATUS-LOG.md), and a differential fuzzer that lies about which
 # versions it compared is worse than one that is slow. For the same reason the fallback
 # is announced, never silent: the run always says which build it actually installed.
 #

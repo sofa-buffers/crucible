@@ -41,7 +41,7 @@ def f0003_overcount_clean() -> bytes:
     Contrast the kept original `array_overflow.bin`, which is over-count *and*
     truncated: there rust reports `I` (lazy — runs out of bytes first) and the family
     `R`, which is documentation#15's precedence hole, not the over-count axis. This is
-    the exact input STATUS.md / FINDINGS.md quote as the 2026-07-15 re-verification.
+    the exact input results/FINDINGS.md quotes as the 2026-07-15 re-verification.
     """
     return (
         hdr(100, WT_SEQ_BEG)

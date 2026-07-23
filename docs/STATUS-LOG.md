@@ -1,118 +1,22 @@
-# Crucible — status & running notes
+# Crucible — status log (chronological journal)
 
-Durable snapshot of where the project stands (mirrors the working agent's memory,
-so a fresh session or another contributor is oriented immediately). Authoritative
-design is [`PLAN.md`](PLAN.md); as-built detail + deviations are in
-[`ARCHITECTURE.md`](ARCHITECTURE.md); this file is the *current-state* summary.
+The **changelog + decision log**: dated, session-by-session history of what changed,
+which decisions were taken and why, and where the build deviates from PLAN. This is
+**history**, not the authoritative current state:
 
-## What Crucible is
-A differential fuzzer for the SofaBuffers wire format: it feeds identical bytes to
-every corelib and fails when they **disagree** (oracle = divergence, not crash).
-Sibling of `arena` — copies arena's structure (vendor/, per-language driver
-contract, one schema, one runner) but builds the corelibs **instrumented**
-(sanitizers + coverage) rather than optimized.
+- The current as-built state is [`ARCHITECTURE.md`](ARCHITECTURE.md).
+- Per-finding truth (root cause, resolution, links) and codegen defects (G-00NN) are
+  in [`../results/FINDINGS.md`](../results/FINDINGS.md).
+- Root-cause clusters are in [`../results/CLUSTERS.md`](../results/CLUSTERS.md).
 
-## How it runs
-- `./scripts/run.sh` — build all drivers, differential-compare over `corpus/seeds`
-  (the green regression gate). `CORPUS=<dir> ./scripts/run.sh` to use another corpus.
-- `./scripts/fuzz.sh` — the **C pacemaker** (libFuzzer, clang): grows
-  `corpus/interesting/`. Then `CORPUS=corpus/interesting ./scripts/run.sh` runs the
-  differential over what it found.
-- `CLUSTER=1 ./scripts/run.sh` — reduce divergences to root-cause clusters
-  (`oracle/cluster.py`); inventory in `results/CLUSTERS.md`.
-- `./scripts/cross-encode.sh` — the 3rd oracle: generate valid, value-rich `probe`
-  messages (`corpus/structured/`) and run the round-trip + decode-agreement oracle.
-- `./scripts/materialize.sh` — the **element-access oracle** (`oracle/materialized.md`):
-  `SOFAB_MATERIALIZE=1` makes each driver dump the **decoded value** (all fields + array
-  elements explicit, floats as raw bits) instead of the round-trip hex, catching a decode
-  that differs only where the sparse wire elides. **All 13 drivers** implement it — 75×13
-  green vs the `engine/structured/materialize.py` reference (a **standing CI gate**); default
-  round-trip path unchanged. The **table** (`engine/structured/schema.py` →
-  `oracle/materialized-schema.json`) is generated from the schema and drives the reference; **all 13
-  walkers are schema-agnostic** — C via the object descriptor, go/ts/java/cs/python consume the
-  descriptor at runtime, rust/cpp/zig/dart generate their walker source from it at build time.
-- `./scripts/run-union.sh` — the **union suite**: points the oracles at
-  `schema/probe-union.sofab.yaml` (a `probe` carrying a 4-variant union), the one
-  wire feature the main `probe` lacks. 11 seeds × 13 drivers, 0 divergences.
-- `CORPUS=corpus/regression ./scripts/run.sh` — the **resolved-findings gate**: the
-  reproducer of every fixed finding (81 inputs × 13 drivers, 0 divergences). A
-  divergence here = a resolved bug came back. See `corpus/regression/README.md` for
-  what it admits, and the exclusions (a reproducer that also trips an open axis stays
-  in `findings/`).
+Entries below are append-only and may contain running totals that were later
+superseded; trust `FINDINGS.md` for the current tally.
 
-## Current state
-- **Phases 1–3 largely done:** 13 drivers / 11 corelibs green across all suites on the
-  latest green **sofabgen CI build** (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp,
-  py-cython, py-pure, java, typescript, csharp, zig, **dart**). `./scripts/bootstrap.sh`
-  keeps sofabgen at the latest green CI build (sha256-verified) and the corelibs at
-  `origin/main`. **Dart** (crucible#77) was integrated 2026-07-22 — see the Twenty-fifth
-  change below.
-- **Structural sweep framework** (`engine/structured/sweep_*.py`, PLAN §6): a sweep enumerates
-  one normative rule across **every** schema position and checks two oracles (agreement +
-  conformance). **Seven axes** wired via `sweep_run.py` / `scripts/sweep.sh` — repeated-id (§7.4),
-  over-bound (§7.1), reserved-subtype (§4.6), truncation (§7), malform×truncation (§5.2),
-  wiretype (§7.3), varint (§2 canonicality, WP-03) — **all seven blocking + green, no carve-out**
-  (wiretype promoted from report-only 2026-07-22 once F-0025 landed; the `sweep_repeated_id`
-  blob-reopen carve-out dropped once F-0026 landed; the **non-minimal varint axis** (`sweep_varint`)
-  added 2026-07-22 blocking-but-agreement-only — all 13 accept-and-normalize a non-minimal-but-≤64-bit
-  varint identically, spec-silent so conformance is deferred to documentation#24). This is what found
-  F-0020–F-0025 — "isolate-green ≠ axis-green". An **eighth axis (report-only)**
-  **`sweep_framing`** (WP-04, §5.2 stray-end + §6.2 ID_MAX/FIXLEN_MAX/ARRAY_MAX/MAX_DEPTH) is wired
-  **report-only** — its stray-end/FIXLEN_MAX/ARRAY_MAX vectors are green, but the ID_MAX and MAX_DEPTH
-  vectors surfaced F-0028/F-0029 (below), so the axis stays report-only until those resolve.
-- **Union under the structural sweeps** (WP-01, 2026-07-22): the five reject/skip axes (wiretype §7.3,
-  repeated-id §7.4, over-bound §7.1, reserved-subtype §4.6, truncation §7) now also run over
-  `schema/probe-union.sofab.yaml` — a schema-derived union position model (`sweep_positions.UNION_POSITIONS`,
-  from `schema.py` which learned the `union` kind) driven by `sweep_run.py --union` and a **report-only**
-  pass in `scripts/sweep.sh` (rebuilds the roster to probe-union, runs, rebuilds back to probe). 130 union
-  vectors; 4 of 5 axes green across 13, the wiretype pass surfaced **F-0027** on its first run.
-- **33 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 7 open (F-0027..F-0033; F-0033 is a spec hole).**
-  **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
-  generator#189), and **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
-  G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21); **F-0025** (§7.3 fp scalar←array,
-  generator#193 — the fp analogue of F-0021 that generator#183 covered for integers only) was
-  **resolved 2026-07-22** on the latest green sofabgen CI build, promoting the wiretype (§7.3) sweep
-  axis report-only → blocking and its isolates into the regression gate (73 → 77); **F-0026**
-  (corelib-c-cpp#106 — the §7.4 `blob_array` wrapper re-open keeping a stale zeroed element on the C
-  object API) was **resolved 2026-07-22** (corelib-c-cpp `2416a2b`), dropping the last sweep carve-out
-  and taking the gate 77 → 81. **F-0027** (§7.3, 2026-07-22) is the one **open** finding — surfaced by
-  the new WP-01 union pass: `rust-nostd` rejects a §7.3-skippable array/fp64 field that `probe-union`
-  never declares, because sofabgen provisions the no-std corelib's cargo features (`array`/`fp64`) from
-  the wire types the *schema* uses, and skip-ability is schema-independent. Generator-primary (G-0017),
-  corelib-rs-no-std implicated. **F-0018** (embedded U+0000
-  in a `string`) is classified **by-design** — a
-  NUL-terminated C-string profile projects `A\0B` → `A` on re-encode; valid on the wire,
-  preserved by the other 10 profiles, sanctioned as an allowed divergence in
-  `oracle/policy.yaml` (§8). **F-0004** (strict UTF-8) and **F-0017** (TS header wire type)
-  were both resolved by **sofabgen 0.18.0** — see the 2026-07-18 entries below. Three
-  Crucible-authored MESSAGE_SPEC clauses adopted (documentation#17/#18/#20).
-- **Phase 3 (built):** canonical form v2 = **round-trip re-encoding** with a
-  **three-valued verdict** (`A` complete / `I` incomplete / `R` reject, per
-  MESSAGE_SPEC §7 — comparator + `canonical.md` updated, drivers emit `I` as each
-  corelib gains INCOMPLETE; crucible#8); drivers are schema-agnostic, folds in the
-  round-trip oracle; schema scaled to the **full-scale** message; **C pacemaker
-  active** (~41k exec/s); comparator is **crash-isolating**; **auto-clustering**.
-- **Union feature covered** (2026-07-16): `schema/probe-union.sofab.yaml` +
-  `corpus/union/` (11 seeds) + `scripts/run-union.sh`. All 12 backends generate the
-  union and agree on every variant, the one-of encoding, and the two malformed-union
-  edge cases (two members set → all re-encode both in id order; unknown member id →
-  all skip → empty union). Green, no finding — the last untested wire feature.
-- Remaining Phase 3 / Phase 4: see [`TODO.md`](TODO.md).
-
-## Key design points
-- One coverage **pacemaker** (C, libFuzzer+ASan/UBSan) drives exploration; every
-  interesting input is replayed through all N drivers and compared. C is the motor,
-  **not** a privileged oracle.
-- Drivers run **persistent** (length-prefixed stdin), emit the canonical form; they
-  are generated from `schema/` via `sofabgen`. Not the generator's process-per-input
-  `encode`/`decode` CLI.
-- Corelib **variant pairs** share one driver source: rust-std/rust-nostd
-  (`drivers/rust`), cpp/cpp-c-cpp (`drivers/cpp`), py-cython/py-pure (`drivers/python`,
-  `SOFAB_PUREPYTHON`).
+---
 
 ## Findings & tracking
 Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug log
-in `results/SOFABGEN.md`. Fixes live in the **owning repos** (done in fresh contexts);
+in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
 **Re-verification 2026-07-08** — after bumping **sofabgen → 0.15.1** and all 10
@@ -746,10 +650,10 @@ Net open: **none.** Plus **F-0018** (by-design). **All 25 catalogued findings ar
 | F-0002 | corelib-c-cpp encoder left-shifts a negative value (UB) | **corelib-c-cpp#70** merged — ✅ **resolved** |
 | F-0003 | Rust array-fill OOB → panic (crash/DoS) | ✅ **fully resolved.** Crash fixed by **generator#87**; the residual over-count *accept* divergence (**generator#100**) is fixed in **sofabgen 0.16.1** (commit `ca0fda7`, "reject over-count scalar arrays in every backend"). **Re-verified 2026-07-15** with a *clean non-truncated* over-count(8>5) array (`a6 06 03 08 01..08 07`): **all 12 drivers reject** (`R`) — rust-std/nostd now reject with the family. (The old 145-byte reproducer is contaminated — over-count *and* truncated — so rust/zig report `I` there; the clean isolate is the correct test.) |
 | F-0005 | corelib-cpp accepts malformed msgs the family rejects | **corelib-cpp#22** closed — ✅ **resolved** |
-| G-0001,3,4,5,6 | codegen weaknesses (infallible Rust/C++ decode, no-std string handling, Go bytes import) | **all fixed in sofabgen 0.15.1** (PRs #88/#92/#93/#89/#90) — see results/SOFABGEN.md |
+| G-0001,3,4,5,6 | codegen weaknesses (infallible Rust/C++ decode, no-std string handling, Go bytes import) | **all fixed in sofabgen 0.15.1** (PRs #88/#92/#93/#89/#90) — see results/FINDINGS.md |
 | G-0002 | Rust std vs no_std UTF-8 (intra-Rust) | generator#80/#91 — ✅ **fixed** (both empty on invalid); family-wide UTF-8 is F-0004 / #85 |
-| G-0008 | generated one-shot decode discards the INCOMPLETE status (C#, Java) | ✅ **fixed** — sofabgen 0.15.3 ([generator#106](https://github.com/sofa-buffers/generator/pull/106) closes #105): status-surfacing `TryDecode`/`tryDecode`. Crucible C#/Java drivers now **single-pass** on it — two-pass workaround **removed** (crucible#10, 0.16.0 bump). See results/SOFABGEN.md |
-| G-0009 | generated C++ emits a schema-*unbounded* array as `std::array<T, 0>` (not `std::vector<T>`) | ✅ **fixed in sofabgen 0.16.1** ([generator#112](https://github.com/sofa-buffers/generator/issues/112), commit `7899c4b` → `std::vector`). **Re-verified 2026-07-15:** repro `03 03 07 08 09` → cpp now decodes `[7,8,9]` (was `[]`), matching the family; cpp agrees on the arr limit vectors (under/at/over-cap → `L`). **cpp rejoined the `arr` dimension** of limit mode (`scripts/run-limits.sh`, `NO_CPP` hold-out removed); limit mode green with cpp in all three dimensions. See results/SOFABGEN.md |
+| G-0008 | generated one-shot decode discards the INCOMPLETE status (C#, Java) | ✅ **fixed** — sofabgen 0.15.3 ([generator#106](https://github.com/sofa-buffers/generator/pull/106) closes #105): status-surfacing `TryDecode`/`tryDecode`. Crucible C#/Java drivers now **single-pass** on it — two-pass workaround **removed** (crucible#10, 0.16.0 bump). See results/FINDINGS.md |
+| G-0009 | generated C++ emits a schema-*unbounded* array as `std::array<T, 0>` (not `std::vector<T>`) | ✅ **fixed in sofabgen 0.16.1** ([generator#112](https://github.com/sofa-buffers/generator/issues/112), commit `7899c4b` → `std::vector`). **Re-verified 2026-07-15:** repro `03 03 07 08 09` → cpp now decodes `[7,8,9]` (was `[]`), matching the family; cpp agrees on the arr limit vectors (under/at/over-cap → `L`). **cpp rejoined the `arr` dimension** of limit mode (`scripts/run-limits.sh`, `NO_CPP` hold-out removed); limit mode green with cpp in all three dimensions. See results/FINDINGS.md |
 
 **New divergences surfaced 2026-07-13 while wiring the `I` verdict — ✅ both fixed (pre-existing corelib leniency, unrelated to truncation):**
 - **corelib-cpp** classified an unterminated over-long varint (>64 bits) as `I` (INCOMPLETE) where the rest say `R` (INVALID) — the measure phase treated the over-long-but-unterminated varint as a truncated tail. **Fixed** (corelib-cpp#29, in PR #28): getVarint/skipVarint report the >64-bit overflow so the measure phase rejects it.
@@ -788,7 +692,7 @@ seeds run as a plain differential with zero conformance assertions.
   probe wiretype axis stays green (319×13), and `rust-std` (same generated code) agrees with the family —
   the two-way sibling split pinning it to the feature config, i.e. codegen. **Generator-primary → G-0017**,
   corelib-rs-no-std implicated (F-0010 "occasionally both"). Filed `results/FINDINGS.md` F-0027 +
-  `results/SOFABGEN.md` G-0017 with reproducers under `findings/F-0027-*`.
+  `results/FINDINGS.md` G-0017 with reproducers under `findings/F-0027-*`.
 - **Not yet promoted / not in the gate** until the fix lands — per the F-0025/F-0026 arc.
 
 **Twenty-ninth change 2026-07-23 — WP-11: harness hygiene (one position model, schema-derived bounds); no finding.**
@@ -937,7 +841,410 @@ wire carries the integer regardless"; §7 "value-range outside the wire clause";
 over-width). Spec hole → [documentation#26](https://github.com/sofa-buffers/documentation/issues/26). The
 hand-built value corpus never emits an over-width scalar — only fuzzing reached it.
 
-## Spec decisions (documentation repo, MESSAGE_SPEC.md)
+---
+
+# Decision log & deviations (moved from ARCHITECTURE.md)
+
+These dated decisions, PLAN-deviations, and the first-finding narrative used to live
+in `ARCHITECTURE.md`. Per the SSOT split (ARCHITECTURE describes only the current as-built state),
+the *when/why* history belongs here with the rest of the chronological log; the
+resulting *what-is* stays in ARCHITECTURE.
+
+## Key decisions (decision log)
+
+- **2026-07-22 — `SOFABGEN.md` moved `docs/` → `results/`.** The G-00NN codegen-defect
+  log is the generator-side sibling of `results/FINDINGS.md` (corelib bugs); Crucible's
+  triage splits every finding into exactly those two catalogs by owning repo, so they now
+  live together under `results/` (the "what the fuzzer surfaced" tree), leaving `docs/` for
+  harness design/plan/status. All references rewritten in the same change (README, CLAUDE.md
+  incl. the triage table, ARCHITECTURE/STATUS/TODO, FINDINGS, and the `findings/*/NOTES.md`
+  that cite G-numbers).
+- **2026-07-18 — drivers build with strict UTF-8 ON (F-0004 / crucible#55).** The
+  fuzzer runs the §8 `SOFAB_STRICT_UTF8` check ON so an invalid-UTF-8 `string` is
+  rejected family-uniformly. Most drivers are strict by default (go/zig/cpp default
+  ON; py/ts/java/cs/rs Unicode types always strict); the **C corelib defaults OFF**
+  for footprint, so the two corelib-c-cpp-based drivers opt in: `drivers/c/build.sh`
+  and `drivers/cpp/build.sh` (`c-cpp`) add `-DSOFAB_ENABLE_STRICT_UTF8` and compile
+  `corelib-c-cpp/src/utf8.c` (defines `sofab_utf8_valid`). The **zig** driver builds
+  the corelib as a bare module with `zig build-exe` (no `build.zig`), so it
+  synthesizes the `build_options` module corelib-zig's `utf8.zig` imports
+  (`strict_utf8 = true`). Seeds: `engine/structured/utf8_seeds.py`.
+- **Separate repo, arena-cloned structure.** Instrumented (sanitizer+coverage)
+  vs arena's optimized builds; opposite configs → own repo. See PLAN §2, §11.
+- **One coverage pacemaker (C), N differential oracles.** PLAN §3.
+- **Purpose-built driver ABI, not the generator CLI.** Persistent + canonical
+  diff form, not process-per-input JSON. PLAN §7.
+- **The oracle is disagreement, not the crash.** PLAN §1, §6.
+- **Name:** `crucible` (`corelib-*` is reserved).
+- **2026-07-08 — comparator has no driver registry.** Drivers are passed to
+  `comparator.py` as `name:path`; adding a language needs no central edit, only a
+  `--driver` flag in `run.sh` (mirrors arena's "impls discovered from output").
+- **2026-07-08 — bring up on a minimal schema, not full-scale.** Fastest path to
+  a proven loop, canonical form, and comparator. See Deviation 2026-07-08a.
+- **2026-07-08 — Rust: capture the corelib's verdict, not the generated API's.**
+  The generated Rust `decode` was infallible; testing it verbatim would make Rust
+  ACCEPT everything and flood the comparator with codegen-artifact divergences.
+  The driver originally read the corelib's true `feed` result via a two-pass
+  (null-visitor verdict + `decode` value), isolating wire semantics from the
+  codegen's error-handling gap (results/FINDINGS.md G-0001). **Superseded
+  2026-07-14 (crucible#10):** G-0001 is fixed — the driver is now single-pass on
+  the fallible `try_decode`, which surfaces the verdict directly *and* runs the
+  real generated per-field checks the null-visitor pass had skipped (e.g. the
+  over-count-array check; F-0003 / generator#100 — **fixed in sofabgen 0.16.1**,
+  re-verified 2026-07-15: clean over-count array → rust `R`).
+- **2026-07-08 — generated-code weaknesses go to results/FINDINGS.md.** Building the
+  Rust drivers surfaced four (G-0001 infallible decode; G-0002 std/no-std invalid
+  UTF-8; G-0003 std/no-std chunked strings; G-0004 no-std silent capacity drop);
+  the C++ drivers a fifth (G-0005 infallible C++ decode). Crucible tests corelibs,
+  but codegen ships to users, so codegen defects are tracked as generator changes,
+  not worked around silently. (Python's generated `decode` *raises* — the
+  fallible model G-0001/G-0005 propose for Rust/C++.)
+- **2026-07-08 — comparator is crash-isolating.** A driver that dies mid-stream
+  (fewer output lines than inputs) is reported as `[CRASH] driver X on input N`
+  and the run continues comparing the survivors, instead of aborting the whole
+  differential. Necessary once the pacemaker feeds adversarial inputs — a
+  crashing implementation (F-0003) is itself a finding, not a harness failure.
+- **2026-07-15 — comparator is hang-isolating (per-driver timeout).** Companion to
+  crash isolation: a per-driver wall-clock budget (`--timeout`, default
+  `max(30s, 0.25s × corpus size)`; `TIMEOUT=` env through `run.sh`/`run-limits.sh`).
+  `run_driver` sends the driver's stdout/stderr to temp files (not pipes) so that on
+  a `subprocess` timeout — which on POSIX does *not* carry the killed process's
+  partial output — the flushed lines are still recovered; the culprit is the input
+  at index `len(lines)`, reported `[TIMEOUT] driver X hung … culprit ≈ input N`.
+  `cluster.py` recovers past it exactly like a crash. A driver that takes unbounded
+  time on a small malformed input is a **DoS finding**, not a wedged run (the
+  gap the structure-aware mutator surfaced: maxed array counts / deep nesting made
+  the replay loop crawl). Precision note: exact for flush-per-line drivers; a
+  slurp-then-emit driver (ts) yields 0 partial lines, so it reports "hung, produced
+  0/N" without a precise index — bisection to localize those is a follow-up.
+- **2026-07-08 — canonical form v1: round-trip re-encoding.** Replaced the v0
+  per-field text form with `A <hex(encode(decode(input)))>`. Reason: the full-scale
+  message (arrays, nested structs, unions) makes per-field walking in 12 languages
+  intractable and error-prone; re-encoding the decoded value is schema-agnostic
+  (drivers reference no fields) and identical across the family because the
+  encoders are sparse-canonical (the arena reference-wire invariant). Also gives
+  the round-trip oracle for free. Tradeoff (benign masking of encode-equivalent
+  differences) recorded in `oracle/canonical.md`. This is what surfaced F-0002.
+- **2026-07-13 — canonical form v2: three-valued verdict (`A`/`I`/`R`).** Added a
+  third verdict line `I` (INCOMPLETE) alongside `A`/`R`, tracking the finish-less
+  MESSAGE_SPEC §7 decode model (documentation PR #12). Truncated input is
+  INCOMPLETE — a distinct, non-error outcome — not accept and not reject. Touched
+  the canonical-form triad together (the CLAUDE.md invariant): the grammar +
+  three-verdict table in `oracle/canonical.md`, the `parse()`/compare logic in
+  `oracle/comparator.py` (new `incomplete_value` axis, soft), and the driver
+  contract in `drivers/common/CONTRACT.md`. `policy.yaml` gains
+  `incomplete_value: soft` and resolves the PLAN §8 truncated-input question
+  (SPECIFIED as INCOMPLETE). Drivers emit `I` only once their corelib exposes the
+  state (generator#86 + per-corelib issues); until then F-0001 stays red — the
+  correct signal. Verification tracked in crucible#8. See Deviation 2026-07-13a.
+- **2026-07-08 — Python: build the Cython extension per interpreter.** The
+  prebuilt `_speedups.so` is version-specific; a mismatched CPython silently falls
+  back to pure, so "cython" mode would be a false label. build.sh compiles the
+  extension for the venv's interpreter and asserts `sofab.IMPL` matches the
+  requested mode.
+- **2026-07-16 — the regression corpus admits an input only when it is green *for
+  the reason the finding is about*.** The tempting rule is "a finding is fixed →
+  its reproducer joins the gate." That is wrong here, because several reproducers
+  are raw fuzzer inputs that trip **two** axes: F-0003's `array_overflow.bin` is
+  over-count *and* truncated, F-0008's `hang_min.bin` is over-index *and*
+  truncated. Both findings are fixed, yet both inputs still split the family on the
+  *open* INVALID-vs-INCOMPLETE precedence hole (documentation#15). Admitting them
+  would force a choice between a red gate and a policy exception that mutes a real
+  open divergence. So a contaminated reproducer stays in `findings/` and the gate
+  gets a **clean isolate** (`engine/structured/isolates.py`) testing the one axis —
+  the F-0004 lesson ("characterize with a minimal isolate, not a raw fuzzer input")
+  applied to the gate. Corollary: **never weaken the gate to admit an input.** The
+  exclusions and their reasons are listed in `corpus/regression/README.md`, so an
+  excluded reproducer is visibly deferred rather than silently forgotten.
+
+## Deviations from PLAN
+
+### 2026-07-23d — float bit-pattern specials + integer gaps in the value corpus (WP-06)
+- **PLAN says:** the cross-encode + materialized oracles run valid, value-rich messages so encoders and
+  decoders are cross-checked on the value space wire-mutation misses (PLAN §6).
+- **Change (docs/improvements.md WP-06):** `gen.py` gained **raw-byte fp support** (`fp32`/`fp64` accept
+  bytes; `f32b`/`f64b` pin an exact 32/64-bit pattern — a Python float round-trip would canonicalize a NaN)
+  and vectors for the previously-missing value corners: min/max **subnormal** f32+f64, **quiet-payload**
+  NaN, **negative** NaN, **fp64 sNaN**, explicit **+0.0**, and unsigned **mid** values. `materialize.py`
+  handles raw-byte fp (the element-access oracle already compares floats by raw bits). `gen.py` now clears
+  stale `*.bin` before regenerating (vector indices shift as the set grows, and the committed corpus is
+  replayed with `REGEN=0`). Corpus 75 → **90** vectors; cross-encode + materialized green (90×13 each).
+- **F-0031 carved out:** an fp32 *signaling* NaN (`0x7F800001`) is quieted to `0x7FC00001` by
+  `py-cython`/`typescript`/`dart` (double-backed fp32) where the other 10 (incl. `py-pure`) preserve it —
+  §4.6 requires bit-for-bit, no normalization. Filed corelib-py#49 / corelib-ts#66 / corelib-dart#15; the
+  `f32_snan` vector is held out of the green gate (`findings/F-0031`) until fixed.
+
+
+### 2026-07-23c — union value space cross-encoded (WP-02 Part A)
+- **PLAN says:** the cross-encode oracle (PLAN §6) runs valid, value-rich messages through the
+  round-trip + decode-agreement oracle; `schema/` is the single source of the fuzzed message.
+- **Change (docs/improvements.md WP-02 Part A):** `gen.py` gained `encode_union` + `union_vectors`
+  (18 value-rich union vectors — each member at boundary values, `default_id`, tag+member+trailer
+  combos) written to `corpus/structured-union/` via `gen.py --union`. `scripts/cross-encode.sh` runs a
+  second **union pass** over `schema/probe-union.sofab.yaml` (rebuild the roster → probe-union →
+  differential → restore probe binaries, the SCHEMA-switch discipline), gated by `replay.yml` (which runs
+  `cross-encode.sh`). **18 × 13 → 0 divergences** — the union value space round-trips identically; blocking.
+- **Part B deferred:** the union *materialized* (element-access) oracle is a scoped follow-up — the C anchor
+  materializes a union out-of-the-box (form `{opt_id:value}` for every member), but the 6 runtime walkers
+  (go/py×2/java/ts/cs) and 6 generated walkers (rust×2/cpp/cpp-c-cpp/zig/dart) plus `materialize.py` need
+  `union`-node support (a ~12-walker sub-project). `oracle/materialized.md` gets the union form then.
+
+
+### 2026-07-23b — harness hygiene: one position model, schema-derived bounds (WP-11)
+- **PLAN says:** `schema/` is the single source of the fuzzed message; the sweep family
+  enumerates a rule across every position of it.
+- **Change (docs/improvements.md WP-11):** removes three silent-desync risks in the
+  sweep harness — no coverage change beyond one gap closed:
+  - **One position model.** `wiretype_sweep.py` carried its own parallel position list
+    (29 entries, including the wrapper-**element** positions the shared
+    `sweep_positions.POSITIONS` lacked — so wrapper elements were swept for §7.3 but not
+    §4.6). The wrapper-element positions (`welem_str`/`welem_blob`) now live in
+    `sweep_positions.POSITIONS` (27→29), and `wiretype_sweep` consumes it via a new
+    `CAT_TO_CONSTRUCT` map. A schema change is mirrored **once**. Consequence:
+    reserved-subtype (§4.6) now also sweeps the wrapper elements — its vector count rose
+    110→**118** (+2 positions × 4 reserved subtypes), a **gap closed**; wiretype stays 319,
+    every other axis unchanged (no count dropped — the WP-11 hard-fail guard).
+  - **Schema-derived bounds.** `sweep_positions` read `count`/`maxlen` from bare literals
+    (`5`/`64`/`32`/`4`); they now come from `_BOUNDS`, read from `schema/probe.sofab.yaml`
+    (the single source). `materialize.py`'s `ARR_COUNT = 5` is now derived from the schema
+    descriptor with a uniform-count assertion (fails loudly on a non-uniform schema
+    instead of silently mis-padding). Committed `oracle/materialized-schema.json` unchanged.
+  - **`STRUCT_CHILDREN`** for the `arrays` (id 100) scope now lists all eight numeric
+    arrays (was two); the §7.4 merge-vs-replace test still samples the first two (two
+    distinct child ids suffice to distinguish merge from replace — documented, not left
+    ambiguous), the rest available for wider reopen tests.
+  - **Doc drift:** the "all 12"/"12 drivers" mentions across `engine/structured/*.py`
+    (13 since Dart) are swept.
+- **Verified:** all six blocking sweep axes green post-refactor (reserved-subtype's +8
+  wrapper-element vectors reject uniformly); emit counts identical or higher than before;
+  derived bounds byte-match the old literals. Lands **before** WP-05's schema growth so
+  the new composite-array field enters one position model, not two.
+
+### 2026-07-23a — framing & format-ceiling sweep axis added (WP-04, report-only)
+- **PLAN says:** the sweep family (PLAN §6) enumerates each normative rule across every
+  schema position; a divergence is a finding.
+- **Change (docs/improvements.md WP-04):** a seventh axis
+  `engine/structured/sweep_framing.py` covering two malformation classes with no
+  dedicated coverage — stray/unbalanced `sequence-end` (§5.2; `sweep_truncation` only
+  emits *open* sequences) and the format ceilings ID_MAX / FIXLEN_MAX / ARRAY_MAX /
+  MAX_DEPTH (§6.2). Over-ceiling values sit at **unknown field ids** and use **2³¹**
+  (over the ceiling on every profile), and declare a huge size with **no payload** so a
+  conformant decoder rejects at the header word and never allocates (the F-0013
+  amplification discipline). Registered via `scripts/sweep.sh` **report-only** (the axis
+  is not green — see below); `gen.varint`/`gen.py` primitives only, hand-built vectors.
+- **Report-only, not blocking:** the axis found two divergences (ground rule 4 keeps a
+  non-green axis report-only until every divergence is a catalogued finding):
+  - **F-0028** — `cpp` + `dart` decoders accept a field id > ID_MAX (skip it) where 11
+    reject; both check ID_MAX only on encode. → corelib-cpp#47 + corelib-dart#14.
+  - **F-0029** — `typescript`'s `cursor` decode path reports INCOMPLETE for nesting past
+    MAX_DEPTH (its `fast.ts`/`state.ts` paths enforce it; `cursor.ts` does not).
+    → corelib-ts#65.
+  Both corelib (format ceilings are schema-independent wire checks), not codegen. The
+  stray-end, FIXLEN_MAX and ARRAY_MAX vectors are green across all 13. Promote the axis
+  to blocking + gate the reproducers once the findings resolve (the F-0025/F-0026 arc).
+
+### 2026-07-22d — non-minimal varint sweep axis added (WP-03; sweep gate 6→7 axes)
+- **PLAN says:** the sweep family (PLAN §6) enumerates each normative rule across every
+  schema position; a divergence is a finding, a spec-silent case is a spec hole (§8).
+- **Change (docs/improvements.md WP-03):** a seventh sweep axis
+  `engine/structured/sweep_varint.py` (§2 varint canonicality). A varint admits
+  non-minimal forms (redundant continuation bytes adding zero high bits); `gen.varint`
+  emits only minimal ones, so no corpus reached this class (F-0016 covered only the
+  >64-bit overflow). The axis places a non-minimal varint at every varint **role**
+  (field-id header, fixlen length word, array count, array element, and inside a skipped
+  field) with minimal-accept controls and an overflow-reject contrast. Registered in
+  `sweep_run.py` `AXES`, blocking in `scripts/sweep.sh`, gated by `replay.yml` (which runs
+  `sweep.sh`). `gen.varint` is left untouched — it is the canonical reference encoder;
+  the non-minimal forms are hand-built in the axis.
+- **Blocking but agreement-only:** the spec is **silent** on a non-minimal-but-≤64-bit
+  varint (CORELIB_PLAN §4.1 guards only overflow; MESSAGE_SPEC §2 constrains the encoder,
+  not the decoder). Per ground rule 6 the 18 non-minimal vectors carry `expect="agree"` —
+  the runner asserts only that all 13 agree (and, for free, that the round-trip normalizes
+  them to the one canonical form), **not** accept-vs-reject conformance — until a clause
+  lands. Filed [documentation#24](https://github.com/sofa-buffers/documentation/issues/24)
+  proposing the observed consensus (accept + normalize; reject
+  overflow). On adoption the vectors tighten to `expect="accept"` and the axis becomes a
+  conformance gate.
+- **Result:** green — all 13 accept every non-minimal varint and re-encode identically to
+  the minimal canonical form; all 13 reject the overflow. 23 vectors, 0 divergences. No
+  finding.
+
+### 2026-07-22c — union pulled under the structural sweeps (WP-01)
+- **PLAN says:** the sweep family (PLAN §6) enumerates each normative rule across every
+  position of the fuzzed message; `schema/` is the single source of the fuzzed message.
+  Union coverage was a separate differential suite (`run-union.sh`) over 11 static seeds.
+- **Change (docs/improvements.md WP-01):** the `union` wire feature — previously invisible
+  to the generated pipeline (`engine/structured/schema.py` raised `ValueError` on `union`) —
+  is now swept. `schema.py` learned the `union` kind; `sweep_positions.UNION_POSITIONS` is
+  **derived from that descriptor** (not a second hand-maintained position literal); five axes
+  (wiretype §7.3, repeated-id §7.4, over-bound §7.1, reserved-subtype §4.6, truncation §7)
+  gained an `emit_union` pass; `sweep_run.py` gained `--union`; `scripts/sweep.sh` runs a
+  **report-only** union pass that rebuilds the 13 drivers to `probe-union`, runs the axes, and
+  rebuilds back to `probe` (the SCHEMA-switch discipline, so binaries are never left mixed).
+- **Why a second schema, not folded into `probe`:** `probe` is byte-canonical and stable;
+  a union member selected by id does not fit the fixed-shape `probe` cleanly, so the union
+  lives in its own `probe-union` schema (the same reasoning `run-union.sh` already used). The
+  sweep now parameterizes the position model *by schema* to reach it — a step toward WP-11's
+  one-position-model goal, taken here rather than adding a third parallel literal.
+- **Report-only, not blocking:** ground rule 4 (a new axis is report-only until green or every
+  divergence is catalogued). 4 of 5 axes are green over 13; the wiretype pass surfaced
+  **F-0027** (`rust-nostd` cannot §7.3-skip an array/fp64 field `probe-union` never declares —
+  sofabgen provisions the no-std corelib's cargo features from the schema's *used* wire types).
+  Primary attribution **generator (G-0017)**, corelib-rs-no-std implicated. The pass is not
+  promoted to blocking and its vectors are not in `corpus/regression/` until the fix lands.
+- **Result:** 130 union vectors; `probe` sweeps unchanged (still six blocking axes, green).
+  `replay.yml` unchanged (the union pass is report-only, wired only into `sweep.sh`).
+
+### 2026-07-22b — Dart added as the 11th corelib / 13th driver (roster 12→13)
+- **PLAN says:** `drivers/` lists c/rust/go/java/python + cpp/cs/ts/zig (PLAN §11);
+  onboarding a new language follows the §13 checklist.
+- **Change:** `drivers/dart/` added (crucible#77 / generator#211, sofabgen's 10th
+  language target). Roster is now **13 drivers / 11 corelibs**. Registered in every
+  suite: `run.sh` (seeds/regression/cross-encode/union), `run-limits.sh` (heap
+  roster), `engine/structured/sweep_run.py` (structural sweep), `materialize.sh`
+  (element-access). No PLAN revision — this is the §13 checklist executed; PLAN's
+  "N drivers" abstraction is unchanged.
+- **Why it slots in cleanly:** the schema-agnostic round-trip form means the replay
+  driver needs zero per-field code; the generated `Probe.tryDecode → DecodeStatus`
+  maps 1:1 to `A`/`I`/`R`/`L`. Only the materialized oracle needs schema knowledge,
+  supplied by a build-time-generated walker (AOT Dart has no `dart:mirrors`).
+- **AOT, never JIT** — the suite runs the native `dart compile exe` binary, not
+  `dart run`/VM (operator constraint).
+- **CI:** the gates invoke the scripts (which carry Dart), so **no per-gate edit**;
+  the CI image already installs the Dart SDK (`.devcontainer/Dockerfile`), so it only
+  needs the standing one-time `image.yml` rebuild to carry it into `replay`/`nightly`.
+- **Result:** all suites green — seeds 6×13, regression 73×13, cross-encode 75×13,
+  union 11×13, limit mode (arr/str/blb) 10-heap-driver roster, structural sweep
+  (5 blocking axes), materialized 75×13. No
+  Dart-attributable finding. (One Crucible-side walker bug found+fixed during
+  Stage 4; one toolchain-bump side-result: F-0025 now resolved on the CI build.)
+
+### 2026-07-22a — bootstrap installs the latest sofabgen *CI build*, not the latest *release*
+- **PLAN/prior as-built:** `scripts/bootstrap.sh` installed the latest published
+  sofabgen **release** binary (checksum-verified) — see the `bootstrap.sh` row above
+  as it was before this entry.
+- **Change:** bootstrap now installs the binary the generator's `ci.yml` attaches to
+  its latest **green run on `main`** (still sha256-verified, via the `.sha256` shipped
+  in the same artifact). The tagged-release path is preserved but demoted to an
+  explicit opt-in (`SOFABGEN_VERSION=vX.Y.Z`); it is also the **loud fallback** when no
+  cross-repo token is present or the artifact is missing, so the tree never wedges and
+  every run says which build it used.
+- **Why:** the release cadence lagged behind merged generator work. The trigger was
+  **Dart** (crucible#77): `corelib-dart` + the `dart` backend (generator#211) landed on
+  generator `main` and CI began attaching a `dart`-capable `sofabgen` (target list now
+  `…|dart|…`) and a `generated-dart` artifact — but no *release* carried it yet. Pulling
+  the CI build lets Crucible exercise the newest family members as they merge, which is
+  the whole point of a conformance fuzzer, without pinning to an *unmerged* PR (rejected
+  — that would violate the "never lie about what it compiled" invariant).
+- **Cost / caveat:** workflow-run artifacts are not anonymously downloadable, so CI needs
+  a PAT secret (`SOFABGEN_TOKEN`, `actions:read` on `sofa-buffers/generator`) — wired into
+  `replay.yml`/`nightly.yml`; absent it, CI degrades loudly to the latest release. CI
+  builds carry a pseudo-version (`0.0.0-<ts>-<sha>`) rather than a semver tag.
+
+### 2026-07-08a — Phase 1 used a minimal `probe` schema (RESOLVED in Phase 3)
+- **PLAN says:** the fuzzed message is the "full scale" message (every width,
+  arrays, nested structs, unions, unicode) — PLAN §13/§14.
+- **Phase 1–2:** shipped a 4-field `probe` (u32/i32/fp32/string) to prove the
+  loop, driver ABI, canonical form, and comparator without the full canonical-form
+  surface area.
+- **Resolved (Phase 3):** `schema/probe.sofab.yaml` is now the full-scale message
+  (8 scalar widths, fp32/fp64, string, blob, 8 numeric arrays, nested fp arrays,
+  string array). The switch to the round-trip canonical form (decision
+  2026-07-08) made this a **schema+seeds-only change with zero driver edits** —
+  the drivers reference no fields. Loop green across all 12 drivers on 6
+  full-scale seeds. Kept the message key `probe` so generated type names are
+  stable. Unions are the one full-scale feature not in this message (the family's
+  full-scale example has none) — **covered separately** via
+  `schema/probe-union.sofab.yaml` + `scripts/run-union.sh` rather than folded into
+  `probe` (keeping the main message's type names stable). The schema-agnostic
+  round-trip form pays off again: pointing the oracles at the union schema needs
+  only a rebuild, no driver edits. All 12 backends generate + agree on every
+  variant and the one-of/unknown-member edge cases — green, no finding.
+
+### 2026-07-08b — absent/default/value collapsed to two states
+- **PLAN says:** canonical form distinguishes *absent* / *present-but-default* /
+  *value* (PLAN §7).
+- **Reality:** the C object API and Go visitor API both materialize values with
+  the schema default for omitted fields; on the sparse-canonical wire
+  `absent == default`, so the two are equal and indistinguishable. Canonical form
+  emits the value (default when absent).
+- **Why:** both Phase-1 decoders are value-materializing; neither tracks presence.
+- **Impact:** documented in `oracle/canonical.md`. When a presence-tracking
+  decoder joins, the canonical form gains a presence marker and the comparator
+  learns cross-model compatibility. No PLAN revision — PLAN §7's three-way
+  distinction remains the target for models that support it.
+
+### 2026-07-08c — C libFuzzer pacemaker not built in the bare workspace
+- **PLAN says:** C pacemaker built with libFuzzer + sanitizers (PLAN §3, §12).
+- **Reality:** the bare workspace has gcc but no clang, so only the gcc replay
+  driver (with ASan/UBSan) is built/verified here. The libFuzzer front-end exists
+  in `driver.c` behind `CRUCIBLE_LIBFUZZER` and builds in the devcontainer.
+- **Why:** libFuzzer is a clang/LLVM feature; the devcontainer ships clang.
+- **Impact:** none to the differential loop (which runs on the replay drivers).
+  Coverage-guided pacemaker runs live in the devcontainer/CI.
+
+### 2026-07-13a — canonical verdict is three-valued (`A`/`I`/`R`), not binary
+- **PLAN says:** the canonical form's verdict axis is accept-vs-reject (PLAN §6/§7
+  frame decode as a binary outcome).
+- **Reality:** MESSAGE_SPEC §7 (finish-less, documentation PR #12) makes decode
+  three-valued — COMPLETE / **INCOMPLETE** / INVALID — where INCOMPLETE (truncated
+  but well-formed-so-far) is an explicit non-error outcome. The canonical form
+  gained a third line `I` (`oracle/canonical.md` v2), the comparator a third
+  verdict + a soft `incomplete_value` axis, and the driver contract an `I`
+  mapping.
+- **Why:** collapsing INCOMPLETE into accept (`A`) or reject (`R`) is exactly the
+  F-0001 bug; the loop cannot verify the family's convergence on INCOMPLETE
+  without a distinct verdict for it.
+- **Impact:** verdict comparison now ranges over `A`/`I`/`R` (all hard). Drivers
+  emit `I` only after their corelib exposes INCOMPLETE (generator#86 +
+  per-corelib issues); until then their `A`/`R` on a truncated seed is a real
+  verdict divergence. No PLAN revision needed — this refines §7's outcome model to
+  match the now-settled spec. Verification: crucible#8.
+
+### Pacemaker (as built)
+
+`scripts/fuzz.sh` builds the C driver's `CRUCIBLE_LIBFUZZER` entry with clang
+(`-fsanitize=fuzzer,address,undefined`) and runs it, seeded from `corpus/seeds` +
+`corpus/interesting` + the findings reproducers; new coverage-increasing inputs
+grow `corpus/interesting/`, crashes land in `corpus/crashes/`. Measured ~41k
+exec/s, ~1M runs in 26s. It only decodes (coverage over the C decoder); the
+discovered inputs then go through the differential loop
+(`CORPUS=corpus/interesting ./scripts/run.sh`) where decode+re-encode across all
+12 drivers finds the divergences. On its **first** run over 309 discovered inputs
+it produced F-0003 (2 crashes) and a large divergence cluster dominated by F-0004
+(string UTF-8) and F-0001 (truncated input) — findings 8 hand-seeds never reached.
+
+Needs clang + `libclang-rt-dev` (in the devcontainer image); the comparator
+(`oracle/comparator.py`) is **crash-isolating** — a driver that dies mid-stream is
+reported as `[CRASH] driver X on input N`, not a bare harness abort, so the
+pipeline survives a crashing implementation.
+
+### Clustering (as built)
+
+`oracle/cluster.py` (`CLUSTER=1 ./scripts/run.sh`) reduces the divergence firehose
+to root causes: for each divergent input it partitions the drivers into
+equivalence classes by identical output, drops the exact bytes, and keys the
+cluster by the *shape* (which driver-set landed in each class, with its verdict).
+Inputs sharing a shape share a root cause; clusters rank by size with a minimal
+representative. It recovers past crashes (re-runs a crashed driver on the
+remaining inputs). First run: 256 divergences → 47 clusters, top 12 ≈ 208, mapping
+to F-0001/F-0004/F-0005 (+ the F-0003 crash cluster). Snapshot +
+finding-mapping in `results/CLUSTERS.md`.
+
+## First finding
+
+The Phase-1 loop found **F-0001** on its first run: a truncated trailing varint
+(`80`, `ff ff ff`). Phase 2 grew it to a **7-accept vs 5-reject camp split** — the
+C/C++/Rust/Java/C# camp (c-cpp, cpp, c-cpp wrapper, rs, rs-no-std, java, cs)
+accepts it as the all-defaults message; **four independent lineages — Go, Python
+(cython and pure), TypeScript, and Zig — reject it**. Real, hand-verified against
+all twelve drivers. Notably Zig (a systems language) rejects while C/C++/Rust
+accept, so the split is per-decoder-design, not systems-vs-managed. Four
+unrelated implementations rejecting is strong evidence the lenient camp is wrong —
+exactly the pressure the PLAN §8 spec decision needs.
+See `results/FINDINGS.md` and `findings/F-0001-truncated-trailing-varint/`.
+
+## Spec decisions (adopted MESSAGE_SPEC clauses)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued
   COMPLETE/INCOMPLETE/INVALID, returned identically by one-shot `decode` and every
   streaming `feed`. **There is no `finish`/`finalize`/`end`**, and **INCOMPLETE is
@@ -949,15 +1256,3 @@ hand-built value corpus never emits an over-width scalar — only fuzzing reache
 - **§8** — `string` is UTF-8, `blob` is opaque bytes; strict-reject is conformant but
   gated behind a corelib flag (`SOFAB_STRICT_UTF8`) that may default OFF; conformance
   + the fuzzer run it ON.
-
-## Gotchas / lessons
-- **clang** isn't in the bare workspace (only the devcontainer): the pacemaker needs
-  `apt-get install clang libclang-rt-dev llvm` there. Replay drivers build with gcc.
-- **corelib-c-cpp** `sofab_istream_feed` asserts `datalen>0` (debug precondition);
-  drivers guard `len==0` as the valid empty message.
-- **G-0006 is fixed** (sofabgen 0.15.1, generator#84): the old `drivers/go/build.sh`
-  workaround that injected a missing `bytes` import into the generated `types.go` has
-  been removed — the generator now emits the import.
-- **Characterize a divergence with a minimal isolate**, not a raw fuzzer input — the
-  coarse `invalid_msg` reject class conflated reasons (F-0004 was mischaracterized
-  until isolated).

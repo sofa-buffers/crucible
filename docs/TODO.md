@@ -2,7 +2,7 @@
 
 Open work **on Crucible itself**. Fixes for the corelib/generator bugs Crucible found are
 **not** here — they live in the owning repos (catalog: [`../results/FINDINGS.md`](../results/FINDINGS.md),
-codegen defects: [`SOFABGEN.md`](../results/SOFABGEN.md), spec clauses: adopted upstream in `documentation` (MESSAGE_SPEC/CORELIB_PLAN)).
+codegen defects: the `G-00NN` rows in [`FINDINGS.md`](../results/FINDINGS.md), spec clauses: adopted upstream in `documentation` (MESSAGE_SPEC/CORELIB_PLAN)).
 Crucible's job is to catalog, attribute, and **verify** them.
 
 **Blob-array integration 2026-07-21 (F-0013 blob-path follow-up):** a `blob_array` (id 201, the blob
@@ -33,38 +33,20 @@ The 2026-07-22 coverage-audit backlog is cleared: WP-01/02A/03/04/05/06/07/08/09
 #88,#94,#90,#91,#93,#95,#96,#97,#98,#99,#92). Surfaced findings **F-0027..F-0032** (+ spec hole
 documentation#24), 10 upstream issues. `docs/improvements.md` is retired; the **deferred residue** lives
 here:
-- **WP-02 Part B** — union *materialized* (element-access) oracle: the C anchor materializes a union
+- [ ] **WP-02 Part B** — union *materialized* (element-access) oracle: the C anchor materializes a union
   out-of-the-box (form `{opt_id:value}` per member), but the 6 runtime + 6 generated walkers need the
   `union` descriptor node + a `materialize.py` union reference (~12 walkers across 10 langs). Part A
   (union cross-encode) is green and gated.
-- **WP-05 completion** — fold `struct_array` into `schema/probe.sofab.yaml` (id 202) + wire the six sweep
+- [ ] **WP-05 completion** — fold `struct_array` into `schema/probe.sofab.yaml` (id 202) + wire the six sweep
   axes + gen/materialize + §5.1 trailing-elision vectors, **once corelib-c-cpp#109 (F-0030) lands** (else
   the base round-trip reddens). `schema.py` composite-element support is already in place.
-- **WP-08(c)** — §2:112-121 (explicit `[]` overrides a **non-empty** field default): needs a schema field
+- [ ] **WP-08(c)** — §2:112-121 (explicit `[]` overrides a **non-empty** field default): needs a schema field
   with a non-zero `default:`; lands with WP-05 (its `struct{k,v}` element can carry one).
-- **WP-10 Part B phase 2** — an opt-in `STRICT_UTF8=OFF` suite (env-gated build variant + per-profile-class
+- [ ] **WP-10 Part B phase 2** — an opt-in `STRICT_UTF8=OFF` suite (env-gated build variant + per-profile-class
   `policy.yaml` allowances citing §8): deferred as a non-default-config follow-up; needs the gen#85
   Unicode-string config audit first. Phase-1 reachability audit is done (byte-container profiles OFF-capable
   → raw bytes; audit table was in improvements.md WP-10, mirrored in git history).
 
-**As of 2026-07-22:** 26 findings catalogued, **25 resolved, 1 by-design, 0 open**. **F-0022**
-(§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element, generator#189), and
-**F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 / G-0016) were all
-**resolved in sofabgen 0.19.4** (2026-07-21) — re-verified, isolates promoted into the regression gate,
-and the malform×truncation sweep axis promoted from report-only to blocking. **F-0025** (§7.3 fp
-scalar←array, **generator#193**) is **resolved 2026-07-22** on the latest green sofabgen CI build:
-verified all-agree, the wiretype (§7.3) sweep promoted **report-only → blocking**, isolates into the
-gate (73 → 77). **F-0026** (corelib-c-cpp#106 — §7.4 `blob_array` wrapper re-open stale element) is
-**resolved 2026-07-22** (corelib-c-cpp `2416a2b`): verified all-13-agree, the last sweep carve-out
-(`elem=="blob"` in `sweep_repeated_id.py`) dropped, isolates into the gate (77 → 81). **No open finding
-remains.** F-0018 (embedded U+0000 in a
-`string`) is **by-design**: a NUL-terminated C-string profile projects `A\0B` → `A` on re-encode;
-valid on the wire, preserved by the other 10 profiles, sanctioned in `oracle/policy.yaml` (§8).
-All three Crucible-authored MESSAGE_SPEC clauses are adopted (documentation#17/#18/#20); §7.3/§7.4
-adopted in documentation#23. Six green suites (seeds / cross-encode / union / limit /
-**regression** (the last at **81 inputs**) / **materialized** (element-access, 75×12)) run in CI,
-plus the **structural sweep gate** (`scripts/sweep.sh`; **all six axes now blocking-green, no carve-out**).
-`./scripts/bootstrap.sh` keeps sofabgen at the latest release and the corelibs at `origin/main`.
 
 ---
 
@@ -120,11 +102,14 @@ plus the **structural sweep gate** (`scripts/sweep.sh`; **all six axes now block
       via cross-encode's deterministic values. Mutate the *value* (floats, boundary ints, array
       sizes, unicode) and feed all 12 *encoders* → compare bytes. Reaches encoder divergences
       (and encoder UB like the old F-0002) via coverage, not just replay.
-- [ ] **Multi-impl coverage** (the biggest architectural gap). Only the C corelib is
-      coverage-instrumented, so the fuzzer steers toward C-complex paths only — F-0012 (a TS
-      bug) was found via the differential, not coverage. Instrumenting a second engine (rust via
-      cargo-fuzz, or go) would steer toward paths complex in *other* languages. The C pacemaker
-      is saturated (cov ~569 on `probe`), so this is where new depth comes from.
+- [ ] **Multi-impl coverage** (the biggest architectural gap). Only the C corelib actually
+      *steers* the fuzzer, so it explores C-complex paths only — F-0012 (a TS bug) was found via
+      the differential, not coverage. Instrumenting a second engine would steer toward paths
+      complex in *other* languages. The C pacemaker is saturated (cov ~569 on `probe`), so this is
+      where new depth comes from. *(update 2026-07-23: coverage **entry points** now exist for
+      go/ts/java/cs — `drivers/go/fuzz_test.go`, `drivers/ts/fuzz.ts`, `drivers/java/FuzzProbe.java`,
+      `drivers/cs/Fuzz.cs` — but none is compiled by its `build.sh` or wired into `fuzz.sh`/`nightly.yml`;
+      rust has none, zig/dart are placeholders. Remaining work: wire one in as a second steering engine.)*
 - [ ] **Differential-cluster A/B** of the grammar vs byte-level corpora — the mutator's real
       "done when". Ideally in the nightly. (Mutator itself is built; `engine/mutator/DESIGN.md`.)
 
@@ -137,6 +122,11 @@ plus the **structural sweep gate** (`scripts/sweep.sh`; **all six axes now block
 - [ ] **More corner-case schemas** beyond the single full-scale `probe`:
   - **recursive types** (`$ref`, trees) to exercise `MAX_DEPTH`, and a **map** (`array of
     struct{k,v}`) — the last format features `probe` doesn't cover.
+  - *(update 2026-07-23: `MAX_DEPTH` is already exercised by `engine/structured/sweep_framing.py`
+    — the past-`MAX_DEPTH` nesting vector that surfaced F-0029 — but via synthetic bytes, not a
+    recursive `$ref` schema. The **map** (`array of struct{k,v}`) is modeled in `schema.py`
+    (`struct_wrapper`) yet held out of `probe` pending F-0030 — that is the "WP-05 completion"
+    residue item at the top of this file.)*
 - [ ] **Corpus hygiene**: minimize `corpus/interesting/` (~44k files, never merged) with
       libFuzzer `-merge` — only ~320 are coverage-distinct, so every full differential over it
       pays for the redundancy.
@@ -192,15 +182,19 @@ plus the **structural sweep gate** (`scripts/sweep.sh`; **all six axes now block
 
 ## Open — CI / infra
 
-- [ ] **`image.yml`**: confirm the GHCR toolchain image is seeded and the live runs are green
-      (authored + run once; verify it's actually driving `replay`/`nightly`).
+- [ ] **`image.yml`**: confirm the GHCR toolchain image is seeded and the live runs are green.
+      *(update 2026-07-23: confirmed `replay.yml`/`nightly.yml` **do** consume
+      `ghcr.io/sofa-buffers/crucible-ci:latest`; the remaining task is confirming the image is
+      seeded and a live run is green.)*
 - [ ] **Build-reuse in `replay.yml`**: each of the seven gates rebuilds all 13 drivers, so CI
       pays the build 7×. Cache/reuse the built drivers across gates.
 - [ ] **Devcontainer image**: verify it builds and every driver builds *inside* it (so far
-      spot-verified in the bare workspace + hand-installed clang).
+      spot-verified in the bare workspace + hand-installed clang). *(update 2026-07-23:
+      `.devcontainer/{Dockerfile,devcontainer.json,start.sh}` exist and `image.yml` builds them;
+      still no CI evidence every driver builds inside the image — blocked on the `image.yml` item above.)*
 - [ ] **OSS-Fuzz** onboarding for continuous fuzzing (eventual).
 
-## Done — key harness milestones (finding history is in `../results/FINDINGS.md` + `../results/SOFABGEN.md`)
+## Done — key harness milestones (finding history is in `../results/FINDINGS.md`)
 
 - [x] **Structure-aware mutator** (`engine/mutator/`) wired via `LLVMFuzzerCustomMutator` +
       `scripts/fuzz.sh`; 336k-mutation ASan soak clean. **Comparator crash- + hang-isolation**
