@@ -102,11 +102,14 @@ here:
       via cross-encode's deterministic values. Mutate the *value* (floats, boundary ints, array
       sizes, unicode) and feed all 12 *encoders* → compare bytes. Reaches encoder divergences
       (and encoder UB like the old F-0002) via coverage, not just replay.
-- [ ] **Multi-impl coverage** (the biggest architectural gap). Only the C corelib is
-      coverage-instrumented, so the fuzzer steers toward C-complex paths only — F-0012 (a TS
-      bug) was found via the differential, not coverage. Instrumenting a second engine (rust via
-      cargo-fuzz, or go) would steer toward paths complex in *other* languages. The C pacemaker
-      is saturated (cov ~569 on `probe`), so this is where new depth comes from.
+- [ ] **Multi-impl coverage** (the biggest architectural gap). Only the C corelib actually
+      *steers* the fuzzer, so it explores C-complex paths only — F-0012 (a TS bug) was found via
+      the differential, not coverage. Instrumenting a second engine would steer toward paths
+      complex in *other* languages. The C pacemaker is saturated (cov ~569 on `probe`), so this is
+      where new depth comes from. *(update 2026-07-23: coverage **entry points** now exist for
+      go/ts/java/cs — `drivers/go/fuzz_test.go`, `drivers/ts/fuzz.ts`, `drivers/java/FuzzProbe.java`,
+      `drivers/cs/Fuzz.cs` — but none is compiled by its `build.sh` or wired into `fuzz.sh`/`nightly.yml`;
+      rust has none, zig/dart are placeholders. Remaining work: wire one in as a second steering engine.)*
 - [ ] **Differential-cluster A/B** of the grammar vs byte-level corpora — the mutator's real
       "done when". Ideally in the nightly. (Mutator itself is built; `engine/mutator/DESIGN.md`.)
 
@@ -119,6 +122,11 @@ here:
 - [ ] **More corner-case schemas** beyond the single full-scale `probe`:
   - **recursive types** (`$ref`, trees) to exercise `MAX_DEPTH`, and a **map** (`array of
     struct{k,v}`) — the last format features `probe` doesn't cover.
+  - *(update 2026-07-23: `MAX_DEPTH` is already exercised by `engine/structured/sweep_framing.py`
+    — the past-`MAX_DEPTH` nesting vector that surfaced F-0029 — but via synthetic bytes, not a
+    recursive `$ref` schema. The **map** (`array of struct{k,v}`) is modeled in `schema.py`
+    (`struct_wrapper`) yet held out of `probe` pending F-0030 — that is the "WP-05 completion"
+    residue item at the top of this file.)*
 - [ ] **Corpus hygiene**: minimize `corpus/interesting/` (~44k files, never merged) with
       libFuzzer `-merge` — only ~320 are coverage-distinct, so every full differential over it
       pays for the redundancy.
@@ -174,12 +182,16 @@ here:
 
 ## Open — CI / infra
 
-- [ ] **`image.yml`**: confirm the GHCR toolchain image is seeded and the live runs are green
-      (authored + run once; verify it's actually driving `replay`/`nightly`).
+- [ ] **`image.yml`**: confirm the GHCR toolchain image is seeded and the live runs are green.
+      *(update 2026-07-23: confirmed `replay.yml`/`nightly.yml` **do** consume
+      `ghcr.io/sofa-buffers/crucible-ci:latest`; the remaining task is confirming the image is
+      seeded and a live run is green.)*
 - [ ] **Build-reuse in `replay.yml`**: each of the seven gates rebuilds all 13 drivers, so CI
       pays the build 7×. Cache/reuse the built drivers across gates.
 - [ ] **Devcontainer image**: verify it builds and every driver builds *inside* it (so far
-      spot-verified in the bare workspace + hand-installed clang).
+      spot-verified in the bare workspace + hand-installed clang). *(update 2026-07-23:
+      `.devcontainer/{Dockerfile,devcontainer.json,start.sh}` exist and `image.yml` builds them;
+      still no CI evidence every driver builds inside the image — blocked on the `image.yml` item above.)*
 - [ ] **OSS-Fuzz** onboarding for continuous fuzzing (eventual).
 
 ## Done — key harness milestones (finding history is in `../results/FINDINGS.md`)
