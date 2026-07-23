@@ -129,21 +129,7 @@ exists), then record the new driver's quirks in `ARCHITECTURE.md`.
 
 ## Status
 
-**Built and running** — do not trust this line for detail, read
-[`docs/STATUS.md`](docs/STATUS.md) (it is the current-state snapshot and is kept
-current; this file only orients you).
-
-Phases 1–2 are done and Phase 3 is largely done: **13 drivers / 11 corelibs**, the
-three-valued verdict (`A`/`I`/`R`, plus `L` in limit mode), a structure-aware mutator,
-a C libFuzzer pacemaker, crash- *and* hang-isolation, auto-clustering, and six green
-suites — differential (seeds), cross-encode, union, limit mode, the
-**resolved-findings regression gate** (`corpus/regression/`, wired into CI), and the
-**materialized element-access oracle** — plus the **structural sweep gate** (six axes,
-all blocking).
-
-Twenty-six findings are catalogued (`results/FINDINGS.md`): **25 resolved, 1 by-design,
-0 open.** Three Crucible-authored MESSAGE_SPEC clauses have been adopted
-(documentation#17/#18/#20). `./scripts/bootstrap.sh` always installs the **latest green
-sofabgen CI build** (sha256-verified; falls back loudly to the latest release) and fetches the
-corelibs to `origin/main` — there is deliberately no skip-if-present shortcut, because a
-silently stale toolchain once made this repo report the wrong versions.
+**Built and running.** This file only orients you — the current state (driver /
+corelib roster, the green suites, the findings tally, the toolchain policy) lives in
+[`docs/STATUS.md`](docs/STATUS.md), the snapshot that is kept current. Counts stated
+here would only drift stale, so they are deliberately omitted — read STATUS.
