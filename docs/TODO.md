@@ -15,6 +15,19 @@ zeroed element on the C object API (corelib-c-cpp `sofab_object_init` never rese
 companion length); `string_array` is uniform. Corelib-only, minimal isolate, carved out of the blocking
 repeated-id sweep axis until fixed.
 
+**Array-of-struct integration 2026-07-23 (WP-05) — HELD pending [corelib-c-cpp#109](https://github.com/sofa-buffers/corelib-c-cpp/issues/109).**
+`engine/structured/schema.py` now models array-of-struct (the `struct_wrapper` descriptor kind), and
+sofabgen generates it for all 13 languages. But adding an `array of struct{k,v}` (id 202) to
+`schema/probe.sofab.yaml` turns the **base round-trip red on every message**: the C object encoder does
+not elide the trailing all-default struct run (§5.1), re-encoding an all-default array-of-struct as N
+empty frames instead of the canonical empty wrapper — **F-0030 / corelib-c-cpp#109** (c-only; cpp-c-cpp
+over the same corelib is correct; `object.c:302-311` "a SEQUENCE is never omitted" guard). **Held out of
+`probe`** (a NOTE marks id 202 reserved) rather than run a red gate or a separate schema. **When the fix
+lands:** re-bootstrap, add the `struct_array` field at id 202, wire it through the six sweep axes + `gen.py`
++ `materialize.py` (the descriptor-driven walkers gain the `struct_wrapper` node — check each per WP-02
+step 4) + the §5.1 trailing-elision vectors, and verify all 13 agree. Array-of-union / array-of-array are
+follow-ups (WP-05 note).
+
 **As of 2026-07-22:** 26 findings catalogued, **25 resolved, 1 by-design, 0 open**. **F-0022**
 (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element, generator#189), and
 **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 / G-0016) were all

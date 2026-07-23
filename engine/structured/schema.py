@@ -18,6 +18,8 @@ drivers/reference consume). Kinds:
                                            the active option's id selects it (§4.2)
   array   { elem: u|s|fp32|fp64, count }   an inline fixed-count numeric/fp array
   wrapper { elem: string|blob, count }     a dynamic index-keyed element sequence
+  struct_wrapper { count, fields: [...] }  a wrapper whose elements are struct
+                                           sequences (array-of-struct, §5.2)
 
 Usage: python3 engine/structured/schema.py [--json [out]]
 """
@@ -59,8 +61,13 @@ def _field(name, spec):
         it = spec["items"]
         et = it["type"]
         count = it.get("count", 0)
-        if et in ("string", "blob"):        # a dynamic wrapper array
+        if et in ("string", "blob"):        # a dynamic wrapper array (leaf elements)
             node.update(kind="wrapper", elem=et, count=count)
+        elif et == "struct":                 # a wrapper of composite (struct) elements
+            # array-of-struct (§5.2): each element is itself a struct sequence. Modeled
+            # as a `struct_wrapper` node carrying the element struct's field tree, so a
+            # value walk can descend into every element's k/v (WP-05).
+            node.update(kind="struct_wrapper", count=count, fields=_fields(it["fields"]))
         else:                                # an inline fixed-count numeric/fp array
             node.update(kind="array", elem=_SCALAR[et], count=count)
     else:

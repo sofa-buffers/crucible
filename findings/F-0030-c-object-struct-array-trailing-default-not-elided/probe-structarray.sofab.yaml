@@ -1,0 +1,15 @@
+# Minimal array-of-struct schema to reproduce F-0030 standalone.
+version: 1
+messages:
+  probe:
+    summary: array-of-struct (map pattern) reproducer
+    payload:
+      kvs:
+        id: 202
+        type: array
+        items:
+          type: struct
+          count: 5
+          fields:
+            k: { id: 0, type: u32 }
+            v: { id: 1, type: string, maxlen: 16 }
