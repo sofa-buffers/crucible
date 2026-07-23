@@ -3,7 +3,7 @@
 
 §7: decoding is three-valued. A message whose bytes end mid-field, mid-varint, or
 with an open sequence is **INCOMPLETE** (`I`) — a first-class non-error, neither
-COMPLETE (`A`) nor INVALID (`R`). F-0001 established this at the top level (all 12
+COMPLETE (`A`) nor INVALID (`R`). F-0001 established this at the top level (all 13
 emit `I` on a truncated message; corelib-ts once accepted an unterminated nested
 sequence as `A`). This sweep generalizes it: take a **structurally rich, valid**
 message and truncate it at **every byte offset**, so every field boundary and every
@@ -11,7 +11,7 @@ nesting depth (nested struct, arrays struct, arrays.nested, string_array and
 blob_array wrappers) is a truncation point.
 
 Two oracles (engine/structured/sweep_run.py):
-  * agreement   — at each offset all 12 must emit the SAME verdict. A split
+  * agreement   — at each offset all 13 must emit the SAME verdict. A split
                   (some `A`, some `I`, some `R`) is a finding — F-0001's shape a
                   level deeper (an impl that accepts an unterminated inner sequence,
                   or rejects an incomplete one).
@@ -63,6 +63,36 @@ def emit(out_dir):
             fh.write(data)
     print(f"{len(vectors)} vectors: 1 full-valid control + "
           f"{len(vectors)-1} truncations of a {len(full)}-byte rich message")
+    return vectors
+
+
+# --- union pass (schema/probe-union.sofab.yaml) ------------------------------
+# WP-01: §7 over the union schema. A rich, valid union message (tag + an active member
+# + trailer) truncated at every byte offset passes the cut through the union open, the
+# member header, the member's fixlen word and payload, the union close, and the
+# trailer. A prefix of a valid message is `A` or `I`, never `R` (expect not_reject).
+def _union_rich_message():
+    from gen import (  # noqa: E402
+        scalar_u, fixlen, FL_STRING, hdr, WT_SEQ_BEG, WT_SEQ_END,
+    )
+    out = bytearray()
+    out += scalar_u(0, 5)                                          # tag = 5
+    out += hdr(1, WT_SEQ_BEG)                                      # union `choice` open
+    out += fixlen(2, FL_STRING, b"hello")                         #   as_text = "hello"
+    out += bytes([WT_SEQ_END])                                     # union close
+    out += scalar_u(2, 12)                                        # trailer = 12
+    return bytes(out)
+
+
+def emit_union(out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+    full = _union_rich_message()
+    vectors = [("u_full_valid.bin", full, "accept")]
+    for L in range(1, len(full)):
+        vectors.append((f"u_trunc_{L:04d}.bin", full[:L], "not_reject"))
+    for name, data, _ in vectors:
+        with open(os.path.join(out_dir, name), "wb") as fh:
+            fh.write(data)
     return vectors
 
 

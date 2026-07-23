@@ -29,8 +29,25 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gen import vectors  # noqa: E402
 from schema import descriptor  # noqa: E402  (the generated schema-type table)
 
-ARR_COUNT = 5   # schema count for every array/wrapper in schema/probe.sofab.yaml
 _DESC = descriptor()
+
+
+def _array_counts(fields):
+    cs = set()
+    for f in fields:
+        if f["kind"] in ("array", "wrapper"):
+            cs.add(f["count"])
+        elif f["kind"] == "struct":
+            cs |= _array_counts(f["fields"])
+    return cs
+
+
+# WP-11: derived from the schema descriptor, not a hardcoded 5. The padding below
+# assumes a *uniform* array count across the schema; assert it so a non-uniform schema
+# fails loudly here rather than silently mis-padding.
+_COUNTS = _array_counts(_DESC["fields"])
+assert len(_COUNTS) == 1, f"materialize assumes a uniform array count; schema has {_COUNTS}"
+ARR_COUNT = next(iter(_COUNTS))   # schema count for every array/wrapper (== 5 today)
 
 # gen.py's message-dict key per schema field PATH — its value-vector naming
 # convention, the one thing NOT derivable from the schema (gen.py names arrays.u8

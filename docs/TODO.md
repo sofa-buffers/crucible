@@ -2,7 +2,7 @@
 
 Open work **on Crucible itself**. Fixes for the corelib/generator bugs Crucible found are
 **not** here — they live in the owning repos (catalog: [`../results/FINDINGS.md`](../results/FINDINGS.md),
-codegen defects: [`SOFABGEN.md`](SOFABGEN.md), spec proposals: [`spec-proposals.md`](spec-proposals.md)).
+codegen defects: [`SOFABGEN.md`](../results/SOFABGEN.md), spec clauses: adopted upstream in `documentation` (MESSAGE_SPEC/CORELIB_PLAN)).
 Crucible's job is to catalog, attribute, and **verify** them.
 
 **Blob-array integration 2026-07-21 (F-0013 blob-path follow-up):** a `blob_array` (id 201, the blob
@@ -168,7 +168,7 @@ plus the **structural sweep gate** (`scripts/sweep.sh`; **all six axes now block
       spot-verified in the bare workspace + hand-installed clang).
 - [ ] **OSS-Fuzz** onboarding for continuous fuzzing (eventual).
 
-## Done — key harness milestones (finding history is in `../results/FINDINGS.md` + `SOFABGEN.md`)
+## Done — key harness milestones (finding history is in `../results/FINDINGS.md` + `../results/SOFABGEN.md`)
 
 - [x] **Structure-aware mutator** (`engine/mutator/`) wired via `LLVMFuzzerCustomMutator` +
       `scripts/fuzz.sh`; 336k-mutation ASan soak clean. **Comparator crash- + hang-isolation**
@@ -178,9 +178,10 @@ plus the **structural sweep gate** (`scripts/sweep.sh`; **all six axes now block
 - [x] **Regression gate** (`corpus/regression/`, 29 × 12, in `replay.yml`) — every resolved
       finding's reproducer, admitted only when green *for the reason the finding is about*;
       contaminated originals get clean isolates via `engine/structured/isolates.py`.
-- [x] **All three spec proposals adopted** — §5.2 precedence (documentation#17), §3/§5.1
+- [x] **All four spec proposals adopted** — §5.2 precedence (documentation#17), §3/§5.1
       fixed-count fill-to-N (#18), §7.1 declared-bounds-bind-every-target + §6.2.1 receiver
-      limits + `LimitExceeded` (#20). Drafts in `spec-proposals.md`.
+      limits + `LimitExceeded` (#20), §7.3/§7.4 mis-typed-header + repeated-id (#23). Provenance
+      migrated into the finding `NOTES.md`; the `spec-proposals.md` draft file is retired.
 - [x] **`bootstrap.sh` reworked** — always installs the latest sofabgen **release** binary
       (sha256-verified) and fetches corelibs to `origin/main`; no skip-if-present (a stale
       toolchain once mis-reported the versions compared). Escapes: `SOFABGEN_VERSION=` / `NO_FETCH=`.

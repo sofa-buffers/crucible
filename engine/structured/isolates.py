@@ -10,7 +10,7 @@ never join a green gate. Their write-ups instead assert the fix against a **clea
 isolate** quoted only as prose hex (the F-0004 lesson: characterize a divergence with a
 minimal isolate, not a raw fuzzer input).
 
-This script materializes those isolates as real files, so a claim like "all 12 agree"
+This script materializes those isolates as real files, so a claim like "all 13 agree"
 is executable rather than prose. Wire primitives are imported from `gen.py` — the one
 reference encoder — so an encoding change cannot silently desync them.
 

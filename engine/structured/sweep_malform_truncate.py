@@ -26,7 +26,7 @@ unless the earlier INVALID is remembered. A pair of **valid**-message controls
 (`valid_complete` → accept, `valid_trunc` → not_reject) anchors that the tail alone does
 not force a reject.
 
-Two oracles (engine/structured/sweep_run.py): agreement (all 12 same verdict) +
+Two oracles (engine/structured/sweep_run.py): agreement (all 13 same verdict) +
 conformance (expect=reject ⇒ every driver `R`). A family-wide `I` on a `_trunc` vector is
 agreement-green but conformance-red — exactly the §5.2 gap this axis exists to catch.
 

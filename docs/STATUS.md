@@ -49,16 +49,24 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   change below.
 - **Structural sweep framework** (`engine/structured/sweep_*.py`, PLAN §6): a sweep enumerates
   one normative rule across **every** schema position and checks two oracles (agreement +
-  conformance). **Six axes** wired via `sweep_run.py` / `scripts/sweep.sh` — repeated-id (§7.4),
+  conformance). **Seven axes** wired via `sweep_run.py` / `scripts/sweep.sh` — repeated-id (§7.4),
   over-bound (§7.1), reserved-subtype (§4.6), truncation (§7), malform×truncation (§5.2),
-  wiretype (§7.3) — **all six blocking + green, no carve-out** (wiretype promoted from report-only
-  2026-07-22 once F-0025 landed; the `sweep_repeated_id` blob-reopen carve-out dropped once F-0026
-  landed). This is what found F-0020–F-0025 — "isolate-green ≠ axis-green". A seventh axis
+  wiretype (§7.3), varint (§2 canonicality, WP-03) — **all seven blocking + green, no carve-out**
+  (wiretype promoted from report-only 2026-07-22 once F-0025 landed; the `sweep_repeated_id`
+  blob-reopen carve-out dropped once F-0026 landed; the **non-minimal varint axis** (`sweep_varint`)
+  added 2026-07-22 blocking-but-agreement-only — all 13 accept-and-normalize a non-minimal-but-≤64-bit
+  varint identically, spec-silent so conformance is deferred to documentation#24). This is what found
+  F-0020–F-0025 — "isolate-green ≠ axis-green". An **eighth axis (report-only)**
   **`sweep_framing`** (WP-04, §5.2 stray-end + §6.2 ID_MAX/FIXLEN_MAX/ARRAY_MAX/MAX_DEPTH) is wired
   **report-only** — its stray-end/FIXLEN_MAX/ARRAY_MAX vectors are green, but the ID_MAX and MAX_DEPTH
   vectors surfaced F-0028/F-0029 (below), so the axis stays report-only until those resolve.
-- **28 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 2 open (F-0028, F-0029)**
-  (F-0027 is reserved by the WP-01 PR, not yet merged to main).
+- **Union under the structural sweeps** (WP-01, 2026-07-22): the five reject/skip axes (wiretype §7.3,
+  repeated-id §7.4, over-bound §7.1, reserved-subtype §4.6, truncation §7) now also run over
+  `schema/probe-union.sofab.yaml` — a schema-derived union position model (`sweep_positions.UNION_POSITIONS`,
+  from `schema.py` which learned the `union` kind) driven by `sweep_run.py --union` and a **report-only**
+  pass in `scripts/sweep.sh` (rebuilds the roster to probe-union, runs, rebuilds back to probe). 130 union
+  vectors; 4 of 5 axes green across 13, the wiretype pass surfaced **F-0027** on its first run.
+- **29 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 3 open (F-0027, F-0028, F-0029).**
   **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
   generator#189), and **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
   G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21); **F-0025** (§7.3 fp scalar←array,
@@ -67,7 +75,11 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   axis report-only → blocking and its isolates into the regression gate (73 → 77); **F-0026**
   (corelib-c-cpp#106 — the §7.4 `blob_array` wrapper re-open keeping a stale zeroed element on the C
   object API) was **resolved 2026-07-22** (corelib-c-cpp `2416a2b`), dropping the last sweep carve-out
-  and taking the gate 77 → 81. **No open finding remains.** **F-0018** (embedded U+0000
+  and taking the gate 77 → 81. **F-0027** (§7.3, 2026-07-22) is the one **open** finding — surfaced by
+  the new WP-01 union pass: `rust-nostd` rejects a §7.3-skippable array/fp64 field that `probe-union`
+  never declares, because sofabgen provisions the no-std corelib's cargo features (`array`/`fp64`) from
+  the wire types the *schema* uses, and skip-ability is schema-independent. Generator-primary (G-0017),
+  corelib-rs-no-std implicated. **F-0018** (embedded U+0000
   in a `string`) is classified **by-design** — a
   NUL-terminated C-string profile projects `A\0B` → `A` on re-encode; valid on the wire,
   preserved by the other 10 profiles, sanctioned as an allowed divergence in
@@ -100,7 +112,7 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
 
 ## Findings & tracking
 Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug log
-in `docs/SOFABGEN.md`. Fixes live in the **owning repos** (done in fresh contexts);
+in `results/SOFABGEN.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
 **Re-verification 2026-07-08** — after bumping **sofabgen → 0.15.1** and all 10
@@ -734,10 +746,10 @@ Net open: **none.** Plus **F-0018** (by-design). **All 25 catalogued findings ar
 | F-0002 | corelib-c-cpp encoder left-shifts a negative value (UB) | **corelib-c-cpp#70** merged — ✅ **resolved** |
 | F-0003 | Rust array-fill OOB → panic (crash/DoS) | ✅ **fully resolved.** Crash fixed by **generator#87**; the residual over-count *accept* divergence (**generator#100**) is fixed in **sofabgen 0.16.1** (commit `ca0fda7`, "reject over-count scalar arrays in every backend"). **Re-verified 2026-07-15** with a *clean non-truncated* over-count(8>5) array (`a6 06 03 08 01..08 07`): **all 12 drivers reject** (`R`) — rust-std/nostd now reject with the family. (The old 145-byte reproducer is contaminated — over-count *and* truncated — so rust/zig report `I` there; the clean isolate is the correct test.) |
 | F-0005 | corelib-cpp accepts malformed msgs the family rejects | **corelib-cpp#22** closed — ✅ **resolved** |
-| G-0001,3,4,5,6 | codegen weaknesses (infallible Rust/C++ decode, no-std string handling, Go bytes import) | **all fixed in sofabgen 0.15.1** (PRs #88/#92/#93/#89/#90) — see docs/SOFABGEN.md |
+| G-0001,3,4,5,6 | codegen weaknesses (infallible Rust/C++ decode, no-std string handling, Go bytes import) | **all fixed in sofabgen 0.15.1** (PRs #88/#92/#93/#89/#90) — see results/SOFABGEN.md |
 | G-0002 | Rust std vs no_std UTF-8 (intra-Rust) | generator#80/#91 — ✅ **fixed** (both empty on invalid); family-wide UTF-8 is F-0004 / #85 |
-| G-0008 | generated one-shot decode discards the INCOMPLETE status (C#, Java) | ✅ **fixed** — sofabgen 0.15.3 ([generator#106](https://github.com/sofa-buffers/generator/pull/106) closes #105): status-surfacing `TryDecode`/`tryDecode`. Crucible C#/Java drivers now **single-pass** on it — two-pass workaround **removed** (crucible#10, 0.16.0 bump). See docs/SOFABGEN.md |
-| G-0009 | generated C++ emits a schema-*unbounded* array as `std::array<T, 0>` (not `std::vector<T>`) | ✅ **fixed in sofabgen 0.16.1** ([generator#112](https://github.com/sofa-buffers/generator/issues/112), commit `7899c4b` → `std::vector`). **Re-verified 2026-07-15:** repro `03 03 07 08 09` → cpp now decodes `[7,8,9]` (was `[]`), matching the family; cpp agrees on the arr limit vectors (under/at/over-cap → `L`). **cpp rejoined the `arr` dimension** of limit mode (`scripts/run-limits.sh`, `NO_CPP` hold-out removed); limit mode green with cpp in all three dimensions. See docs/SOFABGEN.md |
+| G-0008 | generated one-shot decode discards the INCOMPLETE status (C#, Java) | ✅ **fixed** — sofabgen 0.15.3 ([generator#106](https://github.com/sofa-buffers/generator/pull/106) closes #105): status-surfacing `TryDecode`/`tryDecode`. Crucible C#/Java drivers now **single-pass** on it — two-pass workaround **removed** (crucible#10, 0.16.0 bump). See results/SOFABGEN.md |
+| G-0009 | generated C++ emits a schema-*unbounded* array as `std::array<T, 0>` (not `std::vector<T>`) | ✅ **fixed in sofabgen 0.16.1** ([generator#112](https://github.com/sofa-buffers/generator/issues/112), commit `7899c4b` → `std::vector`). **Re-verified 2026-07-15:** repro `03 03 07 08 09` → cpp now decodes `[7,8,9]` (was `[]`), matching the family; cpp agrees on the arr limit vectors (under/at/over-cap → `L`). **cpp rejoined the `arr` dimension** of limit mode (`scripts/run-limits.sh`, `NO_CPP` hold-out removed); limit mode green with cpp in all three dimensions. See results/SOFABGEN.md |
 
 **New divergences surfaced 2026-07-13 while wiring the `I` verdict — ✅ both fixed (pre-existing corelib leniency, unrelated to truncation):**
 - **corelib-cpp** classified an unterminated over-long varint (>64 bits) as `I` (INCOMPLETE) where the rest say `R` (INVALID) — the measure phase treated the over-long-but-unterminated varint as a truncated tail. **Fixed** (corelib-cpp#29, in PR #28): getVarint/skipVarint report the >64-bit overflow so the measure phase rejects it.
@@ -745,7 +757,79 @@ Net open: **none.** Plus **F-0018** (by-design). **All 25 catalogued findings ar
 
 Both verified: full differential over the two reproducers + the F-0001 seeds across all 12 drivers = **0 divergences**.
 
-**Twenty-eighth change 2026-07-23 — WP-04: framing & format-ceiling axis added (report-only); F-0028 + F-0029 opened.**
+**Twenty-eighth change 2026-07-22 — WP-01: union under the structural sweeps; F-0027 opened; catalog 26 → 27, open 0 → 1.**
+`docs/improvements.md` WP-01 (the biggest untested-feature gap): the `union` wire feature lived entirely
+outside the generated sweep pipeline (`engine/structured/schema.py` raised `ValueError` on `union`), so
+none of the six axes, cross-encode, or the materialized oracle ever saw it — union coverage was 11 static
+seeds run as a plain differential with zero conformance assertions.
+- **Schema pipeline learned `union`:** `schema.py` now emits a `union` descriptor node (`default_id` +
+  typed `options`, string/blob options carrying `maxlen`); `descriptor('probe-union')` succeeds. The
+  `probe` descriptor and committed `oracle/materialized-schema.json` are **byte-identical** (union branch
+  only fires on a union field).
+- **Schema-derived union position model:** `sweep_positions.UNION_POSITIONS` is *derived from the
+  descriptor* (not a hand-maintained parallel literal — the drift `sweep_positions` exists to prevent):
+  7 positions (tag, the `choice` union sequence, its 4 members, trailer). A union is a sequence carrying
+  at most one child (§4.2); members are ordinary positions inside the union scope, `seq_union` marks the
+  sequence itself.
+- **Five axes gained a union pass** (`emit_union`): wiretype §7.3, repeated-id §7.4 (last-wins, merge,
+  seq re-open, and the §7.4 "a §7.3-skipped occurrence doesn't count" cross vector), over-bound §7.1
+  (as_text maxlen16 / as_blob maxlen8), reserved-subtype §4.6, truncation §7. Driven by
+  `sweep_run.py --union`; **130 vectors**.
+- **Report-only in `scripts/sweep.sh`** (ground rule 4 — a new axis is report-only until green or every
+  divergence is catalogued): a labeled pass rebuilds the 13 drivers to `probe-union`, runs the union axes
+  (non-blocking `|| echo`), then **rebuilds back to `probe`** so binaries are never left mixed
+  (ground rule 3).
+- **Result:** repeated-id, over-bound, reserved-subtype, truncation → **green across all 13**. The
+  **wiretype** union pass surfaced **F-0027** (35 vectors): `rust-nostd` rejects a §7.3-skippable array
+  or fp64 field that `probe-union` never declares. Root cause established (not inferred): sofabgen emits
+  the no-std corelib's cargo features from the schema's *used* wire types (`["fixlen","sequence"]` vs
+  `probe`'s `["array","fixlen","fp64","sequence","value64"]`), and corelib-rs-no-std gates wire-type
+  *parsing/skip* — not just field storage — behind those features. Minimal isolate `0300` (2 B). The
+  probe wiretype axis stays green (319×13), and `rust-std` (same generated code) agrees with the family —
+  the two-way sibling split pinning it to the feature config, i.e. codegen. **Generator-primary → G-0017**,
+  corelib-rs-no-std implicated (F-0010 "occasionally both"). Filed `results/FINDINGS.md` F-0027 +
+  `results/SOFABGEN.md` G-0017 with reproducers under `findings/F-0027-*`.
+- **Not yet promoted / not in the gate** until the fix lands — per the F-0025/F-0026 arc.
+
+**Twenty-ninth change 2026-07-23 — WP-11: harness hygiene (one position model, schema-derived bounds); no finding.**
+(`docs/improvements.md` WP-11 — parallel ordinal, reconcile at merge.) Removes three silent-desync risks
+in the sweep harness before WP-05's schema growth lands:
+- **One position model.** `wiretype_sweep.py`'s private 29-entry position list (which uniquely carried the
+  wrapper-**element** positions) is gone; the wrapper elements (`welem_str`/`welem_blob`) now live in
+  `sweep_positions.POSITIONS` (27→29) and `wiretype_sweep` consumes it via a new `CAT_TO_CONSTRUCT` map.
+  **Gap closed:** reserved-subtype (§4.6) now sweeps the wrapper elements too — 110→**118** vectors; all
+  +8 reject uniformly (green). wiretype stays 319; every other axis unchanged — **no count dropped** (the
+  WP-11 hard-fail guard).
+- **Schema-derived bounds.** `count`/`maxlen` come from `schema/probe.sofab.yaml` (`_BOUNDS`), not literals
+  `5`/`64`/`32`/`4`; `materialize.py`'s `ARR_COUNT` is derived from the descriptor + a uniform-count
+  assertion. Committed `oracle/materialized-schema.json` unchanged.
+- **`STRUCT_CHILDREN`** for id 100 now lists all eight arrays (was two); the §7.4 merge test still samples
+  the first two (documented as sufficient). Doc drift "all 12"→"all 13" swept across `engine/structured/*.py`.
+- **Verified:** all six blocking axes green; derived bounds byte-match the old literals; materialize
+  reference byte-identical (ARR_COUNT still 5). Pure hygiene — no behavior change beyond the one gap closed.
+
+**Thirtieth change 2026-07-22 — WP-03: non-minimal varint axis added (blocking, agreement-only); documentation#24 filed.**
+(`docs/improvements.md` WP-03. Ordinal parallel to the WP-01 branch's own "Twenty-eighth" — reconcile at merge.)
+A varint admits **non-minimal** forms — redundant `0x80` continuation bytes that add only zero high bits
+(`5` = `05` = `85 00` = `85 80 00` …). `gen.varint` only emits minimal encodings, so no corpus contained
+one; F-0016 covered only the **>64-bit overflow**. Whether the 13 decoders agree on a non-minimal-but-
+≤64-bit varint was untested — a classic silent-divergence class.
+- **New axis `engine/structured/sweep_varint.py`** places a non-minimal varint at every varint **role** —
+  field-id header, fixlen length word, array element-count, array element value, and inside a skipped
+  (unknown-id) field — padded +1/+3 bytes and up to the 10-byte ≤64-bit maximum, with minimal-accept
+  controls and an 11-byte >64-bit overflow-reject contrast. 23 vectors. `gen.varint` left untouched (it is
+  the canonical reference encoder).
+- **Result: green — all 13 accept every non-minimal varint and re-encode to the identical minimal
+  canonical form** (the round-trip normalizes it), and all 13 reject the overflow. Zero divergences.
+- **Spec is silent** (CORELIB_PLAN §4.1 guards only overflow; MESSAGE_SPEC §2 constrains the encoder, not
+  the decoder), so per ground rule 6 the axis is **blocking but agreement-only**: the 18 non-minimal
+  vectors carry `expect="agree"` (only agreement + round-trip normalization asserted, not accept-vs-reject
+  conformance) until the clause lands. Filed **[documentation#24](https://github.com/sofa-buffers/documentation/issues/24)**
+  proposing the observed consensus as the rule; on adoption the
+  vectors tighten to `expect="accept"`. **No finding** (green). Promoted to blocking + wired into
+  `replay.yml` (via `sweep.sh`); the sweep gate is now **seven axes**.
+
+**Thirty-first change 2026-07-23 — WP-04: framing & format-ceiling axis added (report-only); F-0028 + F-0029 opened.**
 (`docs/improvements.md` WP-04. Ordinal parallel to the WP-01/WP-03 branches — reconcile at merge; finding
 numbers skip F-0027, reserved by the WP-01 PR.) Two malformation classes had **no dedicated coverage**:
 stray/unbalanced `sequence-end` (§5.2 — `sweep_truncation` only ever produces *open* sequences) and the

@@ -28,8 +28,8 @@ SWEEP="$ROOT/engine/structured/sweep_run.py"
 echo "==> [sweep] building the 13 drivers against probe (seed differential)" >&2
 CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
 
-echo "==> [sweep] blocking axes: repeated-id (§7.4) + over-bound (§7.1) + reserved-subtype (§4.6) + truncation (§7) + malform×truncate (§5.2) + wiretype (§7.3)" >&2
-python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_truncation sweep_malform_truncate wiretype_sweep
+echo "==> [sweep] blocking axes: repeated-id (§7.4) + over-bound (§7.1) + reserved-subtype (§4.6) + truncation (§7) + malform×truncate (§5.2) + wiretype (§7.3) + varint (§2 canonicality, agreement-only)" >&2
+python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_truncation sweep_malform_truncate wiretype_sweep sweep_varint
 
 # --- framing & format-ceiling axis (WP-04, REPORT-ONLY) ---------------------
 # Stray/unbalanced sequence-end (§5.2) + format ceilings ID_MAX/FIXLEN_MAX/ARRAY_MAX/
@@ -41,3 +41,22 @@ python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_
 echo "==> [sweep] framing & ceilings axis (report-only): stray end (§5.2) + ID_MAX/FIXLEN_MAX/ARRAY_MAX/MAX_DEPTH (§6.2)" >&2
 python3 "$SWEEP" sweep_framing \
   || echo "==> [sweep] framing axis is REPORT-ONLY — divergences above are candidate findings, not a gate failure" >&2
+
+# --- union pass (WP-01, REPORT-ONLY) ----------------------------------------
+# The union feature lives in a separate schema (the full-scale probe has no union),
+# so it is invisible to the axes above. This pass rebuilds the 13 drivers against
+# schema/probe-union.sofab.yaml, runs the union axes (wiretype §7.3, repeated-id §7.4,
+# over-bound §7.1, reserved-subtype §4.6, truncation §7), then rebuilds back to probe
+# so the binaries are never left in the probe-union state (ground rule 3 — the same
+# footgun run-limits.sh has). REPORT-ONLY per project precedent (a new axis is not
+# blocking until it is green or every divergence it surfaces is a catalogued finding);
+# promotion to blocking + replay.yml is a follow-up. A non-zero union result therefore
+# does NOT fail this gate — the divergences it prints are candidate findings.
+echo "==> [sweep] union pass (report-only): rebuilding 13 drivers against probe-union" >&2
+SCHEMA="$ROOT/schema/probe-union.sofab.yaml" CORPUS="$ROOT/corpus/union" "$ROOT/scripts/run.sh" >/dev/null
+echo "==> [sweep] union axes (report-only): wiretype §7.3 + repeated-id §7.4 + over-bound §7.1 + reserved-subtype §4.6 + truncation §7" >&2
+python3 "$SWEEP" --union \
+  || echo "==> [sweep] union pass is REPORT-ONLY — divergences/nonconformance above are candidate findings, not a gate failure" >&2
+echo "==> [sweep] rebuilding 13 drivers back to probe (restore the default binary state)" >&2
+CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
+echo "==> [sweep] done (probe axes blocking; union pass report-only)" >&2
