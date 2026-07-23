@@ -297,7 +297,20 @@ the committed `oracle/materialized-schema.json` must be regenerated (materialize
 
 ---
 
-## WP-06 — Float specials & integer value gaps in the cross-encode corpus  *(P2)*
+## WP-06 — Float specials & integer value gaps in the cross-encode corpus  *(P2)*  ✅ LANDED 2026-07-23
+
+**Status (2026-07-23).** ✅ **Landed.** `gen.py` gained raw-byte fp support (`f32b`/`f64b`, exact bit
+patterns that survive Python float canonicalization) + vectors: min/max subnormal f32+f64, quiet-payload
+NaN, negative NaN, fp64 sNaN, explicit +0.0, unsigned mid values; `materialize.py` handles raw-byte fp
+(element-access compares raw bits); `gen.py` clears stale corpus files before regenerating. Corpus 75→90.
+Cross-encode + materialized **green (90×13 each)** for all the green vectors. **F-0031** surfaced: an fp32
+*signaling* NaN is quieted (`0x7F800001`→`0x7FC00001`) by py-cython/typescript/dart (double-backed fp32),
+violating §4.6 bit-for-bit; the other 10 (incl. py-pure) preserve it. Corelib →
+[corelib-py#49](https://github.com/sofa-buffers/corelib-py/issues/49) /
+[corelib-ts#66](https://github.com/sofa-buffers/corelib-ts/issues/66) /
+[corelib-dart#15](https://github.com/sofa-buffers/corelib-dart/issues/15); `f32_snan` carved out of the
+green gate (`findings/F-0031-*`) until fixed. The other new vectors are in the gate.
+
 
 **Problem.** `gen.py:161-164` covers ±0.0/±1.0/±inf/one quiet NaN/big/small — but
 "small" is min-**normal** (1.2e-38 f32 / 2.2e-308 f64), so **subnormals are untested**;

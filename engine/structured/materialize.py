@@ -71,8 +71,12 @@ _MSG_KEY = {
 # --- value encoders (one per materialized-form leaf) -------------------------
 def _u(v):    return f"u{v}"
 def _s(v):    return f"s{v}"
-def _f32(x):  return "f%08x" % struct.unpack("<I", struct.pack("<f", x))[0]
-def _f64(x):  return "F%016x" % struct.unpack("<Q", struct.pack("<d", x))[0]
+def _f32(x):  # x is a Python float OR raw 4 bytes (an exact bit pattern, WP-06)
+    bits = struct.unpack("<I", x)[0] if isinstance(x, bytes) else struct.unpack("<I", struct.pack("<f", x))[0]
+    return "f%08x" % bits
+def _f64(x):  # x is a Python float OR raw 8 bytes
+    bits = struct.unpack("<Q", x)[0] if isinstance(x, bytes) else struct.unpack("<Q", struct.pack("<d", x))[0]
+    return "F%016x" % bits
 def _text(s): b = s.encode("utf-8"); return f"t{len(b)}:{b.hex()}"
 def _blob(b): return f"b{len(b)}:{b.hex()}"
 def _obj(fields): return "{" + ";".join(f"{i}:{v}" for i, v in fields) + "}"
@@ -126,8 +130,12 @@ def _walk(node, msg, path):
     key = _MSG_KEY[path]
     if kind == "u":      return _u(msg.get(key, 0))
     if kind == "s":      return _s(msg.get(key, 0))
-    if kind == "fp32":   return _f32(_scalar_fp(msg.get(key, 0.0)))
-    if kind == "fp64":   return _f64(_scalar_fp(msg.get(key, 0.0)))
+    if kind == "fp32":
+        v = msg.get(key, 0.0)                       # raw bytes are explicit (no omit-normalize)
+        return _f32(v if isinstance(v, bytes) else _scalar_fp(v))
+    if kind == "fp64":
+        v = msg.get(key, 0.0)
+        return _f64(v if isinstance(v, bytes) else _scalar_fp(v))
     if kind == "string": return _text(msg.get(key, ""))
     if kind == "blob":   return _blob(msg.get(key, b""))
     if kind == "array":

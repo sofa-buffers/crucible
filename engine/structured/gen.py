@@ -64,8 +64,16 @@ def scalar_s(field_id: int, value: int) -> bytes:
 def fixlen(field_id: int, subtype: int, payload: bytes) -> bytes:
     return hdr(field_id, WT_FIX) + varint((len(payload) << 3) | subtype) + payload
 
-def fp32(field_id, v):  return fixlen(field_id, FL_FP32, struct.pack("<f", v))
-def fp64(field_id, v):  return fixlen(field_id, FL_FP64, struct.pack("<d", v))
+# fp values may be a Python float (struct-packed) OR raw bytes — the latter lets a
+# vector pin an EXACT bit pattern (subnormal, sNaN, NaN payload, -NaN) that a
+# float round-trip through Python might canonicalize (WP-06).
+def fp32(field_id, v):
+    return fixlen(field_id, FL_FP32, v if isinstance(v, bytes) else struct.pack("<f", v))
+def fp64(field_id, v):
+    return fixlen(field_id, FL_FP64, v if isinstance(v, bytes) else struct.pack("<d", v))
+
+def f32b(bits):  return struct.pack("<I", bits)   # an fp32 by its 32-bit pattern
+def f64b(bits):  return struct.pack("<Q", bits)   # an fp64 by its 64-bit pattern
 def fstr(field_id, s):  return fixlen(field_id, FL_STRING, s.encode("utf-8"))
 def fblob(field_id, b): return fixlen(field_id, FL_BLOB, b)
 
@@ -163,6 +171,30 @@ def vectors():
                          ("nan", float("nan")), ("big", 3.4e38 if w == "f32" else 1.7e308),
                          ("small", 1.2e-38 if w == "f32" else 2.2e-308)]:
             out.append((f"{w}_{tag}", {w: val}))
+    # WP-06: exact bit-pattern fp specials (raw bytes — no Python float
+    # canonicalization). Subnormals, the four NaN variants, and an explicit +0.0.
+    # The materialized oracle compares floats as raw bits (oracle/materialized.md), so
+    # a NaN payload a driver drops (py/ts materialize fp32 through a double —
+    # canonical.md:107-109) is directly visible here.
+    out.append(("f32_subnorm_min",  {"f32": f32b(0x00000001)}))          # min +subnormal
+    out.append(("f32_subnorm_max",  {"f32": f32b(0x007FFFFF)}))          # max subnormal
+    # NB: an fp32 *signaling* NaN (0x7F800001) is F-0031 — py-cython/typescript/dart
+    # quiet it to 0x7FC00001 (double-backed fp32), violating CORELIB_PLAN:263-267
+    # (bit-for-bit, no normalization). Kept OUT of this green gate (reproducer in
+    # findings/F-0031) until fixed; the *quiet* payload NaN below is preserved by all 13.
+    out.append(("f32_qnan_payload", {"f32": f32b(0x7FC00001)}))          # quiet NaN, nonzero payload
+    out.append(("f32_nan_neg",      {"f32": f32b(0xFFC00000)}))          # negative NaN
+    out.append(("f32_zero_pos",     {"f32": f32b(0x00000000)}))          # explicit +0.0 (canonicalizes to omitted)
+    out.append(("f64_subnorm_min",  {"f64": f64b(0x0000000000000001)}))
+    out.append(("f64_subnorm_max",  {"f64": f64b(0x000FFFFFFFFFFFFF)}))
+    out.append(("f64_snan",         {"f64": f64b(0x7FF0000000000001)}))
+    out.append(("f64_qnan_payload", {"f64": f64b(0x7FF8000000000001)}))
+    out.append(("f64_nan_neg",      {"f64": f64b(0xFFF8000000000000)}))
+    out.append(("f64_zero_pos",     {"f64": f64b(0x0000000000000000)}))
+    # WP-06: unsigned mid values (had only 1 and type-max; 0 == default == 00_defaults).
+    for name, fid, signed in SCALARS:
+        if not signed:
+            out.append((f"s_{name}_mid", {name: (U[name] // 2) + 1}))
     # strings: empty (default → omitted), ascii, unicode, longer
     out.append(("str_ascii", {"str": "hello"}))
     out.append(("str_unicode", {"str": "äöü\U0001F600"}))
@@ -276,10 +308,20 @@ def union_vectors():
     return out
 
 
+def _reset_dir(out_dir):
+    """Make out_dir and clear any stale *.bin — vector indices shift when the set
+    changes, so leftover files from an older set would pollute the corpus (and the
+    committed gate CI replays with REGEN=0)."""
+    os.makedirs(out_dir, exist_ok=True)
+    for f in os.listdir(out_dir):
+        if f.endswith(".bin"):
+            os.remove(os.path.join(out_dir, f))
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--union":
         out_dir = sys.argv[2] if len(sys.argv) > 2 else "corpus/structured-union"
-        os.makedirs(out_dir, exist_ok=True)
+        _reset_dir(out_dir)
         n = 0
         for i, (name, msg) in enumerate(union_vectors()):
             with open(os.path.join(out_dir, f"{i:03d}_{name}.bin"), "wb") as fh:
@@ -288,7 +330,7 @@ def main():
         sys.stderr.write(f"[structured-union] wrote {n} valid union messages to {out_dir}\n")
         return
     out_dir = sys.argv[1] if len(sys.argv) > 1 else "corpus/structured"
-    os.makedirs(out_dir, exist_ok=True)
+    _reset_dir(out_dir)
     n = 0
     for i, (name, msg) in enumerate(vectors()):
         wire = encode(msg)
