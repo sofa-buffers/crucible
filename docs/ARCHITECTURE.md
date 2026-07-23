@@ -48,7 +48,7 @@ Legend: `planned` · `in progress` · `built` · `changed` (differs from PLAN �
 | `corpus/regression/` | built | **Resolved-findings gate** (73 inputs × 13 drivers, 0 divergences): the reproducer of every fixed finding (F-0001/02/03/04/05/06/07/09/10/11/13/14/15/16/17), so a bump that reintroduces one fails CI instead of waiting to be noticed in a manual re-run. Admits an input only when it is green **for the reason the finding is about** — reproducers that also trip an open axis are excluded and listed with their reason in `corpus/regression/README.md`. Runs via the documented `CORPUS=` mechanism (no new script). |
 | `engine/structured/isolates.py` | built | Minimal isolates for findings whose *original* reproducer is contaminated (tests two axes at once, so it can never be gate-green). Imports wire primitives from `gen.py` — the one reference encoder — so an encoding change cannot desync them. Emits `corpus/regression/F0003_overcount_clean.bin` (green) and the F-0013 reproducers (diverging → `findings/`). Each isolate declares its own destination. |
 | `findings/`, `results/FINDINGS.md` | built | F-0001 recorded (see below). |
-| `docs/SOFABGEN.md` | built | Generated-code weakness log (G-0001..G-0007; all fixed in sofabgen 0.15.1). |
+| `results/SOFABGEN.md` | built | Generated-code weakness log (G-0001..G-0007; all fixed in sofabgen 0.15.1). |
 | `.devcontainer/` | built | Fuzzing toolchains (clang/libFuzzer, cargo-fuzz, Jazzer, Atheris, SharpFuzz, Jazzer.js). |
 | `drivers/rust/` (rs + rs-no-std) | built | One shared `driver.rs` for both corelibs; single-pass `try_decode` (see notes). |
 | `drivers/cpp/` (cpp + c-cpp) | built | One shared `driver.cpp` for both corelibs; single-pass (feed returns Result). |
@@ -149,7 +149,7 @@ has no `LimitExceeded`).
   `go test -fuzz=FuzzProbe`; module resolves corelib-go via a `replace`. (The old
   **G-0006 workaround** — injecting a missing `"bytes"` import into the generated
   `types.go` — was removed once G-0006 was fixed in sofabgen 0.15.1; see
-  docs/SOFABGEN.md.)
+  results/SOFABGEN.md.)
 - **rust (rs + rs-no-std)** — one shared `drivers/rust/driver.rs` builds against
   BOTH corelibs; `build.sh <rs|rs-no-std>` selects the vendored crate and
   prepends a per-variant `Probe` import (`mod message` for std, the lib crate
@@ -177,7 +177,7 @@ has no `LimitExceeded`).
   `probe.hpp` and the `sofab::` API are identical across both, so the source is
   shared. Registered as two drivers (`cpp`, `cpp-c-cpp`). **Single-pass:** unlike
   Rust, `IStreamObject::feed` returns the `Result`, so the driver bypasses the
-  infallible generated `decode` (docs/SOFABGEN.md G-0005), uses `IStreamObject`
+  infallible generated `decode` (results/SOFABGEN.md G-0005), uses `IStreamObject`
   directly, and reads value (`*in`) and verdict (`feed`'s Result) in one pass.
   Reject class maps `sofab::Error` (same 5 codes as C's `sofab_ret_t`). Empty
   input guarded (len==0 → all-defaults) because c-cpp routes to the C istream's
@@ -279,6 +279,13 @@ has no `LimitExceeded`).
 
 ## Key decisions (decision log)
 
+- **2026-07-22 — `SOFABGEN.md` moved `docs/` → `results/`.** The G-00NN codegen-defect
+  log is the generator-side sibling of `results/FINDINGS.md` (corelib bugs); Crucible's
+  triage splits every finding into exactly those two catalogs by owning repo, so they now
+  live together under `results/` (the "what the fuzzer surfaced" tree), leaving `docs/` for
+  harness design/plan/status. All references rewritten in the same change (README, CLAUDE.md
+  incl. the triage table, ARCHITECTURE/STATUS/TODO, FINDINGS, and the `findings/*/NOTES.md`
+  that cite G-numbers).
 - **2026-07-18 — drivers build with strict UTF-8 ON (F-0004 / crucible#55).** The
   fuzzer runs the §8 `SOFAB_STRICT_UTF8` check ON so an invalid-UTF-8 `string` is
   rejected family-uniformly. Most drivers are strict by default (go/zig/cpp default
@@ -306,13 +313,13 @@ has no `LimitExceeded`).
   ACCEPT everything and flood the comparator with codegen-artifact divergences.
   The driver originally read the corelib's true `feed` result via a two-pass
   (null-visitor verdict + `decode` value), isolating wire semantics from the
-  codegen's error-handling gap (docs/SOFABGEN.md G-0001). **Superseded
+  codegen's error-handling gap (results/SOFABGEN.md G-0001). **Superseded
   2026-07-14 (crucible#10):** G-0001 is fixed — the driver is now single-pass on
   the fallible `try_decode`, which surfaces the verdict directly *and* runs the
   real generated per-field checks the null-visitor pass had skipped (e.g. the
   over-count-array check; F-0003 / generator#100 — **fixed in sofabgen 0.16.1**,
   re-verified 2026-07-15: clean over-count array → rust `R`).
-- **2026-07-08 — generated-code weaknesses go to docs/SOFABGEN.md.** Building the
+- **2026-07-08 — generated-code weaknesses go to results/SOFABGEN.md.** Building the
   Rust drivers surfaced four (G-0001 infallible decode; G-0002 std/no-std invalid
   UTF-8; G-0003 std/no-std chunked strings; G-0004 no-std silent capacity drop);
   the C++ drivers a fifth (G-0005 infallible C++ decode). Crucible tests corelibs,
