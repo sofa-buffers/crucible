@@ -30,3 +30,14 @@ CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
 
 echo "==> [sweep] blocking axes: repeated-id (§7.4) + over-bound (§7.1) + reserved-subtype (§4.6) + truncation (§7) + malform×truncate (§5.2) + wiretype (§7.3)" >&2
 python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_truncation sweep_malform_truncate wiretype_sweep
+
+# --- framing & format-ceiling axis (WP-04, REPORT-ONLY) ---------------------
+# Stray/unbalanced sequence-end (§5.2) + format ceilings ID_MAX/FIXLEN_MAX/ARRAY_MAX/
+# MAX_DEPTH (§6.2). Report-only + non-blocking until green or every divergence is a
+# catalogued finding (ground rule 4). The over-ceiling length/count vectors declare a
+# huge size with no payload — a driver that allocates per the declared length is a DoS
+# finding (F-0013 precedent), caught by the per-driver timeout. A non-zero result here
+# is NOT a gate failure.
+echo "==> [sweep] framing & ceilings axis (report-only): stray end (§5.2) + ID_MAX/FIXLEN_MAX/ARRAY_MAX/MAX_DEPTH (§6.2)" >&2
+python3 "$SWEEP" sweep_framing \
+  || echo "==> [sweep] framing axis is REPORT-ONLY — divergences above are candidate findings, not a gate failure" >&2

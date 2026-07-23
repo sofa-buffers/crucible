@@ -53,8 +53,12 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   over-bound (§7.1), reserved-subtype (§4.6), truncation (§7), malform×truncation (§5.2),
   wiretype (§7.3) — **all six blocking + green, no carve-out** (wiretype promoted from report-only
   2026-07-22 once F-0025 landed; the `sweep_repeated_id` blob-reopen carve-out dropped once F-0026
-  landed). This is what found F-0020–F-0025 — "isolate-green ≠ axis-green".
-- **26 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 0 open.**
+  landed). This is what found F-0020–F-0025 — "isolate-green ≠ axis-green". A seventh axis
+  **`sweep_framing`** (WP-04, §5.2 stray-end + §6.2 ID_MAX/FIXLEN_MAX/ARRAY_MAX/MAX_DEPTH) is wired
+  **report-only** — its stray-end/FIXLEN_MAX/ARRAY_MAX vectors are green, but the ID_MAX and MAX_DEPTH
+  vectors surfaced F-0028/F-0029 (below), so the axis stays report-only until those resolve.
+- **28 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 2 open (F-0028, F-0029)**
+  (F-0027 is reserved by the WP-01 PR, not yet merged to main).
   **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
   generator#189), and **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
   G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21); **F-0025** (§7.3 fp scalar←array,
@@ -740,6 +744,31 @@ Net open: **none.** Plus **F-0018** (by-design). **All 25 catalogued findings ar
 - **corelib-ts** accepted a top-level stray sequence-end (`0x07`) as `A`, and also accepted a truncated *known* nested sequence as `A` (COMPLETE) — the pull/Cursor decoder tracked no depth. **Fixed** (corelib-ts#42, in PR #41): a `depth` counter → stray end at root = `R` (INVALID), unclosed sequence at EOF = `I` (INCOMPLETE), matching the fast path.
 
 Both verified: full differential over the two reproducers + the F-0001 seeds across all 12 drivers = **0 divergences**.
+
+**Twenty-eighth change 2026-07-23 — WP-04: framing & format-ceiling axis added (report-only); F-0028 + F-0029 opened.**
+(`docs/improvements.md` WP-04. Ordinal parallel to the WP-01/WP-03 branches — reconcile at merge; finding
+numbers skip F-0027, reserved by the WP-01 PR.) Two malformation classes had **no dedicated coverage**:
+stray/unbalanced `sequence-end` (§5.2 — `sweep_truncation` only ever produces *open* sequences) and the
+format-wide ceilings ID_MAX / FIXLEN_MAX / ARRAY_MAX / MAX_DEPTH (§6.2, reachable only by fuzzer luck).
+- **New axis `engine/structured/sweep_framing.py`** (14 vectors): stray end at top level / after a scalar /
+  as a surplus close / inside a wrapper; field id at ID_MAX (accept control) and over (reject); fixlen
+  length over FIXLEN_MAX and array count over ARRAY_MAX at **unknown ids** (so the *format* ceiling is
+  tested, not the schema `count`/`maxlen` nor the open documentation#15 over-schema-count corner), with
+  **huge declared size but no payload** (a conformant decoder rejects at the word and never allocates —
+  the F-0013 amplification guard); nesting past MAX_DEPTH. Report-only in `scripts/sweep.sh`.
+- **Green:** stray-end (all forms), FIXLEN_MAX, ARRAY_MAX → all 13 reject; controls accept. **Two
+  divergences → findings:**
+  - **F-0028** — `cpp` + `dart` **accept** a field id > ID_MAX (skip it as unknown) where 11 reject.
+    Both check ID_MAX only on **encode** (`corelib-cpp sofab.hpp:475`; `corelib-dart encoder.dart:140`);
+    their **decoders** (`sofab.hpp:1410`; `decoder.dart:221`) omit it. corelib-c-cpp checks it in the
+    decoder (`istream.c:485`), so `cpp-c-cpp` rejects — pinning it to the two pure decoders. Corelib, not
+    codegen (ID_MAX is a format constant). → [corelib-cpp#47](https://github.com/sofa-buffers/corelib-cpp/issues/47)
+    + [corelib-dart#14](https://github.com/sofa-buffers/corelib-dart/issues/14).
+  - **F-0029** — `typescript` reports `I` for nesting past MAX_DEPTH where 12 reject. The `cursor` decode
+    path tracks `depth` only for balancing; `fast.ts`/`state.ts` enforce MAX_DEPTH but `cursor.ts` does
+    not — an internal inconsistency. → [corelib-ts#65](https://github.com/sofa-buffers/corelib-ts/issues/65).
+- Both are **corelib** (wire/format checks, schema-independent), reproducers under `findings/F-0028-*`,
+  `findings/F-0029-*`. Axis kept report-only; promote + gate on resolution (F-0025/F-0026 arc).
 
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued

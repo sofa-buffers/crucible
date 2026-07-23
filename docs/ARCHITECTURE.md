@@ -379,6 +379,29 @@ has no `LimitExceeded`).
 
 ## Deviations from PLAN
 
+### 2026-07-23a — framing & format-ceiling sweep axis added (WP-04, report-only)
+- **PLAN says:** the sweep family (PLAN §6) enumerates each normative rule across every
+  schema position; a divergence is a finding.
+- **Change (docs/improvements.md WP-04):** a seventh axis
+  `engine/structured/sweep_framing.py` covering two malformation classes with no
+  dedicated coverage — stray/unbalanced `sequence-end` (§5.2; `sweep_truncation` only
+  emits *open* sequences) and the format ceilings ID_MAX / FIXLEN_MAX / ARRAY_MAX /
+  MAX_DEPTH (§6.2). Over-ceiling values sit at **unknown field ids** and use **2³¹**
+  (over the ceiling on every profile), and declare a huge size with **no payload** so a
+  conformant decoder rejects at the header word and never allocates (the F-0013
+  amplification discipline). Registered via `scripts/sweep.sh` **report-only** (the axis
+  is not green — see below); `gen.varint`/`gen.py` primitives only, hand-built vectors.
+- **Report-only, not blocking:** the axis found two divergences (ground rule 4 keeps a
+  non-green axis report-only until every divergence is a catalogued finding):
+  - **F-0028** — `cpp` + `dart` decoders accept a field id > ID_MAX (skip it) where 11
+    reject; both check ID_MAX only on encode. → corelib-cpp#47 + corelib-dart#14.
+  - **F-0029** — `typescript`'s `cursor` decode path reports INCOMPLETE for nesting past
+    MAX_DEPTH (its `fast.ts`/`state.ts` paths enforce it; `cursor.ts` does not).
+    → corelib-ts#65.
+  Both corelib (format ceilings are schema-independent wire checks), not codegen. The
+  stray-end, FIXLEN_MAX and ARRAY_MAX vectors are green across all 13. Promote the axis
+  to blocking + gate the reproducers once the findings resolve (the F-0025/F-0026 arc).
+
 ### 2026-07-22b — Dart added as the 11th corelib / 13th driver (roster 12→13)
 - **PLAN says:** `drivers/` lists c/rust/go/java/python + cpp/cs/ts/zig (PLAN §11);
   onboarding a new language follows the §13 checklist.
