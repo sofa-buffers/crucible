@@ -66,7 +66,7 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   from `schema.py` which learned the `union` kind) driven by `sweep_run.py --union` and a **report-only**
   pass in `scripts/sweep.sh` (rebuilds the roster to probe-union, runs, rebuilds back to probe). 130 union
   vectors; 4 of 5 axes green across 13, the wiretype pass surfaced **F-0027** on its first run.
-- **32 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 6 open (F-0027..F-0032).**
+- **33 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 7 open (F-0027..F-0033; F-0033 is a spec hole).**
   **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
   generator#189), and **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
   G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21); **F-0025** (§7.3 fp scalar←array,
@@ -924,6 +924,18 @@ strict flags → OFF reachable (raw bytes); the Unicode-string profiles validate
 (OFF-reachability unclear). Table in `docs/improvements.md` WP-10. **Phase 2** (opt-in strict-OFF suite)
 **deferred** — a substantial env-gated build variant + per-profile-class policy for a non-default config,
 needing the gen#85 Unicode audit first; the ON path is fully covered (F-0004 / Part A). No finding.
+
+**Thirty-eighth change 2026-07-23 — C pacemaker fuzzing round (34 M execs); F-0033 opened (scalar over-width, spec hole).**
+First fuzzing round this session (`scripts/fuzz.sh`, FUZZ_TIME=1500, ~22.6k exec/s, **0 ASan/UBSan hits** —
+the C corelib stays clean). Corpus grew 388 → 439; the differential replay + `oracle/cluster.py` reduced
+294 diverging inputs to 13 root-cause clusters. 12 mapped to **known** classes (java `incomplete_value`
+soft; F-0028/F-0029; the F-0032 §5.2 schema-bound-vs-truncation family — incl. an old 2026-07-08
+`crash-java-array-oom` artifact, now non-crashing = the F-0032 over-count facet; the 2 other old crash
+artifacts no longer crash). **One new:** **F-0033** — a scalar wire value exceeding its declared width
+(u8 > 255) splits 3 ways (reject / mask-to-width / keep-full-value); the spec is silent (§1 "storage hint,
+wire carries the integer regardless"; §7 "value-range outside the wire clause"; §7.1 omits scalar
+over-width). Spec hole → [documentation#26](https://github.com/sofa-buffers/documentation/issues/26). The
+hand-built value corpus never emits an over-width scalar — only fuzzing reached it.
 
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued
