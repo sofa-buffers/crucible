@@ -722,3 +722,19 @@ alternative (implicated other end):** make corelib-rs-no-std's skip path feature
 (read-and-discard any wire construct even when its decode-into-field arm is compiled out), so a
 `--features fixlen,sequence` build stays §7.3-conformant. Either closes the divergence; the sofabgen
 change is the smaller, schema-driven one and is where attribution says to start.
+
+
+## G-0018 — schema-bound INVALID + truncation reported INCOMPLETE (§5.2; the F-0024 class, still open across backends)
+
+**Status:** 🔴 **OPEN** — [generator#216](https://github.com/sofa-buffers/generator/issues/216). Finding
+[`F-0032`](../findings/F-0032-schema-bound-invalid-vs-truncation-go-cpp-ts-dart/NOTES.md). Generator; the
+F-0024/G-0016 ordering class, resolved only for some (bound, backend) pairs.
+
+A message that is both a schema-bound violation (over-maxlen / over-count / over-index / invalid-UTF-8)
+and truncated is reported `INCOMPLETE` by several backends where §5.2 (documentation#15, adopted) requires
+`INVALID` — INVALID dominates INCOMPLETE. `count`/`maxlen`/`id` are schema facts, so the bound check and
+the decision to check it **at the deciding word/header** (before propagating a truncation `Incomplete`)
+are generated code. The split varies by bound: over-maxlen+trunc → go/cpp/ts/dart `I`; over-count+trunc →
+9 backends `I` (even Rust — F-0024's fix covered UTF-8/over-len, not the compact-array count path);
+over-index+trunc → cpp `I`. **Fix:** apply the F-0024 pattern (generator#190) to every schema-bound check
+in every backend — reject as soon as the word/header shows the violation.
