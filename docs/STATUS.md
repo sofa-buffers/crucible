@@ -66,7 +66,7 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   from `schema.py` which learned the `union` kind) driven by `sweep_run.py --union` and a **report-only**
   pass in `scripts/sweep.sh` (rebuilds the roster to probe-union, runs, rebuilds back to probe). 130 union
   vectors; 4 of 5 axes green across 13, the wiretype pass surfaced **F-0027** on its first run.
-- **29 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 3 open (F-0027, F-0028, F-0029).**
+- **31 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 5 open (F-0027, F-0028, F-0029, F-0030, F-0031).**
   **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
   generator#189), and **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
   G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21); **F-0025** (§7.3 fp scalar←array,
@@ -864,6 +864,24 @@ divergences** — the union value space round-trips identically. Blocking, gated
 union out-of-the-box (target form `{opt_id:value}` for every member), but the other 12 walkers (6 runtime
 + 6 generated) don't yet handle the `union` descriptor node — a ~12-walker sub-project across 10 languages
 + a `materialize.py` union reference. No finding.
+
+**Thirty-third change 2026-07-23 — WP-06: float specials + integer gaps in the cross-encode/materialized corpus; F-0031 opened.**
+(`docs/improvements.md` WP-06.) `gen.py` covered only min-*normal* floats and one quiet NaN; the value
+space missed subnormals, the signaling/payload/negative NaN variants, and unsigned mid values. Added (with
+raw-byte fp support so exact bit patterns survive Python's float canonicalization): min/max subnormal
+f32+f64, quiet-payload NaN, negative NaN, fp64 sNaN, explicit +0.0, and unsigned mid values; `materialize.py`
+gained raw-bytes fp handling (element-access compares raw bits). `gen.py` now also **clears stale corpus
+files** before regenerating (vector indices shift when the set grows). Corpus 75 → **90** vectors.
+- **Green:** subnormals / qNaN-payload / negative-NaN / fp64-sNaN / +0.0 / int-mid all round-trip **and**
+  materialize identically across 13 (cross-encode 90×13, materialized 90×13, 0 divergences).
+- **F-0031** (the one split): an fp32 **signaling** NaN (`0x7F800001`) is **quieted** to `0x7FC00001` by
+  `py-cython`, `typescript`, `dart` (double-backed fp32) where the other 10 — incl. `py-pure` — preserve
+  it, violating §4.6 (bit-for-bit, no normalization). Corelib; →
+  [corelib-py#49](https://github.com/sofa-buffers/corelib-py/issues/49) +
+  [corelib-ts#66](https://github.com/sofa-buffers/corelib-ts/issues/66) +
+  [corelib-dart#15](https://github.com/sofa-buffers/corelib-dart/issues/15). The `f32_snan` vector is
+  carved out of the green gate (reproducer `findings/F-0031-*`) until fixed; the quiet-payload/negative/f64
+  NaN variants stay in the gate (all preserve).
 
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued

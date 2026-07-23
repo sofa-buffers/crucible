@@ -386,6 +386,22 @@ has no `LimitExceeded`).
 
 ## Deviations from PLAN
 
+### 2026-07-23d — float bit-pattern specials + integer gaps in the value corpus (WP-06)
+- **PLAN says:** the cross-encode + materialized oracles run valid, value-rich messages so encoders and
+  decoders are cross-checked on the value space wire-mutation misses (PLAN §6).
+- **Change (docs/improvements.md WP-06):** `gen.py` gained **raw-byte fp support** (`fp32`/`fp64` accept
+  bytes; `f32b`/`f64b` pin an exact 32/64-bit pattern — a Python float round-trip would canonicalize a NaN)
+  and vectors for the previously-missing value corners: min/max **subnormal** f32+f64, **quiet-payload**
+  NaN, **negative** NaN, **fp64 sNaN**, explicit **+0.0**, and unsigned **mid** values. `materialize.py`
+  handles raw-byte fp (the element-access oracle already compares floats by raw bits). `gen.py` now clears
+  stale `*.bin` before regenerating (vector indices shift as the set grows, and the committed corpus is
+  replayed with `REGEN=0`). Corpus 75 → **90** vectors; cross-encode + materialized green (90×13 each).
+- **F-0031 carved out:** an fp32 *signaling* NaN (`0x7F800001`) is quieted to `0x7FC00001` by
+  `py-cython`/`typescript`/`dart` (double-backed fp32) where the other 10 (incl. `py-pure`) preserve it —
+  §4.6 requires bit-for-bit, no normalization. Filed corelib-py#49 / corelib-ts#66 / corelib-dart#15; the
+  `f32_snan` vector is held out of the green gate (`findings/F-0031`) until fixed.
+
+
 ### 2026-07-23c — union value space cross-encoded (WP-02 Part A)
 - **PLAN says:** the cross-encode oracle (PLAN §6) runs valid, value-rich messages through the
   round-trip + decode-agreement oracle; `schema/` is the single source of the fuzzed message.
