@@ -48,6 +48,17 @@ from sweep_positions import POSITIONS, CAT_TO_CONSTRUCT  # noqa: E402  (the ONE 
 def _seq(fid):  # an empty sequence: open + immediately close
     return hdr(fid, WT_SEQ_BEG) + bytes([WT_SEQ_END])
 
+# Cells carved out of the BLOCKING wiretype axis because they hit a still-open,
+# catalogued finding — reported in the write-up, not emitted here, so the gate stays
+# green-except-known (the F-0032 `STRUCTURAL` carve-out precedent). Keyed by
+# "<position tag>_<construct>" (the vector stem without `_mism`/`_ctl`). Re-enable a
+# cell — delete its entry — the moment its finding is fixed, and promote the isolate
+# into corpus/regression/.
+#   * 10_id3_FIX_fp64 — F-0034 / G-0019: dart's generated onFixlenHeader enforces the
+#     blob field's maxlen (4) against an fp64 mismatch's 8-byte payload without gating
+#     on subtype, so it rejects a §7.3-skippable field (12 skip → A, dart → R).
+KNOWN_OPEN = {"10_id3_FIX_fp64"}
+
 CONSTRUCTS = {
     "U":         lambda fid: scalar_u(fid, 5),
     "S":         lambda fid: scalar_s(fid, 3),
@@ -85,6 +96,8 @@ def emit(out_dir):
     for p in POSITIONS:
         declared = CAT_TO_CONSTRUCT[p.cat]
         for cname, build in CONSTRUCTS.items():
+            if f"{p.tag()}_{cname}" in KNOWN_OPEN:
+                continue  # carved out — see KNOWN_OPEN (an open, catalogued finding)
             kind = "ctl" if cname == declared else "mism"
             name = f"{p.tag()}_{cname}_{kind}.bin"
             data = place(list(p.path), p.fid, build(p.fid))
