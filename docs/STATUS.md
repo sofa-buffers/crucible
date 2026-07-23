@@ -914,6 +914,17 @@ reading → **F-0032**: go/cpp/ts/dart (and more, varying by bound) report `I` w
 truncations are carved out (the axis `STRUCTURAL` set); `_complete` controls + structural truncations stay
 blocking (axis 20 → 43 vectors, green). Finding count 31 → 32, open 5 → 6.
 
+**Thirty-seventh change 2026-07-23 — WP-10: UTF-8 at more positions (Part A); STRICT_UTF8=OFF audit (phase 1); phase 2 deferred.**
+(`docs/improvements.md` WP-10.) **Part A:** `utf8_seeds.py` now emits each malformed-UTF-8 vector at BOTH
+`nested.str` (id 2) and a `string_array` element (id 200.0) via a shared `_probe(...)` framer — the strict
+reject is now proven at the wrapper element too; also fixed stale framing (the old framer predated
+`blob_array`, so its gen.encode self-check would fail). 28 F0004 seeds (14×2), regression gate green
+(95×13). **Part B phase-1 audit:** the byte-container profiles (c, cpp-c-cpp, cpp, zig) have explicit
+strict flags → OFF reachable (raw bytes); the Unicode-string profiles validate inside corelib/codegen
+(OFF-reachability unclear). Table in `docs/improvements.md` WP-10. **Phase 2** (opt-in strict-OFF suite)
+**deferred** — a substantial env-gated build variant + per-profile-class policy for a non-default config,
+needing the gen#85 Unicode audit first; the ON path is fully covered (F-0004 / Part A). No finding.
+
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued
   COMPLETE/INCOMPLETE/INVALID, returned identically by one-shot `decode` and every

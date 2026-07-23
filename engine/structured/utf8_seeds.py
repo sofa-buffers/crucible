@@ -44,23 +44,36 @@ VALID_CONTROLS = [
 NUL_CONTROL = ("utf8_valid_embedded_nul", b"A\x00B")
 
 
-def probe_with_raw_str(raw: bytes) -> bytes:
-    """A canonical `probe` whose only set field is nested.str = `raw` (id 2).
-
-    Frames exactly like gen.encode({'str': ...}) but carries arbitrary bytes the
-    Python `str` path cannot express — so the sole divergence axis is the UTF-8
-    validity of the string payload."""
+def _probe(nested_str: bytes = None, strarr_elem: bytes = None) -> bytes:
+    """A canonical `probe` carrying RAW bytes at the given string position — bytes the
+    Python `str` path cannot express, so the sole divergence axis is the UTF-8 validity
+    of that payload. Full framing (all sequences incl. blob_array id 201) so it equals
+    gen.encode for a valid string. WP-10: parameterized over POSITION — `nested.str`
+    (id 2) or a `string_array` element (id 200, element 0)."""
     out = bytearray()
     out += gen.hdr(10, gen.WT_SEQ_BEG)             # open nested (id 10)
-    out += gen.fixlen(2, gen.FL_STRING, raw)       #   str (id 2) = raw bytes
+    if nested_str is not None:
+        out += gen.fixlen(2, gen.FL_STRING, nested_str)   # str (id 2) = raw bytes
     out += bytes([gen.WT_SEQ_END])                 # close nested
     out += gen.hdr(100, gen.WT_SEQ_BEG)            # open arrays (id 100)
     out += gen.hdr(10, gen.WT_SEQ_BEG)             #   open arrays.nested
     out += bytes([gen.WT_SEQ_END])                 #   close arrays.nested
     out += bytes([gen.WT_SEQ_END])                 # close arrays
     out += gen.hdr(200, gen.WT_SEQ_BEG)            # open string_array (id 200)
+    if strarr_elem is not None:
+        out += gen.fixlen(0, gen.FL_STRING, strarr_elem)  # element 0 = raw bytes
     out += bytes([gen.WT_SEQ_END])                 # close string_array
+    out += gen.hdr(201, gen.WT_SEQ_BEG)            # open blob_array (id 201)
+    out += bytes([gen.WT_SEQ_END])                 # close blob_array
     return bytes(out)
+
+
+def probe_with_raw_str(raw: bytes) -> bytes:
+    return _probe(nested_str=raw)
+
+
+def probe_with_raw_strarr_elem(raw: bytes) -> bytes:
+    return _probe(strarr_elem=raw)
 
 
 def load_invalid_vectors():
@@ -80,16 +93,21 @@ def main():
     assert probe_with_raw_str(b"A") == gen.encode({"str": "A"}), "framing drift vs gen.encode"
 
     written = []
-    for name, raw in load_invalid_vectors():
-        path = os.path.join(out_dir, f"F0004_{name}.bin")
-        with open(path, "wb") as f:
-            f.write(probe_with_raw_str(raw))
-        written.append((os.path.basename(path), "reject", raw.hex()))
-    for name, raw in VALID_CONTROLS:
-        path = os.path.join(out_dir, f"F0004_control_{name}.bin")
-        with open(path, "wb") as f:
-            f.write(probe_with_raw_str(raw))
-        written.append((os.path.basename(path), "accept", raw.hex()))
+    # WP-10: each vector at BOTH string positions — nested.str (id 2) and a string_array
+    # element (id 200, element 0) — so the strict-UTF-8 check is proven at the wrapper
+    # element too, not only the struct field.
+    positions = [("", probe_with_raw_str), ("strarr_", probe_with_raw_strarr_elem)]
+    for pfx, frame in positions:
+        for name, raw in load_invalid_vectors():
+            path = os.path.join(out_dir, f"F0004_{pfx}{name}.bin")
+            with open(path, "wb") as f:
+                f.write(frame(raw))
+            written.append((os.path.basename(path), "reject", raw.hex()))
+        for name, raw in VALID_CONTROLS:
+            path = os.path.join(out_dir, f"F0004_{pfx}control_{name}.bin")
+            with open(path, "wb") as f:
+                f.write(frame(raw))
+            written.append((os.path.basename(path), "accept", raw.hex()))
 
     for fn, expect, hx in written:
         print(f"{fn:44s} expect={expect:6s} str_hex={hx}")
