@@ -66,10 +66,10 @@ jobs:
         run: ./scripts/run-limits.sh
 
       # Structural sweeps: a normative rule enumerated across EVERY schema position,
-      # checked for agreement AND conformance. All six axes now block (§7.3 wiretype
+      # checked for agreement AND conformance. All seven axes now block (§7.3 wiretype
       # promoted 2026-07-22 once F-0025 landed). sweep.sh rebuilds vs probe, so it is safe here
       # after limit mode (which leaves probe-dyn binaries).
-      - name: Structural sweep gate (all six axes blocking)
+      - name: Structural sweep gate (all seven axes blocking)
         run: ./scripts/sweep.sh
 
       # Element-access oracle (oracle/materialized.md): every driver dumps the DECODED

@@ -35,7 +35,15 @@ sys.path.insert(0, os.path.join(HERE, "..", ".."))  # repo root for oracle.compa
 from oracle.comparator import run_driver, parse  # noqa: E402
 
 AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserved_subtype",
-        "sweep_truncation", "sweep_malform_truncate"]
+        "sweep_truncation", "sweep_malform_truncate", "sweep_varint"]
+
+# `sweep_varint` (WP-03, §2 varint canonicality) is blocking but **agreement-only** for
+# its non-minimal vectors (`expect="agree"`): the spec is silent on whether a
+# non-minimal-but-≤64-bit varint is accepted-and-normalized or rejected, so the runner
+# asserts only that all 13 agree (they do — accept + normalize to the one canonical form)
+# and does NOT assert accept-vs-reject conformance for those vectors, per ground rule 6,
+# until the upstream clause lands (documentation#24). The minimal-accept controls
+# and the >64-bit overflow-reject contrast ARE spec-defined (CORELIB_PLAN §4.1 / F-0016).
 
 # WP-01: the axes that carry a union pass (emit_union). The union feature lives in a
 # separate schema (schema/probe-union.sofab.yaml), so a union run needs drivers built

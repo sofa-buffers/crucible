@@ -49,11 +49,14 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   change below.
 - **Structural sweep framework** (`engine/structured/sweep_*.py`, PLAN §6): a sweep enumerates
   one normative rule across **every** schema position and checks two oracles (agreement +
-  conformance). **Six axes** wired via `sweep_run.py` / `scripts/sweep.sh` — repeated-id (§7.4),
+  conformance). **Seven axes** wired via `sweep_run.py` / `scripts/sweep.sh` — repeated-id (§7.4),
   over-bound (§7.1), reserved-subtype (§4.6), truncation (§7), malform×truncation (§5.2),
-  wiretype (§7.3) — **all six blocking + green over `probe`, no carve-out** (wiretype promoted from
-  report-only 2026-07-22 once F-0025 landed; the `sweep_repeated_id` blob-reopen carve-out dropped once
-  F-0026 landed). This is what found F-0020–F-0025 — "isolate-green ≠ axis-green".
+  wiretype (§7.3), varint (§2 canonicality, WP-03) — **all seven blocking + green, no carve-out**
+  (wiretype promoted from report-only 2026-07-22 once F-0025 landed; the `sweep_repeated_id`
+  blob-reopen carve-out dropped once F-0026 landed; the **non-minimal varint axis** (`sweep_varint`)
+  added 2026-07-22 blocking-but-agreement-only — all 13 accept-and-normalize a non-minimal-but-≤64-bit
+  varint identically, spec-silent so conformance is deferred to documentation#24). This is what found
+  F-0020–F-0025 — "isolate-green ≠ axis-green".
 - **Union under the structural sweeps** (WP-01, 2026-07-22): the five reject/skip axes (wiretype §7.3,
   repeated-id §7.4, over-bound §7.1, reserved-subtype §4.6, truncation §7) now also run over
   `schema/probe-union.sofab.yaml` — a schema-derived union position model (`sweep_positions.UNION_POSITIONS`,
@@ -801,6 +804,27 @@ in the sweep harness before WP-05's schema growth lands:
   the first two (documented as sufficient). Doc drift "all 12"→"all 13" swept across `engine/structured/*.py`.
 - **Verified:** all six blocking axes green; derived bounds byte-match the old literals; materialize
   reference byte-identical (ARR_COUNT still 5). Pure hygiene — no behavior change beyond the one gap closed.
+
+**Thirtieth change 2026-07-22 — WP-03: non-minimal varint axis added (blocking, agreement-only); documentation#24 filed.**
+(`docs/improvements.md` WP-03. Ordinal parallel to the WP-01 branch's own "Twenty-eighth" — reconcile at merge.)
+A varint admits **non-minimal** forms — redundant `0x80` continuation bytes that add only zero high bits
+(`5` = `05` = `85 00` = `85 80 00` …). `gen.varint` only emits minimal encodings, so no corpus contained
+one; F-0016 covered only the **>64-bit overflow**. Whether the 13 decoders agree on a non-minimal-but-
+≤64-bit varint was untested — a classic silent-divergence class.
+- **New axis `engine/structured/sweep_varint.py`** places a non-minimal varint at every varint **role** —
+  field-id header, fixlen length word, array element-count, array element value, and inside a skipped
+  (unknown-id) field — padded +1/+3 bytes and up to the 10-byte ≤64-bit maximum, with minimal-accept
+  controls and an 11-byte >64-bit overflow-reject contrast. 23 vectors. `gen.varint` left untouched (it is
+  the canonical reference encoder).
+- **Result: green — all 13 accept every non-minimal varint and re-encode to the identical minimal
+  canonical form** (the round-trip normalizes it), and all 13 reject the overflow. Zero divergences.
+- **Spec is silent** (CORELIB_PLAN §4.1 guards only overflow; MESSAGE_SPEC §2 constrains the encoder, not
+  the decoder), so per ground rule 6 the axis is **blocking but agreement-only**: the 18 non-minimal
+  vectors carry `expect="agree"` (only agreement + round-trip normalization asserted, not accept-vs-reject
+  conformance) until the clause lands. Filed **[documentation#24](https://github.com/sofa-buffers/documentation/issues/24)**
+  proposing the observed consensus as the rule; on adoption the
+  vectors tighten to `expect="accept"`. **No finding** (green). Promoted to blocking + wired into
+  `replay.yml` (via `sweep.sh`); the sweep gate is now **seven axes**.
 
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued
