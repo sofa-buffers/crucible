@@ -72,6 +72,26 @@ def emit(out_dir):
     return vectors
 
 
+# --- union pass (schema/probe-union.sofab.yaml) ------------------------------
+# WP-01: §4.6 over the union schema. A reserved fixlen subtype at a union *member*
+# position is a structural malformation inside the union -> INVALID (§5.2 dominates).
+# At the union *sequence* position (a fixlen where a union/seq is declared) the same
+# §4.6-vs-§7.3-skip tension the probe pass probes recurs — a skip must not swallow the
+# reserved-subtype malformation. Every vector expects reject.
+def emit_union(out_dir):
+    from sweep_positions import UNION_POSITIONS, place  # noqa: E402
+    os.makedirs(out_dir, exist_ok=True)
+    vectors = []
+    for p in UNION_POSITIONS:
+        for st in RESERVED:
+            name = f"u_{p.tag()}_reserved_st{st}.bin"
+            data = place(p.path, fixlen_reserved(p.fid, st))
+            with open(os.path.join(out_dir, name), "wb") as fh:
+                fh.write(data)
+            vectors.append((name, data, "reject"))
+    return vectors
+
+
 if __name__ == "__main__":
     out = sys.argv[1] if len(sys.argv) > 1 else "corpus/reserved-subtype-sweep"
     emit(out)

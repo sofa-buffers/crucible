@@ -162,6 +162,44 @@ CAT_TO_CONSTRUCT = {
 }
 
 
+# --- union positions (schema/probe-union.sofab.yaml) -------------------------
+# WP-01: the `union` wire feature lives in a *separate* schema (the full-scale probe
+# has no union). Rather than hand-list its positions — a second literal that would
+# drift against the schema, the very desync sweep_positions exists to prevent — these
+# are DERIVED from the schema descriptor (schema.py, which learned the `union` kind in
+# WP-01). A union is a sequence carrying at most one child (MESSAGE_SPEC §4.2); the
+# child's id selects the active `oneof` option, so each member is an ordinary field
+# position *inside* the union's sequence scope (path == (union_id,)). The `seq_union`
+# category marks the union sequence itself (it opens a scope and MERGES on re-open,
+# §7.4, exactly like a struct — but empty means `default_id`, not all-default children).
+UNION_SCHEMA = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "..", "schema", "probe-union.sofab.yaml")
+
+# descriptor kind -> Position category (the wire-shape the axes perturb)
+_UNION_CAT = {"u": "scalar_u", "s": "scalar_s", "string": "str", "blob": "blob"}
+
+
+def _union_positions():
+    from schema import descriptor  # schema.py handles the `union` kind (WP-01 step 1)
+    out = []
+    for f in descriptor(UNION_SCHEMA)["fields"]:
+        k = f["kind"]
+        if k in ("u", "s"):                       # root scalars: tag, trailer
+            out.append(Position((), f["id"], _UNION_CAT[k]))
+        elif k == "union":
+            uid = f["id"]
+            out.append(Position((), uid, "seq_union"))
+            for o in f["options"]:                # each member, inside the union scope
+                out.append(Position((uid,), o["id"], _UNION_CAT[o["kind"]],
+                                    maxlen=o.get("maxlen", 0)))
+    return out
+
+
+UNION_POSITIONS = _union_positions()
+UNION_MEMBER_POSITIONS = [p for p in UNION_POSITIONS if p.path]        # inside the union
+UNION_SEQ_POSITION = next(p for p in UNION_POSITIONS if p.cat == "seq_union")
+
+
 # --- framing helpers ---------------------------------------------------------
 def open_path(path):
     return b"".join(hdr(p, WT_SEQ_BEG) for p in path)
@@ -215,10 +253,14 @@ def struct_children(scope, variant):
 
 
 if __name__ == "__main__":
-    print(f"{len(POSITIONS)} positions: "
+    print(f"probe: {len(POSITIONS)} positions: "
           f"{len(SCALAR_POSITIONS)} scalar, {len(ARRAY_POSITIONS)} array, "
           f"{len(SEQ_POSITIONS)} sequence, "
           f"{sum(1 for p in POSITIONS if p.cat.startswith('welem_'))} wrapper-element")
     for p in POSITIONS:
         b = f"  count={p.count}" if p.count else (f"  maxlen={p.maxlen}" if p.maxlen else "")
         print(f"  {p.tag():14} {p.cat}{b}")
+    print(f"union: {len(UNION_POSITIONS)} positions "
+          f"({len(UNION_MEMBER_POSITIONS)} members + union seq + root scalars)")
+    for p in UNION_POSITIONS:
+        print(f"  {p.tag():12} {p.cat}{f'  maxlen={p.maxlen}' if p.maxlen else ''}")

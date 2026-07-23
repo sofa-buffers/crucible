@@ -95,7 +95,7 @@ The guard covers every native-array element arm (unsigned, signed, enum, bool,
 bitfield, float) across both the std and no_std profiles. PR
 [sofa-buffers/generator#87](https://github.com/sofa-buffers/generator/pull/87)
 (issue [generator#78](https://github.com/sofa-buffers/generator/issues/78),
-codegen weakness **G-0007** in docs/SOFABGEN.md).
+codegen weakness **G-0007** in results/SOFABGEN.md).
 
 **Verified:** rebuilt the Rust driver with the fixed `sofabgen` and re-fed
 `array_overflow.bin` — the harness that previously panicked (`index out of

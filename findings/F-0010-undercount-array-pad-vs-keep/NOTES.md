@@ -4,6 +4,10 @@
 PR #137) — the trim/pad question is settled family-wide. The clause was **adopted
 upstream — [documentation#18](https://github.com/sofa-buffers/documentation/pull/18)**
 merged (`ac621db`, §3 + §5.1), closing [documentation#16](https://github.com/sofa-buffers/documentation/issues/16).
+A simpler **always-N** alternative was considered and rejected — *"a present fixed array always carries
+exactly `N` elements on the wire"*: it would change only the keep-M camp and match the systems camp's
+current encoding, but forgoes the trailing-default compaction; the adopted **sparse fill-to-N** reading
+keeps that compaction. (Design alternative migrated from the retired `spec-proposals.md`.)
 Like F-0001 (truncation) / F-0004 (UTF-8): resolved spec-first, then per-impl.
 **Attribution settled: codegen (sofabgen), not corelib** — both fixes need schema
 knowledge (`N`, fixed-vs-dynamic) the schema-agnostic corelib array writers don't

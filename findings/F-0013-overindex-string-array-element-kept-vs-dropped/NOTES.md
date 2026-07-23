@@ -20,7 +20,7 @@ split (9 `R` vs 3 `A`). Root cause traced: `b6da1ed`'s "never taken" reasoning h
 `_MsgSeq`, but a string/blob over-index goes through **`_FixedStrSeq`**, whose guard is still
 **#126's silent drop** (the F-0008 hang fix) — c-cpp's generated code has **0** `invalidate()`
 calls vs pure cpp's **13**. Violates §7 ("never silently truncated to the bound") and §7.1
-("MUST both reject"). **Re-verified on 0.17.5:** unchanged. (2026-07-17) Codegen weakness **G-0013** (`docs/SOFABGEN.md`). Target repo:
+("MUST both reject"). **Re-verified on 0.17.5:** unchanged. (2026-07-17) Codegen weakness **G-0013** (`results/SOFABGEN.md`). Target repo:
 `sofa-buffers/generator` (sofabgen), all heap backends. **Spec target = reject:** the
 issue cites MESSAGE_SPEC §7 ("Enforce schema bounds as `INVALID` … a wrapper-array element
 id ≥ N … MUST be reported as `INVALID`, never silently truncated to N"), which resolves the
@@ -154,7 +154,7 @@ this is a denial-of-service on untrusted input, not just an interop wart.
 > ASan fails to initialize and the run dies for an unrelated reason.
 
 **F-0008's own NOTES predicted this** — "The heap profile (`cpp`, `std::vector`) grows and
-terminates (**or OOMs for a huge id**)" — and `docs/SOFABGEN.md`'s G-0011 row repeats it
+terminates (**or OOMs for a huge id**)" — and `results/SOFABGEN.md`'s G-0011 row repeats it
 ("heap `std::vector` grows/terminates"). The hang was treated as the whole bug, so
 generator#126 bounded only the fixed-capacity profile. That fix is what made the two
 profiles disagree on the *value*: before it, both were wrong (one spun, one over-allocated);

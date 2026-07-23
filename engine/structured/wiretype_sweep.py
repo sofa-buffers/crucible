@@ -94,6 +94,35 @@ def emit(out_dir):
     return vectors
 
 
+# --- union pass (schema/probe-union.sofab.yaml) ------------------------------
+# WP-01: §7.3 over the union schema. A construct that mismatches a member's declared
+# type is skipped (§7.3); a union whose only child is skipped is empty -> `default_id`
+# (§4.2), so a mismatch still decodes as the default union — verdict `A`, all agree,
+# same as the probe pass. The `seq_union` position (the union field itself) declares
+# SEQ; a non-SEQ construct there skips the whole union field -> default_id likewise.
+_UNION_DECL = {"scalar_u": "U", "scalar_s": "S", "str": "FIX_str",
+               "blob": "FIX_blob", "seq_union": "SEQ"}
+
+
+def emit_union(out_dir):
+    """§7.3 over every union position x every wire construct. Control (matching type)
+    and mismatch (skipped -> union default_id) both yield `A`, so `expect="accept"`
+    throughout; a driver that rejects or mis-decodes a mismatch is a divergence."""
+    from sweep_positions import UNION_POSITIONS  # noqa: E402
+    os.makedirs(out_dir, exist_ok=True)
+    vectors = []
+    for p in UNION_POSITIONS:
+        declared = _UNION_DECL[p.cat]
+        for cname, build in CONSTRUCTS.items():
+            kind = "ctl" if cname == declared else "mism"
+            name = f"u_{p.tag()}_{cname}_{kind}.bin"
+            data = place(list(p.path), p.fid, build(p.fid))
+            with open(os.path.join(out_dir, name), "wb") as fh:
+                fh.write(data)
+            vectors.append((name, data, "accept"))
+    return vectors
+
+
 def main():
     out_dir = sys.argv[1] if len(sys.argv) > 1 else "corpus/wiretype-sweep"
     v = emit(out_dir)

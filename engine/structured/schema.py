@@ -14,6 +14,8 @@ drivers/reference consume). Kinds:
 
   u s fp32 fp64 string blob        leaves
   struct  { fields: [...] }        a nested struct/message scope
+  union   { default_id, options: [...] }   a sequence carrying at most one child;
+                                           the active option's id selects it (§4.2)
   array   { elem: u|s|fp32|fp64, count }   an inline fixed-count numeric/fp array
   wrapper { elem: string|blob, count }     a dynamic index-keyed element sequence
 
@@ -44,6 +46,15 @@ def _field(name, spec):
     elif t == "struct":
         node["kind"] = "struct"
         node["fields"] = _fields(spec["fields"])
+    elif t == "union":
+        # A union is a sequence carrying at most one child (MESSAGE_SPEC §4.2); the
+        # present child's id selects the active `oneof` option, `default_id` applies
+        # when none is set. An option may be any field type, so each is a normal field
+        # node (recursing for a nested struct/union); string/blob options also carry
+        # their maxlen, which the over-bound sweep needs and a scalar node never has.
+        node["kind"] = "union"
+        node["default_id"] = spec["default_id"]
+        node["options"] = _union_options(spec["oneof"])
     elif t == "array":
         it = spec["items"]
         et = it["type"]
@@ -60,6 +71,17 @@ def _field(name, spec):
 def _fields(d):
     # ascending field id (the materialized form emits fields in id order)
     return [_field(n, s) for n, s in sorted(d.items(), key=lambda kv: kv[1]["id"])]
+
+
+def _union_options(d):
+    # the union options, in ascending option id (the id selects the active option)
+    opts = []
+    for n, s in sorted(d.items(), key=lambda kv: kv[1]["id"]):
+        o = _field(n, s)
+        if s["type"] in ("string", "blob"):
+            o["maxlen"] = s.get("maxlen", 0)
+        opts.append(o)
+    return opts
 
 
 def descriptor(path=SCHEMA):

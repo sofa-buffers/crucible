@@ -4,7 +4,9 @@
 > the fp32/fp64 fixed width (4/8) at the FIXLEN header (decoder.py L338-341), before
 > the payload read, exactly as proposed. [corelib-py#38](https://github.com/sofa-buffers/corelib-py/issues/38)
 > **closed**. Re-verified: `56 0a 59` and `56 02 38` → **all 11 drivers `R`** (py no
-> longer the `I` outlier). The rest of this file is the original analysis.
+> longer the `I` outlier). **The §4.6 wrong-width-fp clause was later adopted upstream** as
+> [documentation#17](https://github.com/sofa-buffers/documentation/pull/17) (`1018e0c`, CORELIB_PLAN §4.6/§5.2/§6.3);
+> see [F-0007](../F-0007-invalid-vs-incomplete-precedence/NOTES.md). The rest of this file is the original analysis.
 
 **Status:** open — filed upstream as a **corelib-py** decoder bug. Surfaced
 2026-07-15 while re-verifying findings after the sofabgen 0.16.1 + corelib-py@main
