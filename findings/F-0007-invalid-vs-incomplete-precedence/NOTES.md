@@ -7,7 +7,11 @@
 > drivers `R`** (were c + cpp-c-cpp `I`). With corelib-py#38 (F-0006) already closed,
 > the whole precedence family is now convergent. A family-wide MESSAGE_SPEC §7
 > precedence clause (INVALID > INCOMPLETE) remains a nice-to-have but no impl
-> currently diverges. The rest of this file is the original analysis.
+> currently diverges. **Adopted upstream 2026-07-16:** the precedence clause landed as
+> [documentation#17](https://github.com/sofa-buffers/documentation/pull/17) (`1018e0c`, closing #15) in three
+> parts — CORELIB_PLAN §5.2 (INVALID>INCOMPLETE precedence + eager header validation), §4.6 (wrong-width
+> `fp32`/`fp64` → explicit INVALID), and the §6.3 `InvalidMessage` row. (Provenance migrated from the
+> retired `spec-proposals.md`.) The rest of this file is the original analysis.
 
 **Status:** open — **spec-precedence question** (candidate MESSAGE_SPEC clarification),
 not a single-repo bug. The one cleanly-isolated, single-culprit instance is split
