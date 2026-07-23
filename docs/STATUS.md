@@ -90,7 +90,7 @@ Four records, each with one owner:
 | for | read |
 |---|---|
 | the per-finding catalog (F-00NN: title, impls, axis, root cause, resolution, links) | [`../results/FINDINGS.md`](../results/FINDINGS.md) |
-| generated-code weaknesses (G-00NN) | [`../results/SOFABGEN.md`](../results/SOFABGEN.md) |
+| generated-code weaknesses (G-00NN) | [`../results/FINDINGS.md`](../results/FINDINGS.md) |
 | root-cause clusters of raw divergences | [`../results/CLUSTERS.md`](../results/CLUSTERS.md) |
 | the dated resolution history / work journal | [`STATUS-LOG.md`](STATUS-LOG.md) |
 

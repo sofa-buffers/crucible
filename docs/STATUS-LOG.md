@@ -6,7 +6,7 @@ authoritative record:
 
 - Per-finding truth (root cause, resolution, verification, issue links) lives in
   [`../results/FINDINGS.md`](../results/FINDINGS.md).
-- Codegen weaknesses live in [`../results/SOFABGEN.md`](../results/SOFABGEN.md).
+- Codegen weaknesses live in [`../results/FINDINGS.md`](../results/FINDINGS.md).
 - Root-cause clusters live in [`../results/CLUSTERS.md`](../results/CLUSTERS.md).
 - Design decisions live in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
@@ -17,7 +17,7 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ## Findings & tracking
 Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug log
-in `results/SOFABGEN.md`. Fixes live in the **owning repos** (done in fresh contexts);
+in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
 **Re-verification 2026-07-08** — after bumping **sofabgen → 0.15.1** and all 10
@@ -651,10 +651,10 @@ Net open: **none.** Plus **F-0018** (by-design). **All 25 catalogued findings ar
 | F-0002 | corelib-c-cpp encoder left-shifts a negative value (UB) | **corelib-c-cpp#70** merged — ✅ **resolved** |
 | F-0003 | Rust array-fill OOB → panic (crash/DoS) | ✅ **fully resolved.** Crash fixed by **generator#87**; the residual over-count *accept* divergence (**generator#100**) is fixed in **sofabgen 0.16.1** (commit `ca0fda7`, "reject over-count scalar arrays in every backend"). **Re-verified 2026-07-15** with a *clean non-truncated* over-count(8>5) array (`a6 06 03 08 01..08 07`): **all 12 drivers reject** (`R`) — rust-std/nostd now reject with the family. (The old 145-byte reproducer is contaminated — over-count *and* truncated — so rust/zig report `I` there; the clean isolate is the correct test.) |
 | F-0005 | corelib-cpp accepts malformed msgs the family rejects | **corelib-cpp#22** closed — ✅ **resolved** |
-| G-0001,3,4,5,6 | codegen weaknesses (infallible Rust/C++ decode, no-std string handling, Go bytes import) | **all fixed in sofabgen 0.15.1** (PRs #88/#92/#93/#89/#90) — see results/SOFABGEN.md |
+| G-0001,3,4,5,6 | codegen weaknesses (infallible Rust/C++ decode, no-std string handling, Go bytes import) | **all fixed in sofabgen 0.15.1** (PRs #88/#92/#93/#89/#90) — see results/FINDINGS.md |
 | G-0002 | Rust std vs no_std UTF-8 (intra-Rust) | generator#80/#91 — ✅ **fixed** (both empty on invalid); family-wide UTF-8 is F-0004 / #85 |
-| G-0008 | generated one-shot decode discards the INCOMPLETE status (C#, Java) | ✅ **fixed** — sofabgen 0.15.3 ([generator#106](https://github.com/sofa-buffers/generator/pull/106) closes #105): status-surfacing `TryDecode`/`tryDecode`. Crucible C#/Java drivers now **single-pass** on it — two-pass workaround **removed** (crucible#10, 0.16.0 bump). See results/SOFABGEN.md |
-| G-0009 | generated C++ emits a schema-*unbounded* array as `std::array<T, 0>` (not `std::vector<T>`) | ✅ **fixed in sofabgen 0.16.1** ([generator#112](https://github.com/sofa-buffers/generator/issues/112), commit `7899c4b` → `std::vector`). **Re-verified 2026-07-15:** repro `03 03 07 08 09` → cpp now decodes `[7,8,9]` (was `[]`), matching the family; cpp agrees on the arr limit vectors (under/at/over-cap → `L`). **cpp rejoined the `arr` dimension** of limit mode (`scripts/run-limits.sh`, `NO_CPP` hold-out removed); limit mode green with cpp in all three dimensions. See results/SOFABGEN.md |
+| G-0008 | generated one-shot decode discards the INCOMPLETE status (C#, Java) | ✅ **fixed** — sofabgen 0.15.3 ([generator#106](https://github.com/sofa-buffers/generator/pull/106) closes #105): status-surfacing `TryDecode`/`tryDecode`. Crucible C#/Java drivers now **single-pass** on it — two-pass workaround **removed** (crucible#10, 0.16.0 bump). See results/FINDINGS.md |
+| G-0009 | generated C++ emits a schema-*unbounded* array as `std::array<T, 0>` (not `std::vector<T>`) | ✅ **fixed in sofabgen 0.16.1** ([generator#112](https://github.com/sofa-buffers/generator/issues/112), commit `7899c4b` → `std::vector`). **Re-verified 2026-07-15:** repro `03 03 07 08 09` → cpp now decodes `[7,8,9]` (was `[]`), matching the family; cpp agrees on the arr limit vectors (under/at/over-cap → `L`). **cpp rejoined the `arr` dimension** of limit mode (`scripts/run-limits.sh`, `NO_CPP` hold-out removed); limit mode green with cpp in all three dimensions. See results/FINDINGS.md |
 
 **New divergences surfaced 2026-07-13 while wiring the `I` verdict — ✅ both fixed (pre-existing corelib leniency, unrelated to truncation):**
 - **corelib-cpp** classified an unterminated over-long varint (>64 bits) as `I` (INCOMPLETE) where the rest say `R` (INVALID) — the measure phase treated the over-long-but-unterminated varint as a truncated tail. **Fixed** (corelib-cpp#29, in PR #28): getVarint/skipVarint report the >64-bit overflow so the measure phase rejects it.
@@ -693,7 +693,7 @@ seeds run as a plain differential with zero conformance assertions.
   probe wiretype axis stays green (319×13), and `rust-std` (same generated code) agrees with the family —
   the two-way sibling split pinning it to the feature config, i.e. codegen. **Generator-primary → G-0017**,
   corelib-rs-no-std implicated (F-0010 "occasionally both"). Filed `results/FINDINGS.md` F-0027 +
-  `results/SOFABGEN.md` G-0017 with reproducers under `findings/F-0027-*`.
+  `results/FINDINGS.md` G-0017 with reproducers under `findings/F-0027-*`.
 - **Not yet promoted / not in the gate** until the fix lands — per the F-0025/F-0026 arc.
 
 **Twenty-ninth change 2026-07-23 — WP-11: harness hygiene (one position model, schema-derived bounds); no finding.**

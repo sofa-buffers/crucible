@@ -74,7 +74,7 @@ types (diagnostic step 2: "the corelib faithfully used what it was handed → th
 The schema→feature decision is made **only by codegen**, and only codegen writes the `Cargo.toml`. So the
 fix starts in **sofabgen**: for the *decoder*, always enable the full wire-type feature set
 (`array` + `fixlen` + `fp64` + `sequence`) regardless of which types the schema declares — a skip path
-must exist for every wire type. → **G-0017** in [`results/SOFABGEN.md`](../../results/SOFABGEN.md), issue
+must exist for every wire type. → **G-0017** in [`results/FINDINGS.md`](../../results/FINDINGS.md), issue
 against `generator`.
 
 **The other side is implicated** (the F-0010 "occasionally both" caveat CLAUDE.md names): corelib-rs-no-std

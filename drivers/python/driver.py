@@ -12,7 +12,7 @@ tests); Crucible checks it against the other language corelibs too.
 Speaks drivers/common/CONTRACT.md: reads length-prefixed records on stdin, emits
 one canonical line (oracle/canonical.md) per record. Unlike Rust/C++, the
 generated Python `decode` RAISES on malformed input, so the verdict is a plain
-try/except — no two-pass workaround (contrast docs/SOFABGEN.md G-0001/G-0005).
+try/except — no two-pass workaround (contrast results/FINDINGS.md G-0001/G-0005).
 """
 import json
 import os

@@ -297,7 +297,7 @@ snapshot here (it goes stale), the live records are:
   [`findings/`](findings/).
 - **[`docs/STATUS.md`](docs/STATUS.md)** — the current-state snapshot: what runs, the
   latest toolchain/corelib bump, and what is open. **Start here for orientation.**
-- **[`results/SOFABGEN.md`](results/SOFABGEN.md)** — generated-code (codegen) defects, tracked
+- **[`results/FINDINGS.md`](results/FINDINGS.md)** — generated-code (codegen) defects, tracked
   separately from corelib bugs.
 
 Fixes live in the **owning repos** (generator / `corelib-<lang>`); Crucible is the
@@ -311,7 +311,7 @@ catalog and the acceptance test that verifies each fix when it lands.
 | [`docs/STATUS.md`](docs/STATUS.md) | current-state snapshot — start here for orientation |
 | [`docs/STATUS-LOG.md`](docs/STATUS-LOG.md) | the dated, session-by-session work journal (history behind STATUS.md) |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | living as-built architecture + deviations from PLAN |
-| [`results/SOFABGEN.md`](results/SOFABGEN.md) | generated-code weakness log (codegen defects → the generator) |
+| [`results/FINDINGS.md`](results/FINDINGS.md) | generated-code weakness log (codegen defects → the generator) |
 | `schema/` | the fuzzed message(s), single source of truth |
 | `drivers/<lang>/` | per-language replay driver + coverage front-end (13 drivers) |
 | `drivers/common/` | the driver contract |

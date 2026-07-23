@@ -2,7 +2,7 @@
 
 Open work **on Crucible itself**. Fixes for the corelib/generator bugs Crucible found are
 **not** here — they live in the owning repos (catalog: [`../results/FINDINGS.md`](../results/FINDINGS.md),
-codegen defects: [`SOFABGEN.md`](../results/SOFABGEN.md), spec clauses: adopted upstream in `documentation` (MESSAGE_SPEC/CORELIB_PLAN)).
+codegen defects: [`SOFABGEN.md`](../results/FINDINGS.md), spec clauses: adopted upstream in `documentation` (MESSAGE_SPEC/CORELIB_PLAN)).
 Crucible's job is to catalog, attribute, and **verify** them.
 
 **Blob-array integration 2026-07-21 (F-0013 blob-path follow-up):** a `blob_array` (id 201, the blob
@@ -200,7 +200,7 @@ plus the **structural sweep gate** (`scripts/sweep.sh`; **all six axes now block
       spot-verified in the bare workspace + hand-installed clang).
 - [ ] **OSS-Fuzz** onboarding for continuous fuzzing (eventual).
 
-## Done — key harness milestones (finding history is in `../results/FINDINGS.md` + `../results/SOFABGEN.md`)
+## Done — key harness milestones (finding history is in `../results/FINDINGS.md` + `../results/FINDINGS.md`)
 
 - [x] **Structure-aware mutator** (`engine/mutator/`) wired via `LLVMFuzzerCustomMutator` +
       `scripts/fuzz.sh`; 336k-mutation ASan soak clean. **Comparator crash- + hang-isolation**

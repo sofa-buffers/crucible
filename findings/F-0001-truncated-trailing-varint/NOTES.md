@@ -63,7 +63,7 @@ treat trailing bytes that cannot form a complete field as an invalid message.
 
 This is **not** a driver artifact (verified by hand against all twelve drivers;
 the Rust/C++ verdicts come from the corelib's real `feed` `Result`, not the
-infallible generated `decode` — see results/SOFABGEN.md G-0001/G-0005) and **not**
+infallible generated `decode` — see results/FINDINGS.md G-0001/G-0005) and **not**
 the empty-input precondition (handled separately; see ARCHITECTURE). It is a real
 leniency difference on truncated input. The 7-vs-5 **two-camp** split (rather than
 a lone outlier) is stronger evidence for resolving PLAN §8: four independent
