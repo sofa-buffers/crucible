@@ -893,6 +893,15 @@ over-maxlen AND truncated — the §5.2 over-length-vs-INCOMPLETE precedence cor
 testing) — so it is deferred to the malform×truncation axis (WP-09), not this clean-magnitude axis. No
 finding.
 
+**Thirty-fifth change 2026-07-23 — WP-08: §2/§3 canonicality conformance seeds (a)+(b); (c) blocked on WP-05.**
+(`docs/improvements.md` WP-08.) New `corpus/conformance/` gate (wired into `replay.yml`) pinning two §2/§3
+rules that were only incidentally covered: (a) §2:77-86 — an all-default nested struct is still framed as
+an empty sequence, never dropped; (b) §3:185-195 — a decoder accepts a non-canonical trailing-default
+array run and re-encodes it canonically (trailing run trimmed, the F-0010 rule). 3 seeds × 13 → green;
+(b) verified re-encodes to count 3 `[1,2,3]` = the canonical control. **(c)** (explicit `[]` overrides a
+non-empty field default, §2:112-121) is **blocked on WP-05** — no `probe` field has a non-zero `default:`
+yet; lands when `struct_array` folds in (corelib-c-cpp#109). No finding.
+
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued
   COMPLETE/INCOMPLETE/INVALID, returned identically by one-shot `decode` and every
