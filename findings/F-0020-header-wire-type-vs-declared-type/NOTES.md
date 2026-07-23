@@ -8,6 +8,16 @@ the final array-into-scalar corner **generator#183/#184 in 0.19.3** (split out a
 **Re-verified on 0.19.3:** the full 66-vector sweep (every field id × every wire type) → **0
 divergences** — axis-green, not just isolate-green. 3 representative reproducers + 2 controls
 promoted into the green `corpus/regression/` gate.
+
+**corelib-c-cpp fix recipe (historical — migrated from the retired `spec-proposals.md`; the fix actually
+landed via corelib-c-cpp#100 `fd5086a`):** `istream.c:493` presets `ctx->target_opt` to the *actual* wire
+type before the field callback and leaves `target_ptr` NULL; `sofab_object_field_cb` (`object.c:396-410`)
+matched on **id alone** and overwrote `target_opt` with the descriptor's *expected* type, so the
+post-callback comparison (`istream.c:307-321`) fired `SOFAB_RET_E_USAGE`. The skip path already existed —
+leaving `target_ptr` NULL skips the field — so the fix was for `object.c` to compare the descriptor type
+against `ctx->target_opt` *before* registering the target and, on mismatch, not register. No new state, no
+API change (`object.h:44` includes `istream.h`, whose `struct sofab_istream` at `istream.h:112` exposes
+`target_opt`).
 **Axis:** verdict (hard: accept vs reject) **+ accept_value** (silent mis-decode).
 **Found:** 2026-07-19, while checking whether repeated fields with differing types were
 covered by any existing test (they were not). The repetition framing turned out to be a red

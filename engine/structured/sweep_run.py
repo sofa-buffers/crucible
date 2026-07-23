@@ -42,8 +42,15 @@ AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserve
 # non-minimal-but-≤64-bit varint is accepted-and-normalized or rejected, so the runner
 # asserts only that all 13 agree (they do — accept + normalize to the one canonical form)
 # and does NOT assert accept-vs-reject conformance for those vectors, per ground rule 6,
-# until the upstream clause lands (docs/spec-proposals.md). The minimal-accept controls
+# until the upstream clause lands (documentation#24). The minimal-accept controls
 # and the >64-bit overflow-reject contrast ARE spec-defined (CORELIB_PLAN §4.1 / F-0016).
+
+# WP-01: the axes that carry a union pass (emit_union). The union feature lives in a
+# separate schema (schema/probe-union.sofab.yaml), so a union run needs drivers built
+# against it — scripts/sweep.sh rebuilds the roster before invoking `--union` and
+# rebuilds back to probe after (the SCHEMA-switch discipline, ground rule 3).
+UNION_AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound",
+              "sweep_reserved_subtype", "sweep_truncation"]
 
 # The 13-driver roster, mirroring scripts/run.sh. Built by ./scripts/run.sh already.
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -64,10 +71,10 @@ DRIVERS = [
 ]
 
 
-def run_axis(name):
+def run_axis(name, emitter="emit"):
     mod = importlib.import_module(name)
     with tempfile.TemporaryDirectory() as d:
-        vectors = mod.emit(d)                       # [(fname, bytes, expect)]
+        vectors = getattr(mod, emitter)(d)          # [(fname, bytes, expect)]
     corpus = [(fn, data) for fn, data, _ in vectors]
     expect = {fn: exp for fn, _, exp in vectors}
 
@@ -113,10 +120,18 @@ def run_axis(name):
 
 
 def main():
-    axes = sys.argv[1:] or AXES
+    args = sys.argv[1:]
+    union = "--union" in args
+    if union:
+        args.remove("--union")
+    emitter = "emit_union" if union else "emit"
+    axes = args or (UNION_AXES if union else AXES)
+    if union:
+        print("[sweep] union pass (schema/probe-union.sofab.yaml) — drivers must be "
+              "built against probe-union (scripts/sweep.sh does this)")
     total_div = total_conf = 0
     for name in axes:
-        n, div, conf, soft = run_axis(name)
+        n, div, conf, soft = run_axis(name, emitter)
         total_div += len(div); total_conf += len(conf)
         status = "OK" if not div and not conf else "FAIL"
         softnote = f", {len(soft)} soft (incomplete_value/reject_class)" if soft else ""

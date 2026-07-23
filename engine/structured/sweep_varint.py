@@ -20,7 +20,7 @@ form and re-encodes it canonically — which suggests non-minimal varints should
 accepted-and-normalized, but no clause says so. Per Crucible ground rule 6 this axis
 is therefore **agreement-only** (the vectors carry `expect="agree"`: the runner checks
 only that all 13 agree, not accept-vs-reject conformance) and the hole is filed
-upstream against `documentation` (`docs/spec-proposals.md`) — the F-0015 arc. If all 13
+upstream against `documentation` (documentation#24) — the F-0015 arc. If all 13
 accept, the round-trip oracle *also* pins the normalization: an accepted non-minimal
 input must re-encode to the single canonical form (§2:73-76) on all 13, so a driver
 that normalizes differently shows up as an accept-value payload split for free.

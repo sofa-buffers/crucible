@@ -17,7 +17,7 @@ only a second net.
 | [`oracle/canonical.md`](oracle/canonical.md) | the canonical comparison form every driver must emit (once written). |
 | [`oracle/policy.yaml`](oracle/policy.yaml) | which divergences are legal vs bugs; each entry cites `MESSAGE_SPEC.md`. |
 | [`drivers/common/`](drivers/common/) | the driver contract every `drivers/<lang>/` obeys. |
-| [`docs/SOFABGEN.md`](docs/SOFABGEN.md) | generated-code weakness log — codegen defects to fix in `sofabgen`, not work around silently. |
+| [`results/SOFABGEN.md`](results/SOFABGEN.md) | generated-code weakness log — codegen defects to fix in `sofabgen`, not work around silently. |
 | `drivers/<lang>/{meta,build.sh,driver.*}` | per-language ground truth for build flags, framework, generation. |
 
 Everything below is only what is **not** written in those files.
@@ -62,7 +62,7 @@ corelib-c-cpp#84, and the maintainer had to redirect it (crucible#16) — it was
 
 | the bug is about… | who can even know it | file against |
 |---|---|---|
-| `count`, `maxlen`, `N`, a field's declared type — **schema** facts | only **generated code** (the corelib is schema-agnostic *by design*) | `generator` (sofabgen); log it as `G-00NN` in [`docs/SOFABGEN.md`](docs/SOFABGEN.md) |
+| `count`, `maxlen`, `N`, a field's declared type — **schema** facts | only **generated code** (the corelib is schema-agnostic *by design*) | `generator` (sofabgen); log it as `G-00NN` in [`results/SOFABGEN.md`](results/SOFABGEN.md) |
 | varints, the `fixlen_word`, wire types, subtypes, sequence framing, INVALID-vs-INCOMPLETE precedence — **wire** mechanics | the **corelib** reader/writer | `corelib-<lang>` (one issue per affected impl) |
 
 MESSAGE_SPEC §7 states the same split from the other side: *"The corelib cannot know the
@@ -119,7 +119,7 @@ exists), then record the new driver's quirks in `ARCHITECTURE.md`.
   infallible (drops `feed`'s `Result`), so `drivers/rust/` reads the corelib's
   real accept/reject from a second `IStream::feed` pass. When adding a language,
   check whether its generated decode returns the error; if not, capture the
-  corelib's real result and log the codegen gap in `docs/SOFABGEN.md`.
+  corelib's real result and log the codegen gap in `results/SOFABGEN.md`.
 - **A driver builds against multiple corelibs via one source.** `drivers/rust/`
   has one `driver.rs` for both `corelib-rs` and `corelib-rs-no-std`, selected by
   `build.sh <variant>` and registered as two drivers in `run.sh`. Mirror this if

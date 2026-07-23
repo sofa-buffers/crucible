@@ -12,13 +12,13 @@ For each position it emits the repeated-id form and states the expected agreemen
 
   * scalar position         -> the scalar twice with two values; last wins (uniform).
   * struct sequence         -> reopened with a DIFFERENT child each time; the two
-                               children must MERGE (both present on all 12).
+                               children must MERGE (both present on all 13).
   * wrapper sequence        -> reopened with a different element each time; the
                                array is REPLACED (only the second element survives).
   * struct child within one opening -> a child id twice with two values; last wins.
 
 Every vector is a *valid* message (the repetition is the only irregularity, which
-§3 declares not-well-formed but §7.4 defines a decode for). All 12 must agree; a
+§3 declares not-well-formed but §7.4 defines a decode for). All 13 must agree; a
 divergence is a finding. Positions and wire primitives come from
 `sweep_positions.py` / `gen.py`.
 
@@ -94,6 +94,57 @@ def emit(out_dir):
     for _, _, exp in vectors:
         by[exp] = by.get(exp, 0) + 1
     print(f"{len(vectors)} vectors: " + ", ".join(f"{k}={v}" for k, v in sorted(by.items())))
+    return vectors
+
+
+# --- union pass (schema/probe-union.sofab.yaml) ------------------------------
+# WP-01: §7.4 over the union schema. A union is a sequence, so it MERGES on re-open
+# and its members follow per-id last-wins (§7.4, "covers structs and unions"). Four
+# families, all a *valid* decode (never INVALID), all-agree:
+#   * member repeated twice, two values  -> last wins;
+#   * two DIFFERENT members in one opening -> merge, re-encoded in id order (the
+#     behaviour corpus/union/10_two_members pins: id1 then id0 -> reordered to 0,1);
+#   * the union sequence re-opened with a different member each time -> continues the
+#     scope (merge);
+#   * §7.4's "a §7.3-skipped occurrence does not count" — a mistyped member and a
+#     correctly-typed same-id member: the valid one wins, in BOTH orders (:557-558).
+def emit_union(out_dir):
+    from sweep_positions import (  # noqa: E402
+        UNION_MEMBER_POSITIONS, UNION_SEQ_POSITION, valid_field, place,
+    )
+    from gen import scalar_u  # noqa: E402
+    vectors = []
+    uid = UNION_SEQ_POSITION.fid
+
+    # 1) each member repeated twice with two values -> last wins
+    for p in UNION_MEMBER_POSITIONS:
+        body = valid_field(p.cat, p.fid, 0) + valid_field(p.cat, p.fid, 1)
+        vectors.append((f"u_{p.tag()}_member_twice.bin", place(p.path, body), "lastwins"))
+
+    m0, m1 = UNION_MEMBER_POSITIONS[0], UNION_MEMBER_POSITIONS[1]  # as_u16(id0), as_i32(id1)
+
+    # 2) two different members in ONE opening (id1 first, out of order) -> merge
+    both = valid_field(m1.cat, m1.fid, 0) + valid_field(m0.cat, m0.fid, 0)
+    vectors.append(("u_two_members_merge.bin", place((uid,), both), "merge"))
+
+    # 3) the union sequence re-opened, a different member each time -> merge
+    occ0 = open_seq(uid, valid_field(m0.cat, m0.fid, 0))
+    occ1 = open_seq(uid, valid_field(m1.cat, m1.fid, 0))
+    vectors.append(("u_seq_reopen_merge.bin", occ0 + occ1, "merge"))
+
+    # 4) a §7.3-skipped occurrence does not count (both orders). Mistype as_text (id2,
+    #    fixlen) as an unsigned scalar at the same id: it is wire-type-mismatched ->
+    #    skipped, so the correctly-typed as_text occurrence is the only one that counts.
+    mt = next(p for p in UNION_MEMBER_POSITIONS if p.cat == "str")  # as_text
+    mistyped = scalar_u(mt.fid, 5)                 # wrong wire type at as_text's id
+    good = valid_field(mt.cat, mt.fid, 0)          # correctly-typed as_text
+    vectors.append(("u_skip_then_valid.bin", place((uid,), mistyped + good), "accept"))
+    vectors.append(("u_valid_then_skip.bin", place((uid,), good + mistyped), "accept"))
+
+    os.makedirs(out_dir, exist_ok=True)
+    for name, data, _ in vectors:
+        with open(os.path.join(out_dir, name), "wb") as fh:
+            fh.write(data)
     return vectors
 
 

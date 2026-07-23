@@ -6,7 +6,7 @@ fp32 / fp64 / string / blob; **0x4-0x7 are reserved**, and §4.6 is explicit: *"
 decoder MUST reject a fixlen field carrying a reserved subtype as malformed (the
 INVALID decode outcome, §5.2)"* — and §5.2 makes INVALID "malformed regardless of
 what follows", so it dominates. This sweep places a reserved-subtype fixlen at
-**every** field position and expects **all 12 to reject** (`R`).
+**every** field position and expects **all 13 to reject** (`R`).
 
 The interesting tension this axis probes: at a *non-fixlen* position (a scalar or an
 integer-array id) a fixlen header is a wire-type mismatch that §7.3 would **skip**,
@@ -18,7 +18,7 @@ exactly the kind of §4.6-vs-skip precedence the implementations may read differ
 which is why it is worth sweeping every position rather than asserting from the spec.
 
 Because the expectation is **reject**, the two-oracle runner is essential: a
-family-wide *accept/skip* (all 12 uniformly swallow the reserved subtype) is
+family-wide *accept/skip* (all 13 uniformly swallow the reserved subtype) is
 agreement-green but conformance-red — the exact gap a differential-only oracle
 misses.
 
@@ -69,6 +69,26 @@ def emit(out_dir):
     for _, _, e in vectors:
         by[e] = by.get(e, 0) + 1
     print(f"{len(vectors)} vectors: " + ", ".join(f"{k}={v}" for k, v in sorted(by.items())))
+    return vectors
+
+
+# --- union pass (schema/probe-union.sofab.yaml) ------------------------------
+# WP-01: §4.6 over the union schema. A reserved fixlen subtype at a union *member*
+# position is a structural malformation inside the union -> INVALID (§5.2 dominates).
+# At the union *sequence* position (a fixlen where a union/seq is declared) the same
+# §4.6-vs-§7.3-skip tension the probe pass probes recurs — a skip must not swallow the
+# reserved-subtype malformation. Every vector expects reject.
+def emit_union(out_dir):
+    from sweep_positions import UNION_POSITIONS, place  # noqa: E402
+    os.makedirs(out_dir, exist_ok=True)
+    vectors = []
+    for p in UNION_POSITIONS:
+        for st in RESERVED:
+            name = f"u_{p.tag()}_reserved_st{st}.bin"
+            data = place(p.path, fixlen_reserved(p.fid, st))
+            with open(os.path.join(out_dir, name), "wb") as fh:
+                fh.write(data)
+            vectors.append((name, data, "reject"))
     return vectors
 
 
