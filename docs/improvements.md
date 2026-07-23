@@ -408,7 +408,34 @@ code comments, not silent.
 
 ---
 
-## WP-10 — UTF-8: more positions, and the STRICT_UTF8=OFF configuration  *(P3, investigation-first)*
+## WP-10 — UTF-8: more positions, and the STRICT_UTF8=OFF configuration  *(P3, investigation-first)*  ◑ PART A LANDED 2026-07-23
+
+**Status (2026-07-23).** ◑ **Part A (positions) landed; Part B phase-1 audit done; phase-2 deferred.**
+- **Part A (DONE, green):** `utf8_seeds.py` now parameterizes each malformed-UTF-8 vector over **position**
+  — `nested.str` (id 2) **and** a `string_array` element (id 200, element 0) — via a shared `_probe(...)`
+  framer, so the strict-UTF-8 reject is proven at the wrapper element too. Also **fixed stale framing**
+  (the old framer predated `blob_array` id 201, so its `gen.encode` self-check would have failed). 28
+  F0004 seeds (14 × 2 positions), regression gate green (95×13, 0 divergences); malformed → all 13 `R` at
+  both positions, valid controls → all 13 `A`.
+- **Part B phase-1 audit (STRICT_UTF8=OFF reachability):**
+
+  | profile class | profiles | OFF reachable? | mechanism | §8 OFF behavior |
+  |---|---|---|---|---|
+  | byte-container | `c`, `cpp-c-cpp` | ✅ | drop `-DSOFAB_ENABLE_STRICT_UTF8` (build.sh) | **raw bytes** |
+  | byte-container | `cpp` (pure) | ✅ | define `SOFAB_STRICT_UTF8=0` (defaults 1) | **raw bytes** |
+  | byte-container | `zig` | ✅ | `build_options.strict_utf8 = false` (build.sh) | **raw bytes** |
+  | Unicode-string | `rust-std/nostd`, `java`, `cs`, `ts`, `dart`, `go`, `py` | ⚠️ unclear | check is corelib-internal / codegen (sofabgen 0.18.0 call sites; gen#85 config audit) — the native string type may **always** validate, so "OFF" may only mean *reject*, not *raw* | reject or raw, **never silent-lossy** |
+
+  So there are **≥4 comparable OFF-capable byte-container profiles** (c, cpp-c-cpp, cpp, zig) — phase 2 is
+  feasible for that class; the Unicode-string class needs a deeper per-backend codegen audit to know
+  whether OFF is even expressible.
+- **Part B phase-2 (opt-in strict-OFF suite): DEFERRED (reason recorded).** It requires an env-gated
+  build variant (like `SOFAB_MATERIALIZE`) recompiling the 4 byte-container drivers strict-OFF, plus a
+  Unicode-string codegen audit, plus `policy.yaml` per-profile-class allowances citing §8:601-614 — a
+  substantial suite for a **non-default** configuration. The value is bounded (OFF is opt-in and the ON
+  path is fully covered by Part A / F-0004), and it needs the gen#85 Unicode-string config audit first.
+  Scoped as a follow-up; any *silent-lossy* OFF outcome (mutation / U+FFFD) would be a finding regardless
+  of class.
 
 **Problem A (positions).** `utf8_seeds.py` embeds the malformed forms only at
 `nested.str` (id 2); a `string_array` element never carries malformed UTF-8. The
