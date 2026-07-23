@@ -854,6 +854,17 @@ format-wide ceilings ID_MAX / FIXLEN_MAX / ARRAY_MAX / MAX_DEPTH (§6.2, reachab
 - Both are **corelib** (wire/format checks, schema-independent), reproducers under `findings/F-0028-*`,
   `findings/F-0029-*`. Axis kept report-only; promote + gate on resolution (F-0025/F-0026 arc).
 
+**Thirty-second change 2026-07-23 — WP-02 Part A: union cross-encode (green); Part B (materialized) scoped.**
+(`docs/improvements.md` WP-02.) The union value space was never cross-encoded. `gen.py` gained
+`encode_union` + `union_vectors` (18 value-rich vectors: each member at boundary values, default_id, and
+tag+member+trailer combos) → `corpus/structured-union/` via `gen.py --union`; `scripts/cross-encode.sh`
+runs a second **union pass** (rebuild → probe-union → differential → restore probe). **18 × 13 → 0
+divergences** — the union value space round-trips identically. Blocking, gated by `replay.yml`. **Part B**
+(the materialized/element-access dimension for unions) is a scoped follow-up: the C anchor materializes a
+union out-of-the-box (target form `{opt_id:value}` for every member), but the other 12 walkers (6 runtime
++ 6 generated) don't yet handle the `union` descriptor node — a ~12-walker sub-project across 10 languages
++ a `materialize.py` union reference. No finding.
+
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued
   COMPLETE/INCOMPLETE/INVALID, returned identically by one-shot `decode` and every

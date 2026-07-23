@@ -386,6 +386,21 @@ has no `LimitExceeded`).
 
 ## Deviations from PLAN
 
+### 2026-07-23c — union value space cross-encoded (WP-02 Part A)
+- **PLAN says:** the cross-encode oracle (PLAN §6) runs valid, value-rich messages through the
+  round-trip + decode-agreement oracle; `schema/` is the single source of the fuzzed message.
+- **Change (docs/improvements.md WP-02 Part A):** `gen.py` gained `encode_union` + `union_vectors`
+  (18 value-rich union vectors — each member at boundary values, `default_id`, tag+member+trailer
+  combos) written to `corpus/structured-union/` via `gen.py --union`. `scripts/cross-encode.sh` runs a
+  second **union pass** over `schema/probe-union.sofab.yaml` (rebuild the roster → probe-union →
+  differential → restore probe binaries, the SCHEMA-switch discipline), gated by `replay.yml` (which runs
+  `cross-encode.sh`). **18 × 13 → 0 divergences** — the union value space round-trips identically; blocking.
+- **Part B deferred:** the union *materialized* (element-access) oracle is a scoped follow-up — the C anchor
+  materializes a union out-of-the-box (form `{opt_id:value}` for every member), but the 6 runtime walkers
+  (go/py×2/java/ts/cs) and 6 generated walkers (rust×2/cpp/cpp-c-cpp/zig/dart) plus `materialize.py` need
+  `union`-node support (a ~12-walker sub-project). `oracle/materialized.md` gets the union form then.
+
+
 ### 2026-07-23b — harness hygiene: one position model, schema-derived bounds (WP-11)
 - **PLAN says:** `schema/` is the single source of the fuzzed message; the sweep family
   enumerates a rule across every position of it.
