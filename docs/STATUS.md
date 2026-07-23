@@ -56,14 +56,17 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   blob-reopen carve-out dropped once F-0026 landed; the **non-minimal varint axis** (`sweep_varint`)
   added 2026-07-22 blocking-but-agreement-only — all 13 accept-and-normalize a non-minimal-but-≤64-bit
   varint identically, spec-silent so conformance is deferred to documentation#24). This is what found
-  F-0020–F-0025 — "isolate-green ≠ axis-green".
+  F-0020–F-0025 — "isolate-green ≠ axis-green". An **eighth axis (report-only)**
+  **`sweep_framing`** (WP-04, §5.2 stray-end + §6.2 ID_MAX/FIXLEN_MAX/ARRAY_MAX/MAX_DEPTH) is wired
+  **report-only** — its stray-end/FIXLEN_MAX/ARRAY_MAX vectors are green, but the ID_MAX and MAX_DEPTH
+  vectors surfaced F-0028/F-0029 (below), so the axis stays report-only until those resolve.
 - **Union under the structural sweeps** (WP-01, 2026-07-22): the five reject/skip axes (wiretype §7.3,
   repeated-id §7.4, over-bound §7.1, reserved-subtype §4.6, truncation §7) now also run over
   `schema/probe-union.sofab.yaml` — a schema-derived union position model (`sweep_positions.UNION_POSITIONS`,
   from `schema.py` which learned the `union` kind) driven by `sweep_run.py --union` and a **report-only**
   pass in `scripts/sweep.sh` (rebuilds the roster to probe-union, runs, rebuilds back to probe). 130 union
   vectors; 4 of 5 axes green across 13, the wiretype pass surfaced **F-0027** on its first run.
-- **27 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 1 open (F-0027).**
+- **29 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 3 open (F-0027, F-0028, F-0029).**
   **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
   generator#189), and **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
   G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21); **F-0025** (§7.3 fp scalar←array,
@@ -825,6 +828,31 @@ one; F-0016 covered only the **>64-bit overflow**. Whether the 13 decoders agree
   proposing the observed consensus as the rule; on adoption the
   vectors tighten to `expect="accept"`. **No finding** (green). Promoted to blocking + wired into
   `replay.yml` (via `sweep.sh`); the sweep gate is now **seven axes**.
+
+**Thirty-first change 2026-07-23 — WP-04: framing & format-ceiling axis added (report-only); F-0028 + F-0029 opened.**
+(`docs/improvements.md` WP-04. Ordinal parallel to the WP-01/WP-03 branches — reconcile at merge; finding
+numbers skip F-0027, reserved by the WP-01 PR.) Two malformation classes had **no dedicated coverage**:
+stray/unbalanced `sequence-end` (§5.2 — `sweep_truncation` only ever produces *open* sequences) and the
+format-wide ceilings ID_MAX / FIXLEN_MAX / ARRAY_MAX / MAX_DEPTH (§6.2, reachable only by fuzzer luck).
+- **New axis `engine/structured/sweep_framing.py`** (14 vectors): stray end at top level / after a scalar /
+  as a surplus close / inside a wrapper; field id at ID_MAX (accept control) and over (reject); fixlen
+  length over FIXLEN_MAX and array count over ARRAY_MAX at **unknown ids** (so the *format* ceiling is
+  tested, not the schema `count`/`maxlen` nor the open documentation#15 over-schema-count corner), with
+  **huge declared size but no payload** (a conformant decoder rejects at the word and never allocates —
+  the F-0013 amplification guard); nesting past MAX_DEPTH. Report-only in `scripts/sweep.sh`.
+- **Green:** stray-end (all forms), FIXLEN_MAX, ARRAY_MAX → all 13 reject; controls accept. **Two
+  divergences → findings:**
+  - **F-0028** — `cpp` + `dart` **accept** a field id > ID_MAX (skip it as unknown) where 11 reject.
+    Both check ID_MAX only on **encode** (`corelib-cpp sofab.hpp:475`; `corelib-dart encoder.dart:140`);
+    their **decoders** (`sofab.hpp:1410`; `decoder.dart:221`) omit it. corelib-c-cpp checks it in the
+    decoder (`istream.c:485`), so `cpp-c-cpp` rejects — pinning it to the two pure decoders. Corelib, not
+    codegen (ID_MAX is a format constant). → [corelib-cpp#47](https://github.com/sofa-buffers/corelib-cpp/issues/47)
+    + [corelib-dart#14](https://github.com/sofa-buffers/corelib-dart/issues/14).
+  - **F-0029** — `typescript` reports `I` for nesting past MAX_DEPTH where 12 reject. The `cursor` decode
+    path tracks `depth` only for balancing; `fast.ts`/`state.ts` enforce MAX_DEPTH but `cursor.ts` does
+    not — an internal inconsistency. → [corelib-ts#65](https://github.com/sofa-buffers/corelib-ts/issues/65).
+- Both are **corelib** (wire/format checks, schema-independent), reproducers under `findings/F-0028-*`,
+  `findings/F-0029-*`. Axis kept report-only; promote + gate on resolution (F-0025/F-0026 arc).
 
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued
