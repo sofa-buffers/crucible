@@ -386,6 +386,35 @@ has no `LimitExceeded`).
 
 ## Deviations from PLAN
 
+### 2026-07-23b — harness hygiene: one position model, schema-derived bounds (WP-11)
+- **PLAN says:** `schema/` is the single source of the fuzzed message; the sweep family
+  enumerates a rule across every position of it.
+- **Change (docs/improvements.md WP-11):** removes three silent-desync risks in the
+  sweep harness — no coverage change beyond one gap closed:
+  - **One position model.** `wiretype_sweep.py` carried its own parallel position list
+    (29 entries, including the wrapper-**element** positions the shared
+    `sweep_positions.POSITIONS` lacked — so wrapper elements were swept for §7.3 but not
+    §4.6). The wrapper-element positions (`welem_str`/`welem_blob`) now live in
+    `sweep_positions.POSITIONS` (27→29), and `wiretype_sweep` consumes it via a new
+    `CAT_TO_CONSTRUCT` map. A schema change is mirrored **once**. Consequence:
+    reserved-subtype (§4.6) now also sweeps the wrapper elements — its vector count rose
+    110→**118** (+2 positions × 4 reserved subtypes), a **gap closed**; wiretype stays 319,
+    every other axis unchanged (no count dropped — the WP-11 hard-fail guard).
+  - **Schema-derived bounds.** `sweep_positions` read `count`/`maxlen` from bare literals
+    (`5`/`64`/`32`/`4`); they now come from `_BOUNDS`, read from `schema/probe.sofab.yaml`
+    (the single source). `materialize.py`'s `ARR_COUNT = 5` is now derived from the schema
+    descriptor with a uniform-count assertion (fails loudly on a non-uniform schema
+    instead of silently mis-padding). Committed `oracle/materialized-schema.json` unchanged.
+  - **`STRUCT_CHILDREN`** for the `arrays` (id 100) scope now lists all eight numeric
+    arrays (was two); the §7.4 merge-vs-replace test still samples the first two (two
+    distinct child ids suffice to distinguish merge from replace — documented, not left
+    ambiguous), the rest available for wider reopen tests.
+  - **Doc drift:** the "all 12"/"12 drivers" mentions across `engine/structured/*.py`
+    (13 since Dart) are swept.
+- **Verified:** all six blocking sweep axes green post-refactor (reserved-subtype's +8
+  wrapper-element vectors reject uniformly); emit counts identical or higher than before;
+  derived bounds byte-match the old literals. Lands **before** WP-05's schema growth so
+  the new composite-array field enters one position model, not two.
 ### 2026-07-22c — union pulled under the structural sweeps (WP-01)
 - **PLAN says:** the sweep family (PLAN §6) enumerates each normative rule across every
   position of the fuzzed message; `schema/` is the single source of the fuzzed message.

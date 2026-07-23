@@ -12,13 +12,13 @@ For each position it emits the repeated-id form and states the expected agreemen
 
   * scalar position         -> the scalar twice with two values; last wins (uniform).
   * struct sequence         -> reopened with a DIFFERENT child each time; the two
-                               children must MERGE (both present on all 12).
+                               children must MERGE (both present on all 13).
   * wrapper sequence        -> reopened with a different element each time; the
                                array is REPLACED (only the second element survives).
   * struct child within one opening -> a child id twice with two values; last wins.
 
 Every vector is a *valid* message (the repetition is the only irregularity, which
-§3 declares not-well-formed but §7.4 defines a decode for). All 12 must agree; a
+§3 declares not-well-formed but §7.4 defines a decode for). All 13 must agree; a
 divergence is a finding. Positions and wire primitives come from
 `sweep_positions.py` / `gen.py`.
 

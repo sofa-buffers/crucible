@@ -6,7 +6,7 @@ fp32 / fp64 / string / blob; **0x4-0x7 are reserved**, and §4.6 is explicit: *"
 decoder MUST reject a fixlen field carrying a reserved subtype as malformed (the
 INVALID decode outcome, §5.2)"* — and §5.2 makes INVALID "malformed regardless of
 what follows", so it dominates. This sweep places a reserved-subtype fixlen at
-**every** field position and expects **all 12 to reject** (`R`).
+**every** field position and expects **all 13 to reject** (`R`).
 
 The interesting tension this axis probes: at a *non-fixlen* position (a scalar or an
 integer-array id) a fixlen header is a wire-type mismatch that §7.3 would **skip**,
@@ -18,7 +18,7 @@ exactly the kind of §4.6-vs-skip precedence the implementations may read differ
 which is why it is worth sweeping every position rather than asserting from the spec.
 
 Because the expectation is **reject**, the two-oracle runner is essential: a
-family-wide *accept/skip* (all 12 uniformly swallow the reserved subtype) is
+family-wide *accept/skip* (all 13 uniformly swallow the reserved subtype) is
 agreement-green but conformance-red — the exact gap a differential-only oracle
 misses.
 
