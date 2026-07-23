@@ -66,6 +66,36 @@ def emit(out_dir):
     return vectors
 
 
+# --- union pass (schema/probe-union.sofab.yaml) ------------------------------
+# WP-01: §7 over the union schema. A rich, valid union message (tag + an active member
+# + trailer) truncated at every byte offset passes the cut through the union open, the
+# member header, the member's fixlen word and payload, the union close, and the
+# trailer. A prefix of a valid message is `A` or `I`, never `R` (expect not_reject).
+def _union_rich_message():
+    from gen import (  # noqa: E402
+        scalar_u, fixlen, FL_STRING, hdr, WT_SEQ_BEG, WT_SEQ_END,
+    )
+    out = bytearray()
+    out += scalar_u(0, 5)                                          # tag = 5
+    out += hdr(1, WT_SEQ_BEG)                                      # union `choice` open
+    out += fixlen(2, FL_STRING, b"hello")                         #   as_text = "hello"
+    out += bytes([WT_SEQ_END])                                     # union close
+    out += scalar_u(2, 12)                                        # trailer = 12
+    return bytes(out)
+
+
+def emit_union(out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+    full = _union_rich_message()
+    vectors = [("u_full_valid.bin", full, "accept")]
+    for L in range(1, len(full)):
+        vectors.append((f"u_trunc_{L:04d}.bin", full[:L], "not_reject"))
+    for name, data, _ in vectors:
+        with open(os.path.join(out_dir, name), "wb") as fh:
+            fh.write(data)
+    return vectors
+
+
 if __name__ == "__main__":
     out = sys.argv[1] if len(sys.argv) > 1 else "corpus/truncation-sweep"
     emit(out)

@@ -51,10 +51,16 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   one normative rule across **every** schema position and checks two oracles (agreement +
   conformance). **Six axes** wired via `sweep_run.py` / `scripts/sweep.sh` — repeated-id (§7.4),
   over-bound (§7.1), reserved-subtype (§4.6), truncation (§7), malform×truncation (§5.2),
-  wiretype (§7.3) — **all six blocking + green, no carve-out** (wiretype promoted from report-only
-  2026-07-22 once F-0025 landed; the `sweep_repeated_id` blob-reopen carve-out dropped once F-0026
-  landed). This is what found F-0020–F-0025 — "isolate-green ≠ axis-green".
-- **26 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 0 open.**
+  wiretype (§7.3) — **all six blocking + green over `probe`, no carve-out** (wiretype promoted from
+  report-only 2026-07-22 once F-0025 landed; the `sweep_repeated_id` blob-reopen carve-out dropped once
+  F-0026 landed). This is what found F-0020–F-0025 — "isolate-green ≠ axis-green".
+- **Union under the structural sweeps** (WP-01, 2026-07-22): the five reject/skip axes (wiretype §7.3,
+  repeated-id §7.4, over-bound §7.1, reserved-subtype §4.6, truncation §7) now also run over
+  `schema/probe-union.sofab.yaml` — a schema-derived union position model (`sweep_positions.UNION_POSITIONS`,
+  from `schema.py` which learned the `union` kind) driven by `sweep_run.py --union` and a **report-only**
+  pass in `scripts/sweep.sh` (rebuilds the roster to probe-union, runs, rebuilds back to probe). 130 union
+  vectors; 4 of 5 axes green across 13, the wiretype pass surfaced **F-0027** on its first run.
+- **27 findings catalogued** (`results/FINDINGS.md`); **25 resolved, 1 by-design, 1 open (F-0027).**
   **F-0022** (§7.3 array-field←scalar, generator#188), **F-0023** (§7.3 wrapper-element,
   generator#189), and **F-0024** (§5.2 Rust `try_decode` INCOMPLETE-over-INVALID, generator#190 /
   G-0016) were all **resolved in sofabgen 0.19.4** (2026-07-21); **F-0025** (§7.3 fp scalar←array,
@@ -63,7 +69,11 @@ contract, one schema, one runner) but builds the corelibs **instrumented**
   axis report-only → blocking and its isolates into the regression gate (73 → 77); **F-0026**
   (corelib-c-cpp#106 — the §7.4 `blob_array` wrapper re-open keeping a stale zeroed element on the C
   object API) was **resolved 2026-07-22** (corelib-c-cpp `2416a2b`), dropping the last sweep carve-out
-  and taking the gate 77 → 81. **No open finding remains.** **F-0018** (embedded U+0000
+  and taking the gate 77 → 81. **F-0027** (§7.3, 2026-07-22) is the one **open** finding — surfaced by
+  the new WP-01 union pass: `rust-nostd` rejects a §7.3-skippable array/fp64 field that `probe-union`
+  never declares, because sofabgen provisions the no-std corelib's cargo features (`array`/`fp64`) from
+  the wire types the *schema* uses, and skip-ability is schema-independent. Generator-primary (G-0017),
+  corelib-rs-no-std implicated. **F-0018** (embedded U+0000
   in a `string`) is classified **by-design** — a
   NUL-terminated C-string profile projects `A\0B` → `A` on re-encode; valid on the wire,
   preserved by the other 10 profiles, sanctioned as an allowed divergence in
@@ -740,6 +750,40 @@ Net open: **none.** Plus **F-0018** (by-design). **All 25 catalogued findings ar
 - **corelib-ts** accepted a top-level stray sequence-end (`0x07`) as `A`, and also accepted a truncated *known* nested sequence as `A` (COMPLETE) — the pull/Cursor decoder tracked no depth. **Fixed** (corelib-ts#42, in PR #41): a `depth` counter → stray end at root = `R` (INVALID), unclosed sequence at EOF = `I` (INCOMPLETE), matching the fast path.
 
 Both verified: full differential over the two reproducers + the F-0001 seeds across all 12 drivers = **0 divergences**.
+
+**Twenty-eighth change 2026-07-22 — WP-01: union under the structural sweeps; F-0027 opened; catalog 26 → 27, open 0 → 1.**
+`docs/improvements.md` WP-01 (the biggest untested-feature gap): the `union` wire feature lived entirely
+outside the generated sweep pipeline (`engine/structured/schema.py` raised `ValueError` on `union`), so
+none of the six axes, cross-encode, or the materialized oracle ever saw it — union coverage was 11 static
+seeds run as a plain differential with zero conformance assertions.
+- **Schema pipeline learned `union`:** `schema.py` now emits a `union` descriptor node (`default_id` +
+  typed `options`, string/blob options carrying `maxlen`); `descriptor('probe-union')` succeeds. The
+  `probe` descriptor and committed `oracle/materialized-schema.json` are **byte-identical** (union branch
+  only fires on a union field).
+- **Schema-derived union position model:** `sweep_positions.UNION_POSITIONS` is *derived from the
+  descriptor* (not a hand-maintained parallel literal — the drift `sweep_positions` exists to prevent):
+  7 positions (tag, the `choice` union sequence, its 4 members, trailer). A union is a sequence carrying
+  at most one child (§4.2); members are ordinary positions inside the union scope, `seq_union` marks the
+  sequence itself.
+- **Five axes gained a union pass** (`emit_union`): wiretype §7.3, repeated-id §7.4 (last-wins, merge,
+  seq re-open, and the §7.4 "a §7.3-skipped occurrence doesn't count" cross vector), over-bound §7.1
+  (as_text maxlen16 / as_blob maxlen8), reserved-subtype §4.6, truncation §7. Driven by
+  `sweep_run.py --union`; **130 vectors**.
+- **Report-only in `scripts/sweep.sh`** (ground rule 4 — a new axis is report-only until green or every
+  divergence is catalogued): a labeled pass rebuilds the 13 drivers to `probe-union`, runs the union axes
+  (non-blocking `|| echo`), then **rebuilds back to `probe`** so binaries are never left mixed
+  (ground rule 3).
+- **Result:** repeated-id, over-bound, reserved-subtype, truncation → **green across all 13**. The
+  **wiretype** union pass surfaced **F-0027** (35 vectors): `rust-nostd` rejects a §7.3-skippable array
+  or fp64 field that `probe-union` never declares. Root cause established (not inferred): sofabgen emits
+  the no-std corelib's cargo features from the schema's *used* wire types (`["fixlen","sequence"]` vs
+  `probe`'s `["array","fixlen","fp64","sequence","value64"]`), and corelib-rs-no-std gates wire-type
+  *parsing/skip* — not just field storage — behind those features. Minimal isolate `0300` (2 B). The
+  probe wiretype axis stays green (319×13), and `rust-std` (same generated code) agrees with the family —
+  the two-way sibling split pinning it to the feature config, i.e. codegen. **Generator-primary → G-0017**,
+  corelib-rs-no-std implicated (F-0010 "occasionally both"). Filed `results/FINDINGS.md` F-0027 +
+  `results/SOFABGEN.md` G-0017 with reproducers under `findings/F-0027-*`.
+- **Not yet promoted / not in the gate** until the fix lands — per the F-0025/F-0026 arc.
 
 ## Spec decisions (documentation repo, MESSAGE_SPEC.md)
 - **§7** (finish-less, documentation PR #12) — decode is three-valued
