@@ -1,12 +1,31 @@
 # F-0032 — a schema-bound INVALID that is also truncated is reported INCOMPLETE (§5.2 precedence), varying by bound & backend
 
-**Status:** 🔴 **OPEN** — [generator#216](https://github.com/sofa-buffers/generator/issues/216) (the F-0024 §5.2-ordering class, still open for
-schema-bound checks across most backends). Found 2026-07-23 by the **WP-09 broadened malform×truncation**
-axis (`engine/structured/sweep_malform_truncate.py`).
+**Status:** 🟢 **RESOLVED** (2026-07-24) — all 13 drivers now `R` on every (bound, backend) truncation.
+Found 2026-07-23 by the **WP-09 broadened malform×truncation** axis
+(`engine/structured/sweep_malform_truncate.py`); the F-0024 §5.2-ordering class ([generator#216](https://github.com/sofa-buffers/generator/issues/216)).
 
-**Axis:** malform×truncation (§5.2), verdict split. **Corelib-agnostic / codegen** — maxlen/count/id are
-schema facts, so the bound check *and its ordering* are generated code (CLAUDE.md triage; F-0024 was this
-exact bug in the Rust backend).
+## Resolution — the codegen splits fixed upstream; the cpp residual was in THIS driver
+
+The go/ts/dart/zig/rust splits were genuine **codegen** and closed in the generator (generator#222/#223/#224,
+header-hook ordering) — verified `R` on those backends. The last-standing **cpp** residual was **not** codegen:
+the generated `message::Probe::try_decode` is correct — it installs the §5.2 measure-phase `sofab::schema`
+(`setSchema`) that rejects an over-count / over-maxlen / over-index field at its **deciding word**, so all
+three reproducers decode to `R` through it. **This Crucible cpp driver bypassed it**: it built a bare
+`sofab::IStreamObject` and called `feed()` directly, never installing the schema, so the pure-cpp measure walk
+hit EOF first → `I`. `cpp-c-cpp` was `R` because the fixed-capacity wrapper is statically bound-checked and
+needs no measure schema — exactly why the split was cpp-only.
+
+**Fix:** route `decode_and_report` through the generated `try_decode`. Verified: the four F-0032 vectors → `R`
+(all 13 agree, 0 divergences); seeds green; limit mode green. **Caveat — the limit-mode guard:** in limit mode
+the schema is the *unbounded* probe-dyn — no §5.2 bounds to measure — and the generated `try_decode`
+additionally wires `Limits{SOFAB_MAX_DYN_BUFFERED_FIELD}`, a byte-size reassembly cap sofabgen derives from the
+element caps ([generator#228](https://github.com/sofa-buffers/generator/issues/228)), which would spuriously
+`LimitExceed` a valid at-cap array. So the driver uses a bare `feed` under `CRUCIBLE_LIMIT_MODE` (element caps
+still enforced by the generated `deserialize`); `try_decode` runs in normal mode where F-0032 lives.
+
+**Axis:** malform×truncation (§5.2), verdict split. **Codegen for go/ts/dart/zig/rust** (maxlen/count/id are
+schema facts, so the bound check *and its ordering* are generated code; F-0024 was this exact bug in the Rust
+backend); **the cpp residual was the Crucible driver** bypassing the generated `try_decode`.
 
 ## The rule and the split
 

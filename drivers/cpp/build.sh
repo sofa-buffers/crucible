@@ -63,6 +63,12 @@ python3 "$HERE/materialize_gen.py" "$GEN/materialize_gen.inc" "$SCHEMA" >&2
 SAN=""
 [ "${SANITIZE:-1}" = "1" ] && SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
 
+# Limit mode (LIMITS set) runs against the *unbounded* probe-dyn schema, which has no
+# §5.2 schema bounds — so the driver decodes with a bare feed there, not the generated
+# try_decode (see driver.cpp). Signal it to the driver.
+LIMMODE=""
+[ -n "${LIMITS:-}" ] && LIMMODE="-DCRUCIBLE_LIMIT_MODE"
+
 # c-cpp compiles the C corelib sources (C99) with the same sanitizers, then links.
 COBJS=""
 if [ -n "$CSRC" ]; then
@@ -77,6 +83,6 @@ fi
 
 echo "==> [cpp:$VARIANT] compiling driver ($CXX${SAN:+, sanitized})" >&2
 # shellcheck disable=SC2086
-"$CXX" -std=c++20 -O1 -Wall $SAN $HASLIM $STRICT -I"$GEN" $INC "$HERE/driver.cpp" $COBJS -o "$OUT/driver" >&2
+"$CXX" -std=c++20 -O1 -Wall $SAN $HASLIM $LIMMODE $STRICT -I"$GEN" $INC "$HERE/driver.cpp" $COBJS -o "$OUT/driver" >&2
 
 echo "$OUT/driver"

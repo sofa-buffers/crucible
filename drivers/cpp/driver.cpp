@@ -6,8 +6,17 @@
 // probe.hpp and the sofab:: API (IStreamObject, Result, Error) are identical
 // across both, so this one source builds against either.
 //
-// Single pass: unlike the Rust generated decode, C++ IStreamObject::feed RETURNS
-// the Result, so we read the value (*in) and the verdict (r) from one feed.
+// Single pass, through the GENERATED decode entry. Normal mode goes via
+// message::Probe::try_decode, which — unlike a bare IStreamObject::feed — installs the
+// §5.2 measure-phase schema (setSchema) that rejects an over-count / over-maxlen /
+// over-index field at its deciding word, so a field that is BOTH over-bound and
+// truncated is INVALID, not INCOMPLETE (F-0032). Both return the Result (verdict) and
+// fill the value in one call. Limit mode (CRUCIBLE_LIMIT_MODE, the unbounded probe-dyn
+// schema) has no §5.2 schema bounds, so it uses a bare feed there: the generated
+// try_decode additionally wires Limits{SOFAB_MAX_DYN_BUFFERED_FIELD}, a *byte*-size
+// reassembly cap sofabgen derives from the element caps (too small — an 8-element array
+// is ~10 B), which would spuriously LimitExceed a valid at-cap array. The receiver-side
+// element/length caps are enforced by the generated deserialize either way.
 //
 // Emits the canonical form (oracle/canonical.md) over the replay protocol
 // (drivers/common/CONTRACT.md).
@@ -49,8 +58,17 @@ static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *o
     // driver / docs/ARCHITECTURE.md), so skip feed for len==0 as the C driver does.
     if (len > 0)
     {
+#ifdef CRUCIBLE_LIMIT_MODE
+        // Unbounded probe-dyn schema: no §5.2 bounds to measure, and try_decode's
+        // byte-size buffered cap would spuriously reject a valid at-cap array. Bare
+        // feed; the generated deserialize still enforces the element/length caps.
         sofab::IStreamObject<message::Probe> in;
         auto r = in.feed(data, len);
+#else
+        // Route through the GENERATED try_decode: installs the §5.2 measure schema
+        // (F-0032), fills `m` on ok, returns the same Result as feed.
+        auto r = message::Probe::try_decode(data, len, m);
+#endif
         if (r.incomplete())
         {
             // INCOMPLETE (MESSAGE_SPEC §7): bytes end mid-message — the third
@@ -75,7 +93,11 @@ static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *o
             std::fprintf(out, "R %s\n", reject_class(r.code()));
             return;
         }
+#ifdef CRUCIBLE_LIMIT_MODE
         m = *in;
+#else
+        // try_decode already wrote the decoded value into `m` on ok().
+#endif
     }
 
     // Accept. In materialize mode (oracle/materialized.md) dump the decoded value
