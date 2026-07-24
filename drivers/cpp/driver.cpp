@@ -6,8 +6,9 @@
 // probe.hpp and the sofab:: API (IStreamObject, Result, Error) are identical
 // across both, so this one source builds against either.
 //
-// Single pass: unlike the Rust generated decode, C++ IStreamObject::feed RETURNS
-// the Result, so we read the value (*in) and the verdict (r) from one feed.
+// Single pass: the generated Probe::try_decode fills the value and RETURNS the
+// Result (verdict) in one call — and, on the pure-corelib-cpp measure-then-deliver
+// decoder, installs the §5.2 measure-phase schema (generator#216) a bare feed omits.
 //
 // Emits the canonical form (oracle/canonical.md) over the replay protocol
 // (drivers/common/CONTRACT.md).
@@ -49,8 +50,15 @@ static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *o
     // driver / docs/ARCHITECTURE.md), so skip feed for len==0 as the C driver does.
     if (len > 0)
     {
-        sofab::IStreamObject<message::Probe> in;
-        auto r = in.feed(data, len);
+        // Go through the GENERATED try_decode, not a bare IStreamObject::feed: on
+        // the pure-corelib-cpp measure-then-deliver decoder it installs the
+        // measure-phase schema (setSchema, generator#216) that rejects an over-count
+        // / over-maxlen / over-index field at its deciding word, so a field that is
+        // BOTH over-bound and truncated is INVALID (§5.2), not INCOMPLETE. A bare
+        // feed never installs that schema, so it reported INCOMPLETE (F-0032). It
+        // fills `m` on ok and returns the same Result as feed; on c-cpp it is a
+        // straight feed (the fixed-capacity wrapper needs no measure schema).
+        auto r = message::Probe::try_decode(data, len, m);
         if (r.incomplete())
         {
             // INCOMPLETE (MESSAGE_SPEC §7): bytes end mid-message — the third
@@ -75,7 +83,7 @@ static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *o
             std::fprintf(out, "R %s\n", reject_class(r.code()));
             return;
         }
-        m = *in;
+        // try_decode already wrote the decoded value into `m` on ok().
     }
 
     // Accept. In materialize mode (oracle/materialized.md) dump the decoded value

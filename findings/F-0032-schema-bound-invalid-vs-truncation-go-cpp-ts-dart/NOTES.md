@@ -1,8 +1,23 @@
 # F-0032 — a schema-bound INVALID that is also truncated is reported INCOMPLETE (§5.2 precedence), varying by bound & backend
 
-**Status:** 🔴 **OPEN** — [generator#216](https://github.com/sofa-buffers/generator/issues/216) (the F-0024 §5.2-ordering class, still open for
-schema-bound checks across most backends). Found 2026-07-23 by the **WP-09 broadened malform×truncation**
-axis (`engine/structured/sweep_malform_truncate.py`).
+**Status:** 🟢 **RESOLVED** (2026-07-24) — all 13 drivers now `R` on every (bound, backend) truncation.
+Found 2026-07-23 by the **WP-09 broadened malform×truncation** axis
+(`engine/structured/sweep_malform_truncate.py`); [generator#216](https://github.com/sofa-buffers/generator/issues/216)
+(the F-0024 §5.2-ordering class).
+
+## Resolution — the cpp residual was in THIS driver, not generator codegen
+
+The go/ts/dart/zig/rust splits closed in the generator (generator#222/#224, header-hook ordering).
+The last-standing **cpp** residual was **not** the generated decode's check ordering (this NOTES' original
+attribution): the generator side (generator#223 + corelib-cpp#50) is correct — `Probe::try_decode` installs
+the measure-phase `sofab::schema` via `setSchema`, which rejects an over-count/over-maxlen/over-index field
+at its deciding word, so all three reproducers decode to `R` through that entry. **This C++ driver bypassed
+it**: it built a bare `sofab::IStreamObject` and called `feed()` directly, never installing the schema, so
+the pure-corelib-cpp measure-then-deliver walk reported `I` (INCOMPLETE). `cpp-c-cpp` was `R` because the
+fixed-capacity wrapper is statically bound-checked and needs no measure schema — which is exactly why the
+split was cpp-only. Fix: route `decode_and_report` through the generated `message::Probe::try_decode`
+(installs the schema on pure-cpp, a plain feed on c-cpp). Verified: the four F-0032 vectors → `R`; an
+in-bound truncation stays `I`; a complete over-count stays `R`; valid messages accept and re-encode.
 
 **Axis:** malform×truncation (§5.2), verdict split. **Corelib-agnostic / codegen** — maxlen/count/id are
 schema facts, so the bound check *and its ordering* are generated code (CLAUDE.md triage; F-0024 was this
@@ -59,5 +74,6 @@ CORPUS=findings/F-0032-schema-bound-invalid-vs-truncation-go-cpp-ts-dart ./scrip
 The broadened `sweep_malform_truncate` axis keeps the **structural** malformations' into-payload
 truncations blocking (green) and the `_complete` + mid-varint-`_trunc_tail` of every malformation blocking
 (all `R`); the **schema-bound** malformations' into-payload truncations are carved OUT (the `STRUCTURAL`
-set in the axis) as F-0032 reproducers until the generator fix lands. When it does: drop the carve-out,
-regenerate, verify every (bound, backend) truncation → `R`.
+set in the axis) as F-0032 reproducers until the fix landed (generator#222/#223/#224 for the codegen
+splits; this driver's `try_decode` switch for the cpp residual). Promotion: drop the carve-out,
+regenerate, verify every (bound, backend) truncation → `R` across all 13 drivers.
