@@ -841,6 +841,60 @@ wire carries the integer regardless"; §7 "value-range outside the wire clause";
 over-width). Spec hole → [documentation#26](https://github.com/sofa-buffers/documentation/issues/26). The
 hand-built value corpus never emits an over-width scalar — only fuzzing reached it.
 
+**Thirty-ninth change 2026-07-23 — toolchain + corelib bump re-verified; F-0034 opened (dart fixlen `maxlen`
+guard ignores subtype, codegen).** Re-bootstrapped: sofabgen → CI build `0.0.0-20260723154129-241dc8f44efb`;
+6 corelibs advanced to `origin/main` (c-cpp `aaba509`, cpp `3cee07f`, dart `f9e64ec`, go `05fe6c2`, py
+`a20a96a`, ts `92a6e21`), 5 unchanged. Full re-run: **seeds green** (0 div), **regression green** (95, 0 div,
+4 known `incomplete_value` soft), all blocking sweep axes green **except one new wiretype (§7.3) divergence**.
+**F-0034 / G-0019** — the corelib-dart bump (`f9e64ec`, "INVALID dominates INCOMPLETE via header callbacks")
+added `onFixlenHeader(id, subtype, length)`; the generated dart `ProbeNested.onFixlenHeader` enforces the
+blob field's `maxlen 4` against an fp64 mismatch's 8-byte payload **without gating on subtype**, so it
+rejects a §7.3-skippable field (12 skip → `A`, dart → `R`). **Attribution: codegen** (subtype/maxlen are
+schema facts; corelib faithfully reports the header and is not implicated). Filed
+[generator#224](https://github.com/sofa-buffers/generator/issues/224). **Decision:** carved the one divergent
+cell (`10_id3_FIX_fp64`) out of the blocking wiretype axis via `KNOWN_OPEN` in `wiretype_sweep.py` (the
+F-0032 `STRUCTURAL` carve-out precedent) — axis green-except-known (318 vectors) until fixed; isolate +
+control kept **out** of the green `corpus/regression/` gate while open. (The `interesting` fuzz corpus, 439,
+shows its usual raw divergences — exploration fodder, not a gate; unchanged.)
+
+**F-0034 RESOLVED 2026-07-24** — [generator#224](https://github.com/sofa-buffers/generator/issues/224) fixed
+overnight (sofabgen CI build `ff2a55e5`, commit "fix(dart,go): gate the maxlen header guard on subtype").
+Re-verified against the new build: the isolate → all 13 skip → `A` (dart was the lone `R`). The `KNOWN_OPEN`
+carve-out was **dropped** from `wiretype_sweep.py` (the cell is green again), and the isolate + control
+**promoted** into the `corpus/regression/` gate (`F0034_*`). The same build closed **F-0032/go** (the
+`(dart,go)` commit); the F-0032/cpp residual was separately fixed in the Crucible driver (PR #107).
+
+**Fortieth change 2026-07-25 — bootstrap + full test: five more findings resolved, family converging.**
+Re-bootstrapped: corelib-cpp `3cee07f → 80ec210` ("gate the measure-phase maxlen check on the declared fixlen
+subtype", = generator#229), corelib-ts `92a6e21 → a6f31d6` ("preserve fp32 sNaN on the cursor pull path",
+adds `Cursor.readFp32Raw`), sofabgen → `a2a88d0e` (2026-07-25). **Full suite green:** structural sweep (7
+blocking axes incl. wiretype §7.3, 319 vectors), framing (report-only), union pass, limit mode, regression
+(97, incl. promoted `F0034_*`), seeds — all **0 divergences**. **Newly RESOLVED (re-verified against the
+fresh build):** **F-0028** (id>ID_MAX decode — framing green), **F-0029** (ts MAX_DEPTH skip path — framing
+green), **F-0031/dart** (fp32 sNaN — dart no longer quiets), **F-0032/cpp** (the cpp measure-schema now gates
+the maxlen check on subtype, so `try_decode` skips a mismatched fixlen correctly — crucible#107's §7.3
+regression is fixed upstream, **no revert needed**). **Still open:** **F-0031/ts** — corelib-ts fixed its raw
+channel but the **generated** ts still decodes via `readFp32()`/stores a JS `number`/re-emits `writeFp32`, so
+it quiets → codegen residual, filed **generator#235** (ts analogue of dart's generator#226); **F-0033**
+(scalar over-width, spec hole documentation#26); **F-0030** (struct_array, not in-tree reproducible until it
+lands in `probe`). FINDINGS.md table rows + G-0018 updated to resolved.
+
+**Also this session — F-0027 / G-0017 RESOLVED by the same bump.** [generator#215](https://github.com/sofa-buffers/generator/issues/215)
+(no-std Cargo features derived from the schema's used wire types → decoder can't §7.3-skip an array/fp64
+field) was **closed 2026-07-23**; the CI build `0.0.0-20260723154129-241dc8f44efb` carries the fix (sofabgen
+now provisions the full wire-type decoder feature set regardless of schema). **Re-verified in Crucible:** the
+wiretype (§7.3) **union** pass — 13 drivers built against `probe-union`, the schema that omits the
+array/fp64 features — is now **green (77 vectors, 0 divergences)** across two sweep runs, where rust-nostd
+previously rejected. FINDINGS.md F-0027/G-0017 moved to resolved.
+
+**One-hour fuzz round (C pacemaker, post-bump) — 0 new signal.** 38.55 M execs, ~10.7k exec/s, **0 ASan/UBSan
+hits**, no new crash artifact (`corpus/crashes/` unchanged — its files pre-date this run). Corpus grew
+439 → 546 (coverage only). Differential + `oracle/cluster.py` over 546 inputs → 12 root-cause clusters, the
+**same set as before the round** (matching representative inputs), all mapping to catalogued classes (the
+F-0032 §5.2 family, F-0033 scalar over-width, F-0029 ts MAX_DEPTH, java `incomplete_value` soft) — **no new
+finding**. Confirms the corelib bump introduced nothing beyond F-0034; the well-formed-wrong-subtype needle
+F-0034 sits on is reached by the structured sweep, not byte-mutation fuzzing (wiretype_sweep.py docstring).
+
 ---
 
 # Decision log & deviations (moved from ARCHITECTURE.md)
