@@ -995,6 +995,39 @@ reject; cpp/cs/go/rust×2/zig mask to width; dart/java/py×2/ts keep the full va
 mapped **by shape, not byte-verified** against their catalogued reproducers. **No new finding.**
 `results/CLUSTERS.md` was *not* rewritten by this run and still holds the 2026-07-17 snapshot.
 
+**The spec checkout is not bootstrapped — and reading it retired a carve-out and opened a spec PR.**
+`scripts/bootstrap.sh` refreshes only its `CORELIBS` list plus `tools/sofabgen`; **`vendor/documentation` is
+in neither**, so while eleven corelibs were pulled to same-day tips the spec sat at `0894035` (2026-07-19),
+five commits behind `f512349` (2026-07-24). That is the one input the repo's own rules depend on most —
+`CLAUDE.md` requires every `oracle/policy.yaml` entry to cite a clause, and sweep axes carry carve-outs worded
+"until the upstream clause lands" — so a landed clause can sit unnoticed while the suite reports green. Two of
+the five commits were exactly that: **documentation#25** (`c77f72a`, varint minimality §4.1) and
+**documentation#27** (`2e5bc40`/`33f2259`, fp32 sNaN bit-exactness §6.5, which strengthens F-0031 — it now
+requires bit-exactness at *every* fp32 position and on *every* decode surface, naming the double-only
+languages). documentation#26, F-0033's hole, is still open.
+
+**`sweep_varint` hardened: agreement-only → conformance-asserting (23 → 25 vectors).** §4.1 now mandates
+accept-and-normalize for a non-minimal-but-≤64-bit varint, so the ground-rule-6 carve-out
+(`expect="agree"`, filed as documentation#24) is retired: those vectors carry `expect="accept"` and the runner
+asserts accept-vs-reject on them — a family that agreed on *reject* would have been green before and is a
+finding now. §4.1 also sharpened the 64-bit bound into two **encoding-level** halves, and the axis gained the
+case the old one structurally could not build: its `pads()` capped padding at `MAX64_BYTES = 10`, so an
+**11-byte encoding of a representable value** (`5` padded, every surplus bit zero — `INVALID` anyway, because
+the test is on the encoding) was unreachable, as was a **10-byte encoding whose tenth byte carries payload
+above `0x01`** (bits at position ≥ 64, inside the byte-count limit). A decoder bounding by accumulated value
+rather than byte count passes the old axis and fails both. All 13 conform. Sensitivity checked the same way as
+the §7.3 × §7.4 work: flipping one non-minimal vector's expectation to `reject` produces three
+`NONCONFORM … expected R, all 13 emit A` — the assertion is live, not decorative.
+
+**documentation#28 opened — `UsageError` removed from CORELIB_PLAN §6.3.** Reading §6.3 surfaced a
+spec-vs-implementation inversion: the table still lists `UsageError` ("a type mismatch on read"), but that case
+is not an error at all any more — MESSAGE_SPEC §7.3 makes it a skip — and nine ports removed the code as
+unreachable on 2026-07-25/26, corelib-cpp#54 going as far as renumbering rather than leave a hole. The spec was
+the only place it still existed. The PR drops the row, moves its two surviving conditions (a scalar width that
+is not 1/2/4/8, a nonexistent descriptor field type) into `InvalidArgument`, and states where a
+type-mismatched read now lands. If it lands, the `usage` reject class can leave `oracle/canonical.md` too —
+the reason it is still there is that this table still listed it.
+
 ---
 
 # Decision log & deviations (moved from ARCHITECTURE.md)
