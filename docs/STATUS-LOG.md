@@ -960,6 +960,41 @@ wrapper as `c6 0c 07`, empty, where the family keeps `c6 0c 02 …`), and the si
 `valid_then_skip` order fires, which is the discriminating result: with the valid occurrence last the clobber
 is overwritten and invisible. Both mutations reverted, corelib clean, full sweep green.
 
+**Second bump wave, same session — the whole family drops its usage error; four more drivers follow.** A
+re-bootstrap a few hours later moved eight corelibs (c-cpp `eb663d7`, cs `101c025`, dart `b1107ab`, java
+`ab419ad`, rs `8e5a374`, rs-no-std `a180676`, ts `fee1f9f`, zig `56f11e0`; cpp/go/py unchanged, sofabgen still
+`42a45893`). What corelib-c-cpp#111 started is now family-wide: corelib-cs#42, corelib-rs#35,
+corelib-rs-no-std#55, corelib-zig#23, corelib-java#49, corelib-dart#20 and corelib-ts#73 all remove the
+`usage` error as unreachable. Four drivers referenced it and stopped compiling — `drivers/rust/driver.rs`
+(`Error::Usage`, one source for both variants), `drivers/cs/Driver.cs`, `drivers/java/Driver.java`,
+`drivers/zig/driver.zig` — treated exactly like c/cpp above, except that zig's `switch` is exhaustive over the
+error set, so there the arm had to *go* rather than merely fall through. `drivers/python/driver.py`'s
+`"SofaStateError": "usage"` is left alone: it is a different corelib concept and corelib-py has not moved.
+Six of eleven corelibs now cannot produce the class; it stays in `oracle/canonical.md` while any can.
+
+**The dart/java/ts "unbalanced sequence end" change is invisible to this harness by construction — it is
+encode-side.** Three of the eight commits read "stop rejecting an unbalanced sequence end", which looks
+verdict-relevant from the subject alone; the full suite showed 0 divergences and the report-only framing axis
+(§5.2 stray-end, 14 vectors) was unchanged. The commit bodies explain why, and it is structural rather than
+lucky: *"the **encoder** no longer rejects an unbalanced sequence end … Every other port writes the byte and
+lets the decoder judge the bytes; only dart, java, ts and py refused it at encode time."* Crucible decodes and
+re-encodes an already-decoded value, which is always balanced, so it never asks a corelib to *write* an
+unbalanced sequence. This is the standing encoder-side gap in `docs/TODO.md` ("the pacemaker is decode-only"),
+now with a concrete instance attached. Note corelib-py was named as the fourth hold-out and has not moved yet.
+
+**One-hour pacemaker round after the second wave — 0 new signal.** 84.17 M execs at 23,373 exec/s (the
+2026-07-25 round managed 38.55 M at 10.7k/s, so roughly double the coverage for the same wall clock), cov 621
+/ ft 4434, 453 new units, **0 ASan/UBSan hits**, `corpus/crashes/` unchanged at 6 files that all pre-date the
+round. Corpus 546 → 890. Differential + `oracle/cluster.py` over 890 inputs: 362 agree, 528 diverge → **10
+root-cause clusters** (12 before, consistent with F-0028/F-0029/F-0032 having been resolved). Exactly one is a
+hard `accept_value` split, and it was checked rather than assumed: cluster 7's representative is `00 ff 7f`,
+**byte-identical** to `findings/F-0033-…/u8_over_16383.bin`, with F-0033's three camps intact (c/cpp-c-cpp
+reject; cpp/cs/go/rust×2/zig mask to width; dart/java/py×2/ts keep the full value). The other nine are
+`I`-vs-`R` verdict splits — the INVALID-vs-INCOMPLETE precedence hole — plus the 489-input java
+`incomplete_value` soft cluster that also surfaces as the regression gate's four warnings; those nine were
+mapped **by shape, not byte-verified** against their catalogued reproducers. **No new finding.**
+`results/CLUSTERS.md` was *not* rewritten by this run and still holds the 2026-07-17 snapshot.
+
 ---
 
 # Decision log & deviations (moved from ARCHITECTURE.md)

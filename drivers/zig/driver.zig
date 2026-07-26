@@ -92,7 +92,10 @@ pub fn main(init: std.process.Init) !void {
             const cls = switch (err) {
                 error.InvalidMessage => "invalid_msg",
                 error.InvalidArgument => "argument",
-                error.UsageError => "usage",
+                // error.UsageError was removed in corelib-zig#23; the canonical
+                // "usage" class stays in oracle/canonical.md for the corelibs that
+                // still have it. This switch is exhaustive over the error set, so
+                // the arm has to go rather than fall through.
                 error.BufferFull => "buffer_full",
                 error.IncompleteMessage => unreachable, // handled above
                 error.LimitExceeded => unreachable, // handled above

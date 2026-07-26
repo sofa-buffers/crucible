@@ -31,7 +31,9 @@ fn reject_class(e: Error) -> &'static str {
     match e {
         Error::InvalidMsg => "invalid_msg",
         Error::Argument => "argument",
-        Error::Usage => "usage",
+        // Error::Usage was removed in corelib-rs#35 / corelib-rs-no-std#55; the
+        // canonical "usage" class stays in oracle/canonical.md for the corelibs
+        // that still have it. Anything unmapped falls through to "other".
         Error::BufferFull => "buffer_full",
         _ => "other", // Error is #[non_exhaustive]
     }
