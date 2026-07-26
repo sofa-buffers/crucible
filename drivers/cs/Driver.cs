@@ -206,7 +206,9 @@ internal static class Driver
     {
         SofabError.InvalidMessage => "invalid_msg",
         SofabError.Argument => "argument",
-        SofabError.Usage => "usage",
+        // SofabError.Usage was removed in corelib-cs#42; the canonical "usage"
+        // class stays in oracle/canonical.md for the corelibs that still have it.
+        // Anything unmapped falls through to "other".
         SofabError.BufferFull => "buffer_full",
         _ => "other",
     };

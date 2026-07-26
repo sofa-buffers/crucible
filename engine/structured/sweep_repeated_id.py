@@ -16,6 +16,12 @@ For each position it emits the repeated-id form and states the expected agreemen
   * wrapper sequence        -> reopened with a different element each time; the
                                array is REPLACED (only the second element survives).
   * struct child within one opening -> a child id twice with two values; last wins.
+  * §7.3 x §7.4 product     -> a position that owns storage, given a value and then
+                               the same id again with a *contradicting* wire type:
+                               the mistyped occurrence is §7.3-skipped, so §7.4 never
+                               sees it and the established value survives (both
+                               orders). This is the case corelib-c-cpp#111 fixed and
+                               that upstream's own suite, not this one, caught.
 
 Every vector is a *valid* message (the repetition is the only irregularity, which
 §3 declares not-well-formed but §7.4 defines a decode for). All 13 must agree; a
@@ -32,13 +38,31 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from gen import WT_SEQ_BEG, WT_SEQ_END, hdr  # noqa: E402
 from sweep_positions import (  # noqa: E402
-    POSITIONS, SEQ_POSITIONS, SCALAR_POSITIONS,
+    POSITIONS, SEQ_POSITIONS, SCALAR_POSITIONS, CAT_TO_CONSTRUCT,
     place, valid_field, struct_children,
 )
+# The §7.3 construct table, imported rather than restated: WP-11's rule is that a
+# position/construct model lives in exactly one place, so the product axis below
+# perturbs with the same builders the §7.3 axis sweeps.
+from wiretype_sweep import CONSTRUCTS  # noqa: E402
+
+# Positions whose destination is touched *before* the read is bound, and which the
+# §7.3 x §7.4 product below therefore covers (see the axis-4 comment in emit()):
+# a wrapper sequence resets its slots on open, a sized string/blob writes its
+# length. A scalar destination is bound and nothing else, so a contradicting
+# occurrence there can be unbound after the fact with no trace.
+_PRE_BIND_CATS = ("seq_wrapper", "str", "blob", "welem_str", "welem_blob")
 
 
 def open_seq(fid, body):
     return hdr(fid, WT_SEQ_BEG) + body + bytes([WT_SEQ_END])
+
+
+def _valid_occurrence(p):
+    """The occurrence that establishes a value at `p` before the mistyped one lands."""
+    if p.cat == "seq_wrapper":
+        return open_seq(p.fid, valid_field(p.elem, 0, 0))   # wrapper holding element 0
+    return valid_field(p.cat, p.fid, 0)
 
 
 def emit(out_dir):
@@ -85,6 +109,40 @@ def emit(out_dir):
         twice = valid_field(cat, cid, 0) + valid_field(cat, cid, 1)
         vectors.append((f"{p.tag()}_child_twice_lastwins.bin",
                         place(p.path, open_seq(p.fid, twice)), "lastwins"))
+
+    # 4) §7.3 x §7.4 — a field that already holds a value, then the SAME id again
+    #    carrying a contradicting wire type. Both rules are swept on their own (this
+    #    axis repeats *validly typed* fields; wiretype_sweep mistypes a *lone* field),
+    #    and neither reaches the case where they meet: §7.3 says the mistyped
+    #    occurrence is skipped like an unknown id, so §7.4 must never see it and the
+    #    established value has to survive untouched.
+    #
+    #    That product is where corelib-c-cpp#111's last commit found a real bug: a
+    #    wrapper sequence resets its slots when it opens (§7.4 replace-whole), so a
+    #    contradicting occurrence "emptied an array it was never entitled to touch"
+    #    — ["A"] became []. A sized blob had the same shape via used_len. Upstream's
+    #    own C conformance run caught it and this suite did not, which is what these
+    #    vectors close. Only the pre-bind destinations are swept (_PRE_BIND_CATS): a
+    #    scalar is bound and nothing more, so it has no state to clobber.
+    #
+    #    Both orders, because they fail differently: valid-then-mistyped is the
+    #    clobber, mistyped-then-valid checks the skip left no residue that the valid
+    #    occurrence then merges into. The union pass already pins this for a scalar
+    #    member (u_skip_then_valid / u_valid_then_skip); these are its probe-side
+    #    counterparts at the positions that own storage.
+    for p in POSITIONS:
+        if p.cat not in _PRE_BIND_CATS:
+            continue
+        good = _valid_occurrence(p)
+        declared = CAT_TO_CONSTRUCT[p.cat]
+        for cname, build in CONSTRUCTS.items():
+            if cname == declared:
+                continue                      # not a contradiction — that is axis 2's control
+            bad = build(p.fid)
+            vectors.append((f"{p.tag()}_{cname}_valid_then_skip.bin",
+                            place(p.path, good + bad), "skip"))
+            vectors.append((f"{p.tag()}_{cname}_skip_then_valid.bin",
+                            place(p.path, bad + good), "skip"))
 
     os.makedirs(out_dir, exist_ok=True)
     for name, data, _ in vectors:

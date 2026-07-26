@@ -39,7 +39,9 @@ public final class Driver {
         // (SofabError), so branch on it rather than string-matching class names.
         switch (e.error()) {
             case ARGUMENT:    return "argument";
-            case USAGE:       return "usage";
+            // USAGE was removed in corelib-java#49; the canonical "usage" class
+            // stays in oracle/canonical.md for the corelibs that still have it.
+            // Anything unmapped falls through to the invalid_msg default below.
             case BUFFER_FULL: return "buffer_full";
             case INVALID_MSG:
             default:          return "invalid_msg";

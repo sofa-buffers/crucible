@@ -37,13 +37,15 @@ from oracle.comparator import run_driver, parse  # noqa: E402
 AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserved_subtype",
         "sweep_truncation", "sweep_malform_truncate", "sweep_varint"]
 
-# `sweep_varint` (WP-03, §2 varint canonicality) is blocking but **agreement-only** for
-# its non-minimal vectors (`expect="agree"`): the spec is silent on whether a
-# non-minimal-but-≤64-bit varint is accepted-and-normalized or rejected, so the runner
-# asserts only that all 13 agree (they do — accept + normalize to the one canonical form)
-# and does NOT assert accept-vs-reject conformance for those vectors, per ground rule 6,
-# until the upstream clause lands (documentation#24). The minimal-accept controls
-# and the >64-bit overflow-reject contrast ARE spec-defined (CORELIB_PLAN §4.1 / F-0016).
+# `sweep_varint` (WP-03, §2 varint canonicality) is blocking and now **fully
+# conformance-asserting**. It used to be agreement-only for its non-minimal vectors
+# (`expect="agree"`, ground rule 6) because the spec was silent on whether a
+# non-minimal-but-≤64-bit varint is accepted-and-normalized or rejected. That hole
+# (documentation#24) was closed by documentation#25 (`c77f72a`): CORELIB_PLAN §4.1 now
+# mandates accept-and-normalize, so those vectors carry `expect="accept"` and the runner
+# asserts accept-vs-reject on them. §4.1 also sharpened the 64-bit bound into two
+# encoding-level halves (>10 bytes; a tenth byte with payload above 0x01), both swept as
+# reject contrasts — including an 11-byte encoding whose surplus bytes are zero.
 
 # WP-01: the axes that carry a union pass (emit_union). The union feature lives in a
 # separate schema (schema/probe-union.sofab.yaml), so a union run needs drivers built
@@ -111,7 +113,7 @@ def run_axis(name, emitter="emit"):
         elif exp == "accept" and v != "A":
             conformance.append((fn, f"expected A, all 13 emit {v}"))
         # merge/replace/lastwins -> treated as accept
-        elif exp in ("merge", "replace", "lastwins") and v != "A":
+        elif exp in ("merge", "replace", "lastwins", "skip") and v != "A":
             conformance.append((fn, f"expected A ({exp}), all 13 emit {v}"))
         # a prefix of a valid message is A (complete) or I (incomplete), never R
         elif exp == "not_reject" and v == "R":

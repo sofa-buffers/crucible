@@ -895,6 +895,139 @@ F-0032 §5.2 family, F-0033 scalar over-width, F-0029 ts MAX_DEPTH, java `incomp
 finding**. Confirms the corelib bump introduced nothing beyond F-0034; the well-formed-wrong-subtype needle
 F-0034 sits on is reached by the structured sweep, not byte-mutation fuzzing (wiretype_sweep.py docstring).
 
+**Forty-first change 2026-07-26 — bootstrap + full test: two corelib API removals absorbed, suite green.**
+Re-bootstrapped across three upstream tips in one session: corelib-c-cpp `aaba509 → 705fe95 → b49c353`,
+corelib-cpp `80ec210 → d14b8ca → 733c107`, sofabgen `a2a88d0e → b898ab4e → 42a45893`; the other nine corelibs
+unchanged. **Crucible adaptation — two driver edits**, both forced by an enum constant that no longer exists:
+`drivers/c/driver.c` dropped `case SOFAB_RET_E_USAGE` (removed in corelib-c-cpp#111) and
+`drivers/cpp/driver.cpp` dropped `case sofab::Error::UsageError` (removed in corelib-cpp#54). Both arms fell
+through to the pre-existing `default: "other"`, so nothing else moved: the canonical `usage` reject class
+**stays** in `oracle/canonical.md`, because rust, cs, java, zig and python still surface it. `policy.yaml`
+grades `reject_class` soft, so even a driver whose class shifted could not redden a gate on that axis alone.
+
+**The intermediate corelib-cpp tip `d14b8ca` broke the `cpp` driver outright, and it was upstream's break,
+not codegen's.** That commit ("OStreamView, a sticky write-failure flag") also moved `Wire`/`Fix` from
+namespace `sofab` into `sofab::detail` (private class aliases, explicitly commented "without re-exporting the
+names") and deleted `namespace sofab::schema` (`FieldBound`, `SeqNode`) — all three named by
+sofabgen-generated code, which stopped compiling. The API surface was left incoherent in passing:
+`IStreamImpl::wire()`/`fixType()` stayed public and `[[nodiscard]]` while no external caller could name their
+return type. Attribution was settled by bisect rather than inspection, per the CLAUDE.md rule: sofabgen
+`b898ab4e` + corelib-cpp `80ec210` had run the full suite green an hour earlier, and the same sofabgen against
+`d14b8ca` failed to compile — corelib-cpp was the only variable, so this was never a G-00NN. **No Crucible
+change was warranted and none was made**; the next sofabgen CI build (`42a45893`) resolved it by emitting the
+corelib's own `sofab::StringSeq`/`BlobSeq` helpers instead of the hand-rolled `_StrSeq`/`_BlobSeq` structs
+that had carried their own guards. The §7.3 wire-type/subtype guard (generator#189, the F-0034/G-0019 family)
+therefore **moved from generated code into the corelib** — which is precisely what let `Wire`/`Fix` become
+internal — while the schema-only facts it needs (element cap, maxlen) are still passed in by the generated
+call site (`sofab::StringSeq _r0{string_array, 5, 64}`). Recorded because the same shape will recur: a
+corelib may absorb a guard that generated code used to own, and during the window between the two tips the
+break looks exactly like a codegen defect.
+
+**Full suite green — all eight gates, 13/13 drivers**, numbers identical to the 2026-07-25 run: seeds (6),
+regression (97, 4 known soft `incomplete_value` warnings), conformance (3), cross-encode (90 probe + 18
+union), union (11), limit mode (arr 3 / str 2 / blb 2 across the heap-only 10), structural sweep (744 vectors
+over 7 blocking axes incl. wiretype §7.3 at 319), materialize (90 + 0/90 C-anchor mismatches) — **0
+divergences** throughout; report-only framing (14) and the union pass (130 over 5 axes) likewise clean.
+**Open findings unchanged:** **F-0031/ts** still quiets fp32 sNaN (generator#235 not in `42a45893`),
+**F-0033** still splits the family three ways on scalar over-width (documentation#26), **F-0030** still not
+in-tree reproducible.
+
+**corelib-c-cpp#111 read properly — the §7.3 change is covered, a §7.3 × §7.4 product was not.** An earlier
+draft of this entry claimed the change might be untested here. That was written off the commit *subject* and
+is **wrong**: "a contradicting field is skipped, not an error" replaces a `SOFAB_RET_E_USAGE` abort with the
+§7.3 skip, which is exactly what `wiretype_sweep` enumerates over 319 vectors — the green axis is a real
+convergence result for `c`, not an absence of evidence. Reading the commit body did surface a genuine gap, and
+upstream names it themselves: the same PR fixed a second bug where a wrapper sequence, which resets its slots
+on open (§7.4 replace-whole), was **emptied by a contradicting occurrence it should have skipped** (`["A"]` →
+`[]`), plus the same shape on a sized blob via `used_len` — "caught by the generator's C conformance run, **not
+by this suite**".
+
+**Gap closed — `sweep_repeated_id` gains the §7.3 × §7.4 product (16 → 136 vectors; sweep 744 → 864).** The
+two rules were each swept alone and never together: this axis repeated only *validly typed* fields, and
+`wiretype_sweep` mistypes only a *lone* field, so no vector ever gave a position a value and then re-sent its
+id with a contradicting wire type. The new family does exactly that, in both orders, over the positions whose
+destination is touched **before** the read is bound (`_PRE_BIND_CATS`: wrapper sequences, sized/`welem`
+strings and blobs) — a scalar is bound and nothing more, so the istream can unbind it after the fact with no
+trace, which is the same reasoning `object.c`'s own comments give for guarding these two branches and not the
+others. Constructs come from `wiretype_sweep.CONSTRUCTS` rather than a second literal list, per WP-11's
+one-model rule; the runner learned the `skip` expectation label (accept-equivalent, like `merge`/`replace`).
+
+**Validated by mutation, not by a green light.** A new test that passes proves nothing when the bug it targets
+is already fixed, so both guards in `vendor/corelib-c-cpp/src/object.c` were disabled in turn and the c driver
+rebuilt: the sequence guard yields **20 divergences** (`c` alone against the other 12 — `c` re-encodes the
+wrapper as `c6 0c 07`, empty, where the family keeps `c6 0c 02 …`), and the sized-blob guard another **20** at
+`10_id3`, with the `used_len` corruption visible in the re-encoding (`561a23dead0000…`). Only the
+`valid_then_skip` order fires, which is the discriminating result: with the valid occurrence last the clobber
+is overwritten and invisible. Both mutations reverted, corelib clean, full sweep green.
+
+**Second bump wave, same session — the whole family drops its usage error; four more drivers follow.** A
+re-bootstrap a few hours later moved eight corelibs (c-cpp `eb663d7`, cs `101c025`, dart `b1107ab`, java
+`ab419ad`, rs `8e5a374`, rs-no-std `a180676`, ts `fee1f9f`, zig `56f11e0`; cpp/go/py unchanged, sofabgen still
+`42a45893`). What corelib-c-cpp#111 started is now family-wide: corelib-cs#42, corelib-rs#35,
+corelib-rs-no-std#55, corelib-zig#23, corelib-java#49, corelib-dart#20 and corelib-ts#73 all remove the
+`usage` error as unreachable. Four drivers referenced it and stopped compiling — `drivers/rust/driver.rs`
+(`Error::Usage`, one source for both variants), `drivers/cs/Driver.cs`, `drivers/java/Driver.java`,
+`drivers/zig/driver.zig` — treated exactly like c/cpp above, except that zig's `switch` is exhaustive over the
+error set, so there the arm had to *go* rather than merely fall through. `drivers/python/driver.py`'s
+`"SofaStateError": "usage"` is left alone: it is a different corelib concept and corelib-py has not moved.
+Six of eleven corelibs now cannot produce the class; it stays in `oracle/canonical.md` while any can.
+
+**The dart/java/ts "unbalanced sequence end" change is invisible to this harness by construction — it is
+encode-side.** Three of the eight commits read "stop rejecting an unbalanced sequence end", which looks
+verdict-relevant from the subject alone; the full suite showed 0 divergences and the report-only framing axis
+(§5.2 stray-end, 14 vectors) was unchanged. The commit bodies explain why, and it is structural rather than
+lucky: *"the **encoder** no longer rejects an unbalanced sequence end … Every other port writes the byte and
+lets the decoder judge the bytes; only dart, java, ts and py refused it at encode time."* Crucible decodes and
+re-encodes an already-decoded value, which is always balanced, so it never asks a corelib to *write* an
+unbalanced sequence. This is the standing encoder-side gap in `docs/TODO.md` ("the pacemaker is decode-only"),
+now with a concrete instance attached. Note corelib-py was named as the fourth hold-out and has not moved yet.
+
+**One-hour pacemaker round after the second wave — 0 new signal.** 84.17 M execs at 23,373 exec/s (the
+2026-07-25 round managed 38.55 M at 10.7k/s, so roughly double the coverage for the same wall clock), cov 621
+/ ft 4434, 453 new units, **0 ASan/UBSan hits**, `corpus/crashes/` unchanged at 6 files that all pre-date the
+round. Corpus 546 → 890. Differential + `oracle/cluster.py` over 890 inputs: 362 agree, 528 diverge → **10
+root-cause clusters** (12 before, consistent with F-0028/F-0029/F-0032 having been resolved). Exactly one is a
+hard `accept_value` split, and it was checked rather than assumed: cluster 7's representative is `00 ff 7f`,
+**byte-identical** to `findings/F-0033-…/u8_over_16383.bin`, with F-0033's three camps intact (c/cpp-c-cpp
+reject; cpp/cs/go/rust×2/zig mask to width; dart/java/py×2/ts keep the full value). The other nine are
+`I`-vs-`R` verdict splits — the INVALID-vs-INCOMPLETE precedence hole — plus the 489-input java
+`incomplete_value` soft cluster that also surfaces as the regression gate's four warnings; those nine were
+mapped **by shape, not byte-verified** against their catalogued reproducers. **No new finding.**
+`results/CLUSTERS.md` was *not* rewritten by this run and still holds the 2026-07-17 snapshot.
+
+**The spec checkout is not bootstrapped — and reading it retired a carve-out and opened a spec PR.**
+`scripts/bootstrap.sh` refreshes only its `CORELIBS` list plus `tools/sofabgen`; **`vendor/documentation` is
+in neither**, so while eleven corelibs were pulled to same-day tips the spec sat at `0894035` (2026-07-19),
+five commits behind `f512349` (2026-07-24). That is the one input the repo's own rules depend on most —
+`CLAUDE.md` requires every `oracle/policy.yaml` entry to cite a clause, and sweep axes carry carve-outs worded
+"until the upstream clause lands" — so a landed clause can sit unnoticed while the suite reports green. Two of
+the five commits were exactly that: **documentation#25** (`c77f72a`, varint minimality §4.1) and
+**documentation#27** (`2e5bc40`/`33f2259`, fp32 sNaN bit-exactness §6.5, which strengthens F-0031 — it now
+requires bit-exactness at *every* fp32 position and on *every* decode surface, naming the double-only
+languages). documentation#26, F-0033's hole, is still open.
+
+**`sweep_varint` hardened: agreement-only → conformance-asserting (23 → 25 vectors).** §4.1 now mandates
+accept-and-normalize for a non-minimal-but-≤64-bit varint, so the ground-rule-6 carve-out
+(`expect="agree"`, filed as documentation#24) is retired: those vectors carry `expect="accept"` and the runner
+asserts accept-vs-reject on them — a family that agreed on *reject* would have been green before and is a
+finding now. §4.1 also sharpened the 64-bit bound into two **encoding-level** halves, and the axis gained the
+case the old one structurally could not build: its `pads()` capped padding at `MAX64_BYTES = 10`, so an
+**11-byte encoding of a representable value** (`5` padded, every surplus bit zero — `INVALID` anyway, because
+the test is on the encoding) was unreachable, as was a **10-byte encoding whose tenth byte carries payload
+above `0x01`** (bits at position ≥ 64, inside the byte-count limit). A decoder bounding by accumulated value
+rather than byte count passes the old axis and fails both. All 13 conform. Sensitivity checked the same way as
+the §7.3 × §7.4 work: flipping one non-minimal vector's expectation to `reject` produces three
+`NONCONFORM … expected R, all 13 emit A` — the assertion is live, not decorative.
+
+**documentation#28 opened — `UsageError` removed from CORELIB_PLAN §6.3.** Reading §6.3 surfaced a
+spec-vs-implementation inversion: the table still lists `UsageError` ("a type mismatch on read"), but that case
+is not an error at all any more — MESSAGE_SPEC §7.3 makes it a skip — and nine ports removed the code as
+unreachable on 2026-07-25/26, corelib-cpp#54 going as far as renumbering rather than leave a hole. The spec was
+the only place it still existed. The PR drops the row, moves its two surviving conditions (a scalar width that
+is not 1/2/4/8, a nonexistent descriptor field type) into `InvalidArgument`, and states where a
+type-mismatched read now lands. If it lands, the `usage` reject class can leave `oracle/canonical.md` too —
+the reason it is still there is that this table still listed it.
+
 ---
 
 # Decision log & deviations (moved from ARCHITECTURE.md)
