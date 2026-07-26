@@ -43,7 +43,9 @@ static const char *reject_class(sofab::Error e)
     {
         case sofab::Error::InvalidMessage:  return "invalid_msg";
         case sofab::Error::InvalidArgument: return "argument";
-        case sofab::Error::UsageError:      return "usage";
+        // Error::UsageError was removed in corelib-cpp#54; the canonical "usage"
+        // class stays in oracle/canonical.md for the corelibs that still have it.
+        // Anything unmapped falls through to "other".
         case sofab::Error::BufferFull:      return "buffer_full";
         default:                            return "other";
     }

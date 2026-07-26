@@ -25,7 +25,9 @@ static const char *reject_class(sofab_ret_t r)
     {
         case SOFAB_RET_E_INVALID_MSG: return "invalid_msg";
         case SOFAB_RET_E_ARGUMENT:    return "argument";
-        case SOFAB_RET_E_USAGE:       return "usage";
+        /* SOFAB_RET_E_USAGE was removed in corelib-c-cpp#111; the canonical
+         * "usage" class stays in oracle/canonical.md for the corelibs that
+         * still have it. Anything unmapped falls through to "other". */
         case SOFAB_RET_E_BUFFER_FULL: return "buffer_full";
         default:                      return "other";
     }

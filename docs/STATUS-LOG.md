@@ -895,6 +895,49 @@ F-0032 §5.2 family, F-0033 scalar over-width, F-0029 ts MAX_DEPTH, java `incomp
 finding**. Confirms the corelib bump introduced nothing beyond F-0034; the well-formed-wrong-subtype needle
 F-0034 sits on is reached by the structured sweep, not byte-mutation fuzzing (wiretype_sweep.py docstring).
 
+**Forty-first change 2026-07-26 — bootstrap + full test: two corelib API removals absorbed, suite green.**
+Re-bootstrapped across three upstream tips in one session: corelib-c-cpp `aaba509 → 705fe95 → b49c353`,
+corelib-cpp `80ec210 → d14b8ca → 733c107`, sofabgen `a2a88d0e → b898ab4e → 42a45893`; the other nine corelibs
+unchanged. **Crucible adaptation — two driver edits**, both forced by an enum constant that no longer exists:
+`drivers/c/driver.c` dropped `case SOFAB_RET_E_USAGE` (removed in corelib-c-cpp#111) and
+`drivers/cpp/driver.cpp` dropped `case sofab::Error::UsageError` (removed in corelib-cpp#54). Both arms fell
+through to the pre-existing `default: "other"`, so nothing else moved: the canonical `usage` reject class
+**stays** in `oracle/canonical.md`, because rust, cs, java, zig and python still surface it. `policy.yaml`
+grades `reject_class` soft, so even a driver whose class shifted could not redden a gate on that axis alone.
+
+**The intermediate corelib-cpp tip `d14b8ca` broke the `cpp` driver outright, and it was upstream's break,
+not codegen's.** That commit ("OStreamView, a sticky write-failure flag") also moved `Wire`/`Fix` from
+namespace `sofab` into `sofab::detail` (private class aliases, explicitly commented "without re-exporting the
+names") and deleted `namespace sofab::schema` (`FieldBound`, `SeqNode`) — all three named by
+sofabgen-generated code, which stopped compiling. The API surface was left incoherent in passing:
+`IStreamImpl::wire()`/`fixType()` stayed public and `[[nodiscard]]` while no external caller could name their
+return type. Attribution was settled by bisect rather than inspection, per the CLAUDE.md rule: sofabgen
+`b898ab4e` + corelib-cpp `80ec210` had run the full suite green an hour earlier, and the same sofabgen against
+`d14b8ca` failed to compile — corelib-cpp was the only variable, so this was never a G-00NN. **No Crucible
+change was warranted and none was made**; the next sofabgen CI build (`42a45893`) resolved it by emitting the
+corelib's own `sofab::StringSeq`/`BlobSeq` helpers instead of the hand-rolled `_StrSeq`/`_BlobSeq` structs
+that had carried their own guards. The §7.3 wire-type/subtype guard (generator#189, the F-0034/G-0019 family)
+therefore **moved from generated code into the corelib** — which is precisely what let `Wire`/`Fix` become
+internal — while the schema-only facts it needs (element cap, maxlen) are still passed in by the generated
+call site (`sofab::StringSeq _r0{string_array, 5, 64}`). Recorded because the same shape will recur: a
+corelib may absorb a guard that generated code used to own, and during the window between the two tips the
+break looks exactly like a codegen defect.
+
+**Full suite green — all eight gates, 13/13 drivers**, numbers identical to the 2026-07-25 run: seeds (6),
+regression (97, 4 known soft `incomplete_value` warnings), conformance (3), cross-encode (90 probe + 18
+union), union (11), limit mode (arr 3 / str 2 / blb 2 across the heap-only 10), structural sweep (744 vectors
+over 7 blocking axes incl. wiretype §7.3 at 319), materialize (90 + 0/90 C-anchor mismatches) — **0
+divergences** throughout; report-only framing (14) and the union pass (130 over 5 axes) likewise clean.
+**Open findings unchanged:** **F-0031/ts** still quiets fp32 sNaN (generator#235 not in `42a45893`),
+**F-0033** still splits the family three ways on scalar over-width (documentation#26), **F-0030** still not
+in-tree reproducible.
+
+**Caveat — corelib-c-cpp#111 is untested here.** "A contradicting field is skipped, not an error" is a
+verdict-relevant semantic change and it produced **0 divergences**. Its owning axis (`wiretype_sweep`, 319
+vectors) is green, which is consistent with c having converged on the family's behaviour, but a green axis is
+not evidence that this specific case is *covered*. Worth a targeted isolate before treating the change as
+verified.
+
 ---
 
 # Decision log & deviations (moved from ARCHITECTURE.md)
