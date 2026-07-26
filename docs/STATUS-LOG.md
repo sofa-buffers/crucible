@@ -932,11 +932,33 @@ divergences** throughout; report-only framing (14) and the union pass (130 over 
 **F-0033** still splits the family three ways on scalar over-width (documentation#26), **F-0030** still not
 in-tree reproducible.
 
-**Caveat — corelib-c-cpp#111 is untested here.** "A contradicting field is skipped, not an error" is a
-verdict-relevant semantic change and it produced **0 divergences**. Its owning axis (`wiretype_sweep`, 319
-vectors) is green, which is consistent with c having converged on the family's behaviour, but a green axis is
-not evidence that this specific case is *covered*. Worth a targeted isolate before treating the change as
-verified.
+**corelib-c-cpp#111 read properly — the §7.3 change is covered, a §7.3 × §7.4 product was not.** An earlier
+draft of this entry claimed the change might be untested here. That was written off the commit *subject* and
+is **wrong**: "a contradicting field is skipped, not an error" replaces a `SOFAB_RET_E_USAGE` abort with the
+§7.3 skip, which is exactly what `wiretype_sweep` enumerates over 319 vectors — the green axis is a real
+convergence result for `c`, not an absence of evidence. Reading the commit body did surface a genuine gap, and
+upstream names it themselves: the same PR fixed a second bug where a wrapper sequence, which resets its slots
+on open (§7.4 replace-whole), was **emptied by a contradicting occurrence it should have skipped** (`["A"]` →
+`[]`), plus the same shape on a sized blob via `used_len` — "caught by the generator's C conformance run, **not
+by this suite**".
+
+**Gap closed — `sweep_repeated_id` gains the §7.3 × §7.4 product (16 → 136 vectors; sweep 744 → 864).** The
+two rules were each swept alone and never together: this axis repeated only *validly typed* fields, and
+`wiretype_sweep` mistypes only a *lone* field, so no vector ever gave a position a value and then re-sent its
+id with a contradicting wire type. The new family does exactly that, in both orders, over the positions whose
+destination is touched **before** the read is bound (`_PRE_BIND_CATS`: wrapper sequences, sized/`welem`
+strings and blobs) — a scalar is bound and nothing more, so the istream can unbind it after the fact with no
+trace, which is the same reasoning `object.c`'s own comments give for guarding these two branches and not the
+others. Constructs come from `wiretype_sweep.CONSTRUCTS` rather than a second literal list, per WP-11's
+one-model rule; the runner learned the `skip` expectation label (accept-equivalent, like `merge`/`replace`).
+
+**Validated by mutation, not by a green light.** A new test that passes proves nothing when the bug it targets
+is already fixed, so both guards in `vendor/corelib-c-cpp/src/object.c` were disabled in turn and the c driver
+rebuilt: the sequence guard yields **20 divergences** (`c` alone against the other 12 — `c` re-encodes the
+wrapper as `c6 0c 07`, empty, where the family keeps `c6 0c 02 …`), and the sized-blob guard another **20** at
+`10_id3`, with the `used_len` corruption visible in the re-encoding (`561a23dead0000…`). Only the
+`valid_then_skip` order fires, which is the discriminating result: with the valid occurrence last the clobber
+is overwritten and invisible. Both mutations reverted, corelib clean, full sweep green.
 
 ---
 

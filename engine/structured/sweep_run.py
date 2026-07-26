@@ -111,7 +111,7 @@ def run_axis(name, emitter="emit"):
         elif exp == "accept" and v != "A":
             conformance.append((fn, f"expected A, all 13 emit {v}"))
         # merge/replace/lastwins -> treated as accept
-        elif exp in ("merge", "replace", "lastwins") and v != "A":
+        elif exp in ("merge", "replace", "lastwins", "skip") and v != "A":
             conformance.append((fn, f"expected A ({exp}), all 13 emit {v}"))
         # a prefix of a valid message is A (complete) or I (incomplete), never R
         elif exp == "not_reject" and v == "R":
