@@ -120,6 +120,12 @@ exists), then record the new driver's quirks in `ARCHITECTURE.md`.
 
 ## Gotchas
 
+- **Which family you are testing is decided by the branch you are on.**
+  `scripts/bootstrap.sh` vendors the corelibs *and* the generator at Crucible's own
+  branch (`FAMILY_BRANCH`), falling back to `main` per repo when a repo lacks it. So a
+  family-wide change under review lives on a same-named branch everywhere, and a
+  divergence you find on such a branch is a statement about *that* branch — say which
+  one in any write-up. Details: `docs/ARCHITECTURE.md`.
 - **No toolchains in the bare workspace** — work inside `.devcontainer/`, which
   carries the fuzzing frameworks (libFuzzer, cargo-fuzz, Jazzer, Atheris,
   SharpFuzz, Jazzer.js). This mirrors the corelib repos' setup. The C pacemaker

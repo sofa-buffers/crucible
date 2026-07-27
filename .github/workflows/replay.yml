@@ -1,6 +1,6 @@
 # Fast, blocking regression gate — runs on every push and PR.
 #
-# Bootstraps the corelibs (their `main` tips) + sofabgen, builds all 12 replay
+# Bootstraps the corelibs + sofabgen at the branch under test, builds all 12 replay
 # drivers, and runs the GREEN oracles: the seed differential, the resolved-findings
 # regression corpus, the cross-encode / structured-value differential, the union
 # suite, limit mode, the structural sweep gate, and the materialized-value
@@ -10,8 +10,11 @@
 # timeout keeps a hanging driver from wedging the job (it is reported as a finding
 # instead).
 #
-# Corelibs are pinned to `main` on purpose: this is a conformance fuzzer, so a red
-# gate on an upstream regression is exactly the signal we want. Open findings
+# Corelibs track `main` on purpose: this is a conformance fuzzer, so a red gate on
+# an upstream regression is exactly the signal we want. On a PR from a family branch
+# (`GITHUB_HEAD_REF`, e.g. poc/omit-all-default-sequences) bootstrap tracks the
+# same-named branch of each corelib and the generator instead — a family-wide change
+# is only meaningful compared against itself. Open findings
 # (F-0004, F-0012) diverge by design and are kept OUT of these green corpora — they
 # live in findings/ until fixed, as do the reproducers that trip the open
 # INVALID-vs-INCOMPLETE precedence hole (documentation#15). See
@@ -38,14 +41,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Bootstrap (corelibs@main + sofabgen)
+      - name: Bootstrap (corelibs + sofabgen @ the branch under test)
         env:
           # actions:read on sofa-buffers/generator so bootstrap can pull the latest green
           # sofabgen CI build. The repo-scoped GITHUB_TOKEN cannot read another repo's
           # artifacts, so create a PAT secret SOFABGEN_TOKEN. Without it, bootstrap falls
           # back — loudly — to the latest tagged release (the run still bootstraps).
           SOFABGEN_TOKEN: ${{ secrets.SOFABGEN_TOKEN }}
-        run: ./scripts/bootstrap.sh   # latest green sofabgen CI build (else release) + corelibs@main
+        run: ./scripts/bootstrap.sh   # latest green sofabgen CI build (else release) + corelibs, both @ FAMILY_BRANCH
 
       - name: Differential over seeds (the green gate)
         run: ./scripts/run.sh

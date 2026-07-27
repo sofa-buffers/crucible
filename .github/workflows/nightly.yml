@@ -37,14 +37,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Bootstrap (corelibs@main + sofabgen)
+      - name: Bootstrap (corelibs + sofabgen @ the branch under test)
         env:
           # actions:read on sofa-buffers/generator so bootstrap can pull the latest green
           # sofabgen CI build. The repo-scoped GITHUB_TOKEN cannot read another repo's
           # artifacts, so create a PAT secret SOFABGEN_TOKEN. Without it, bootstrap falls
           # back — loudly — to the latest tagged release (the run still bootstraps).
           SOFABGEN_TOKEN: ${{ secrets.SOFABGEN_TOKEN }}
-        run: ./scripts/bootstrap.sh   # latest green sofabgen CI build (else release) + corelibs@main
+        # The schedule fires on the default branch, so a nightly is always the `main`
+        # family; a workflow_dispatch from a family branch fuzzes that branch instead.
+        run: ./scripts/bootstrap.sh   # latest green sofabgen CI build (else release) + corelibs, both @ FAMILY_BRANCH
 
       # Restore the accumulated coverage corpus (compounds across nights).
       - name: Restore interesting corpus

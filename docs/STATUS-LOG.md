@@ -1039,6 +1039,33 @@ resulting *what-is* stays in ARCHITECTURE.
 
 ## Key decisions (decision log)
 
+- **2026-07-27 — the vendored family follows *this checkout's branch*, not `main`.**
+  The `omit-all-default-sequences` change lands family-wide on a same-named branch in
+  every corelib and in the generator before it lands on `main` (spec side:
+  `documentation@spec/omit-all-default-sequences`). Comparing Crucible's branch against
+  `main` corelibs would measure the transition, not the family, so `scripts/bootstrap.sh`
+  now resolves a **`FAMILY_BRANCH`** — defaulting to Crucible's own branch
+  (`GITHUB_HEAD_REF`/`GITHUB_REF_NAME` first, since Actions checks out detached) — and
+  fetches every corelib and the generator to it, falling back to `main` per repo,
+  announced, when a repo lacks it. On `main` behaviour is unchanged, so the gates keep
+  their conformance meaning. Two supporting rules: each corelib is moved with `checkout
+  -B <ref>` so `vendor/<lib>` never *names* a branch other than the one it holds, and on
+  a non-`main` branch the **release fallback is suppressed** — the generator publishes
+  its `sofabgen-<os>-<arch>` artifacts on `main` only, so bootstrap builds the branch
+  from source (Go) instead of silently pairing `main` codegen with branch corelibs, a mix
+  whose divergences would all be artifacts of the mix. First run: 11 corelibs at the poc
+  tips, sofabgen built from generator `d694117`.
+- **2026-07-27 — a cached venv is a stale corelib: `drivers/python/build.sh` reinstalls
+  corelib-py when the vendored source moves.** The venv was created behind an `if [ ! -x
+  venv/bin/python ]` guard, and `pip install <path>` is a *copy*, so the Python drivers
+  kept testing whichever corelib-py was vendored when the venv was first built. The
+  branch switch exposed it: both Python drivers rejected all 6 seeds
+  (`Encoder has no attribute write_sequence_begin_lazy` — poc codegen against a
+  pre-poc corelib-py), i.e. 12 "divergences" that were a stale build, not a family
+  disagreement. This is the same trap the 2026-07-15 bump hit and cleared by hand with
+  `rm -rf drivers/python/build/venv`. The install is now stamped and refreshed when
+  `src/`, `pyproject.toml`, or `setup.py` is newer — the rule the Java driver already
+  applied to its jar. Every other driver regenerates and rebuilds per run.
 - **2026-07-22 — `SOFABGEN.md` moved `docs/` → `results/`.** The G-00NN codegen-defect
   log is the generator-side sibling of `results/FINDINGS.md` (corelib bugs); Crucible's
   triage splits every finding into exactly those two catalogs by owning repo, so they now
