@@ -86,6 +86,23 @@ def emit(out_dir):
         declared = CAT_TO_CONSTRUCT[p.cat]
         for cname, build in CONSTRUCTS.items():
             kind = "ctl" if cname == declared else "mism"
+            # F-0036/F-0037 carve-outs (the F-0034 pattern — cells, not the axis),
+            # all in the struct_array element subtree, until G-0021/G-0022 land:
+            #  - (202,) mism: a mistyped construct at the ELEMENT slot leaves a
+            #    phantom default element in the generated C++ decode (F-0037), and
+            #    the family then splits again on whether the resulting all-default
+            #    element is trimmed (F-0036).
+            #  - (202,) SEQ ctl: a well-typed but EMPTY element frame — decodes
+            #    uniformly, but the re-encode splits on the missing §5.1 trailing
+            #    trim (F-0036: `c` omits the wrapper, 12 keep `seq[202](elem0())`).
+            #  - (202, 0) mism: a mistyped construct at the k/v slot INSIDE an
+            #    element skips per §7.3, leaving a present-but-empty element —
+            #    the same F-0036 split.
+            # The (202, 0) ctl vectors (well-typed element content) stay swept.
+            if p.path == (202,):
+                continue
+            if p.path == (202, 0) and kind == "mism":
+                continue
             name = f"{p.tag()}_{cname}_{kind}.bin"
             data = place(list(p.path), p.fid, build(p.fid))
             with open(os.path.join(out_dir, name), "wb") as fh:

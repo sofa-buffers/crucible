@@ -168,6 +168,20 @@ func walk(n *schemaNode, v reflect.Value) string {
 			out[i] = mLeaf(n.Elem, v.Index(i))
 		}
 		return "[" + strings.Join(out, ",") + "]"
+	case "struct_wrapper":
+		// struct_array (WP-05): a wrapper whose elements are struct sequences —
+		// an obj walk per element, container length as-is (like `wrapper`).
+		out := make([]string, v.Len())
+		for i := range out {
+			e := v.Index(i)
+			parts := make([]string, len(n.Fields))
+			for j := range n.Fields {
+				c := &n.Fields[j]
+				parts[j] = fmt.Sprintf("%d:%s", c.ID, walk(c, fieldByTag(e, c.Name)))
+			}
+			out[i] = "{" + strings.Join(parts, ";") + "}"
+		}
+		return "[" + strings.Join(out, ",") + "]"
 	default:
 		return mLeaf(n.Kind, v)
 	}

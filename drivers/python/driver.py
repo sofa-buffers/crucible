@@ -62,6 +62,14 @@ def _walk(node, value) -> str:
         return "{" + ";".join(
             f"{c['id']}:{_walk(c, getattr(value, c['name']))}" for c in node["fields"]
         ) + "}"
+    if kind == "struct_wrapper":
+        # a wrapper whose elements are struct sequences (WP-05): each element is a
+        # generated object — an obj walk per element, container length as-is
+        return "[" + ",".join(
+            "{" + ";".join(
+                f"{c['id']}:{_walk(c, getattr(e, c['name']))}" for c in node["fields"]
+            ) + "}" for e in value
+        ) + "]"
     if kind == "array" or kind == "wrapper":
         enc = _LEAF[node["elem"]]
         return "[" + ",".join(enc(x) for x in value) + "]"

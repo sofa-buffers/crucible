@@ -71,15 +71,32 @@ static void md_value(FILE *o, const sofab_object_descr_t *info,
 static void md_obj(FILE *o, const sofab_object_descr_t *info, const uint8_t *base);
 
 /* An element slot is "empty" (its type default) — used to trim a wrapper array to
- * highest-populated index + 1 (its in-memory length; see materialized.md). */
-static int md_slot_empty(const sofab_object_descr_field_t *f, const uint8_t *base)
+ * highest-populated index + 1 (its in-memory length; see materialized.md). The fixed
+ * C object model stores a wrapper as capacity-N slots with NO used-count, so this
+ * projection is how the walker reports the same logical length the dynamic-container
+ * profiles hold directly. A SEQUENCE slot (a struct_array element, WP-05) is empty
+ * iff its whole sub-object is default — the recursive check mirrors the corelib's
+ * own `_field_is_default` (object.c), which drives the identical trim on encode. */
+static int md_slot_empty(const sofab_object_descr_t *info,
+                         const sofab_object_descr_field_t *f, const uint8_t *base)
 {
     const uint8_t *p = base + f->offset;
-    if (f->type == SOFAB_OBJECT_FIELDTYPE_STRING) return p[0] == '\0';
-    if (f->type == SOFAB_OBJECT_FIELDTYPE_BLOB)
+    switch (f->type) {
+    case SOFAB_OBJECT_FIELDTYPE_STRING: return p[0] == '\0';
+    case SOFAB_OBJECT_FIELDTYPE_BLOB:
         return f->nested_idx ? (md_rdu(base + f->offset - f->nested_idx, f->nested_idx) == 0)
                              : (f->size == 0);
-    return 0;  /* other element kinds: treat as present */
+    case SOFAB_OBJECT_FIELDTYPE_UNSIGNED:
+    case SOFAB_OBJECT_FIELDTYPE_SIGNED:
+        return md_rdu(p, f->element_size) == 0;
+    case SOFAB_OBJECT_FIELDTYPE_SEQUENCE: {
+        const sofab_object_descr_t *nested = info->nested_list[f->nested_idx];
+        for (size_t i = 0; i < nested->field_count; i++)
+            if (!md_slot_empty(nested, &nested->field_list[i], p)) return 0;
+        return 1;
+    }
+    default: return 0;  /* fp/array element kinds: treat as present */
+    }
 }
 
 static void md_value(FILE *o, const sofab_object_descr_t *info,
@@ -132,7 +149,7 @@ static void md_value(FILE *o, const sofab_object_descr_t *info,
         if (nested->fixed_seq) {   /* a wrapper array: emit elements 0..highest-populated */
             size_t hi = 0; int any = 0;
             for (size_t i = 0; i < nested->field_count; i++)
-                if (!md_slot_empty(&nested->field_list[i], p)) { hi = i; any = 1; }
+                if (!md_slot_empty(nested, &nested->field_list[i], p)) { hi = i; any = 1; }
             fputc('[', o);
             if (any)
                 for (size_t i = 0; i <= hi; i++) {

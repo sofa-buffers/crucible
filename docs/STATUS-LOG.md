@@ -1039,6 +1039,47 @@ resulting *what-is* stays in ARCHITECTURE.
 
 ## Key decisions (decision log)
 
+- **2026-07-27 — POC spec audit: the suite retargeted to `omit-all-default-sequences` §2,
+  and WP-05 completed.** The POC spec inverted §2's sequence rule (an all-default
+  sequence-typed *field* is omitted; an empty frame there is non-canonical, accepted,
+  normalized away; the all-default message is zero bytes) and made the empty frame's
+  meaning position-dependent (array wrapper = explicit empty; struct/union field =
+  absence; array *element* = present, counted). Coverage added against each rule:
+  `gen.py`'s reference encoder is POC-canonical (it framed unconditionally — the old
+  §2; `000_00_defaults.bin` is now the empty byte string; corpora regenerated, three
+  wire-duplicate vectors retired: `arr_empty`, union `u16_zero`/`text_empty`), a new
+  **blocking sweep axis `sweep_empty_frame.py`** enumerates the §2 denotations at every
+  sequence position (empty frame / frame-only→0-byte re-encode / §7.4 empty-merge /
+  default-element-only wrappers / zero-count compact arrays / a frame between real
+  fields, plus the union §4.2 identity-loss corners in the union pass), and
+  `corpus/conformance` gained the byte-exact pairs (`a_ctl_omitted`, `d_empty_frame_only`)
+  with its README rewritten to the POC meaning (the `a` vector's bytes are unchanged;
+  its assertion flipped with the spec). **WP-05 landed**: F-0030's fix is in the poc
+  corelib-c-cpp, so `struct_array` (id 202) joined `probe` — the `struct_wrapper` walk
+  in all 9 driver walkers + the reference, new positions in the ONE position model, 8
+  `sw_*` value vectors, and the three sequence-ELEMENT vectors (interior empty frame
+  kept; trailing trimmed; interior gap restored) that §2's most dangerous rule (element
+  presence carries length) had no coverage for. A dormant policy carve-out
+  (`bounded-lazy-seq-depth-noncanonical-frames`, CORELIB_PLAN §6) records the legal
+  bounded-hold-back divergence before anyone trips it (`SOFAB_LAZY_SEQ_DEPTH` = 8 vs
+  `probe`'s depth 3). Deferred with corrected analysis in `TODO.md`: WP-08(c) needs a
+  *dynamic* defaulted array (probe-dyn, not `struct_array` — a fixed-count array has no
+  empty value), the §5.1 dynamic trailing-element rule likewise, and a lazy-depth sweep
+  needs a deeper schema.
+  **The new element-position coverage found three real POC-family defects on its first
+  run** — **F-0035** (10 backends append struct-array elements id-blind, corrupting the
+  decoded value on id gaps/reopens; the generated leaf-element path places by id in the
+  same file), **F-0036** (12 of 13 never trim a trailing all-default sequence element on
+  re-encode, §3/§5.1; only `c` normalizes via its F-0030 fix), **F-0037** (the generated
+  C++ decode leaves a phantom default element after a §7.3 mistyped-skip inside the
+  wrapper; once F-0036 lands this is only visible to the materialized oracle) — all
+  three codegen (G-0020/21/22), minimal reproducers + controls in `findings/`, the
+  affected sweep cells carved out per the F-0034 pattern with the finding id at each
+  carve. One Crucible-side fix fell out: the **C materialize walker** projected a
+  struct wrapper at its fixed capacity (5 all-default objects) where the family
+  reports container length — `md_slot_empty` in `drivers/c/driver.c` now recurses
+  into SEQUENCE slots (mirroring the corelib's `_field_is_default`), and the
+  materialized gate is green at 97×13 with the C anchor at 0/97.
 - **2026-07-27 — the vendored family follows *this checkout's branch*, not `main`.**
   The `omit-all-default-sequences` change lands family-wide on a same-named branch in
   every corelib and in the generator before it lands on `main` (spec side:

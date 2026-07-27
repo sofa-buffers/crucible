@@ -15,18 +15,16 @@ zeroed element on the C object API (corelib-c-cpp `sofab_object_init` never rese
 companion length); `string_array` is uniform. Corelib-only, minimal isolate, carved out of the blocking
 repeated-id sweep axis until fixed.
 
-**Array-of-struct integration 2026-07-23 (WP-05) — HELD pending [corelib-c-cpp#109](https://github.com/sofa-buffers/corelib-c-cpp/issues/109).**
-`engine/structured/schema.py` now models array-of-struct (the `struct_wrapper` descriptor kind), and
-sofabgen generates it for all 13 languages. But adding an `array of struct{k,v}` (id 202) to
-`schema/probe.sofab.yaml` turns the **base round-trip red on every message**: the C object encoder does
-not elide the trailing all-default struct run (§5.1), re-encoding an all-default array-of-struct as N
-empty frames instead of the canonical empty wrapper — **F-0030 / corelib-c-cpp#109** (c-only; cpp-c-cpp
-over the same corelib is correct; `object.c:302-311` "a SEQUENCE is never omitted" guard). **Held out of
-`probe`** (a NOTE marks id 202 reserved) rather than run a red gate or a separate schema. **When the fix
-lands:** re-bootstrap, add the `struct_array` field at id 202, wire it through the six sweep axes + `gen.py`
-+ `materialize.py` (the descriptor-driven walkers gain the `struct_wrapper` node — check each per WP-02
-step 4) + the §5.1 trailing-elision vectors, and verify all 13 agree. Array-of-union / array-of-array are
-follow-ups (WP-05 note).
+**Array-of-struct integration (WP-05) — DONE 2026-07-27** on the `poc/omit-all-default-sequences`
+family (F-0030 / corelib-c-cpp#109 fixed there): `struct_array` (id 202, `struct{k: u32, v: string
+maxlen 16}`, count 5) is in `schema/probe.sofab.yaml`; `gen.py` encodes it canonically (§2/§5.1:
+interior all-default element = empty frame kept, trailing run elided, all-default array = wrapper
+omitted) with 8 `sw_*` value vectors; the `struct_wrapper` node landed in all 9 walkers (5 runtime:
+py/go/ts/java/cs; 4 generated: cpp-shared/rust-shared/zig/dart; C is descriptor-generic) +
+`materialize.py`; `sweep_positions.py` carries the new positions (`seq_swrapper` wrapper, element-0
+`seq_struct`, element k/v leaves) so the position-driven axes sweep them, and
+`sweep_empty_frame.py` pins the element rules (interior kept / trailing trimmed / gap restored).
+Array-of-union / array-of-array remain follow-ups (below).
 
 **docs/improvements.md work packages — COMPLETE 2026-07-23 (all 11 landed or deferred-with-reason).**
 The 2026-07-22 coverage-audit backlog is cleared: WP-01/02A/03/04/05/06/07/08/09/10/11 all merged (PRs
@@ -37,11 +35,24 @@ here:
   out-of-the-box (form `{opt_id:value}` per member), but the 6 runtime + 6 generated walkers need the
   `union` descriptor node + a `materialize.py` union reference (~12 walkers across 10 langs). Part A
   (union cross-encode) is green and gated.
-- [ ] **WP-05 completion** — fold `struct_array` into `schema/probe.sofab.yaml` (id 202) + wire the six sweep
-  axes + gen/materialize + §5.1 trailing-elision vectors, **once corelib-c-cpp#109 (F-0030) lands** (else
-  the base round-trip reddens). `schema.py` composite-element support is already in place.
-- [ ] **WP-08(c)** — §2:112-121 (explicit `[]` overrides a **non-empty** field default): needs a schema field
-  with a non-zero `default:`; lands with WP-05 (its `struct{k,v}` element can carry one).
+- [x] **WP-05 completion** — DONE 2026-07-27 (see the dated entry above).
+- [ ] **WP-08(c)** — §2's *only* conformant empty frame: an explicit `[]` overriding a **non-empty**
+  declared array `default`. **Corrected analysis 2026-07-27:** this does NOT land via `struct_array` —
+  a *fixed-count* array has no empty value (§3: `M = 0` decodes to the N-element all-default value, and
+  with an all-default element default that equals the padded schema default, so the field is simply
+  omitted). The case needs a **dynamic** (count-less) array with a non-empty declared `default:`, and
+  probe is fully bounded by design (fixed-capacity profiles) — so it belongs in the **probe-dyn /
+  limit-mode suite** (10-driver heap roster): add a defaulted dynamic array to
+  `schema/probe-dyn.sofab.yaml`, vectors = {absent → declared default; explicit empty wrapper → `[]`;
+  framed non-default}. `sofabgen` accepts `default:` (verified 2026-07-27).
+- [ ] **§5.1 dynamic-array trailing-sequence-element rule** (POC): for a count-less array, a trailing
+  all-default sequence element is **significant** (`[s, default]` ≠ `[s]` on a growable target) and MUST
+  NOT be elided. Also probe-dyn territory (needs a dynamic array of sequences); today no schema has one.
+- [ ] **Lazy-depth divergence sweep** (POC CORELIB_PLAN §6): the bounded hold-back
+  (`SOFAB_LAZY_SEQ_DEPTH` = 8 in corelib-c-cpp; rs-no-std likewise) only becomes observable with
+  all-default sequence chains nested deeper than 8 — `probe` nests 3. A dedicated deep schema + suite
+  would pin the legal non-canonical frames (policy carve-out
+  `bounded-lazy-seq-depth-noncanonical-frames` is already in `oracle/policy.yaml`, dormant).
 - [ ] **WP-10 Part B phase 2** — an opt-in `STRICT_UTF8=OFF` suite (env-gated build variant + per-profile-class
   `policy.yaml` allowances citing §8): deferred as a non-default-config follow-up; needs the gen#85
   Unicode-string config audit first. Phase-1 reachability audit is done (byte-container profiles OFF-capable

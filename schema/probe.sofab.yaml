@@ -68,10 +68,19 @@ messages:
         type: array
         items: { type: blob, count: 5, maxlen: 64 }
 
-      # NOTE (WP-05, held): an `array of struct{k,v}` (id 202, the map pattern) is the
-      # planned next feature, and `engine/structured/schema.py` already models it (the
-      # `struct_wrapper` descriptor kind). It is **kept out of `probe` for now** because
-      # adding it turns the base round-trip red on every message: the C object encoder
-      # does not elide the trailing all-default struct run (§5.1), re-encoding an
-      # all-default array-of-struct as N empty frames — **F-0030 / corelib-c-cpp#109**.
-      # Fold it in here (id 202) once that fix lands; all 13 then agree. See docs/TODO.md.
+      # WP-05: the `array of struct{k,v}` (the map pattern) — the one wrapper whose
+      # elements are themselves sequences, so it is where the §2/§5.1 sequence-element
+      # rules (an all-default *element* stays framed at an interior position, the
+      # trailing run elides, the all-default array omits the wrapper) become testable.
+      # Was held out behind F-0030 / corelib-c-cpp#109 (the C object encoder framed
+      # all N elements); folded in on the POC omit-all-default-sequences family, where
+      # the fix (`_field_is_default`-driven elision) is in.
+      struct_array:
+        id: 202
+        type: array
+        items:
+          type: struct
+          count: 5
+          fields:
+            k: { id: 0, type: u32 }
+            v: { id: 1, type: string, maxlen: 16 }

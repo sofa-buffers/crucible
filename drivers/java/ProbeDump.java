@@ -106,6 +106,19 @@ public final class ProbeDump {
                 sb.append(']');
                 return sb.toString();
             }
+            case "struct_wrapper": {
+                // struct_array (WP-05): elements are generated objects — an obj
+                // walk per element, container length as-is (like `wrapper`).
+                List<?> list = (List<?>) value;
+                StringBuilder sb = new StringBuilder();
+                sb.append('[');
+                for (int i = 0; i < list.size(); i++) {
+                    if (i > 0) sb.append(',');
+                    sb.append(walkStruct(fieldsOf(node), list.get(i)));
+                }
+                sb.append(']');
+                return sb.toString();
+            }
             default:
                 throw new IllegalStateException("unhandled descriptor kind: " + kind);
         }

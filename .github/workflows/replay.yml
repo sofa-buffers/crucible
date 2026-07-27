@@ -58,9 +58,11 @@ jobs:
       - name: Differential over the resolved-findings regression corpus
         run: CORPUS=corpus/regression ./scripts/run.sh
 
-      # §2/§3 canonicality conformance seeds (WP-08): an all-default nested struct is
-      # still framed (§2), and a non-canonical trailing-default array run is accepted +
-      # re-encoded canonically (§3 / the F-0010 trim rule). See corpus/conformance/README.md.
+      # §2/§3 canonicality conformance seeds (WP-08, POC omit-all-default-sequences):
+      # an all-default sequence field is OMITTED — an empty frame is accepted and
+      # normalized away, the all-default message re-encodes to zero bytes (§2) — and a
+      # non-canonical trailing-default array run is accepted + re-encoded canonically
+      # (§3 / the F-0010 trim rule). See corpus/conformance/README.md.
       - name: Differential over the §2/§3 canonicality conformance seeds
         run: CORPUS=corpus/conformance ./scripts/run.sh
 

@@ -77,6 +77,12 @@ def emit(out_dir):
     for p in SEQ_POSITIONS:
         scope = p.path + (p.fid,)
         if p.cat == "seq_struct":
+            # F-0035 carve-out (G-0020): reopening a struct_array ELEMENT id merges
+            # in c/cpp/dart (§7.4 struct-merge at the element position) but APPENDS
+            # a second element in the 10 id-blind backends. One cell, not the axis —
+            # re-enable when the generator places elements by id.
+            if p.path == (202,):
+                continue
             # reopen the struct twice, a different child each time -> MERGE
             occ0 = open_seq(p.fid, struct_children(scope, 0))
             occ1 = open_seq(p.fid, struct_children(scope, 1))

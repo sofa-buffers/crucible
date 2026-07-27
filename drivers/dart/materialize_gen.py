@@ -124,6 +124,30 @@ def _emit_struct(em, fields, expr):
     em.stmt("b.write('}');")
 
 
+def _emit_struct_wrapper(em, fields, expr):
+    # struct_array (WP-05): elements are generated objects — an obj walk per
+    # element via a struct scope rooted at the element expression; container
+    # length as-is (like _emit_wrapper).
+    i = em.fresh()
+    em.stmt("b.write('[');")
+    em.stmt(f"for (var {i} = 0; {i} < {expr}.length; {i}++) {{")
+    em.stmt(f"  if ({i} != 0) b.write(',');")
+    _emit_element_struct(em, fields, f"{expr}[{i}]")
+    em.stmt("}")
+    em.stmt("b.write(']');")
+
+
+def _emit_element_struct(em, fields, elem_expr):
+    """_emit_struct, but rooted at an element expression instead of a field of a
+    parent object (children access elem_expr.<name> via _emit_node)."""
+    em.stmt("b.write('{');")
+    for idx, child in enumerate(fields):
+        sep = "" if idx == 0 else ";"
+        em.stmt(f"b.write('{sep}{child['id']}:');")
+        _emit_node(em, child, elem_expr)
+    em.stmt("b.write('}');")
+
+
 def _emit_node(em, node, parent_expr):
     kind = node["kind"]
     expr = f'{parent_expr}.{node["name"]}'
@@ -133,6 +157,8 @@ def _emit_node(em, node, parent_expr):
         _emit_array(em, node["elem"], node["count"], expr)
     elif kind == "wrapper":
         _emit_wrapper(em, node["elem"], expr)
+    elif kind == "struct_wrapper":
+        _emit_struct_wrapper(em, node["fields"], expr)
     else:
         _emit_leaf(em, kind, expr)
 

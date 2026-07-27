@@ -82,6 +82,10 @@ def _load_bounds(path=SCHEMA):
             out[(tuple(scope), fid)] = b
             if t == "struct":
                 walk(spec["fields"], scope + [fid])
+            elif t == "array" and spec["items"].get("type") == "struct":
+                # struct_array (WP-05): the element struct's own fields, keyed under
+                # the element-0 scope (wrapper id, element index 0)
+                walk(spec["items"]["fields"], scope + [fid, 0])
 
     walk(mspec["payload"], [])
     return out
@@ -144,6 +148,17 @@ POSITIONS = [
     # wrapper's element maxlen.
     Position((200,), 0, "welem_str", maxlen=_maxlen((), 200)),
     Position((201,), 0, "welem_blob", maxlen=_maxlen((), 201)),
+    # struct_array (id 202, WP-05): the wrapper whose elements are struct sequences.
+    # Its own slot is `seq_swrapper` (a NEW category, deliberately — the seq_wrapper
+    # axes build leaf elements via `p.elem`, which a struct element does not have, so
+    # each axis opts in explicitly rather than silently mis-building). Its element 0
+    # is a struct sequence at path (202,), and the element's own k/v leaves are
+    # ordinary positions at path (202, 0) — every position-driven axis (§7.3 wiretype,
+    # §4.6 reserved-subtype, §7.1 over-bound via v's maxlen) sweeps them for free.
+    Position((), 202, "seq_swrapper", count=_count((), 202)),
+    Position((202,), 0, "seq_struct"),
+    Position((202, 0), 0, "scalar_u"),
+    Position((202, 0), 1, "str", maxlen=_maxlen((202, 0), 1)),
 ]
 
 SEQ_POSITIONS = [p for p in POSITIONS if p.cat in ("seq_struct", "seq_wrapper")]
@@ -157,7 +172,7 @@ CAT_TO_CONSTRUCT = {
     "scalar_u": "U", "scalar_s": "S",
     "fp32": "FIX_fp32", "fp64": "FIX_fp64", "str": "FIX_str", "blob": "FIX_blob",
     "arr_u": "ARR_U", "arr_s": "ARR_S", "arr_fp32": "ARR_fp32", "arr_fp64": "ARR_fp64",
-    "seq_struct": "SEQ", "seq_wrapper": "SEQ",
+    "seq_struct": "SEQ", "seq_wrapper": "SEQ", "seq_swrapper": "SEQ",
     "welem_str": "FIX_str", "welem_blob": "FIX_blob",
 }
 
@@ -241,6 +256,7 @@ STRUCT_CHILDREN = {
     (100,):    [("arr_u", 0), ("arr_s", 1), ("arr_u", 2), ("arr_s", 3),
                 ("arr_u", 4), ("arr_s", 5), ("arr_u", 6), ("arr_s", 7)],
     (100, 10): [("arr_fp32", 0), ("arr_fp64", 1)],
+    (202, 0):  [("scalar_u", 0), ("str", 1)],   # struct_array element {k, v} (WP-05)
 }
 
 def struct_children(scope, variant):

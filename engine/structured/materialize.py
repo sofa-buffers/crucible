@@ -65,6 +65,7 @@ _MSG_KEY = {
     ("arrays", "u64"): "au64", ("arrays", "i64"): "ai64",
     ("arrays", "nested", "fp32"): "afp32", ("arrays", "nested", "fp64"): "afp64",
     ("string_array",): "strarr", ("blob_array",): "blobarr",
+    ("struct_array",): "structarr",
 }
 
 
@@ -147,6 +148,27 @@ def _walk(node, msg, path):
         items = msg.get(key, [])
         leaf, empty = (_text, "") if node["elem"] == "string" else (_blob, b"")
         return _wrapper(items, leaf, empty)
+    if kind == "struct_wrapper":
+        # struct_array (WP-05): the wire elides the TRAILING all-default element run
+        # (fixed count, §5.1) but keeps interior all-default elements as empty frames
+        # (§2 — presence carries the container length), so the decoded container
+        # length is last-non-default-index + 1, with interior defaults materialized
+        # as all-default element objects.
+        items = msg.get(key, [])
+        # element leaf kinds, driven by the descriptor (schema-shape-agnostic); the
+        # element dict keys are the schema field names (gen.py's convention).
+        fmts = {"u": (_u, 0), "s": (_s, 0), "string": (_text, ""), "blob": (_blob, b"")}
+        def _default(e):
+            return not any(e.get(c["name"], fmts[c["kind"]][1]) for c in node["fields"])
+        present = [i for i, e in enumerate(items) if not _default(e)]
+        if not present:
+            return _arr([])
+        elems = []
+        for i in range(max(present) + 1):
+            e = items[i]
+            elems.append(_obj([(c["id"], fmts[c["kind"]][0](e.get(c["name"], fmts[c["kind"]][1])))
+                               for c in node["fields"]]))
+        return _arr(elems)
     raise ValueError(f"unhandled kind {kind!r}")
 
 

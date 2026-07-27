@@ -128,6 +128,17 @@ def emit_value(node, path, out):
         out.append("        " + leaf)
         out.append("    }")
         out.append('    let _ = write!(s, "]");')
+    elif kind == "struct_wrapper":
+        # struct_array (WP-05): elements are generated objects — walk each as a
+        # struct scope (path `x`), container length as-is (like `wrapper`).
+        out.append('    let _ = write!(s, "[");')
+        out.append("    for (i, x) in " + path + ".iter().enumerate() {")
+        out.append('        if i > 0 { let _ = write!(s, ","); }')
+        inner = []
+        emit_value({"kind": "struct", "fields": node["fields"]}, "x", inner)
+        out.extend("    " + ln for ln in inner)
+        out.append("    }")
+        out.append('    let _ = write!(s, "]");')
     else:
         raise ValueError("unhandled kind %r" % kind)
 

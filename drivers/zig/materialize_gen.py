@@ -151,6 +151,25 @@ def _emit_struct(em, fields, expr):
     em.lit("}")
 
 
+def _emit_struct_wrapper(em, fields, expr):
+    """struct_array (WP-05): a slice of generated element structs — an obj walk per
+    element (rooted at the loop capture), container length as-is (like a wrapper)."""
+    n = em._loop
+    em._loop += 1
+    e, i = f"_e{n}", f"_i{n}"
+    em.lit("[")
+    em.raw(f"    for ({expr}, 0..) |{e}, {i}| {{")
+    em.raw(f'        if ({i} != 0) try out.writeAll(",");')
+    em.lit("{")
+    for idx, child in enumerate(fields):
+        sep = "" if idx == 0 else ";"
+        em.lit(f'{sep}{child["id"]}:')
+        _emit_node(em, child, e)
+    em.lit("}")
+    em.raw("    }")
+    em.lit("]")
+
+
 def _emit_node(em, node, parent_expr):
     """Walk one descriptor node, appending its access expression to parent_expr."""
     kind = node["kind"]
@@ -161,6 +180,8 @@ def _emit_node(em, node, parent_expr):
         _emit_array(em, node["elem"], expr)
     elif kind == "wrapper":
         _emit_wrapper(em, node["elem"], expr)
+    elif kind == "struct_wrapper":
+        _emit_struct_wrapper(em, node["fields"], expr)
     else:
         _emit_leaf(em, kind, expr)
 
