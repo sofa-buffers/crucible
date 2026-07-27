@@ -1,5 +1,7 @@
 # F-0036 — a trailing all-default struct element survives the re-encode in 12 of 13 (no §3/§5.1 trailing-trim for sequence-form elements)
 
+**Filed:** [generator#248](https://github.com/sofa-buffers/generator/issues/248)
+
 **Family:** `poc/omit-all-default-sequences` (found 2026-07-27 by the new
 `sweep_empty_frame` axis, first run after WP-05).
 
