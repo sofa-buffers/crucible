@@ -1039,6 +1039,35 @@ resulting *what-is* stays in ARCHITECTURE.
 
 ## Key decisions (decision log)
 
+- **2026-07-28 — `count` is a capacity: the spec contradiction I found, and the suite
+  re-pointed at the answer.** The static audit against the POC branch surfaced that
+  `oracle/materialized.md` and §5.1 disagreed about a `count: N` wrapper's length. Tracing it
+  showed the disagreement was *inside the spec family*: `sofabuffers-schema-v1.json` has always
+  defined `count` as *"Capacity (maximum element count) … the wire may carry 0 .. count
+  elements"*, while MESSAGE_SPEC §3 declared a `count: N` array "fixed-length with exactly N
+  logical elements" and compensated with trim-on-encode / fill-on-decode. The owner confirmed
+  capacity as the intent; **documentation#31** (merged into #29 as `ad8c9d0`) rewrites §2/§3/§5.1
+  around one idea — *the wire carries the length, and nothing that carries it may be elided*:
+  the compact form's `M` **is** the length (no trim, no fill), a wrapper's length is *highest
+  present id + 1* whether or not a `count` is declared, and one sparse rule covers both element
+  kinds (interior default → id gap; **last** element always written, as an empty frame for a
+  sequence element). Crucible was re-pointed the same day, deliberately **ahead of the corelibs
+  and the generator**, so the suite can measure their convergence instead of ratifying whatever
+  they happen to do: `gen.py` (leaf + struct wrappers, `_leaf_elements`), `materialize.py` (no
+  padding anywhere), 9 new `cap_*` value vectors, the `b_*` conformance pair inverted (the two
+  array forms are now *different values*, each round-tripping to itself) plus three `e_wrapper_*`
+  vectors, and `sweep_empty_frame`'s element expectations. **The affected gates are expected red
+  until the family follows** — that is the point, and `corpus/conformance/README.md` says so.
+  Two consequences worth their own note: **F-0010's shipped resolution is superseded** (the
+  `_trim_tail`/`_pad_to` pair of generator#136 / sofabgen 0.17.2 must be rolled back), and
+  **F-0036 inverted** — keeping a trailing all-default element is now correct, so the 12
+  implementations that keep it are right and `c` alone is wrong (corelib-c-cpp's
+  `_field_is_default` elision over-reaching from §2 fields into array elements); generator#248
+  was filed against the wrong side and is corrected in-thread. `engine/structured/audit_canonical.py`
+  joins the repo as the static property checker that found the original contradiction — it
+  re-derives canonicality from the bytes rather than from `gen.py`, so it can catch a reference
+  encoder that is itself wrong, and it carries a negative control (an interior empty element is
+  reported, a gap and a last-index empty are not).
 - **2026-07-27 — POC spec audit: the suite retargeted to `omit-all-default-sequences` §2,
   and WP-05 completed.** The POC spec inverted §2's sequence rule (an all-default
   sequence-typed *field* is omitted; an empty frame there is non-canonical, accepted,

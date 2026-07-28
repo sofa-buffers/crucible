@@ -22,13 +22,13 @@ it. It is PLAN §7's original canonical intent ("explicit distinction … type t
 floats as bit patterns"), resurrected as an *added* oracle — not a replacement (the
 round-trip form stays the default, and remains the schema-agnostic path).
 
-**Scope note (measured, not assumed).** Every current corelib eagerly materializes a
-fixed-count *numeric* array to its full `N` in memory (the wire count `M` is not
-retained; it is reconstructed only at encode time by the trailing-trim heuristic). So
-for numeric arrays this form is uniform across the family today — its live differential
-signal is the **wrapper arrays** (`string_array` / `blob_array`, genuinely dynamic
-containers), **element-level value fidelity**, and **regression-proofing** against a
-future decoder that stops materializing to `N`. See `docs/ARCHITECTURE.md`.
+**Scope note (2026-07-28).** Every current corelib still materializes a `count: N`
+*numeric* array to its full `N` and reconstructs `M` at encode time via the trailing-trim
+heuristic — the behaviour documentation#31 retired. This reference implements the **new**
+rule, so those drivers now disagree with it *by design* until the family converges; that
+disagreement is the point of the gate, not a defect in the reference. The form's other
+signals are unchanged: **wrapper-array lengths**, **element-level value fidelity**, and
+regression-proofing. See `docs/ARCHITECTURE.md`.
 
 ## Wiring (reuses the comparator unchanged)
 
@@ -66,11 +66,13 @@ Rules that make it byte-reproducible across 13 languages:
   presence bit, so *absent* and *present-but-default* are indistinguishable in memory;
   this form deliberately does **not** try to separate them — it dumps the materialized
   value.)
-- **Fixed-count arrays** (`count: N` numeric / fp / the wrapper arrays) emit their
-  **in-memory** elements. Numeric/fp arrays are materialized to exactly `N` (fill-to-N,
-  MESSAGE_SPEC §5.1); the wrapper arrays emit the container's actual length (highest
-  populated index + 1, gaps as empty elements) — **the length is itself the signal**,
-  so an impl holding a different element count shows a different element list.
+- **Arrays emit exactly the elements the value has** — `count` is a **capacity**, not a
+  length (MESSAGE_SPEC §3, documentation#31), so there is **no fill-to-N** for any array
+  form. A compact numeric/fp array materializes its `M` wire elements; a wrapper array
+  materializes *highest present id + 1* elements, interior gaps as element defaults.
+  **The length is itself the signal**, so an impl holding a different element count shows
+  a different element list — which is exactly how a decoder that still pads to `N`, or an
+  encoder that still trims a trailing default, becomes visible here.
 - **Floats are raw bit patterns**, never a decimal or `"NaN"`/`"inf"` rendering — so
   `-0.0`, signalling/quiet NaN payloads, and every rounding are compared exactly.
   fp32 is the 32-bit pattern (a decoder that widened through a 64-bit double MUST

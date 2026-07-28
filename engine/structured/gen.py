@@ -26,8 +26,13 @@ is the **empty byte string** (§2).
 Covers the top-level scalars (u8..i64), the `nested` struct (fp32/fp64/string/blob),
 the numeric arrays (id 100: u8..i64 + nested fp32/fp64), the `string_array` (id 200,
 the index-keyed element sequence — F-0008's neighbourhood) and the `blob_array`
-(id 201, its blob analogue — F-0013's _BlobSeq path). Writes raw wire (no length
-prefix) to corpus/structured/.
+(id 201, its blob analogue — F-0013's _BlobSeq path) and the `struct_array` (id 202,
+the array-of-struct whose elements are themselves sequences). Writes raw wire (no
+length prefix) to corpus/structured/.
+
+Array lengths follow documentation#31: `count` is a **capacity**, so the wire count
+is the array's length — nothing is trimmed on encode and nothing is filled on decode,
+and in a wrapper the last element is always written even when it equals its default.
 
 Usage: python3 engine/structured/gen.py [out_dir]   (default corpus/structured)
 """
@@ -103,6 +108,16 @@ SCALARS = [("u8", 0, False), ("i8", 1, True), ("u16", 2, False), ("i16", 3, True
 NUM_ARRAYS = [("au8", 0, False), ("ai8", 1, True), ("au16", 2, False), ("ai16", 3, True),
               ("au32", 4, False), ("ai32", 5, True), ("au64", 6, False), ("ai64", 7, True)]
 
+def _leaf_elements(items, enc, empty):
+    """Wrapper-array body for leaf elements under the §2 sparse rule: interior
+    defaults omitted (id gap), the last element always written."""
+    out = bytearray()
+    for i, v in enumerate(items):
+        if v != empty or i == len(items) - 1:
+            out += enc(i, v)
+    return bytes(out)
+
+
 def _framed(fid, body):
     """Frame body as sequence fid iff it is non-empty; an all-default sequence is
     omitted outright (MESSAGE_SPEC §2 uniform ≠-default rule — the frame carries no
@@ -140,40 +155,26 @@ def encode(msg: dict) -> bytes:
     if msg.get("afp64"): anested += arr_fp(1, msg["afp64"], "<d", FL_FP64)
     arrays += _framed(10, bytes(anested))
     out += _framed(100, bytes(arrays))
-    # string_array (id 200) — a sequence of index-keyed fixlen-string elements; a
-    # default (empty) element is omitted (stored at its wire index on decode), and
-    # an all-default array omits the wrapper itself (§2 — its declared default is
-    # the empty collection, so absence is the canonical form of both [] and ["",…]).
-    sa = bytearray()
-    for i, sv in enumerate(msg.get("strarr", [])):
-        if sv:
-            sa += fstr(i, sv)
-    out += _framed(200, bytes(sa))
-    # blob_array (id 201) — the blob analogue of string_array: index-keyed fixlen-blob
-    # elements; a default (empty b'') element is omitted, stored at its wire index.
-    ba = bytearray()
-    for i, bv in enumerate(msg.get("blobarr", [])):
-        if bv:
-            ba += fblob(i, bv)
-    out += _framed(201, bytes(ba))
+    # string_array (id 200) / blob_array (id 201) — index-keyed leaf elements. §2
+    # sparse rule: an *interior* default element is omitted (an id gap the decoder
+    # restores), the **last** element is ALWAYS written, because the length is
+    # *highest present id + 1* and eliding it would shorten the array. An empty
+    # array omits the wrapper itself (its declared default is the empty collection).
+    out += _framed(200, _leaf_elements(msg.get("strarr", []), fstr, ""))
+    out += _framed(201, _leaf_elements(msg.get("blobarr", []), fblob, b""))
     # struct_array (id 202, WP-05) — the wrapper whose elements are struct sequences
-    # {k: u32 (id 0), v: string (id 1)}. §2/§5.1 canonical: every element up to the
-    # LAST non-default one is framed — an interior all-default element as an EMPTY
-    # frame (it is *present*; dropping it would change the container length), the
-    # trailing all-default run elided (fixed count: the length is N regardless), and
-    # when nothing remains the wrapper itself is omitted (§2).
+    # {k: u32 (id 0), v: string (id 1)}. The SAME rule as the leaf wrappers above
+    # (§2, one rule for both element kinds): an interior all-default element is a
+    # gap, the last element is always written — as an EMPTY FRAME when it is itself
+    # all-default — and an empty array omits the wrapper.
     selems = msg.get("structarr", [])
-    last = -1
-    for i, e in enumerate(selems):
-        if e.get("k", 0) or e.get("v", ""):
-            last = i
     sw = bytearray()
-    for i in range(last + 1):
-        e = selems[i]
+    for i, e in enumerate(selems):
         body = b""
         if e.get("k", 0): body += scalar_u(0, e["k"])
         if e.get("v", ""): body += fstr(1, e["v"])
-        sw += hdr(i, WT_SEQ_BEG) + body + bytes([WT_SEQ_END])
+        if body or i == len(selems) - 1:          # interior all-default -> gap
+            sw += hdr(i, WT_SEQ_BEG) + body + bytes([WT_SEQ_END])
     out += _framed(202, bytes(sw))
     return bytes(out)
 
@@ -252,14 +253,25 @@ def vectors():
     out.append(("arr_u32_seq", {"au32": [1, 2, 3, 4, 5]}))
     out.append(("arr_u64_max", {"au64": [U["u64"]] * 5}))
     out.append(("arr_i64_bounds", {"ai64": [SMIN["i64"], SMAX["i64"], 0, 1, -1]}))
-    # NB: an *under*-count array (0 < wire count < schema count) re-encodes
-    # divergently (F-0010: fixed-storage langs pad to capacity, dynamic langs keep
-    # the wire count) — kept OUT of this green gate; reproducers in findings/F-0010.
+    # --- `count` is a CAPACITY (documentation#31): the wire count IS the length ---
+    # An array shorter than its schema `count` is simply a shorter array — no longer
+    # the F-0010 "under-count" divergence, which existed only under the retired
+    # fixed-length reading. These pin that a trailing default element is a VALUE, not
+    # padding: the pairs must round-trip to DIFFERENT bytes.
+    out.append(("cap_u8_short", {"au8": [1, 2, 3]}))                 # 3 elements, M=3
+    out.append(("cap_u8_trailing_zeros", {"au8": [1, 2, 3, 0, 0]}))  # 5 elements, M=5
+    out.append(("cap_i8_trailing_zero", {"ai8": [-1, 0]}))           # 2 elements, M=2
+    out.append(("cap_fp32_trailing_zero", {"afp32": [1.0, 0.0]}))    # 2 elements, M=2
+    out.append(("cap_u8_one", {"au8": [7]}))                         # 1 element
+    # the wrapper side of the same rule: the LAST element is always written, so these
+    # three are three distinct values (§2 last-element rule)
+    out.append(("cap_sa_last_default", {"strarr": ["a", ""]}))       # 2 elements
+    out.append(("cap_sa_one", {"strarr": ["a"]}))                    # 1 element
+    out.append(("cap_sa_all_default", {"strarr": ["", ""]}))         # 2 elements, id 1 only
+    out.append(("cap_ba_last_default", {"blobarr": [b"\x01", b""]}))  # 2 elements
     # NB: the former "arr_empty" ({"au8": []}) vector is retired — under the §2
     # uniform ≠-default rule an empty array field is *omitted*, so its wire was
-    # byte-identical to 00_defaults (it already was before: `if vals:` skipped the
-    # empty list). The explicit count-0 wire form it *meant* to pin is now swept
-    # non-canonically at every array position by sweep_empty_frame.py.
+    # byte-identical to 00_defaults.
     # fp arrays (arrays.nested): specials in both widths
     out.append(("arr_fp32_specials", {"afp32": [0.0, 1.0, -1.0, float("inf"), float("nan")]}))
     out.append(("arr_fp64_specials", {"afp64": [float("-inf"), 2.5, -3.5, 1e308, 0.0]}))

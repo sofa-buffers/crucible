@@ -1,11 +1,26 @@
-# F-0036 — a trailing all-default struct element survives the re-encode in 12 of 13 (no §3/§5.1 trailing-trim for sequence-form elements)
+# F-0036 — **direction inverted 2026-07-28**: a trailing all-default element must be KEPT, and `c` is the only implementation that drops it
 
-**Filed:** [generator#248](https://github.com/sofa-buffers/generator/issues/248)
+**Filed:** [generator#248](https://github.com/sofa-buffers/generator/issues/248) — **filed
+against the wrong side and being corrected**; see the banner below.
 
-**Family:** `poc/omit-all-default-sequences` (found 2026-07-27 by the new
-`sweep_empty_frame` axis, first run after WP-05).
+> ## ⚠️ Inverted by documentation#31 (`count` is a capacity)
+>
+> This finding was written when §3/§5.1 said a `count: N` array is *"fixed-length with
+> exactly N logical elements"*, so a trailing all-default element was redundant padding
+> the encoder had to trim. **documentation#31 removed that reading**: `count` is a
+> capacity, the wire carries the length, and the **last element is always written**.
+>
+> So the camps swap. The 12 implementations that keep the trailing element are
+> **correct**; **`c` alone is wrong** — corelib-c-cpp's `sofab_object_encode` elides it
+> via the recursive `_field_is_default` (the corelib-c-cpp#109 / F-0030 fix), which now
+> shortens the array. Same for the `M = 0` vector: `seq[202](elem0())` is the
+> **one-element** array `[{}]`, not the empty array, so omitting the wrapper is wrong.
+>
+> **Attribution moves with it:** corelib-c-cpp, not the generator. The original
+> generator-side analysis below is kept for the record.
 
 ## The split
+
 
 `trailing_empty_elem.bin` — `u8=1` + `seq[202]( elem0{k=1}, elem1() )`: the trailing
 element is all-default, so the canonical fixed-count encoding trims it (§3/§5.1 —

@@ -29,9 +29,10 @@ The sweep also pins the §2 *consequence* vectors:
     all-default sequence is itself all-default);
   - a **merged** empty frame (§7.4: the same sequence id reopened, both empty)
     is still all-default;
-  - a wrapper carrying only **explicit default-valued leaf elements**
-    (`fstr(0,"")`) is value-identical to the empty wrapper → normalized away
-    (the §3 "['','',…] encodes exactly like []" identity, driven to its §2 end);
+  - a wrapper carrying only **default-valued leaf elements** is NOT the empty
+    array: since documentation#31 the last element is always written, so
+    `seq[200](0:"")` is the one-element array `[""]` and re-encodes unchanged,
+    while an *interior* default element is a gap;
   - a **zero-count compact array** (`arr_u(fid, [])`) at every numeric-array
     position: the compact analogue of the empty wrapper — legal (CORELIB_PLAN
     §4.7), value-identical to the omitted field, normalized on re-encode.
@@ -104,32 +105,43 @@ def emit(out_dir):
             vectors.append((f"{p.tag()}_empty_merge.bin",
                             MARKER + place(p.path, empty_seq(p.fid) + empty_seq(p.fid)),
                             "accept"))
-        # 4) a wrapper carrying only explicit default-valued leaf elements — the
-        #    §3 trailing-default identity driven to the §2 omission.
+        # 4) leaf-wrapper length rules (documentation#31): a single default element
+        #    is the one-element array [""], NOT the empty array — the last element
+        #    is always written; an interior default element is a gap that the
+        #    decoder restores. Both must round-trip to themselves.
         if p.cat == "seq_wrapper":
-            elem = fstr(0, "") if p.elem == "str" else fblob(0, b"")
+            e0 = fstr(0, "") if p.elem == "str" else fblob(0, b"")
+            e1 = fstr(1, "x") if p.elem == "str" else fblob(1, b"\x78")
             vectors.append((f"{p.tag()}_default_elem_only.bin",
-                            MARKER + place(p.path, hdr(p.fid, WT_SEQ_BEG) + elem + END),
+                            MARKER + place(p.path, hdr(p.fid, WT_SEQ_BEG) + e0 + END),
+                            "accept"))
+            # interior gap: element 0 absent (default), element 1 present -> length 2
+            vectors.append((f"{p.tag()}_interior_gap_leaf.bin",
+                            MARKER + place(p.path, hdr(p.fid, WT_SEQ_BEG) + e1 + END),
                             "accept"))
         # 5) the sequence-ELEMENT rules (struct_array, WP-05) — the §2 position
         #    where an empty frame is NOT interchangeable with absence:
         if p.cat == "seq_swrapper":
             e = lambda i, body=b"": hdr(i, WT_SEQ_BEG) + body + END
             k = lambda i, v: e(i, scalar_u(0, v))
-            # an INTERIOR all-default element between two real ones: present, its id
-            # counts toward the container length — canonical, the re-encode MUST
-            # keep it (a driver that drops it changes the length, not just bytes).
+            # an INTERIOR all-default element between two real ones is NON-canonical
+            # since documentation#31: the interior is sparse, so it must normalize to
+            # an id GAP (the length is fixed by the last element either way).
             vectors.append((f"{p.tag()}_interior_empty_elem.bin",
                             MARKER + place(p.path, e(p.fid, k(0, 1) + e(1) + k(2, 3))),
                             "accept"))
-            # F-0036 carve-out (G-0021): a TRAILING all-default element — §5.1 says
-            # trim on re-encode; today only `c` does. Reproducer in findings/F-0036…/.
-            # F-0035 carve-out (G-0020): an interior id GAP — §5.1 places by id and
-            # restores the empty frame; the 10 id-blind backends compact instead,
-            # shifting the decoded value. Reproducer in findings/F-0035…/.
+            # F-0035 carve-out (G-0020): the canonical form of the above — element 0
+            # and 2 present, 1 a gap — is mis-decoded by the 10 id-blind backends,
+            # which compact it to length 2. Reproducer in findings/F-0035…/.
+            # A TRAILING all-default element is now CANONICAL (it is the last element,
+            # so it carries the length): `c` trims it and is the lone outlier —
+            # findings/F-0036…/, whose direction inverted with documentation#31.
 
     # 5) zero-count compact arrays: the compact-form analogue at every numeric/fp
     #    array position (CORELIB_PLAN §4.7 legal; §2 value-identical to omission).
+    #    NB a *non-zero* short count is no longer "under-count" but simply a shorter
+    #    array (documentation#31) — that axis lives in the cross-encode value corpus
+    #    (`cap_*` vectors), where the exact re-encoded bytes are compared.
     for p in ARRAY_POSITIONS:
         if p.cat == "arr_u":      body = arr_u(p.fid, [])
         elif p.cat == "arr_s":    body = arr_s(p.fid, [])

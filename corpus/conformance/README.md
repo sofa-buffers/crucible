@@ -5,11 +5,21 @@ Small hand-built seed set pinning the MESSAGE_SPEC §2/§3 canonicality rules by
 `CORPUS=corpus/conformance ./scripts/run.sh` — all 13 drivers must agree, and the
 round-trip re-encode must be canonical.
 
-Written against the **POC `omit-all-default-sequences` spec** (§2 uniform ≠-default
-rule: an all-default sequence-typed *field* is **omitted**; an empty frame there is a
-non-canonical encoding of the omitted field, accepted and normalized away). The `a`
-vector asserted the opposite — "always framed" — under the pre-POC spec; its bytes
-are unchanged, its meaning flipped with the spec.
+Written against the **POC `omit-all-default-sequences` spec** (documentation#29), whose
+two halves this corpus pins by name:
+
+1. **§2 sequence omission** — an all-default sequence-typed *field* is **omitted**; an
+   empty frame there is a non-canonical encoding of the omitted field, accepted and
+   normalized away. (The `a` vector asserted the opposite — "always framed" — before the
+   POC; its bytes are unchanged, its meaning flipped with the spec.)
+2. **§3/§5.1 `count` is a capacity** (documentation#31) — the wire carries the array's
+   *length*: nothing is trimmed on encode, nothing is filled to `N` on decode, and in a
+   wrapper the **last** element is always written. The `b` pair asserted the opposite —
+   the trailing-default trim — until 2026-07-28.
+
+**Expect these red until the family converges.** The corelibs and the generator still
+ship the trim/fill behaviour (the old F-0010 resolution); the `b_*` and `e_*` rows below
+are the target, not the status quo.
 
 | seed | rule | assertion |
 |---|---|---|
