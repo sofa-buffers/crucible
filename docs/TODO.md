@@ -48,6 +48,29 @@ here:
 - [ ] **§5.1 dynamic-array trailing-sequence-element rule** (POC): for a count-less array, a trailing
   all-default sequence element is **significant** (`[s, default]` ≠ `[s]` on a growable target) and MUST
   NOT be elided. Also probe-dyn territory (needs a dynamic array of sequences); today no schema has one.
+- [ ] **The materialized oracle contradicts §5.1 on fixed-count wrapper length — decide which
+  is wrong** (found 2026-07-28 by the static audit against POC `a3e35e2`). `oracle/materialized.md`
+  defines a wrapper array's dump as *"the container's actual length (highest populated index + 1)"*,
+  and `materialize.py` plus all 13 walkers implement that. MESSAGE_SPEC §5.1 says the opposite for a
+  **declared `count: N`**: length is *"`N` for every target — a growable-list target MUST default-fill
+  to `N` exactly like a pre-sized one"*, and reserves *highest present id + 1* for **dynamic** arrays;
+  `a3e35e2` sharpened exactly that contrast. All three probe wrappers (`string_array`, `blob_array`,
+  `struct_array`) declare `count: 5`, so per spec `["only-first"]` must materialize as **5** elements,
+  not 1. This is **agreement-green / conformance-red by construction**: the heap profiles genuinely
+  hold 1 element, the C profile holds 5 slots and our *walker* trims it to match them — i.e. the
+  oracle was calibrated to the family instead of to the spec, which is what hides it. Two possible
+  resolutions, and the choice is not Crucible's to make alone: (a) the implementations are wrong →
+  fix `materialize.py` + the 9 walkers to fill to `N`, which turns the materialized gate red until
+  the heap corelibs fill, or (b) the spec means "as many as the wire implies" for wrapper arrays →
+  §5.1 needs a carve-out for the wrapper form. Ask upstream before changing either side. NB the
+  round-trip oracle cannot see this at all (both lengths re-encode identically).
+- [ ] **Dynamic-array last-element rule is untestable** (POC MESSAGE_SPEC §2, `a3e35e2`): *"the
+  element at the highest index is always written, whatever its value"* applies only to a **dynamic**
+  (count-less) wrapper array. No schema has one — `probe`'s three wrappers are all `count: 5`, and
+  `probe-dyn`'s `dyn_arr` is a *compact* u32 array, not a wrapper. Needs a count-less
+  `array of string` (or of struct) in `probe-dyn` (heap roster only, as with the other dynamic work),
+  with vectors `["a",""]` vs `["a"]` vs `[]` — three distinct values that must encode differently.
+  Lands together with WP-08(c) and the §5.1 dynamic trailing-element item above.
 - [ ] **Lazy-depth divergence sweep** (POC CORELIB_PLAN §6): the bounded hold-back
   (`SOFAB_LAZY_SEQ_DEPTH` = 8 in corelib-c-cpp; rs-no-std likewise) only becomes observable with
   all-default sequence chains nested deeper than 8 — `probe` nests 3. A dedicated deep schema + suite
