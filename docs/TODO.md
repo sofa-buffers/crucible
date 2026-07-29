@@ -151,6 +151,17 @@ here:
 
 ## Open — waiting on upstream, then verify
 
+- [ ] **F-0039 / generator#254 — blocks merging `poc/omit-all-default-sequences` into `main`.**
+      The §7.3 `wiretype_sweep` axis is **red on 30 of 332 vectors**: the java and csharp backends
+      resize a declared native array from the count of a header they are skipping, so a mistyped
+      array decodes as a 1-element array of zeros instead of leaving the field at its default.
+      Every other axis is green, and the failure is a defect of the released family (sofabgen
+      0.21.0), not of the branch — crucible#109's own materialize regression is fixed and green.
+      **Decision 2026-07-29: hold the merge rather than demote the axis or land a red gate on
+      `main`.** The axis stays blocking; no carve-out was added, because this divergence is a spec
+      violation and `oracle/policy.yaml` is for *legal* ones. Unblocked by a sofabgen release
+      carrying the #254 fix: re-run `scripts/sweep.sh`, expect 0 divergences, then merge #109.
+
 - [x] **F-0022 / generator#188** — **DONE (sofabgen 0.19.4, 2026-07-21).** The generated array-fill
       arm now carries the §7.3 guard (`if self.afill == 0 { return; }`) and `array_begin` arms `afill`
       only at a real array position; a bare scalar at an array id is skipped. All 5 isolates → 0

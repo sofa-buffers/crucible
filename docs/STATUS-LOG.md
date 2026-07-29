@@ -72,6 +72,16 @@ Its row 1 turned out to be the same defect as F-0039/generator#254, found indepe
 day from the other side; the two are cross-linked rather than merged, because one is codegen and
 fixable today and the other is a corelib hook-signature change.
 
+*Decision — the POC branch is not merged yet, and the sweep axis stays blocking.* With the
+family bump verified, crucible#109's own failure is gone (the materialize gate is green in CI),
+but `wiretype_sweep` is red on 30 of 332 vectors: F-0039, a defect of the released sofabgen
+0.21.0, not of the branch. Three ways out were weighed — demote the axis to report-only, merge
+red, or wait. **Waiting won.** A carve-out was explicitly rejected: `oracle/policy.yaml` records
+divergences the spec *allows*, and this one it forbids, so parking it there would launder a bug
+into a legal difference. Merging red would cost the "main is green" signal every later PR reads.
+So the branch stays open until a sofabgen release carries generator#254; then re-run the sweep
+and merge. Tracked in `docs/TODO.md`.
+
 **Re-verification 2026-07-08** — after bumping **sofabgen → 0.15.1** and all 10
 corelibs to latest `main`, drivers rebuilt clean and the seed corpus is green (0
 divergences). Replaying the finding reproducers: **F-0002 and F-0005 are fixed**
