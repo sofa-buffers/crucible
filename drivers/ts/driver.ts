@@ -36,7 +36,7 @@ const _MATERIALIZE = process.env.SOFAB_MATERIALIZE === "1";
 interface SchemaNode {
   id: number;
   name: string;
-  kind: "u" | "s" | "fp32" | "fp64" | "string" | "blob" | "struct" | "array" | "wrapper";
+  kind: "u" | "s" | "fp32" | "fp64" | "string" | "blob" | "struct" | "array" | "wrapper" | "struct_wrapper";
   fields?: SchemaNode[];
   elem?: "u" | "s" | "fp32" | "fp64" | "string" | "blob";
   count?: number;
@@ -104,6 +104,12 @@ function walk(node: SchemaNode, value: unknown): string {
       // array: numeric/fp materialized to N in memory; wrapper: index order,
       // container length is the signal. Both just map over the in-memory elements.
       return "[" + (value as unknown[]).map((el) => formatLeaf(node.elem!, el)).join(",") + "]";
+    case "struct_wrapper":
+      // struct_array (WP-05): elements are generated objects — an obj walk per
+      // element, container length as-is (like `wrapper`).
+      return "[" + (value as Record<string, unknown>[]).map((e) =>
+        "{" + node.fields!.map((c) => c.id + ":" + walk(c, e[c.name])).join(";") + "}"
+      ).join(",") + "]";
     default:
       return formatLeaf(node.kind, value);
   }

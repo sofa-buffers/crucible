@@ -165,6 +165,24 @@
       "kind": "wrapper",
       "elem": "blob",
       "count": 5
+    },
+    {
+      "id": 202,
+      "name": "struct_array",
+      "kind": "struct_wrapper",
+      "count": 5,
+      "fields": [
+        {
+          "id": 0,
+          "name": "k",
+          "kind": "u"
+        },
+        {
+          "id": 1,
+          "name": "v",
+          "kind": "string"
+        }
+      ]
     }
   ]
 }

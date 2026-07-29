@@ -2,5 +2,14 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": "The corelibs are vendored by scripts/bootstrap.sh, never resolved from a registry. drivers/go/go.mod carries `require github.com/sofa-buffers/corelib-go v0.0.0` only to satisfy the module graph; a `replace` directive points the build at ../../vendor/corelib-go, so the version string is inert. Bumping it changes nothing and misrepresents the harness as testing a released corelib instead of the freshly vendored family (PLAN §2, docs/ARCHITECTURE.md). Closed crucible#110 on these grounds.",
+      "matchPackageNames": [
+        "github.com/sofa-buffers/corelib-go"
+      ],
+      "enabled": false
+    }
   ]
 }

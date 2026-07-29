@@ -177,6 +177,19 @@ internal static class Driver
                 }
                 return sb.Append(']').ToString();
             }
+            case "struct_wrapper":
+            {
+                // struct_array (WP-05): elements are generated objects — an obj walk
+                // per element, container length as-is (like `wrapper`).
+                var list = (System.Collections.IList)value;
+                var sb = new StringBuilder("[");
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append(WalkStruct(node.Fields, list[i]!));
+                }
+                return sb.Append(']').ToString();
+            }
             default:
                 return Leaf(node.Kind, value);
         }

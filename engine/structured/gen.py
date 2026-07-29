@@ -15,16 +15,24 @@ the existing round-trip + decode-agreement oracle (`scripts/run.sh`): all 13 dri
 must emit the same `A <hex>`. A divergence is a real encoder/decoder asymmetry.
 
 This is a *reference* encoder for the full-scale `schema/probe.sofab.yaml`. It is
-deliberately canonical (fields in id order, defaults omitted, the struct/array
-sequences always emitted) so its output equals each corelib's re-encoding — but the
-oracle only requires the 13 drivers to agree with *each other*, so a non-canonical
-(but valid) encoding would work too.
+deliberately canonical (fields in id order, defaults omitted — including a whole
+sequence whose value equals its declared default, per the uniform ≠-default rule of
+MESSAGE_SPEC §2: an all-default struct/wrapper is *omitted*, not framed empty) so
+its output equals each corelib's re-encoding — but the oracle only requires the 13
+drivers to agree with *each other*, so a non-canonical (but valid) encoding would
+work too. The consequence pinned by `000_00_defaults.bin`: the all-default message
+is the **empty byte string** (§2).
 
 Covers the top-level scalars (u8..i64), the `nested` struct (fp32/fp64/string/blob),
 the numeric arrays (id 100: u8..i64 + nested fp32/fp64), the `string_array` (id 200,
 the index-keyed element sequence — F-0008's neighbourhood) and the `blob_array`
-(id 201, its blob analogue — F-0013's _BlobSeq path). Writes raw wire (no length
-prefix) to corpus/structured/.
+(id 201, its blob analogue — F-0013's _BlobSeq path) and the `struct_array` (id 202,
+the array-of-struct whose elements are themselves sequences). Writes raw wire (no
+length prefix) to corpus/structured/.
+
+Array lengths follow documentation#31: `count` is a **capacity**, so the wire count
+is the array's length — nothing is trimmed on encode and nothing is filled on decode,
+and in a wrapper the last element is always written even when it equals its default.
 
 Usage: python3 engine/structured/gen.py [out_dir]   (default corpus/structured)
 """
@@ -100,47 +108,74 @@ SCALARS = [("u8", 0, False), ("i8", 1, True), ("u16", 2, False), ("i16", 3, True
 NUM_ARRAYS = [("au8", 0, False), ("ai8", 1, True), ("au16", 2, False), ("ai16", 3, True),
               ("au32", 4, False), ("ai32", 5, True), ("au64", 6, False), ("ai64", 7, True)]
 
+def _leaf_elements(items, enc, empty):
+    """Wrapper-array body for leaf elements under the §2 sparse rule: interior
+    defaults omitted (id gap), the last element always written."""
+    out = bytearray()
+    for i, v in enumerate(items):
+        if v != empty or i == len(items) - 1:
+            out += enc(i, v)
+    return bytes(out)
+
+
+def _framed(fid, body):
+    """Frame body as sequence fid iff it is non-empty; an all-default sequence is
+    omitted outright (MESSAGE_SPEC §2 uniform ≠-default rule — the frame carries no
+    information, absence reconstructs the same value)."""
+    return hdr(fid, WT_SEQ_BEG) + body + bytes([WT_SEQ_END]) if body else b""
+
+
 def encode(msg: dict) -> bytes:
     """msg: {scalar-name: int, 'f32'|'f64': float, 'str': str, 'blob': bytes}.
-    Missing / default (0 / 0.0 / '' / b'') fields are omitted (sparse-canonical)."""
+    Missing / default (0 / 0.0 / '' / b'') fields are omitted (sparse-canonical);
+    per §2 that includes each sequence as a whole, so the all-default message is
+    the empty byte string."""
     out = bytearray()
     for name, fid, signed in SCALARS:
         v = msg.get(name, 0)
         if v:
             out += scalar_s(fid, v) if signed else scalar_u(fid, v)
-    # nested struct (id 10) — always emitted; children omitted when default
-    out += hdr(10, WT_SEQ_BEG)
-    if msg.get("f32", 0.0) or _is_special(msg.get("f32")): out += fp32(0, msg["f32"])
-    if msg.get("f64", 0.0) or _is_special(msg.get("f64")): out += fp64(1, msg["f64"])
-    if msg.get("str", ""):   out += fstr(2, msg["str"])
-    if msg.get("blob", b""): out += fblob(3, msg["blob"])
-    out += bytes([WT_SEQ_END])
-    # arrays struct (id 100) — always emitted; each array omitted when empty
-    out += hdr(100, WT_SEQ_BEG)
+    # nested struct (id 10) — children omitted when default; the whole frame
+    # omitted when all of them are (§2)
+    nested = bytearray()
+    if msg.get("f32", 0.0) or _is_special(msg.get("f32")): nested += fp32(0, msg["f32"])
+    if msg.get("f64", 0.0) or _is_special(msg.get("f64")): nested += fp64(1, msg["f64"])
+    if msg.get("str", ""):   nested += fstr(2, msg["str"])
+    if msg.get("blob", b""): nested += fblob(3, msg["blob"])
+    out += _framed(10, bytes(nested))
+    # arrays struct (id 100) — each array omitted when empty, arrays.nested (id 10)
+    # omitted when both fp arrays are, the whole frame omitted when everything is
+    arrays = bytearray()
     for name, fid, signed in NUM_ARRAYS:
         vals = msg.get(name)
         if vals:
-            out += arr_s(fid, vals) if signed else arr_u(fid, vals)
-    # arrays.nested (id 10) — always emitted; fp arrays inside
-    out += hdr(10, WT_SEQ_BEG)
-    if msg.get("afp32"): out += arr_fp(0, msg["afp32"], "<f", FL_FP32)
-    if msg.get("afp64"): out += arr_fp(1, msg["afp64"], "<d", FL_FP64)
-    out += bytes([WT_SEQ_END])   # close arrays.nested
-    out += bytes([WT_SEQ_END])   # close arrays
-    # string_array (id 200) — a sequence of index-keyed fixlen-string elements;
-    # a default (empty) element is omitted (stored at its wire index on decode).
-    out += hdr(200, WT_SEQ_BEG)
-    for i, sv in enumerate(msg.get("strarr", [])):
-        if sv:
-            out += fstr(i, sv)
-    out += bytes([WT_SEQ_END])
-    # blob_array (id 201) — the blob analogue of string_array: index-keyed fixlen-blob
-    # elements; a default (empty b'') element is omitted, stored at its wire index.
-    out += hdr(201, WT_SEQ_BEG)
-    for i, bv in enumerate(msg.get("blobarr", [])):
-        if bv:
-            out += fblob(i, bv)
-    out += bytes([WT_SEQ_END])
+            arrays += arr_s(fid, vals) if signed else arr_u(fid, vals)
+    anested = bytearray()
+    if msg.get("afp32"): anested += arr_fp(0, msg["afp32"], "<f", FL_FP32)
+    if msg.get("afp64"): anested += arr_fp(1, msg["afp64"], "<d", FL_FP64)
+    arrays += _framed(10, bytes(anested))
+    out += _framed(100, bytes(arrays))
+    # string_array (id 200) / blob_array (id 201) — index-keyed leaf elements. §2
+    # sparse rule: an *interior* default element is omitted (an id gap the decoder
+    # restores), the **last** element is ALWAYS written, because the length is
+    # *highest present id + 1* and eliding it would shorten the array. An empty
+    # array omits the wrapper itself (its declared default is the empty collection).
+    out += _framed(200, _leaf_elements(msg.get("strarr", []), fstr, ""))
+    out += _framed(201, _leaf_elements(msg.get("blobarr", []), fblob, b""))
+    # struct_array (id 202, WP-05) — the wrapper whose elements are struct sequences
+    # {k: u32 (id 0), v: string (id 1)}. The SAME rule as the leaf wrappers above
+    # (§2, one rule for both element kinds): an interior all-default element is a
+    # gap, the last element is always written — as an EMPTY FRAME when it is itself
+    # all-default — and an empty array omits the wrapper.
+    selems = msg.get("structarr", [])
+    sw = bytearray()
+    for i, e in enumerate(selems):
+        body = b""
+        if e.get("k", 0): body += scalar_u(0, e["k"])
+        if e.get("v", ""): body += fstr(1, e["v"])
+        if body or i == len(selems) - 1:          # interior all-default -> gap
+            sw += hdr(i, WT_SEQ_BEG) + body + bytes([WT_SEQ_END])
+    out += _framed(202, bytes(sw))
     return bytes(out)
 
 def _is_special(v):
@@ -218,10 +253,25 @@ def vectors():
     out.append(("arr_u32_seq", {"au32": [1, 2, 3, 4, 5]}))
     out.append(("arr_u64_max", {"au64": [U["u64"]] * 5}))
     out.append(("arr_i64_bounds", {"ai64": [SMIN["i64"], SMAX["i64"], 0, 1, -1]}))
-    # NB: an *under*-count array (0 < wire count < schema count) re-encodes
-    # divergently (F-0010: fixed-storage langs pad to capacity, dynamic langs keep
-    # the wire count) — kept OUT of this green gate; reproducers in findings/F-0010.
-    out.append(("arr_empty", {"au8": []}))          # count 0 (explicit empty) — agrees
+    # --- `count` is a CAPACITY (documentation#31): the wire count IS the length ---
+    # An array shorter than its schema `count` is simply a shorter array — no longer
+    # the F-0010 "under-count" divergence, which existed only under the retired
+    # fixed-length reading. These pin that a trailing default element is a VALUE, not
+    # padding: the pairs must round-trip to DIFFERENT bytes.
+    out.append(("cap_u8_short", {"au8": [1, 2, 3]}))                 # 3 elements, M=3
+    out.append(("cap_u8_trailing_zeros", {"au8": [1, 2, 3, 0, 0]}))  # 5 elements, M=5
+    out.append(("cap_i8_trailing_zero", {"ai8": [-1, 0]}))           # 2 elements, M=2
+    out.append(("cap_fp32_trailing_zero", {"afp32": [1.0, 0.0]}))    # 2 elements, M=2
+    out.append(("cap_u8_one", {"au8": [7]}))                         # 1 element
+    # the wrapper side of the same rule: the LAST element is always written, so these
+    # three are three distinct values (§2 last-element rule)
+    out.append(("cap_sa_last_default", {"strarr": ["a", ""]}))       # 2 elements
+    out.append(("cap_sa_one", {"strarr": ["a"]}))                    # 1 element
+    out.append(("cap_sa_all_default", {"strarr": ["", ""]}))         # 2 elements, id 1 only
+    out.append(("cap_ba_last_default", {"blobarr": [b"\x01", b""]}))  # 2 elements
+    # NB: the former "arr_empty" ({"au8": []}) vector is retired — under the §2
+    # uniform ≠-default rule an empty array field is *omitted*, so its wire was
+    # byte-identical to 00_defaults.
     # fp arrays (arrays.nested): specials in both widths
     out.append(("arr_fp32_specials", {"afp32": [0.0, 1.0, -1.0, float("inf"), float("nan")]}))
     out.append(("arr_fp64_specials", {"afp64": [float("-inf"), 2.5, -3.5, 1e308, 0.0]}))
@@ -250,31 +300,55 @@ def vectors():
     out.append(("ba_last_index", {"blobarr": [b"", b"", b"", b"", b"\x04"]}))  # only max valid index (4)
     out.append(("ba_maxlen", {"blobarr": [b"\x5a" * 64]}))              # maxlen-64 blob element
     out.append(("ba_binary", {"blobarr": [bytes(range(8)), b"\x00\x00", b"\xff\xfe\xfd"]}))  # raw binary
+    # struct_array (id 202, WP-05): the sequence-element value space — where the §2
+    # empty-frame ELEMENT rules live (an interior all-default element stays framed;
+    # the trailing run elides; the all-default array omits the wrapper).
+    out.append(("sw_full", {"structarr": [{"k": 1, "v": "one"}, {"k": 2, "v": "two"},
+                                          {"k": 3, "v": "three"}, {"k": 4, "v": "four"},
+                                          {"k": 5, "v": "five"}]}))
+    out.append(("sw_partial", {"structarr": [{"k": 7, "v": "seven"}]}))  # element 0 only
+    out.append(("sw_k_only", {"structarr": [{"k": 42}]}))                # v at default inside
+    out.append(("sw_v_only", {"structarr": [{"v": "val"}]}))             # k at default inside
+    # an interior ALL-DEFAULT element: encodes as an empty frame between two real
+    # ones — present, counted, MUST NOT be dropped (§2 element rule / §5.1 length)
+    out.append(("sw_hole_mid", {"structarr": [{"k": 1, "v": "a"}, {}, {"k": 3, "v": "c"}]}))
+    # trailing all-default elements: elided from the wire (fixed count, §5.1) — the
+    # value round-trips against a default-initialised destination
+    out.append(("sw_trailing_default", {"structarr": [{"k": 9, "v": "last-real"}, {}, {}]}))
+    out.append(("sw_maxlen_v", {"structarr": [{"k": 0xFFFFFFFF, "v": "x" * 16}]}))  # boundary k + maxlen v
+    out.append(("sw_unicode", {"structarr": [{"k": 1, "v": "äöü✓"}]}))
     return out
 
 # --- union message (schema/probe-union.sofab.yaml) — WP-02 ------------------
 # The union probe: tag (id 0, u32), choice (id 1, union), trailer (id 2, u8). The
 # union `choice` is a sequence carrying at most one member; member ids select the
 # option: as_u16=0 (WT_U), as_i32=1 (WT_S), as_text=2 (fixlen string maxlen16),
-# as_blob=3 (fixlen blob maxlen8). An empty union → default_id (as_u16 = 0). The
-# sequence is always framed (§2), even when empty.
+# as_blob=3 (fixlen blob maxlen8). A default union (default_id carrying that
+# option's default) is canonically OMITTED (§2/§4.2 — absence yields the same
+# value); a member at its own default reduces to the same omission (the §4.2
+# identity loss: the option id cannot survive a round-trip).
 def encode_union(msg: dict) -> bytes:
     """msg: {'tag': int, 'member': (kind, value)|None, 'trailer': int}. kind in
-    {'u16','i32','text','blob'}; member=None → empty union (default_id). tag/trailer
-    are omitted when default (sparse-canonical)."""
+    {'u16','i32','text','blob'}; member=None or a member at its default → the union
+    is omitted (§2). tag/trailer are omitted when default (sparse-canonical)."""
     out = bytearray()
     if msg.get("tag"):
         out += scalar_u(0, msg["tag"])
-    out += hdr(1, WT_SEQ_BEG)                     # union `choice` — always framed
+    choice = bytearray()
     m = msg.get("member")
     if m is not None:
         kind, v = m
-        if kind == "u16":    out += scalar_u(0, v)
-        elif kind == "i32":  out += scalar_s(1, v)
-        elif kind == "text": out += fstr(2, v)
-        elif kind == "blob": out += fblob(3, v)
+        if kind == "u16":
+            if v: choice += scalar_u(0, v)
+        elif kind == "i32":
+            if v: choice += scalar_s(1, v)
+        elif kind == "text":
+            if v: choice += fstr(2, v)
+        elif kind == "blob":
+            if v: choice += fblob(3, v)
         else: raise ValueError(f"unknown union member {kind!r}")
-    out += bytes([WT_SEQ_END])
+    if choice:
+        out += hdr(1, WT_SEQ_BEG) + choice + bytes([WT_SEQ_END])
     if msg.get("trailer"):
         out += scalar_u(2, msg["trailer"])
     return bytes(out)
@@ -285,15 +359,18 @@ def union_vectors():
     (empty) case, and tag+member+trailer combos. All valid → all 13 must agree on the
     re-encoded hex (the cross-encode invariant)."""
     out = []
-    out.append(("00_default", {}))                        # empty union → default_id
-    # as_u16 (u16): 0 / 1 / max
-    for tag, v in (("zero", 0), ("one", 1), ("max", 0xFFFF)):
+    out.append(("00_default", {}))                        # default union → omitted (§2), 0 bytes
+    # as_u16 (u16): 1 / max. NB "u16_zero" and "text_empty" are retired: a member at
+    # its own default reduces to the omitted union (§2/§4.2 identity loss), making
+    # their wire byte-identical to 00_default; their explicit non-canonical wire
+    # forms are swept by sweep_empty_frame.py's union pass instead.
+    for tag, v in (("one", 1), ("max", 0xFFFF)):
         out.append((f"u16_{tag}", {"member": ("u16", v)}))
     # as_i32 (i32): min / -1 / 1 / max
     for tag, v in (("min", -2**31), ("neg1", -1), ("one", 1), ("max", 2**31 - 1)):
         out.append((f"i32_{tag}", {"member": ("i32", v)}))
-    # as_text (string maxlen16): empty / ascii / unicode / exactly-maxlen16
-    out.append(("text_empty", {"member": ("text", "")}))
+    # as_text (string maxlen16): ascii / unicode / exactly-maxlen16 ("" is retired —
+    # see the NB above)
     out.append(("text_ascii", {"member": ("text", "hello")}))
     out.append(("text_unicode", {"member": ("text", "äöü\U0001F600")}))
     out.append(("text_max16", {"member": ("text", "x" * 16)}))

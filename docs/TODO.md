@@ -15,18 +15,17 @@ zeroed element on the C object API (corelib-c-cpp `sofab_object_init` never rese
 companion length); `string_array` is uniform. Corelib-only, minimal isolate, carved out of the blocking
 repeated-id sweep axis until fixed.
 
-**Array-of-struct integration 2026-07-23 (WP-05) — HELD pending [corelib-c-cpp#109](https://github.com/sofa-buffers/corelib-c-cpp/issues/109).**
-`engine/structured/schema.py` now models array-of-struct (the `struct_wrapper` descriptor kind), and
-sofabgen generates it for all 13 languages. But adding an `array of struct{k,v}` (id 202) to
-`schema/probe.sofab.yaml` turns the **base round-trip red on every message**: the C object encoder does
-not elide the trailing all-default struct run (§5.1), re-encoding an all-default array-of-struct as N
-empty frames instead of the canonical empty wrapper — **F-0030 / corelib-c-cpp#109** (c-only; cpp-c-cpp
-over the same corelib is correct; `object.c:302-311` "a SEQUENCE is never omitted" guard). **Held out of
-`probe`** (a NOTE marks id 202 reserved) rather than run a red gate or a separate schema. **When the fix
-lands:** re-bootstrap, add the `struct_array` field at id 202, wire it through the six sweep axes + `gen.py`
-+ `materialize.py` (the descriptor-driven walkers gain the `struct_wrapper` node — check each per WP-02
-step 4) + the §5.1 trailing-elision vectors, and verify all 13 agree. Array-of-union / array-of-array are
-follow-ups (WP-05 note).
+**Array-of-struct integration (WP-05) — DONE 2026-07-27** on the `poc/omit-all-default-sequences`
+family (F-0030 / corelib-c-cpp#109 fixed there): `struct_array` (id 202, `struct{k: u32, v: string
+maxlen 16}`, count 5) is in `schema/probe.sofab.yaml`; `gen.py` encodes it canonically (§2/§5.1 **as amended by
+documentation#31**: interior all-default element = id **gap**, the last element always written —
+as an empty frame when all-default — and an *empty* array omits the wrapper) with 8 `sw_*` value
+vectors; the `struct_wrapper` node landed in all 9 walkers (5 runtime:
+py/go/ts/java/cs; 4 generated: cpp-shared/rust-shared/zig/dart; C is descriptor-generic) +
+`materialize.py`; `sweep_positions.py` carries the new positions (`seq_swrapper` wrapper, element-0
+`seq_struct`, element k/v leaves) so the position-driven axes sweep them, and
+`sweep_empty_frame.py` pins the element rules (interior gap / last element kept).
+Array-of-union / array-of-array remain follow-ups (below).
 
 **docs/improvements.md work packages — COMPLETE 2026-07-23 (all 11 landed or deferred-with-reason).**
 The 2026-07-22 coverage-audit backlog is cleared: WP-01/02A/03/04/05/06/07/08/09/10/11 all merged (PRs
@@ -37,11 +36,30 @@ here:
   out-of-the-box (form `{opt_id:value}` per member), but the 6 runtime + 6 generated walkers need the
   `union` descriptor node + a `materialize.py` union reference (~12 walkers across 10 langs). Part A
   (union cross-encode) is green and gated.
-- [ ] **WP-05 completion** — fold `struct_array` into `schema/probe.sofab.yaml` (id 202) + wire the six sweep
-  axes + gen/materialize + §5.1 trailing-elision vectors, **once corelib-c-cpp#109 (F-0030) lands** (else
-  the base round-trip reddens). `schema.py` composite-element support is already in place.
-- [ ] **WP-08(c)** — §2:112-121 (explicit `[]` overrides a **non-empty** field default): needs a schema field
-  with a non-zero `default:`; lands with WP-05 (its `struct{k,v}` element can carry one).
+- [x] **WP-05 completion** — DONE 2026-07-27 (see the dated entry above).
+- [ ] **WP-08(c)** — the explicit `[]` that overrides a **non-empty** declared array `default`: still
+  the only §2 case with no vector, and it needs a schema field carrying `default:` (any array now has
+  an empty value — the 2026-07-27 "fixed-count has none" reasoning died with documentation#31). Add a
+  defaulted array to `schema/probe-dyn.sofab.yaml` (heap roster), vectors = {absent → declared default;
+  explicit empty wrapper → `[]`; framed non-default}. `sofabgen` accepts `default:` (verified).
+- [x] **The materialized oracle vs §5.1 wrapper length** — RESOLVED 2026-07-28 by
+  [documentation#31](https://github.com/sofa-buffers/documentation/pull/31): `count` is a
+  capacity, so *highest present id + 1* is the spec's own rule and the oracle was right.
+  The contradiction was in §5.1's "N for every target", now gone.
+- [x] **Dynamic-array last-element rule untestable** — RESOLVED 2026-07-28: #31 generalized
+  the rule from *dynamic* to **every** wrapper array, so probe's `count: 5` wrappers test it
+  (`corpus/conformance/e_wrapper_*`, the `cap_sa_*` cross-encode vectors).
+- [ ] **The family still ships trim-on-encode / fill-on-decode** (documentation#31): every
+  backend's `_trim_tail` / `_pad_to` (the old F-0010 resolution, generator#136 / sofabgen
+  0.17.2) is now non-conformant, and corelib-c-cpp additionally elides a trailing *element*
+  (F-0036, direction inverted). Crucible's vectors already assert the new rule, so the
+  §3/§5.1 gates are **expected red** until the family converges — re-verify, then promote.
+  Upstream issues still to file: the generator rollback, and corelib-c-cpp for F-0036.
+- [ ] **Lazy-depth divergence sweep** (POC CORELIB_PLAN §6): the bounded hold-back
+  (`SOFAB_LAZY_SEQ_DEPTH` = 8 in corelib-c-cpp; rs-no-std likewise) only becomes observable with
+  all-default sequence chains nested deeper than 8 — `probe` nests 3. A dedicated deep schema + suite
+  would pin the legal non-canonical frames (policy carve-out
+  `bounded-lazy-seq-depth-noncanonical-frames` is already in `oracle/policy.yaml`, dormant).
 - [ ] **WP-10 Part B phase 2** — an opt-in `STRICT_UTF8=OFF` suite (env-gated build variant + per-profile-class
   `policy.yaml` allowances citing §8): deferred as a non-default-config follow-up; needs the gen#85
   Unicode-string config audit first. Phase-1 reachability audit is done (byte-container profiles OFF-capable
@@ -132,6 +150,21 @@ here:
       pays for the redundancy.
 
 ## Open — waiting on upstream, then verify
+
+- [x] **F-0039 / generator#254 — DONE (generator `main` @ 9c71fde, 2026-07-29).** The java and
+      csharp backends no longer size a declared array from a header §7.3 says to skip: the
+      generated `arrayBegin` now guards each allocation with `if (kind != ArrayKind.X) break;`.
+      `wiretype_sweep` went **30 → 2** divergences.
+- [ ] **F-0042 — the last two `wiretype_sweep` cells, carved out until the corelib hook widens.**
+      The residual pair is `100_10_id0_ARR_fp64_mism` / `100_10_id1_ARR_fp32_mism`: an fp array
+      meeting a declared fp array of the *other* width. Both are `ArrayKind.FIXLEN`, and the
+      array-header hook carries the kind but not the fixlen element **subtype**, so no codegen
+      guard can separate them — the same root cause F-0042 already tracks
+      (corelib-go#58, -java#53, -cs#45, -dart#23, -rs-no-std#60, -rs#40, -zig#27).
+      Carved out in `engine/structured/wiretype_sweep.py` as **two cells, never the axis** (the
+      F-0034 pattern), with the deletion condition in the comment. **Delete the carve-out when
+      the hook change ships** and expect the cells to go green on their own — they are a bug,
+      not a legal divergence, which is why this is not an `oracle/policy.yaml` entry.
 
 - [x] **F-0022 / generator#188** — **DONE (sofabgen 0.19.4, 2026-07-21).** The generated array-fill
       arm now carries the §7.3 guard (`if self.afill == 0 { return; }`) and `array_begin` arms `afill`

@@ -15,13 +15,13 @@ comptime field access needs field names known at compile time, and a runtime
 descriptor can't drive `@field`/comptime reflection the way this form needs
 (string vs blob are both []const u8, indistinguishable by type — only the
 descriptor's `kind` separates them). So the descriptor is unrolled here, at
-build time, into explicit `m.nested.f32` / `m.arrays.u8[0..]` / slice-loop code.
+build time, into explicit `m.nested.f32` / `m.arrays.u8.slice()` / slice-loop code.
 
 Descriptor shape (JSON): { "message": "probe", "fields": [node, ...] }
   node: id, name, kind
   kind: leaf u|s|fp32|fp64|string|blob
         struct  (+ fields[])
-        array   (+ elem u|s|fp32|fp64, + count)   -> native [count]T
+        array   (+ elem u|s|fp32|fp64, + count)   -> native FixedArray(T, count)
         wrapper (+ elem string|blob,  + count)    -> []const []const u8 slice
 
 Zig field names are the schema `name`s verbatim (verified against the generated
@@ -108,12 +108,18 @@ def _emit_leaf(em, kind, expr):
 
 
 def _emit_array(em, elem, expr):
-    """A fixed-count native array [count]T: iterate the slice, comma-separated."""
+    """A `count: N` native array: iterate the elements it actually carries.
+
+    `count` is a capacity, not a length (MESSAGE_SPEC §3), so the generated
+    holder is a `FixedArray(T, N)` — N slots of inline capacity plus the length —
+    and the value is `.slice()`, i.e. `items[0..len]`. Walking `items` whole
+    would materialize the spare capacity as trailing default elements and turn
+    every short array into a false divergence."""
     n = em._loop
     em._loop += 1
     e, i = f"_e{n}", f"_i{n}"
     em.lit("[")
-    em.raw(f"    for ({expr}[0..], 0..) |{e}, {i}| {{")
+    em.raw(f"    for ({expr}.slice(), 0..) |{e}, {i}| {{")
     em.raw(f'        if ({i} != 0) try out.writeAll(",");')
     # element emit at deeper indent
     saved = em.lines
@@ -151,6 +157,25 @@ def _emit_struct(em, fields, expr):
     em.lit("}")
 
 
+def _emit_struct_wrapper(em, fields, expr):
+    """struct_array (WP-05): a slice of generated element structs — an obj walk per
+    element (rooted at the loop capture), container length as-is (like a wrapper)."""
+    n = em._loop
+    em._loop += 1
+    e, i = f"_e{n}", f"_i{n}"
+    em.lit("[")
+    em.raw(f"    for ({expr}, 0..) |{e}, {i}| {{")
+    em.raw(f'        if ({i} != 0) try out.writeAll(",");')
+    em.lit("{")
+    for idx, child in enumerate(fields):
+        sep = "" if idx == 0 else ";"
+        em.lit(f'{sep}{child["id"]}:')
+        _emit_node(em, child, e)
+    em.lit("}")
+    em.raw("    }")
+    em.lit("]")
+
+
 def _emit_node(em, node, parent_expr):
     """Walk one descriptor node, appending its access expression to parent_expr."""
     kind = node["kind"]
@@ -161,6 +186,8 @@ def _emit_node(em, node, parent_expr):
         _emit_array(em, node["elem"], expr)
     elif kind == "wrapper":
         _emit_wrapper(em, node["elem"], expr)
+    elif kind == "struct_wrapper":
+        _emit_struct_wrapper(em, node["fields"], expr)
     else:
         _emit_leaf(em, kind, expr)
 

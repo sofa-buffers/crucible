@@ -8,12 +8,10 @@ from), produce the exact materialized-form dump a *correct* driver must emit und
 validated byte-for-byte against this reference.
 
 It models the decoded value, not the source dict — i.e. `decode(encode(msg))`:
-  * a numeric / fp array is materialized to its full schema `count` N (fill-to-N,
-    MESSAGE_SPEC §5.1) — trailing defaults included, since the in-memory value keeps
-    them (only the *wire* elides them);
-  * a wrapper array (`string_array` / `blob_array`) is grown to highest-populated
-    index + 1 (the wire omits default/empty elements, so the container's in-memory
-    length is max-present-index + 1, with any interior gaps as empty elements);
+  * an array's length is **what the wire carried** — `count` is a capacity, not a
+    length (MESSAGE_SPEC §3, documentation#31): a compact array materializes exactly
+    its `M` wire elements with **no fill-to-N**, and a wrapper array materializes
+    *highest present id + 1* elements, interior gaps restored as element defaults;
   * a scalar / fp / string / blob is its value or the type default.
 
 Usage: python3 engine/structured/materialize.py            # dump every gen.py vector
@@ -42,12 +40,10 @@ def _array_counts(fields):
     return cs
 
 
-# WP-11: derived from the schema descriptor, not a hardcoded 5. The padding below
-# assumes a *uniform* array count across the schema; assert it so a non-uniform schema
-# fails loudly here rather than silently mis-padding.
-_COUNTS = _array_counts(_DESC["fields"])
-assert len(_COUNTS) == 1, f"materialize assumes a uniform array count; schema has {_COUNTS}"
-ARR_COUNT = next(iter(_COUNTS))   # schema count for every array/wrapper (== 5 today)
+# The schema `count`s, kept for reference only: since documentation#31 `count` is a
+# CAPACITY, so nothing here pads to it — an array materializes exactly what the wire
+# carried (§3). Retained so a reader sees the bound this reference deliberately ignores.
+ARRAY_CAPACITIES = _array_counts(_DESC["fields"])
 
 # gen.py's message-dict key per schema field PATH — its value-vector naming
 # convention, the one thing NOT derivable from the schema (gen.py names arrays.u8
@@ -65,6 +61,7 @@ _MSG_KEY = {
     ("arrays", "u64"): "au64", ("arrays", "i64"): "ai64",
     ("arrays", "nested", "fp32"): "afp32", ("arrays", "nested", "fp64"): "afp64",
     ("string_array",): "strarr", ("blob_array",): "blobarr",
+    ("struct_array",): "structarr",
 }
 
 
@@ -84,15 +81,16 @@ def _arr(vals):   return "[" + ",".join(vals) + "]"
 
 
 def _num_array(vals, signed):
-    """A fixed-count numeric array, materialized to N with the type default (0)."""
-    padded = list(vals) + [0] * (ARR_COUNT - len(vals))
+    """A compact numeric array: exactly the elements the wire carried. `count` is a
+    capacity, so there is no fill-to-N (§3) — `[1,2,3]` in a `count: 5` array is a
+    three-element array, distinct from `[1,2,3,0,0]`."""
     enc = _s if signed else _u
-    return _arr([enc(v) for v in padded[:ARR_COUNT]])
+    return _arr([enc(v) for v in vals])
 
 
 def _fp_array(vals, enc):
-    padded = list(vals) + [0.0] * (ARR_COUNT - len(vals))
-    return _arr([enc(v) for v in padded[:ARR_COUNT]])
+    """As _num_array: the wire count is the length, no padding to the capacity."""
+    return _arr([enc(v) for v in vals])
 
 
 def _scalar_fp(v):
@@ -107,18 +105,10 @@ def _scalar_fp(v):
 
 
 def _wrapper(items, leaf, empty):
-    """A wrapper array (string_array/blob_array). The wire omits empty (default)
-    elements, so the decoded container length is highest-non-empty-index + 1, and any
-    interior omitted element materializes as the type's empty value."""
-    present = [i for i, v in enumerate(items) if v]
-    if not present:
-        return _arr([])
-    length = max(present) + 1
-    out = []
-    for i in range(length):
-        v = items[i] if i < len(items) else empty
-        out.append(leaf(v if v else empty))
-    return _arr(out)
+    """A wrapper array (string_array/blob_array). The wire omits *interior* default
+    elements and always writes the **last** one (§2), so the decoded length is the
+    value's own length — interior gaps come back as the element default."""
+    return _arr([leaf(v if v else empty) for v in items])
 
 
 def _walk(node, msg, path):
@@ -147,6 +137,19 @@ def _walk(node, msg, path):
         items = msg.get(key, [])
         leaf, empty = (_text, "") if node["elem"] == "string" else (_blob, b"")
         return _wrapper(items, leaf, empty)
+    if kind == "struct_wrapper":
+        # struct_array (WP-05): elements are sequences; the same length rule as
+        # _wrapper applies (§2/§5.1) — nothing trailing is elided.
+        items = msg.get(key, [])
+        # element leaf kinds, driven by the descriptor (schema-shape-agnostic); the
+        # element dict keys are the schema field names (gen.py's convention). Same
+        # length rule as _wrapper: interior all-default elements are gaps on the wire
+        # and come back as all-default elements, the last one is always written.
+        fmts = {"u": (_u, 0), "s": (_s, 0), "string": (_text, ""), "blob": (_blob, b"")}
+        return _arr([
+            _obj([(c["id"], fmts[c["kind"]][0](e.get(c["name"], fmts[c["kind"]][1])))
+                  for c in node["fields"]])
+            for e in items])
     raise ValueError(f"unhandled kind {kind!r}")
 
 

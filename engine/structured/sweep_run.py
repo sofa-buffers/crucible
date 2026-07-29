@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.join(HERE, "..", ".."))  # repo root for oracle.compa
 from oracle.comparator import run_driver, parse  # noqa: E402
 
 AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserved_subtype",
-        "sweep_truncation", "sweep_malform_truncate", "sweep_varint"]
+        "sweep_truncation", "sweep_malform_truncate", "sweep_varint", "sweep_empty_frame"]
 
 # `sweep_varint` (WP-03, §2 varint canonicality) is blocking and now **fully
 # conformance-asserting**. It used to be agreement-only for its non-minimal vectors
@@ -52,7 +52,7 @@ AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserve
 # against it — scripts/sweep.sh rebuilds the roster before invoking `--union` and
 # rebuilds back to probe after (the SCHEMA-switch discipline, ground rule 3).
 UNION_AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound",
-              "sweep_reserved_subtype", "sweep_truncation"]
+              "sweep_reserved_subtype", "sweep_truncation", "sweep_empty_frame"]
 
 # The 13-driver roster, mirroring scripts/run.sh. Built by ./scripts/run.sh already.
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))

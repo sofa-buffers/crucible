@@ -36,7 +36,7 @@ drivers, and runs the five **green** oracles in sequence; any divergence fails t
 job:
 
 ```sh
-./scripts/bootstrap.sh   # always: latest sofabgen release (checksum-verified) + corelibs@main
+./scripts/bootstrap.sh   # always: latest sofabgen CI build (checksum-verified) + corelibs, both @ FAMILY_BRANCH
 ./scripts/run.sh                          # seed differential            (corpus/seeds)
 CORPUS=corpus/regression ./scripts/run.sh # resolved-findings gate       (corpus/regression)
 REGEN=0 ./scripts/cross-encode.sh         # cross-encode / structured    (corpus/structured)

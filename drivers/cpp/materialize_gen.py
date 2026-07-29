@@ -73,16 +73,21 @@ def _emit(node, acc, out, ind, depth):
         out.append(pad + "o.push_back('}');")
         return
 
-    if kind in ("array", "wrapper"):
-        # Both are fixed-count containers exposing .size()/operator[]. Numeric/fp
-        # arrays are std::array<T,N> (always N elements); wrapper arrays are the
-        # dynamic container (its length is itself the signal). Same walk for both:
-        # emit every in-memory element in index order.
+    if kind in ("array", "wrapper", "struct_wrapper"):
+        # All are containers exposing .size()/operator[]. Numeric/fp arrays are
+        # std::array<T,N> (always N elements); wrapper arrays are the dynamic
+        # container (its length is itself the signal); a struct_wrapper's elements
+        # are generated objects, walked as a struct scope each (WP-05). Same loop
+        # for all: emit every in-memory element in index order.
         iv = f"_i{depth}"
         out.append(pad + "o.push_back('[');")
         out.append(pad + f"for (std::size_t {iv} = 0; {iv} < {acc}.size(); ++{iv}) {{")
         out.append(pad + f"    if ({iv}) o.push_back(',');")
-        _emit_elem(node["elem"], f"{acc}[{iv}]", out, ind + 1, depth + 1)
+        if kind == "struct_wrapper":
+            elem_node = {"kind": "struct", "fields": node["fields"]}
+            _emit(elem_node, f"{acc}[{iv}]", out, ind + 1, depth + 1)
+        else:
+            _emit_elem(node["elem"], f"{acc}[{iv}]", out, ind + 1, depth + 1)
         out.append(pad + "}")
         out.append(pad + "o.push_back(']');")
         return

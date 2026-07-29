@@ -19,6 +19,89 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Family bump 2026-07-29 — first fully-merged sparse-array family, re-verified end to end.**
+The POC branch landed everywhere: documentation `8087f1d` (PR #29 + #31), all 11 corelibs
+merged to `main` and released **0.9.0**, generator `0c424ac` (#244) released **sofabgen
+0.21.0**. Bootstrapped with `FAMILY_BRANCH=main SOFABGEN_VERSION=v0.21.0`; the stale
+`poc/omit-all-default-sequences` branches still exist in every corelib repo (tree-identical
+to `main`, 1 behind), so the default branch-tracking would have vendored refs that no longer
+move — `FAMILY_BRANCH=main` is required until they are deleted.
+
+*Decision — the materialized walkers read the length, never the capacity.* The materialize
+gate opened at **1068 divergences** because four Crucible-side walkers iterated a `count: N`
+array's capacity: `drivers/c/driver.c`, `drivers/go/driver.go`, and the generated walkers
+from `drivers/{zig,dart}/materialize_gen.py`. MESSAGE_SPEC §3 settles it — *"a decoder
+materializes exactly the M elements the wire carries … There is no fill-to-N"* — and the C
+walker's wrapper branch additionally trimmed trailing defaults, which §2's last-element rule
+forbids. Fixed on the spec's terms, not by matching the majority: the gate is green **and**
+the C anchor now matches `engine/structured/materialize.py` 0/106, and that reference is
+derived from the spec. Generated code was never at fault — every backend already exposes a
+length (C's `ARRAY_SIZED` descriptor, Zig's `FixedArray(T,N).slice()`, native containers
+elsewhere). `oracle/materialized.md`'s scope note was updated from "family has not converged"
+to converged.
+
+*Gates.* seeds / conformance / structured / regression / crashes / union / structured-union /
+limits / materialize all green; 7 of 8 sweep axes green **including `sweep_empty_frame`** (the
+§2 omission axis). `corpus/interesting` (1121 inputs) reduced from 70 clusters to **12**, no
+new crash, and the previously dominant F-0012 class is gone.
+
+*Findings.* **F-0035, F-0036, F-0037 resolved** — every reproducer agrees, generator#247/#248/
+#249 closed. F-0036 was checked beyond agreement, since its direction had been inverted by
+documentation#31: all three isolates round-trip byte-identically, i.e. the family converged on
+the spec-correct side (the trailing empty frame is kept). **F-0031 is down to `typescript`
+alone**; generator#235 stays open (PR #251 closed unmerged). Three new findings, all filed:
+**F-0039** (java/cs resize a declared array from a §7.3-skipped header — generator#254,
+G-0023), **F-0040** (corelib-c-cpp defers the overlong-varint verdict to INCOMPLETE —
+corelib-c-cpp#116), **F-0041** (over-index reject ordered before the §7.3 skip —
+corelib-c-cpp#117 + corelib-cpp#58). **F-0038 filed** at last against all six corelibs
+(corelib-go#57, corelib-rs#39, corelib-rs-no-std#59, corelib-java#52, corelib-cs#44,
+corelib-dart#22). F-0041 carries an explicit caveat into both issues: §7.3 argues its
+precedence through the fixlen *count word*, so if the maintainers scope the clause there, the
+fix belongs in `documentation` instead — the 11-vs-2 split is stated, not assumed.
+
+*Decision — generator#232 closed as misfiled, re-filed as seven corelib issues.* It had sat in
+the generator repo since 2026-07-25, first as an open spec question ("does the count bound or the
+§7.3 subtype win for a fixlen array?") and then as an implementation gap. The question is settled
+— CORELIB_PLAN §4.8 — and the answer makes the remaining work impossible to do in the generator:
+seven array header hooks either fire before the `fixlen_word` or omit the element subtype, so no
+generated guard can express the order. Assigned **F-0042** (it had never had a Crucible id, which
+is why nothing in the catalog pointed at it), pinned all six vectors as reproducers, and filed
+corelib-go#58, corelib-java#53, corelib-cs#45, corelib-dart#23, corelib-rs-no-std#60 (rows 2+4)
+and corelib-rs#40, corelib-zig#27 (row 2 only — their hook already fires past the `fixlen_word`).
+Its row 1 turned out to be the same defect as F-0039/generator#254, found independently the same
+day from the other side; the two are cross-linked rather than merged, because one is codegen and
+fixable today and the other is a corelib hook-signature change.
+
+*Decision — the POC branch is not merged yet, and the sweep axis stays blocking.* With the
+family bump verified, crucible#109's own failure is gone (the materialize gate is green in CI),
+but `wiretype_sweep` is red on 30 of 332 vectors: F-0039, a defect of the released sofabgen
+0.21.0, not of the branch. Three ways out were weighed — demote the axis to report-only, merge
+red, or wait. **Waiting won.** A carve-out was explicitly rejected: `oracle/policy.yaml` records
+divergences the spec *allows*, and this one it forbids, so parking it there would launder a bug
+into a legal difference. Merging red would cost the "main is green" signal every later PR reads.
+So the branch stays open until a sofabgen release carries generator#254; then re-run the sweep
+and merge. Tracked in `docs/TODO.md`.
+
+*Resolved the same day, and the hold was lifted.* generator#254 and #235 both merged to
+generator `main` (`9c71fde`, 06:01). Measured against a source build of it: `wiretype_sweep`
+**30 → 2**, and F-0031's fp32 sNaN now round-trips bit-exact on typescript, so that finding is
+closed on the driver side too. The two survivors are an fp array meeting a declared fp array of
+the other width — both `ArrayKind.FIXLEN`, and the array-header hook carries the kind but not the
+subtype, so codegen cannot separate them. That is F-0042's root cause, not a new defect: the
+codegen half went as far as codegen can.
+
+*Decision — carve out the two cells, not the axis.* Earlier today a carve-out was rejected for
+this same gate, and that judgement stands for what it was aimed at: `oracle/policy.yaml` records
+divergences the spec **allows**, and putting a §7.3 violation there would launder a bug into a
+legal difference. A sweep-cell exclusion is a different instrument — it asserts nothing about
+legality, it names an open finding and carries its own deletion condition, and the repo already
+used it for F-0034, F-0036 and F-0037. Restoring coverage made that concrete: the F-0036/F-0037
+carve-outs this branch was carrying are now stale (both fixed in 0.21.0), so removing them took
+`wiretype_sweep` from 332 to **363** vectors — all green. Net effect of the swap: 31 cells
+gained, 2 cells parked with an issue reference. Every CI gate is green: seeds, conformance,
+regression, structured, crashes, cross-encode, union, limits, materialize (106×13 → 0, C anchor
+0/106) and all eight sweep axes including the union pass.
+
 **Re-verification 2026-07-08** — after bumping **sofabgen → 0.15.1** and all 10
 corelibs to latest `main`, drivers rebuilt clean and the seed corpus is green (0
 divergences). Replaying the finding reproducers: **F-0002 and F-0005 are fixed**
@@ -1039,6 +1122,103 @@ resulting *what-is* stays in ARCHITECTURE.
 
 ## Key decisions (decision log)
 
+- **2026-07-28 — `count` is a capacity: the spec contradiction I found, and the suite
+  re-pointed at the answer.** The static audit against the POC branch surfaced that
+  `oracle/materialized.md` and §5.1 disagreed about a `count: N` wrapper's length. Tracing it
+  showed the disagreement was *inside the spec family*: `sofabuffers-schema-v1.json` has always
+  defined `count` as *"Capacity (maximum element count) … the wire may carry 0 .. count
+  elements"*, while MESSAGE_SPEC §3 declared a `count: N` array "fixed-length with exactly N
+  logical elements" and compensated with trim-on-encode / fill-on-decode. The owner confirmed
+  capacity as the intent; **documentation#31** (merged into #29 as `ad8c9d0`) rewrites §2/§3/§5.1
+  around one idea — *the wire carries the length, and nothing that carries it may be elided*:
+  the compact form's `M` **is** the length (no trim, no fill), a wrapper's length is *highest
+  present id + 1* whether or not a `count` is declared, and one sparse rule covers both element
+  kinds (interior default → id gap; **last** element always written, as an empty frame for a
+  sequence element). Crucible was re-pointed the same day, deliberately **ahead of the corelibs
+  and the generator**, so the suite can measure their convergence instead of ratifying whatever
+  they happen to do: `gen.py` (leaf + struct wrappers, `_leaf_elements`), `materialize.py` (no
+  padding anywhere), 9 new `cap_*` value vectors, the `b_*` conformance pair inverted (the two
+  array forms are now *different values*, each round-tripping to itself) plus three `e_wrapper_*`
+  vectors, and `sweep_empty_frame`'s element expectations. **The affected gates are expected red
+  until the family follows** — that is the point, and `corpus/conformance/README.md` says so.
+  Two consequences worth their own note: **F-0010's shipped resolution is superseded** (the
+  `_trim_tail`/`_pad_to` pair of generator#136 / sofabgen 0.17.2 must be rolled back), and
+  **F-0036 inverted** — keeping a trailing all-default element is now correct, so the 12
+  implementations that keep it are right and `c` alone is wrong (corelib-c-cpp's
+  `_field_is_default` elision over-reaching from §2 fields into array elements); generator#248
+  was filed against the wrong side and is corrected in-thread. `engine/structured/audit_canonical.py`
+  joins the repo as the static property checker that found the original contradiction — it
+  re-derives canonicality from the bytes rather than from `gen.py`, so it can catch a reference
+  encoder that is itself wrong, and it carries a negative control (an interior empty element is
+  reported, a gap and a last-index empty are not).
+- **2026-07-27 — POC spec audit: the suite retargeted to `omit-all-default-sequences` §2,
+  and WP-05 completed.** The POC spec inverted §2's sequence rule (an all-default
+  sequence-typed *field* is omitted; an empty frame there is non-canonical, accepted,
+  normalized away; the all-default message is zero bytes) and made the empty frame's
+  meaning position-dependent (array wrapper = explicit empty; struct/union field =
+  absence; array *element* = present, counted). Coverage added against each rule:
+  `gen.py`'s reference encoder is POC-canonical (it framed unconditionally — the old
+  §2; `000_00_defaults.bin` is now the empty byte string; corpora regenerated, three
+  wire-duplicate vectors retired: `arr_empty`, union `u16_zero`/`text_empty`), a new
+  **blocking sweep axis `sweep_empty_frame.py`** enumerates the §2 denotations at every
+  sequence position (empty frame / frame-only→0-byte re-encode / §7.4 empty-merge /
+  default-element-only wrappers / zero-count compact arrays / a frame between real
+  fields, plus the union §4.2 identity-loss corners in the union pass), and
+  `corpus/conformance` gained the byte-exact pairs (`a_ctl_omitted`, `d_empty_frame_only`)
+  with its README rewritten to the POC meaning (the `a` vector's bytes are unchanged;
+  its assertion flipped with the spec). **WP-05 landed**: F-0030's fix is in the poc
+  corelib-c-cpp, so `struct_array` (id 202) joined `probe` — the `struct_wrapper` walk
+  in all 9 driver walkers + the reference, new positions in the ONE position model, 8
+  `sw_*` value vectors, and the three sequence-ELEMENT vectors (interior empty frame
+  kept; trailing trimmed; interior gap restored) that §2's most dangerous rule (element
+  presence carries length) had no coverage for. A dormant policy carve-out
+  (`bounded-lazy-seq-depth-noncanonical-frames`, CORELIB_PLAN §6) records the legal
+  bounded-hold-back divergence before anyone trips it (`SOFAB_LAZY_SEQ_DEPTH` = 8 vs
+  `probe`'s depth 3). Deferred with corrected analysis in `TODO.md`: WP-08(c) needs a
+  *dynamic* defaulted array (probe-dyn, not `struct_array` — a fixed-count array has no
+  empty value), the §5.1 dynamic trailing-element rule likewise, and a lazy-depth sweep
+  needs a deeper schema.
+  **The new element-position coverage found three real POC-family defects on its first
+  run** — **F-0035** (10 backends append struct-array elements id-blind, corrupting the
+  decoded value on id gaps/reopens; the generated leaf-element path places by id in the
+  same file), **F-0036** (12 of 13 never trim a trailing all-default sequence element on
+  re-encode, §3/§5.1; only `c` normalizes via its F-0030 fix), **F-0037** (the generated
+  C++ decode leaves a phantom default element after a §7.3 mistyped-skip inside the
+  wrapper; once F-0036 lands this is only visible to the materialized oracle) — all
+  three codegen (G-0020/21/22), minimal reproducers + controls in `findings/`, the
+  affected sweep cells carved out per the F-0034 pattern with the finding id at each
+  carve. One Crucible-side fix fell out: the **C materialize walker** projected a
+  struct wrapper at its fixed capacity (5 all-default objects) where the family
+  reports container length — `md_slot_empty` in `drivers/c/driver.c` now recurses
+  into SEQUENCE slots (mirroring the corelib's `_field_is_default`), and the
+  materialized gate is green at 97×13 with the C anchor at 0/97.
+- **2026-07-27 — the vendored family follows *this checkout's branch*, not `main`.**
+  The `omit-all-default-sequences` change lands family-wide on a same-named branch in
+  every corelib and in the generator before it lands on `main` (spec side:
+  `documentation@spec/omit-all-default-sequences`). Comparing Crucible's branch against
+  `main` corelibs would measure the transition, not the family, so `scripts/bootstrap.sh`
+  now resolves a **`FAMILY_BRANCH`** — defaulting to Crucible's own branch
+  (`GITHUB_HEAD_REF`/`GITHUB_REF_NAME` first, since Actions checks out detached) — and
+  fetches every corelib and the generator to it, falling back to `main` per repo,
+  announced, when a repo lacks it. On `main` behaviour is unchanged, so the gates keep
+  their conformance meaning. Two supporting rules: each corelib is moved with `checkout
+  -B <ref>` so `vendor/<lib>` never *names* a branch other than the one it holds, and on
+  a non-`main` branch the **release fallback is suppressed** — the generator publishes
+  its `sofabgen-<os>-<arch>` artifacts on `main` only, so bootstrap builds the branch
+  from source (Go) instead of silently pairing `main` codegen with branch corelibs, a mix
+  whose divergences would all be artifacts of the mix. First run: 11 corelibs at the poc
+  tips, sofabgen built from generator `d694117`.
+- **2026-07-27 — a cached venv is a stale corelib: `drivers/python/build.sh` reinstalls
+  corelib-py when the vendored source moves.** The venv was created behind an `if [ ! -x
+  venv/bin/python ]` guard, and `pip install <path>` is a *copy*, so the Python drivers
+  kept testing whichever corelib-py was vendored when the venv was first built. The
+  branch switch exposed it: both Python drivers rejected all 6 seeds
+  (`Encoder has no attribute write_sequence_begin_lazy` — poc codegen against a
+  pre-poc corelib-py), i.e. 12 "divergences" that were a stale build, not a family
+  disagreement. This is the same trap the 2026-07-15 bump hit and cleared by hand with
+  `rm -rf drivers/python/build/venv`. The install is now stamped and refreshed when
+  `src/`, `pyproject.toml`, or `setup.py` is newer — the rule the Java driver already
+  applied to its jar. Every other driver regenerates and rebuilds per run.
 - **2026-07-22 — `SOFABGEN.md` moved `docs/` → `results/`.** The G-00NN codegen-defect
   log is the generator-side sibling of `results/FINDINGS.md` (corelib bugs); Crucible's
   triage splits every finding into exactly those two catalogs by owning repo, so they now

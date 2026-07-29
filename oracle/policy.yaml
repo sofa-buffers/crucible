@@ -49,6 +49,33 @@ comparison:
 #     reason: <why this divergence is legal>
 #     spec: <MESSAGE_SPEC.md clause, or "UNSPECIFIED — file upstream">
 allow:
+  # DORMANT — cannot fire on the current schemas, recorded so the first hit is
+  # recognized as legal instead of filed as a finding. CORELIB_PLAN §6 (POC
+  # `omit-all-default-sequences`): a heap-free profile MAY bound its lazy
+  # sequence-header hold-back to a fixed depth and frame *eagerly* beyond it —
+  # emitting the empty frame §2 would have omitted. That output is well-formed and
+  # value-identical (the non-canonical form every decoder accepts and normalizes),
+  # but not canonical, so a schema nesting all-default sequences deeper than the
+  # bound splits the family's re-encode bytes: corelib-c-cpp gates it at
+  # SOFAB_LAZY_SEQ_DEPTH (default 8, sofab.hpp) and corelib-rs-no-std bounds its
+  # pending run likewise; the heap profiles MUST hold back to MAX_DEPTH. `probe`
+  # nests 3 deep, so today every driver is canonical at full depth and this entry
+  # matches nothing. If a deeper schema lands, scope `applies_to` to its corpus
+  # and split the roster by documented bound (the profile MUST document it — §6).
+  - id: bounded-lazy-seq-depth-noncanonical-frames
+    applies_to: []          # dormant — no corpus reaches depth > 8 (see reason)
+    axis: accept_value
+    reason: >-
+      A fixed-capacity profile with a documented lazy-hold-back bound emits
+      non-canonical (but well-formed, value-identical) empty frames for all-default
+      sequences nested deeper than its bound, where full-depth profiles omit them.
+      Divergent bytes, same value — legal per the constrained-profile allowance.
+    spec: >-
+      CORELIB_PLAN §6 "How deep the hold-back reaches (normative)" (POC
+      omit-all-default-sequences branch) — the FIXLEN_MAX/ARRAY_MAX-style
+      constrained-profile allowance; MESSAGE_SPEC §2 requires every decoder to
+      accept and normalize the resulting frames.
+
   - id: c-embedded-nul-string-projection
     applies_to: [findings/F-0018-c-embedded-nul-string-truncation/embedded_nul.bin]  # probe, nested.str = "A\0B" (41 00 42)
     axis: accept_value

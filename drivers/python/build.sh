@@ -30,14 +30,30 @@ esac
 # stays clean) with Cython present so the _speedups extension is compiled for
 # THIS interpreter — otherwise "cython" mode silently falls back to pure. Atheris
 # (the coverage front-end) needs clang and is optional for the replay loop.
+#
+# The *install* is refreshed whenever the vendored sources move (same rule as the
+# Java driver's jar): a non-editable install is a copy, so a venv kept across a
+# corelib bump tests a corelib nobody vendored any more. That is not hypothetical —
+# switching the family branch left the venv on the previous corelib-py, and both
+# Python drivers then rejected every seed against a generator that had already moved
+# on (`Encoder has no attribute write_sequence_begin_lazy`), which reads as a
+# 13-driver divergence rather than as the stale build it was.
+STAMP="$VENV/.corelib-py.installed"
+install_corelib_py() {
+    "$VENV/bin/pip" install -q --force-reinstall --no-deps "$CORELIB" >&2
+    : > "$STAMP"
+}
 if [ ! -x "$VENV/bin/python" ]; then
     echo "==> [python] creating venv + building corelib-py (Cython ext)" >&2
     python3 -m venv "$VENV"
     "$VENV/bin/pip" install -q --upgrade pip >&2
     "$VENV/bin/pip" install -q cython >&2
-    "$VENV/bin/pip" install -q "$CORELIB" >&2
+    install_corelib_py
     "$VENV/bin/pip" install -q atheris >&2 2>/dev/null \
         || echo "==> [python] atheris not installed (needs clang; only the coverage front-end uses it)" >&2
+elif [ ! -f "$STAMP" ] || [ -n "$(find "$CORELIB/src" "$CORELIB/pyproject.toml" "$CORELIB/setup.py" -newer "$STAMP" 2>/dev/null | head -1)" ]; then
+    echo "==> [python] corelib-py changed since the venv was built — reinstalling (Cython ext)" >&2
+    install_corelib_py
 fi
 
 echo "==> [python] generating probe types from schema" >&2

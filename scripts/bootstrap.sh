@@ -5,25 +5,44 @@
 # **Always current by default.** Crucible's whole job is to test the *latest* family
 # against itself, so every run of this script:
 #   - installs the **latest green sofabgen CI build** — the binary the generator's
-#     ci.yml attaches to every successful run on `main`, which is fresher than the
-#     tagged-release cadence and carries unreleased-but-merged backends. When no such
-#     artifact is reachable (e.g. before the generator starts attaching it, or without
-#     a cross-repo token) it falls back **loudly** to the latest published release, and
-#   - fetches every cloned corelib to **origin/main**.
+#     ci.yml attaches to every successful run on the tracked branch, which is fresher
+#     than the tagged-release cadence and carries unreleased-but-merged backends. When
+#     no such artifact is reachable (e.g. before the generator starts attaching it, or
+#     without a cross-repo token) it falls back **loudly** to the latest published
+#     release, and
+#   - fetches every cloned corelib to the tracked branch.
 # There is no skip-if-present shortcut: a silently stale toolchain has bitten this repo
 # before (a vendored sofabgen sat at 0.15.2 while the findings were being re-verified
 # "on 0.16.1" — see docs/STATUS-LOG.md), and a differential fuzzer that lies about which
 # versions it compared is worse than one that is slow. For the same reason the fallback
 # is announced, never silent: the run always says which build it actually installed.
 #
+# **Which branch is tracked: this checkout's own.** A family-wide change lands on a
+# same-named branch in every repo before it lands on main (e.g.
+# poc/omit-all-default-sequences). Crucible on that branch is only meaningful against
+# *that* branch of the corelibs and the generator, so the family ref defaults to
+# Crucible's current branch; repos that do not carry it fall back to main, announced
+# per repo. On main this is exactly the old behaviour. Override with FAMILY_BRANCH.
+#
+# For a non-main family branch the generator is **built from source at that branch**
+# whenever its CI attaches no binary (the generator only publishes the sofabgen-<os>-<arch>
+# artifacts on main). It never silently falls back to a main/release generator there:
+# generated code from main against corelibs from a branch is a comparison of two
+# different designs, and every divergence it produced would be an artifact of the mix.
+#
 # In a dev workspace where the corelib repos already sit next to this one (../corelib-*)
 # they are symlinked (fast, live) — those are your working checkouts, so this script
 # never touches them; refresh them in their own repos.
 #
 # Env:
-#   SOFABGEN_VERSION=latest   (default) the latest green CI build from generator@main
+#   FAMILY_BRANCH=<name>      family branch to track (default: this checkout's branch)
+#   FAMILY_BRANCH=main        track the released family regardless of the local branch
+#   SOFABGEN_VERSION=latest   (default) the latest green CI build from the tracked branch,
+#                             or a source build of it when that branch publishes no binary
 #   SOFABGEN_VERSION=vX.Y.Z   pin a published release instead (reproduce an old finding)
-#   SOFABGEN_VERSION=main     build from generator@main source (needs Go) — unreleased fixes
+#   SOFABGEN_VERSION=source   build the generator from source at the tracked branch (needs Go)
+#                             (`=main` is kept as the older spelling of the same thing)
+#   SOFABGEN_BRANCH=<name>    generator branch only, when it differs from FAMILY_BRANCH
 #   SOFABGEN_RUN=<run-id>     pin a specific generator ci.yml run instead of the latest green
 #   SOFABGEN_ARTIFACT=<name>  artifact holding the binary (default: sofabgen-<os>-<arch>)
 #   SOFABGEN_TOKEN=<token>    token for the generator Actions API (else GH_TOKEN/GITHUB_TOKEN/gh)
@@ -42,9 +61,34 @@ GEN_REPO="https://github.com/sofa-buffers/generator"
 # Corelibs needed by the current drivers. Extend as languages are added.
 CORELIBS="corelib-c-cpp corelib-cpp corelib-cs corelib-dart corelib-go corelib-java corelib-py corelib-rs corelib-rs-no-std corelib-ts corelib-zig"
 
+# ------------------------------------------------------------ family branch ----
+# Default: whatever branch this checkout is on. In Actions, HEAD is detached, so read
+# the branch from the environment there (GITHUB_HEAD_REF on a PR, GITHUB_REF_NAME on a
+# push) before falling back to git.
+FAMILY_BRANCH="${FAMILY_BRANCH:-}"
+if [ -z "$FAMILY_BRANCH" ]; then
+    FAMILY_BRANCH="${GITHUB_HEAD_REF:-}"
+    [ -n "$FAMILY_BRANCH" ] || FAMILY_BRANCH="${GITHUB_REF_NAME:-}"
+    [ -n "$FAMILY_BRANCH" ] || FAMILY_BRANCH=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
+fi
+case "$FAMILY_BRANCH" in ""|HEAD) FAMILY_BRANCH=main ;; esac
+[ "$FAMILY_BRANCH" = "main" ] || echo "==> family branch: $FAMILY_BRANCH (repos without it fall back to main)" >&2
+
+# The branch a given remote actually carries: $FAMILY_BRANCH if it has it, else main.
+# Prints the ref on stdout; any note about a fallback goes to stderr, by the caller.
+remote_ref() {  # $1 = remote URL or a path to a checkout with an `origin`
+    if [ "$FAMILY_BRANCH" != "main" ] && [ "$NO_FETCH" != "1" ] \
+       && git ls-remote --heads "$1" "$FAMILY_BRANCH" 2>/dev/null | grep -q .; then
+        printf '%s' "$FAMILY_BRANCH"
+    else
+        printf 'main'
+    fi
+}
+
 # ---------------------------------------------------------------- corelibs ----
 for lib in $CORELIBS; do
     dst="$ROOT/vendor/$lib"
+    url="https://github.com/sofa-buffers/$lib.git"
 
     if [ ! -e "$dst" ]; then
         if [ -d "$SIBLINGS/$lib" ]; then
@@ -52,8 +96,10 @@ for lib in $CORELIBS; do
             ln -s "$SIBLINGS/$lib" "$dst"
         else
             [ "$NO_FETCH" = "1" ] && { echo "error: vendor/$lib missing and NO_FETCH=1" >&2; exit 1; }
-            echo "==> vendor/$lib -> clone from GitHub" >&2
-            git clone --depth 1 "https://github.com/sofa-buffers/$lib.git" "$dst"
+            ref=$(remote_ref "$url")
+            [ "$ref" = "$FAMILY_BRANCH" ] || echo "==> vendor/$lib has no $FAMILY_BRANCH — using main" >&2
+            echo "==> vendor/$lib -> clone from GitHub ($ref)" >&2
+            git clone --depth 1 --branch "$ref" "$url" "$dst"
         fi
         continue
     fi
@@ -73,26 +119,44 @@ for lib in $CORELIBS; do
         continue
     fi
 
+    # Ask the checkout's own remote, not the constructed URL, so a fork/mirror answers
+    # for itself.
+    ref=$(remote_ref "$(git -C "$dst" remote get-url origin 2>/dev/null || echo "$url")")
+    [ "$ref" = "$FAMILY_BRANCH" ] || echo "==> vendor/$lib has no $FAMILY_BRANCH — using main" >&2
+
     before=$(git -C "$dst" rev-parse --short HEAD)
-    git -C "$dst" fetch --depth 1 -q origin main
-    git -C "$dst" reset --hard -q FETCH_HEAD
+    git -C "$dst" fetch --depth 1 -q origin "$ref"
+    # -B moves the *named* local branch onto the fetched tip, so `git -C vendor/$lib
+    # branch --show-current` names the branch actually under test — a plain `reset
+    # --hard` would leave the checkout claiming `main` while holding branch content.
+    git -C "$dst" checkout -q -B "$ref" FETCH_HEAD
     after=$(git -C "$dst" rev-parse --short HEAD)
     if [ "$before" = "$after" ]; then
-        echo "==> vendor/$lib @ $after (origin/main, unchanged)" >&2
+        echo "==> vendor/$lib @ $after (origin/$ref, unchanged)" >&2
     else
-        echo "==> vendor/$lib $before -> $after (origin/main)" >&2
+        echo "==> vendor/$lib $before -> $after (origin/$ref)" >&2
     fi
 done
 
 # ---------------------------------------------------------------- sofabgen ----
 SG="$ROOT/tools/sofabgen"
 
-sofabgen_build_from_main() {
-    command -v go >/dev/null || { echo "error: SOFABGEN_VERSION=main needs Go" >&2; exit 1; }
-    echo "==> tools/sofabgen <- building generator@main" >&2
+# The generator branch to track. It follows the family branch unless overridden, and
+# degrades to main when the generator does not carry that branch.
+GEN_BRANCH="${SOFABGEN_BRANCH:-}"
+if [ -z "$GEN_BRANCH" ]; then
+    GEN_BRANCH=$(remote_ref "$GEN_REPO.git")
+    [ "$GEN_BRANCH" = "$FAMILY_BRANCH" ] || echo "==> generator has no $FAMILY_BRANCH — using main" >&2
+fi
+
+sofabgen_build_from_source() {  # $1 = branch
+    _br="$1"
+    command -v go >/dev/null || { echo "error: building sofabgen from source needs Go" >&2; exit 1; }
+    echo "==> tools/sofabgen <- building generator@$_br" >&2
     tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-    git clone --depth 1 -q "$GEN_REPO.git" "$tmp"
+    git clone --depth 1 -q --branch "$_br" "$GEN_REPO.git" "$tmp"
     ( cd "$tmp" && go build -o "$SG" ./cmd/sofabgen )
+    echo "==> tools/sofabgen built from generator@$_br $(git -C "$tmp" rev-parse --short HEAD) ($("$SG" --version 2>/dev/null | head -1))" >&2
 }
 
 sofabgen_asset() {
@@ -178,12 +242,12 @@ sofabgen_from_ci() {
         _run="$SOFABGEN_RUN"
     else
         _run=$(curl -fsSL -H "$_ah" -H "$_aj" \
-            "$_api/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=1" 2>/dev/null \
+            "$_api/actions/workflows/ci.yml/runs?branch=$GEN_BRANCH&status=success&per_page=1" 2>/dev/null \
             | python3 -c 'import sys,json
 try: r=json.load(sys.stdin).get("workflow_runs",[])
 except Exception: r=[]
 print(r[0]["id"] if r else "")' 2>/dev/null)
-        [ -n "$_run" ] || { echo "==> tools/sofabgen: no green ci.yml run on generator@main (token needs actions:read on sofa-buffers/generator)" >&2; return 1; }
+        [ -n "$_run" ] || { echo "==> tools/sofabgen: no green ci.yml run on generator@$GEN_BRANCH (token needs actions:read on sofa-buffers/generator)" >&2; return 1; }
     fi
 
     _dl=$(curl -fsSL -H "$_ah" -H "$_aj" "$_api/actions/runs/$_run/artifacts?per_page=100" 2>/dev/null \
@@ -222,26 +286,36 @@ print(m[0]["archive_download_url"] if m else "")' 2>/dev/null)
     echo "==> tools/sofabgen installed from CI run $_run ($("$SG" --version 2>/dev/null | head -1))" >&2
 }
 
-if [ "$SOFABGEN_VERSION" = "main" ]; then
-    sofabgen_build_from_main
+if [ "$SOFABGEN_VERSION" = "source" ] || [ "$SOFABGEN_VERSION" = "main" ]; then
+    # `=main` predates branch tracking and used to mean "build from generator@main";
+    # it now means "build from the tracked branch", which on main is the same thing.
+    sofabgen_build_from_source "$GEN_BRANCH"
 elif [ "$NO_FETCH" = "1" ]; then
     [ -x "$SG" ] || { echo "error: tools/sofabgen missing and NO_FETCH=1" >&2; exit 1; }
     echo "==> tools/sofabgen $("$SG" --version 2>/dev/null | head -1) (NO_FETCH)" >&2
 elif [ "$SOFABGEN_VERSION" = "latest" ] || [ "$SOFABGEN_VERSION" = "ci" ]; then
-    # Preferred path: the freshest CI build. Fall back — loudly — to the latest
-    # release so a repo without a cross-repo token (or a generator that does not yet
-    # attach the binary) still bootstraps, while always saying which build it used.
+    # Preferred path: the freshest CI build of the tracked branch.
     if ! sofabgen_from_ci; then
         [ "${SOFABGEN_CI_REQUIRED:-0}" = "1" ] && { echo "error: CI build unavailable and SOFABGEN_CI_REQUIRED=1" >&2; exit 1; }
-        _rel=$(latest_release_tag) || { echo "error: CI build unavailable and could not resolve a release to fall back to" >&2; exit 1; }
-        echo "==> tools/sofabgen: CI build unavailable — FALLING BACK to latest release $_rel" >&2
-        sofabgen_from_release "$_rel" || { echo "error: release fallback failed for $_rel" >&2; exit 1; }
+        if [ "$GEN_BRANCH" != "main" ]; then
+            # A release (or a main CI build) is generator@main — pairing it with corelibs
+            # from a branch would compare two different designs and blame the mismatch on
+            # the implementations. Build the branch instead; if that is impossible, stop.
+            echo "==> tools/sofabgen: no CI binary on generator@$GEN_BRANCH — building it from source (a release would be main's generator)" >&2
+            sofabgen_build_from_source "$GEN_BRANCH"
+        else
+            # On main, fall back — loudly — to the latest release so a repo without a
+            # cross-repo token still bootstraps, always saying which build it used.
+            _rel=$(latest_release_tag) || { echo "error: CI build unavailable and could not resolve a release to fall back to" >&2; exit 1; }
+            echo "==> tools/sofabgen: CI build unavailable — FALLING BACK to latest release $_rel" >&2
+            sofabgen_from_release "$_rel" || { echo "error: release fallback failed for $_rel" >&2; exit 1; }
+        fi
     fi
 else
     # An explicit tag pins a published release (reproduce an old finding).
     sofabgen_from_release "$SOFABGEN_VERSION" || { echo "error: could not install sofabgen $SOFABGEN_VERSION" >&2; exit 1; }
 fi
 
-echo "==> bootstrap complete — sofabgen $("$SG" --version 2>/dev/null | head -1)" >&2
+echo "==> bootstrap complete — family branch $FAMILY_BRANCH, sofabgen $("$SG" --version 2>/dev/null | head -1)" >&2
 "$SG" --print-defaults >/dev/null 2>&1 || true
 echo "vendored: $CORELIBS" >&2
