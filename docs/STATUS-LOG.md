@@ -82,6 +82,26 @@ into a legal difference. Merging red would cost the "main is green" signal every
 So the branch stays open until a sofabgen release carries generator#254; then re-run the sweep
 and merge. Tracked in `docs/TODO.md`.
 
+*Resolved the same day, and the hold was lifted.* generator#254 and #235 both merged to
+generator `main` (`9c71fde`, 06:01). Measured against a source build of it: `wiretype_sweep`
+**30 → 2**, and F-0031's fp32 sNaN now round-trips bit-exact on typescript, so that finding is
+closed on the driver side too. The two survivors are an fp array meeting a declared fp array of
+the other width — both `ArrayKind.FIXLEN`, and the array-header hook carries the kind but not the
+subtype, so codegen cannot separate them. That is F-0042's root cause, not a new defect: the
+codegen half went as far as codegen can.
+
+*Decision — carve out the two cells, not the axis.* Earlier today a carve-out was rejected for
+this same gate, and that judgement stands for what it was aimed at: `oracle/policy.yaml` records
+divergences the spec **allows**, and putting a §7.3 violation there would launder a bug into a
+legal difference. A sweep-cell exclusion is a different instrument — it asserts nothing about
+legality, it names an open finding and carries its own deletion condition, and the repo already
+used it for F-0034, F-0036 and F-0037. Restoring coverage made that concrete: the F-0036/F-0037
+carve-outs this branch was carrying are now stale (both fixed in 0.21.0), so removing them took
+`wiretype_sweep` from 332 to **363** vectors — all green. Net effect of the swap: 31 cells
+gained, 2 cells parked with an issue reference. Every CI gate is green: seeds, conformance,
+regression, structured, crashes, cross-encode, union, limits, materialize (106×13 → 0, C anchor
+0/106) and all eight sweep axes including the union pass.
+
 **Re-verification 2026-07-08** — after bumping **sofabgen → 0.15.1** and all 10
 corelibs to latest `main`, drivers rebuilt clean and the seed corpus is green (0
 divergences). Replaying the finding reproducers: **F-0002 and F-0005 are fixed**

@@ -151,16 +151,20 @@ here:
 
 ## Open — waiting on upstream, then verify
 
-- [ ] **F-0039 / generator#254 — blocks merging `poc/omit-all-default-sequences` into `main`.**
-      The §7.3 `wiretype_sweep` axis is **red on 30 of 332 vectors**: the java and csharp backends
-      resize a declared native array from the count of a header they are skipping, so a mistyped
-      array decodes as a 1-element array of zeros instead of leaving the field at its default.
-      Every other axis is green, and the failure is a defect of the released family (sofabgen
-      0.21.0), not of the branch — crucible#109's own materialize regression is fixed and green.
-      **Decision 2026-07-29: hold the merge rather than demote the axis or land a red gate on
-      `main`.** The axis stays blocking; no carve-out was added, because this divergence is a spec
-      violation and `oracle/policy.yaml` is for *legal* ones. Unblocked by a sofabgen release
-      carrying the #254 fix: re-run `scripts/sweep.sh`, expect 0 divergences, then merge #109.
+- [x] **F-0039 / generator#254 — DONE (generator `main` @ 9c71fde, 2026-07-29).** The java and
+      csharp backends no longer size a declared array from a header §7.3 says to skip: the
+      generated `arrayBegin` now guards each allocation with `if (kind != ArrayKind.X) break;`.
+      `wiretype_sweep` went **30 → 2** divergences.
+- [ ] **F-0042 — the last two `wiretype_sweep` cells, carved out until the corelib hook widens.**
+      The residual pair is `100_10_id0_ARR_fp64_mism` / `100_10_id1_ARR_fp32_mism`: an fp array
+      meeting a declared fp array of the *other* width. Both are `ArrayKind.FIXLEN`, and the
+      array-header hook carries the kind but not the fixlen element **subtype**, so no codegen
+      guard can separate them — the same root cause F-0042 already tracks
+      (corelib-go#58, -java#53, -cs#45, -dart#23, -rs-no-std#60, -rs#40, -zig#27).
+      Carved out in `engine/structured/wiretype_sweep.py` as **two cells, never the axis** (the
+      F-0034 pattern), with the deletion condition in the comment. **Delete the carve-out when
+      the hook change ships** and expect the cells to go green on their own — they are a bug,
+      not a legal divergence, which is why this is not an `oracle/policy.yaml` entry.
 
 - [x] **F-0022 / generator#188** — **DONE (sofabgen 0.19.4, 2026-07-21).** The generated array-fill
       arm now carries the §7.3 guard (`if self.afill == 0 { return; }`) and `array_begin` arms `afill`

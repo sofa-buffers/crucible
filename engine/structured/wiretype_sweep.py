@@ -86,22 +86,18 @@ def emit(out_dir):
         declared = CAT_TO_CONSTRUCT[p.cat]
         for cname, build in CONSTRUCTS.items():
             kind = "ctl" if cname == declared else "mism"
-            # F-0036/F-0037 carve-outs (the F-0034 pattern — cells, not the axis),
-            # all in the struct_array element subtree, until G-0021/G-0022 land:
-            #  - (202,) mism: a mistyped construct at the ELEMENT slot leaves a
-            #    phantom default element in the generated C++ decode (F-0037), and
-            #    the family then splits again on whether the resulting all-default
-            #    element is trimmed (F-0036).
-            #  - (202,) SEQ ctl: a well-typed but EMPTY element frame — decodes
-            #    uniformly, but the re-encode splits on the missing §5.1 trailing
-            #    trim (F-0036: `c` omits the wrapper, 12 keep `seq[202](elem0())`).
-            #  - (202, 0) mism: a mistyped construct at the k/v slot INSIDE an
-            #    element skips per §7.3, leaving a present-but-empty element —
-            #    the same F-0036 split.
-            # The (202, 0) ctl vectors (well-typed element content) stay swept.
-            if p.path == (202,):
-                continue
-            if p.path == (202, 0) and kind == "mism":
+            # F-0042 carve-out — two CELLS, never the axis (the F-0034 pattern).
+            # An fp array meeting a declared fp array of the *other* width is the one
+            # mismatch generated code cannot see: both are ArrayKind.FIXLEN, and the
+            # corelib's array-header hook carries the kind but not the fixlen element
+            # subtype, so java/csharp size the declared field from a header §7.3 says
+            # to skip. Filed as F-0042 against the seven corelibs whose hook must widen
+            # (corelib-go#58, -java#53, -cs#45, -dart#23, -rs-no-std#60, -rs#40, -zig#27);
+            # the codegen half is generator#254, already fixed for every kind the hook
+            # *does* distinguish. Delete these two lines when the hook change ships —
+            # the cells must go green on their own, they are not a legal divergence
+            # (which is why this is not an oracle/policy.yaml entry).
+            if kind == "mism" and cname.startswith("ARR_fp") and declared.startswith("ARR_fp"):
                 continue
             name = f"{p.tag()}_{cname}_{kind}.bin"
             data = place(list(p.path), p.fid, build(p.fid))
