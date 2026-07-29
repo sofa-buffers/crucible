@@ -19,6 +19,37 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Parallel fix campaign 2026-07-29 — four clusters, two findings closed.** With the family on
+`main`, the 12 real open corelib issues were six root causes, not twelve bugs, so they were worked
+as clusters: one shared branch name per cluster in every affected repo, one worker per repo, and
+`bootstrap.sh`'s `FAMILY_BRANCH` as the join — every fix in a cluster differentially tested
+*together* before any of them merged.
+
+*Closed.* **F-0040** (corelib-c-cpp#118) — the varint width guard now also fires on exit, so a
+tenth continuation byte is INVALID instead of INCOMPLETE. **F-0041** (corelib-c-cpp#119 +
+corelib-cpp#59) — the over-index reject is gated on the §7.3 wire-type test in both, via two
+different edits for the two proximate causes. Both waves passed the join (split closed, controls
+held, regression green) before merge; their isolates are promoted into `corpus/regression/`
+(97 → 103 inputs).
+
+*Blocked on codegen, deliberately.* **F-0038**'s corelib halves (corelib-go#59, corelib-dart#24)
+and **F-0042**'s seven (go#60, java#54, cs#46, dart#25, rs#41, rs-no-std#61, zig#28) are complete
+and green in their own suites, but neither closes its split alone — both are two-half changes, and
+F-0042 is an outright ABI break (`ArrayKind.Fixlen` → `Fp32`/`Fp64`) that generated code cannot
+even compile against until sofabgen matches. Filed as generator#257 (Class A merged as #258; the
+go/dart backends remain) and **generator#259**. Every PR carries the measured evidence and a
+"do not merge alone" note.
+
+*The campaign's most valuable output was not a fix.* Four workers **stopped instead of fixing** and
+proved that four of the six F-0038 issues filed that morning were misfiled: corelib-rs, -rs-no-std,
+-java and -cs carry no UTF-8 code on the decode path at all — established statically *and* by
+feeding the isolates through the bare corelib with a no-op visitor. That is the F-0008 misfiling
+CLAUDE.md warns about, caught before a maintainer spent time on it. The four issues are closed and
+redirected; `results/FINDINGS.md`'s "corelib-only" attribution is corrected. Two process rules came
+out of it and are now in the runbook: the verify agent works in its own clone (it had switched the
+live checkout's branch *and* `vendor/`), and a cluster argument must fail loudly rather than
+default — a mistyped one silently re-ran C1 for a full wave.
+
 **Family bump 2026-07-29 — first fully-merged sparse-array family, re-verified end to end.**
 The POC branch landed everywhere: documentation `8087f1d` (PR #29 + #31), all 11 corelibs
 merged to `main` and released **0.9.0**, generator `0c424ac` (#244) released **sofabgen
