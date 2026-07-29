@@ -50,10 +50,28 @@ never becomes an element of the array — and an id that is not an element index
 violate the element-index bound of §7/§5.1. §7.4 states the same principle from the
 other side: *"An occurrence skipped under §7.3 is **not** an occurrence for this clause."*
 
-*(The §7.3 paragraph argues the ordering through the fixlen-array count word; the
-sentence itself is unqualified, and this isolate is the same situation at the element
-position. If the maintainers read the clause as scoped to the fixlen count, the fix
-belongs in the spec instead — worth saying so on the issue rather than assuming.)*
+The ordering is stated once and applied three further times, so this needs no ruling:
+
+- **§7.3's rule is unconditional** — its precondition is the wire type, not the id, and it
+  admits no exception for an element whose id is out of range.
+- **"Against a schema bound, this clause wins" is the rule**; the fixlen array that follows
+  it is the worked example that derives it, not a restriction on it.
+- **§7.4 already applies the same principle to another clause**: *"An occurrence skipped
+  under §7.3 is **not** an occurrence for this clause."* A skipped field is inert for a
+  second clause's purposes — which is this question exactly.
+- **CORELIB_PLAN §4.8 gives the reason in general terms**: the schema `count` must not be
+  applied because *"the field was never this array's value"*. Here: the mistyped element
+  was never an element, so its id is not an index, so it cannot breach the index bound.
+
+The same shape governs content in CORELIB_PLAN §6.4 (*"Skipped fields are never validated
+… never on skip, in any mode"*) — once skipped, nothing about a field is examined further,
+neither its bytes nor its id. F-0038 is that rule broken on the content side; this is it
+broken on the bound side.
+
+*(An earlier revision of this finding carried a caveat that the clause might be scoped to
+the fixlen count word, and that caveat went into both issues. It was withdrawn on
+2026-07-29 — see corelib-c-cpp#117 and corelib-cpp#58 — once the four citations above were
+read together.)*
 
 ## Attribution: two corelibs, one shape — both confirmed by the profile split
 

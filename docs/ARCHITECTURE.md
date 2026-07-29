@@ -93,22 +93,23 @@ raw bit patterns, strings/blobs as `len:hex`. This is PLAN §7's original per-fi
 form, resurrected as a *second, added* oracle (not a replacement — round-trip stays
 the default and the schema-agnostic path). It is **not schema-agnostic**: it needs
 schema-type info (fp32-vs-fp64, count N) the round-trip got free from the encoder —
-generic via C's object descriptor, a schema-type table elsewhere. **Measured caveat
-(steers the whole design):** every corelib already materializes a fixed-count
-*numeric* array to its full N in memory (the wire count M is reconstructed only at
-encode time by the trim heuristic), so this form is uniform there today; its live
-signal is the **wrapper arrays** (`string_array`/`blob_array`, genuinely dynamic),
-**element-level fidelity**, and **regression-proofing**. **All 13 drivers** implement
-it, **all schema-agnostic** — C via the object descriptor, go/ts/java/cs/python by
-consuming the generated `materialized-schema.json` at runtime, rust/cpp/zig by
-generating their walker source from the descriptor at build time: **75×13 → 0
-divergences**, all matching the
-`engine/structured/materialize.py` reference byte-for-byte, with the default round-trip
-path unchanged. One surfaced nuance: the **Go** corelib leaves an absent numeric array
-`nil` rather than filling to N in memory, so its driver pads to N for the dump (the
-logical value was identical under the then-current fill-to-N rule — benign; noted, not
-a finding. Since documentation#31 no target fills to `N` at all, so the padding that
-driver does is being removed with the rest of the capacity work).
+generic via C's object descriptor, a schema-type table elsewhere. **All 13 drivers**
+implement it, **all schema-agnostic** — C via the object descriptor, go/ts/java/cs/python
+by consuming the generated `materialized-schema.json` at runtime, rust/cpp/zig by
+generating their walker source from the descriptor at build time: **106×13 → 0
+divergences**, and the C anchor matches the `engine/structured/materialize.py` reference
+**0/106**, with the default round-trip path unchanged.
+
+**A `count: N` array materializes exactly the elements it carries.** `count` is a
+capacity, not a length (MESSAGE_SPEC §3), so there is no fill-to-N anywhere in this form:
+every walker reads the container's own length — C from the `ARRAY_SIZED` descriptor's
+companion `*_len` member and, for a wrapper holder, from the holder's count
+(`fixed_seq >> SEQ_LEN_SHIFT`); Zig from `FixedArray(T,N).slice()`; the rest from their
+native container. The wrapper branch reports that count rather than trimming to the
+highest populated slot, because §2 requires a default-valued **last** element to be
+present — trimming would report `["a", ""]` as `["a"]`. Until 2026-07-29 four walkers
+iterated the capacity instead (the fill-to-N that documentation#31 retired), which is
+what the gate caught when the family moved: 1068 divergences, closed in `4b650c6`.
 
 ### Limit mode (as built)
 
