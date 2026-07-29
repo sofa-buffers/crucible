@@ -29,7 +29,7 @@ Dart type gotchas the leaf emitters handle (see oracle/materialized.md):
 Descriptor shape (JSON): { "message": "probe", "fields": [node, ...] }
   node.kind: leaf u|s|fp32|fp64|string|blob
              struct  (+ fields[])
-             array   (+ elem u|s|fp32|fp64, + count)   -> List<int>/List<double>, fill-to-N
+             array   (+ elem u|s|fp32|fp64, + count)   -> List<int>/List<double>, actual length
              wrapper (+ elem string|blob,  + count)    -> List<String>/List<Uint8List>, actual length
 
 Usage: materialize_gen.py OUT.dart [SCHEMA_PATH]
@@ -40,9 +40,6 @@ Usage: materialize_gen.py OUT.dart [SCHEMA_PATH]
 import json
 import os
 import sys
-
-_ARR_DEFAULT = {"u": "u0", "s": "s0", "fp32": "f00000000", "fp64": "F0000000000000000"}
-
 
 def _load_descriptor():
     env = os.environ.get("SOFAB_MATERIALIZE_SCHEMA")
@@ -87,18 +84,18 @@ def _emit_leaf(em, kind, expr):
         raise ValueError(f"not a leaf kind: {kind!r}")
 
 
-def _emit_array(em, elem, count, expr):
-    # Fixed-count numeric/fp array: emit exactly `count` elements (fill-to-N,
-    # MESSAGE_SPEC §5.1) — the in-memory element if present, else the type default.
+def _emit_array(em, elem, expr):
+    # `count: N` numeric/fp array: emit exactly the elements the container holds.
+    # `count` is a CAPACITY, not a length (MESSAGE_SPEC §3) — "a decoder materializes
+    # exactly the M elements the wire carries … There is no fill-to-N" — so the
+    # container's own length is the answer and padding to N would invent trailing
+    # default elements the wire never carried. Same rule as the wrapper form below;
+    # `count` now only bounds (M > N is INVALID, §7), it never restores a length.
     i = em.fresh()
     em.stmt("b.write('[');")
-    em.stmt(f"for (var {i} = 0; {i} < {count}; {i}++) {{")
+    em.stmt(f"for (var {i} = 0; {i} < {expr}.length; {i}++) {{")
     em.stmt(f"  if ({i} != 0) b.write(',');")
-    em.stmt(f"  if ({i} < {expr}.length) {{")
-    _emit_leaf(_Indent(em, 2), elem, f"{expr}[{i}]")
-    em.stmt("  } else {")
-    em.stmt(f"    b.write('{_ARR_DEFAULT[elem]}');")
-    em.stmt("  }")
+    _emit_leaf(_Indent(em, 1), elem, f"{expr}[{i}]")
     em.stmt("}")
     em.stmt("b.write(']');")
 
@@ -154,7 +151,7 @@ def _emit_node(em, node, parent_expr):
     if kind == "struct":
         _emit_struct(em, node["fields"], expr)
     elif kind == "array":
-        _emit_array(em, node["elem"], node["count"], expr)
+        _emit_array(em, node["elem"], expr)
     elif kind == "wrapper":
         _emit_wrapper(em, node["elem"], expr)
     elif kind == "struct_wrapper":

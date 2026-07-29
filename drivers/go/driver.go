@@ -107,22 +107,6 @@ func mLeaf(kind string, v reflect.Value) string {
 	panic("materialize: unhandled leaf kind " + kind)
 }
 
-// mDefault is the materialized type default for a numeric/fp array element, used to
-// fill-to-N when the Go corelib leaves an absent array nil (short of its schema count).
-func mDefault(elem string) string {
-	switch elem {
-	case "u":
-		return "u0"
-	case "s":
-		return "s0"
-	case "fp32":
-		return "f00000000"
-	case "fp64":
-		return "F0000000000000000"
-	}
-	panic("materialize: unhandled array elem " + elem)
-}
-
 // fieldByTag returns the struct field of v whose `json` tag equals the schema name.
 // The generated struct exports PascalCase names but tags each with its schema name,
 // so this is the schema-name → Go-field bridge that keeps the walk schema-agnostic.
@@ -151,13 +135,15 @@ func walk(n *schemaNode, v reflect.Value) string {
 		}
 		return "{" + strings.Join(parts, ";") + "}"
 	case "array":
-		// numeric/fp fixed-count array: emit in-memory elements, then fill-to-N.
-		out := make([]string, 0, n.Count)
+		// `count: N` numeric/fp array: emit exactly the elements the container holds.
+		// `count` is a CAPACITY, not a length (MESSAGE_SPEC §3): "a decoder
+		// materializes exactly the M elements the wire carries … There is no
+		// fill-to-N", so padding an absent or short array up to n.Count would invent
+		// trailing default elements the wire never carried. n.Count only bounds the
+		// field now (M > N is INVALID, §7); it never restores a length.
+		out := make([]string, v.Len())
 		for i := 0; i < v.Len(); i++ {
-			out = append(out, mLeaf(n.Elem, v.Index(i)))
-		}
-		for len(out) < n.Count {
-			out = append(out, mDefault(n.Elem))
+			out[i] = mLeaf(n.Elem, v.Index(i))
 		}
 		return "[" + strings.Join(out, ",") + "]"
 	case "wrapper":

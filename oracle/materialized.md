@@ -22,13 +22,20 @@ it. It is PLAN §7's original canonical intent ("explicit distinction … type t
 floats as bit patterns"), resurrected as an *added* oracle — not a replacement (the
 round-trip form stays the default, and remains the schema-agnostic path).
 
-**Scope note (2026-07-28).** Every current corelib still materializes a `count: N`
-*numeric* array to its full `N` and reconstructs `M` at encode time via the trailing-trim
-heuristic — the behaviour documentation#31 retired. This reference implements the **new**
-rule, so those drivers now disagree with it *by design* until the family converges; that
-disagreement is the point of the gate, not a defect in the reference. The form's other
-signals are unchanged: **wrapper-array lengths**, **element-level value fidelity**, and
-regression-proofing. See `docs/ARCHITECTURE.md`.
+**Converged (2026-07-29).** The gate is green on the first family that carries the merged
+sparse-array rewrite (corelibs 0.9.0 @ main, sofabgen 0.21.0): all 13 drivers agree with
+each other *and* with the reference. The reference was already on the new rule while the
+family was not — the disagreement that state produced was the point of the gate, and it
+resolved on the family's side, not the reference's.
+
+Closing it needed four Crucible-side walkers to stop reading a `count: N` array's
+**capacity** as its length: `drivers/c/driver.c` (`md_array_len`, plus the sized wrapper
+holder's own count), `drivers/go/driver.go`, and the generated walkers from
+`drivers/{zig,dart}/materialize_gen.py`. Generated code was never the problem — every
+backend hands the walker a length (C's `ARRAY_SIZED` descriptor and its companion
+`*_len` member, Zig's `FixedArray(T,N).slice()`, Dart/Go/Java/… their native containers).
+The form's other signals are unchanged: **wrapper-array lengths**, **element-level value
+fidelity**, and regression-proofing. See `docs/ARCHITECTURE.md`.
 
 ## Wiring (reuses the comparator unchanged)
 
