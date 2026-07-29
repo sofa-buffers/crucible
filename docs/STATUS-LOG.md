@@ -19,6 +19,59 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Family bump 2026-07-29 — first fully-merged sparse-array family, re-verified end to end.**
+The POC branch landed everywhere: documentation `8087f1d` (PR #29 + #31), all 11 corelibs
+merged to `main` and released **0.9.0**, generator `0c424ac` (#244) released **sofabgen
+0.21.0**. Bootstrapped with `FAMILY_BRANCH=main SOFABGEN_VERSION=v0.21.0`; the stale
+`poc/omit-all-default-sequences` branches still exist in every corelib repo (tree-identical
+to `main`, 1 behind), so the default branch-tracking would have vendored refs that no longer
+move — `FAMILY_BRANCH=main` is required until they are deleted.
+
+*Decision — the materialized walkers read the length, never the capacity.* The materialize
+gate opened at **1068 divergences** because four Crucible-side walkers iterated a `count: N`
+array's capacity: `drivers/c/driver.c`, `drivers/go/driver.go`, and the generated walkers
+from `drivers/{zig,dart}/materialize_gen.py`. MESSAGE_SPEC §3 settles it — *"a decoder
+materializes exactly the M elements the wire carries … There is no fill-to-N"* — and the C
+walker's wrapper branch additionally trimmed trailing defaults, which §2's last-element rule
+forbids. Fixed on the spec's terms, not by matching the majority: the gate is green **and**
+the C anchor now matches `engine/structured/materialize.py` 0/106, and that reference is
+derived from the spec. Generated code was never at fault — every backend already exposes a
+length (C's `ARRAY_SIZED` descriptor, Zig's `FixedArray(T,N).slice()`, native containers
+elsewhere). `oracle/materialized.md`'s scope note was updated from "family has not converged"
+to converged.
+
+*Gates.* seeds / conformance / structured / regression / crashes / union / structured-union /
+limits / materialize all green; 7 of 8 sweep axes green **including `sweep_empty_frame`** (the
+§2 omission axis). `corpus/interesting` (1121 inputs) reduced from 70 clusters to **12**, no
+new crash, and the previously dominant F-0012 class is gone.
+
+*Findings.* **F-0035, F-0036, F-0037 resolved** — every reproducer agrees, generator#247/#248/
+#249 closed. F-0036 was checked beyond agreement, since its direction had been inverted by
+documentation#31: all three isolates round-trip byte-identically, i.e. the family converged on
+the spec-correct side (the trailing empty frame is kept). **F-0031 is down to `typescript`
+alone**; generator#235 stays open (PR #251 closed unmerged). Three new findings, all filed:
+**F-0039** (java/cs resize a declared array from a §7.3-skipped header — generator#254,
+G-0023), **F-0040** (corelib-c-cpp defers the overlong-varint verdict to INCOMPLETE —
+corelib-c-cpp#116), **F-0041** (over-index reject ordered before the §7.3 skip —
+corelib-c-cpp#117 + corelib-cpp#58). **F-0038 filed** at last against all six corelibs
+(corelib-go#57, corelib-rs#39, corelib-rs-no-std#59, corelib-java#52, corelib-cs#44,
+corelib-dart#22). F-0041 carries an explicit caveat into both issues: §7.3 argues its
+precedence through the fixlen *count word*, so if the maintainers scope the clause there, the
+fix belongs in `documentation` instead — the 11-vs-2 split is stated, not assumed.
+
+*Decision — generator#232 closed as misfiled, re-filed as seven corelib issues.* It had sat in
+the generator repo since 2026-07-25, first as an open spec question ("does the count bound or the
+§7.3 subtype win for a fixlen array?") and then as an implementation gap. The question is settled
+— CORELIB_PLAN §4.8 — and the answer makes the remaining work impossible to do in the generator:
+seven array header hooks either fire before the `fixlen_word` or omit the element subtype, so no
+generated guard can express the order. Assigned **F-0042** (it had never had a Crucible id, which
+is why nothing in the catalog pointed at it), pinned all six vectors as reproducers, and filed
+corelib-go#58, corelib-java#53, corelib-cs#45, corelib-dart#23, corelib-rs-no-std#60 (rows 2+4)
+and corelib-rs#40, corelib-zig#27 (row 2 only — their hook already fires past the `fixlen_word`).
+Its row 1 turned out to be the same defect as F-0039/generator#254, found independently the same
+day from the other side; the two are cross-linked rather than merged, because one is codegen and
+fixable today and the other is a corelib hook-signature change.
+
 **Re-verification 2026-07-08** — after bumping **sofabgen → 0.15.1** and all 10
 corelibs to latest `main`, drivers rebuilt clean and the seed corpus is green (0
 divergences). Replaying the finding reproducers: **F-0002 and F-0005 are fixed**
