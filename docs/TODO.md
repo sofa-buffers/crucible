@@ -177,16 +177,26 @@ here:
 
 - [ ] **Triage the 2026-08-01 fuzz round's unattributed clusters** (snapshot + camps in
       [`../results/CLUSTERS.md`](../results/CLUSTERS.md)). Priority order:
-      1. **Clusters 3 / 14 / 15 (~23 inputs) — `accept_value` splits, the hard axis.** A
-         mutually-accepted input decoding to *different values*: 8-10 impls re-encode the empty
-         (all-default) message while csharp/java/rust×2/zig materialize a field (`19d60c` and
-         variants). That camp is the shared-callback set from F-0021/F-0022/F-0025. Minimize the
-         128-byte rep first — these are the most likely new finding of the round.
+      1. [x] **Cluster 3 — DONE 2026-08-01: minimized to F-0044** (128 B -> 6 B, three controls).
+         A child of a *skipped unknown sequence* binds into the enclosing scope on the
+         flat-visitor backends. Filed as generator#268 (**G-0028**).
+      1b. **Clusters 14 / 15 (~3 inputs) — `accept_value`, still open.** 14 carries the same
+         `19d60c` signature as cluster 3 but partitions **three** ways (8 empty / 4
+         `004619d60c` / java `00c60c19d60c`), so it is not simply more of F-0044 — re-check it
+         once F-0044 is fixed, since the fix may collapse part of it. 15 (`a60603010007`,
+         rust×2 + zig) is a separate shape.
       2. **Clusters 4, 6, 7, 8, 10, 17** — INVALID-vs-INCOMPLETE precedence splits whose camps do
          **not** match any F-0043 row, so they are not folded into it.
       3. **Cluster 5 (8 inputs)** — `rust-nostd` alone rejects `buffer_full` where 12 accept.
          Decide whether it is a legal constrained-profile bound (CORELIB_PLAN §6, like the dormant
          `bounded-lazy-seq-depth-noncanonical-frames` policy entry) or a finding.
+
+- [ ] **New sweep axis: an unknown *sequence* id carrying children** (coverage gap exposed by
+      F-0044). `sweep_framing.py` uses unknown ids (50/51) only with scalar / fixlen / array wire
+      types, so no axis ever opened an unknown SEQ_BEG with a payload inside — which is why a
+      6-byte defect had to be found by the fuzzer instead. Vectors: unknown seq × {empty, one
+      scalar child, nested sequence child, child whose id collides with a real field of the
+      enclosing scope}, at every sequence position.
 
 - [ ] **Re-enable `sweep_malform_truncate`'s broadened truncation when F-0043 closes.** The axis
       currently applies the full offset sweep only to the STRUCTURAL malformations; the

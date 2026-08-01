@@ -29,7 +29,7 @@ catalogued reproducers rather than matched by shape.
 | 9 | 2 | `R` c, cpp, cpp-c-cpp, dart, go, ts · `I` (7) | **F-0043** — rep `56 1a 73` is the `over_len_blob`-at-the-word shape (length 57 > `maxlen` 5); camps match `over_len_blob_trunc_003` exactly |
 | 16 | 1 | `R` (8) · `I` csharp, rust×2, zig (+java) | **F-0043** — rep `56 12 82 07` is the `over_len_string`-at-the-word shape; camps match `over_len_string_trunc_004` exactly |
 | 5 | 8 | accept (12) · `R` **rust-nostd** `buffer_full` | fixed-capacity profile hits its bound where the heap profiles do not — **needs triage**: legal constrained-profile allowance (CORELIB_PLAN §6) or a finding |
-| 3 | 20 | accept→**empty** (8) · accept→`19d60c` (csharp, java, rust×2, zig) | **NEW, untriaged — the hard axis.** A mutually-accepted input decoding to *different values*: 5 impls materialize a field the other 8 drop entirely. The camp is the familiar shared-callback set (F-0021/F-0022/F-0025 neighbourhood) |
+| 3 | 20 | accept→**empty** (8) · accept→`19d60c` (csharp, java, rust×2, zig) | **F-0044** — minimized 2026-08-01 from the 128-byte rep to **6 bytes** (`c6 01 19 d6 0c 07`): a child of a *skipped unknown sequence* binds into the enclosing scope. The wrong camp's re-encode is byte-identical to the child header inside the skipped subtree. Cause: `sequenceBegin`'s dispatch switch has no default arm in the flat-visitor backends |
 | 14 | 2 | accept→empty (8) · →`004619d60c` (4) · →`00c60c19d60c` (java) | **NEW, untriaged** — same class as #3, three-way |
 | 15 | 1 | accept→empty (10) · →`a60603010007` (rust×2, zig) | **NEW, untriaged** — same class as #3 |
 | 4, 6, 7, 8, 10, 17 | 16, 7, 4, 3, 2, 1 | mixed `I`/`R`, camps differ per cluster | INVALID-vs-INCOMPLETE precedence family; camps do **not** match any F-0043 row, so these are **untriaged** rather than folded in |
@@ -37,9 +37,10 @@ catalogued reproducers rather than matched by shape.
 **Landscape.** The dominant cluster is the benign java soft-value one (95% of the
 diverging rows). Every *catalogued* finding that can still fire shows up exactly where it
 should and nowhere else, which is the useful negative result: no catalogued finding has
-grown a new camp. The genuine new signal is **clusters 3 / 14 / 15** — `accept_value`
-splits, the hard axis, ~23 inputs — plus the six unattributed precedence clusters and
-rust-nostd's `buffer_full`. Those are the triage queue; see `docs/TODO.md`.
+grown a new camp. Cluster 3 has since been minimized to **F-0044** (128 B → 6 B, three controls). The remaining
+triage queue is **clusters 14 / 15** (`accept_value`, ~3 inputs — 14 carries the same `19d60c`
+signature as 3 but partitions three ways, so it is not simply the same input class), the six
+unattributed precedence clusters, and rust-nostd's `buffer_full`; see `docs/TODO.md`.
 
 ## Snapshot — first pacemaker run (309 discovered inputs)
 
