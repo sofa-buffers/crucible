@@ -180,11 +180,11 @@ here:
       1. [x] **Cluster 3 — DONE 2026-08-01: minimized to F-0044** (128 B -> 6 B, three controls).
          A child of a *skipped unknown sequence* binds into the enclosing scope on the
          flat-visitor backends. Filed as generator#268 (**G-0028**).
-      1b. **Clusters 14 / 15 (~3 inputs) — `accept_value`, still open.** 14 carries the same
-         `19d60c` signature as cluster 3 but partitions **three** ways (8 empty / 4
-         `004619d60c` / java `00c60c19d60c`), so it is not simply more of F-0044 — re-check it
-         once F-0044 is fixed, since the fix may collapse part of it. 15 (`a60603010007`,
-         rust×2 + zig) is a separate shape.
+      1b. [x] **Clusters 14 / 15 — DONE 2026-08-01.** 14 is the **product of F-0044 and F-0033**,
+         not a finding of its own (proven with an in-range control and a no-wrapper control);
+         it closes when either does. 15 minimized to **F-0045** (468 B -> 8 B): a §7.3-skipped
+         array leaves `afill` armed and the next scalar is absorbed into an array. Filed as
+         generator#270 (**G-0029**).
       2. **Clusters 4, 6, 7, 8, 10, 17** — INVALID-vs-INCOMPLETE precedence splits whose camps do
          **not** match any F-0043 row, so they are not folded into it.
       3. **Cluster 5 (8 inputs)** — `rust-nostd` alone rejects `buffer_full` where 12 accept.
