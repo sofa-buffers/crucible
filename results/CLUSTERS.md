@@ -30,17 +30,19 @@ catalogued reproducers rather than matched by shape.
 | 16 | 1 | `R` (8) · `I` csharp, rust×2, zig (+java) | **F-0043** — rep `56 12 82 07` is the `over_len_string`-at-the-word shape; camps match `over_len_string_trunc_004` exactly |
 | 5 | 8 | accept (12) · `R` **rust-nostd** `buffer_full` | fixed-capacity profile hits its bound where the heap profiles do not — **needs triage**: legal constrained-profile allowance (CORELIB_PLAN §6) or a finding |
 | 3 | 20 | accept→**empty** (8) · accept→`19d60c` (csharp, java, rust×2, zig) | **F-0044** — minimized 2026-08-01 from the 128-byte rep to **6 bytes** (`c6 01 19 d6 0c 07`): a child of a *skipped unknown sequence* binds into the enclosing scope. The wrong camp's re-encode is byte-identical to the child header inside the skipped subtree. Cause: `sequenceBegin`'s dispatch switch has no default arm in the flat-visitor backends |
-| 14 | 2 | accept→empty (8) · →`004619d60c` (4) · →`00c60c19d60c` (java) | **NEW, untriaged** — same class as #3, three-way |
-| 15 | 1 | accept→empty (10) · →`a60603010007` (rust×2, zig) | **NEW, untriaged** — same class as #3 |
+| 14 | 2 | accept→empty (8) · →`004619d60c` (4) · →`00c60c19d60c` (java) | **F-0044 × F-0033 — no new finding.** Minimized 693 B → **6 B** (`d6 02 00 d6 0c 57`: unknown sequence id 42 carrying an over-width `u8 = 1622`). Proven by two controls: with an *in-range* value the partition is exactly F-0044's (8 vs the 5 leakers); the over-width value alone at root is exactly F-0033's 3 camps. The three-way split here **is** their product — F-0044's camp {csharp, java, rust×2, zig} intersected with F-0033's mask camp gives {csharp, rust×2, zig} and with its keep camp gives {java}. Closes when either finding is fixed |
+| 15 | 1 | accept→empty (10) · →`a60603010007` (rust×2, zig) | **F-0045** — minimized 468 B → **8 B**. A §7.3-skipped array leaves `afill` armed, so the *next* scalar is absorbed into an array. All three controls green, so it is a **state leak across fields**. The rust/zig analogue of G-0023, which #254 fixed for java/csharp only |
 | 4, 6, 7, 8, 10, 17 | 16, 7, 4, 3, 2, 1 | mixed `I`/`R`, camps differ per cluster | INVALID-vs-INCOMPLETE precedence family; camps do **not** match any F-0043 row, so these are **untriaged** rather than folded in |
 
 **Landscape.** The dominant cluster is the benign java soft-value one (95% of the
 diverging rows). Every *catalogued* finding that can still fire shows up exactly where it
 should and nowhere else, which is the useful negative result: no catalogued finding has
-grown a new camp. Cluster 3 has since been minimized to **F-0044** (128 B → 6 B, three controls). The remaining
-triage queue is **clusters 14 / 15** (`accept_value`, ~3 inputs — 14 carries the same `19d60c`
-signature as 3 but partitions three ways, so it is not simply the same input class), the six
-unattributed precedence clusters, and rust-nostd's `buffer_full`; see `docs/TODO.md`.
+grown a new camp. All three `accept_value` clusters have since been minimized: cluster 3 → **F-0044** (128 B →
+6 B), cluster 15 → **F-0045** (468 B → 8 B), and cluster 14 turned out to be the **product of
+F-0044 and F-0033** rather than a finding of its own (693 B → 6 B). Every one was driven by the
+same rule — shrink while the *camp partition* is unchanged, then prove the axis with controls
+that are individually green. The remaining triage queue is the six unattributed precedence
+clusters and rust-nostd's `buffer_full`; see `docs/TODO.md`.
 
 ## Snapshot — first pacemaker run (309 discovered inputs)
 
