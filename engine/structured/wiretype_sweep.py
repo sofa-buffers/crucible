@@ -86,19 +86,12 @@ def emit(out_dir):
         declared = CAT_TO_CONSTRUCT[p.cat]
         for cname, build in CONSTRUCTS.items():
             kind = "ctl" if cname == declared else "mism"
-            # F-0042 carve-out — two CELLS, never the axis (the F-0034 pattern).
-            # An fp array meeting a declared fp array of the *other* width is the one
-            # mismatch generated code cannot see: both are ArrayKind.FIXLEN, and the
-            # corelib's array-header hook carries the kind but not the fixlen element
-            # subtype, so java/csharp size the declared field from a header §7.3 says
-            # to skip. Filed as F-0042 against the seven corelibs whose hook must widen
-            # (corelib-go#58, -java#53, -cs#45, -dart#23, -rs-no-std#60, -rs#40, -zig#27);
-            # the codegen half is generator#254, already fixed for every kind the hook
-            # *does* distinguish. Delete these two lines when the hook change ships —
-            # the cells must go green on their own, they are not a legal divergence
-            # (which is why this is not an oracle/policy.yaml entry).
-            if kind == "mism" and cname.startswith("ARR_fp") and declared.startswith("ARR_fp"):
-                continue
+            # The fp-array-meets-other-fp-width cells were the F-0042 carve-out: both are
+            # ArrayKind.FIXLEN, so the corelib's array-header hook had to widen to carry
+            # the element subtype before the §7.3 skip could precede the schema `count`
+            # bound. Shipped in the seven corelibs (go/java/cs/dart/rs/rs-no-std/zig) and
+            # consumed by the backends in generator#259; the cells are green on their own
+            # now, so the axis covers the full construct product again.
             name = f"{p.tag()}_{cname}_{kind}.bin"
             data = place(list(p.path), p.fid, build(p.fid))
             with open(os.path.join(out_dir, name), "wb") as fh:

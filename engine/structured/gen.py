@@ -213,10 +213,14 @@ def vectors():
     # canonical.md:107-109) is directly visible here.
     out.append(("f32_subnorm_min",  {"f32": f32b(0x00000001)}))          # min +subnormal
     out.append(("f32_subnorm_max",  {"f32": f32b(0x007FFFFF)}))          # max subnormal
-    # NB: an fp32 *signaling* NaN (0x7F800001) is F-0031 — py-cython/typescript/dart
+    # NB: an fp32 *signaling* NaN (0x7F800001) is F-0031, still open — go/typescript/dart
     # quiet it to 0x7FC00001 (double-backed fp32), violating CORELIB_PLAN:263-267
     # (bit-for-bit, no normalization). Kept OUT of this green gate (reproducer in
     # findings/F-0031) until fixed; the *quiet* payload NaN below is preserved by all 13.
+    # Re-measured 2026-08-01 on corelibs 0.10.0 + sofabgen 0.22.0: the ROUND-TRIP oracle is
+    # now green family-wide (the bits survive re-encode), so the residual is visible only
+    # through the MATERIALIZED oracle — element access is where the double conversion
+    # happens. Re-enabling here therefore also needs scripts/materialize.sh to be green.
     out.append(("f32_qnan_payload", {"f32": f32b(0x7FC00001)}))          # quiet NaN, nonzero payload
     out.append(("f32_nan_neg",      {"f32": f32b(0xFFC00000)}))          # negative NaN
     out.append(("f32_zero_pos",     {"f32": f32b(0x00000000)}))          # explicit +0.0 (canonicalizes to omitted)

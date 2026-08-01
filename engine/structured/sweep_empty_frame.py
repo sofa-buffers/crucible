@@ -84,27 +84,25 @@ def emit(out_dir):
     vectors = []  # (name, bytes, expect)
 
     for p in ALL_SEQ_POSITIONS:
-        # F-0035/F-0036 carve-out (G-0020/G-0021): at the struct_array ELEMENT
-        # position (path (202,)) an explicit empty element frame is NOT normalized
-        # uniformly yet — 12 backends keep it (missing §3/§5.1 trailing trim,
-        # F-0036) and the merge case additionally double-appends in the id-blind
-        # camp (F-0035). One position, not the axis; re-enable with the fixes.
-        elem_pos = p.path == (202,)
+        # The struct_array ELEMENT position (path (202,)) was carved out for
+        # F-0035/F-0036 (G-0020/G-0021): 12 backends kept an explicit empty element
+        # frame (missing the §3/§5.1 trailing rule) and the id-blind camp additionally
+        # double-appended on the merge case. Both resolved in sofabgen 0.21.0, so the
+        # position rejoins the axis — every sequence position now gets all three.
         # 1) marker + the empty frame at this position (enclosing scopes opened).
         #    For a nested position the enclosing frames then hold nothing but an
         #    empty frame — the recursive-collapse chain comes free.
-        if not elem_pos:
-            vectors.append((f"{p.tag()}_empty_frame.bin",
-                            MARKER + place(p.path, empty_seq(p.fid)), "accept"))
-            # 2) the frame-only message: same wire without the marker. Decodes to the
-            #    all-default message; canonical re-encode is the EMPTY byte string (§2).
-            vectors.append((f"{p.tag()}_frame_only.bin",
-                            place(p.path, empty_seq(p.fid)), "accept"))
-            # 3) §7.4 x §2: the empty frame merged with itself (same id reopened, both
-            #    empty) — still all-default, still normalized away.
-            vectors.append((f"{p.tag()}_empty_merge.bin",
-                            MARKER + place(p.path, empty_seq(p.fid) + empty_seq(p.fid)),
-                            "accept"))
+        vectors.append((f"{p.tag()}_empty_frame.bin",
+                        MARKER + place(p.path, empty_seq(p.fid)), "accept"))
+        # 2) the frame-only message: same wire without the marker. Decodes to the
+        #    all-default message; canonical re-encode is the EMPTY byte string (§2).
+        vectors.append((f"{p.tag()}_frame_only.bin",
+                        place(p.path, empty_seq(p.fid)), "accept"))
+        # 3) §7.4 x §2: the empty frame merged with itself (same id reopened, both
+        #    empty) — still all-default, still normalized away.
+        vectors.append((f"{p.tag()}_empty_merge.bin",
+                        MARKER + place(p.path, empty_seq(p.fid) + empty_seq(p.fid)),
+                        "accept"))
         # 4) leaf-wrapper length rules (documentation#31): a single default element
         #    is the one-element array [""], NOT the empty array — the last element
         #    is always written; an interior default element is a gap that the
@@ -130,12 +128,18 @@ def emit(out_dir):
             vectors.append((f"{p.tag()}_interior_empty_elem.bin",
                             MARKER + place(p.path, e(p.fid, k(0, 1) + e(1) + k(2, 3))),
                             "accept"))
-            # F-0035 carve-out (G-0020): the canonical form of the above — element 0
-            # and 2 present, 1 a gap — is mis-decoded by the 10 id-blind backends,
-            # which compact it to length 2. Reproducer in findings/F-0035…/.
-            # A TRAILING all-default element is now CANONICAL (it is the last element,
-            # so it carries the length): `c` trims it and is the lone outlier —
-            # findings/F-0036…/, whose direction inverted with documentation#31.
+            # the CANONICAL form of the above — element 0 and 2 present, 1 an id GAP.
+            # Was the F-0035 carve-out (G-0020): the 10 id-blind backends compacted it
+            # to length 2. Resolved in sofabgen 0.21.0, so it is a vector again.
+            vectors.append((f"{p.tag()}_interior_gap_elem.bin",
+                            MARKER + place(p.path, e(p.fid, k(0, 1) + k(2, 3))),
+                            "accept"))
+            # a TRAILING all-default element is CANONICAL (it is the last element, so it
+            # carries the length) — `c` used to trim it (F-0036, direction inverted with
+            # documentation#31); resolved in sofabgen 0.21.0.
+            vectors.append((f"{p.tag()}_trailing_default_elem.bin",
+                            MARKER + place(p.path, e(p.fid, k(0, 1) + e(1))),
+                            "accept"))
 
     # 5) zero-count compact arrays: the compact-form analogue at every numeric/fp
     #    array position (CORELIB_PLAN §4.7 legal; §2 value-identical to omission).
