@@ -175,6 +175,19 @@ here:
         (**G-0027**): decide a schema-bound violation **at the word** that carries the violating
         number, not after payload bytes arrive.
 
+- [ ] **Triage the 2026-08-01 fuzz round's unattributed clusters** (snapshot + camps in
+      [`../results/CLUSTERS.md`](../results/CLUSTERS.md)). Priority order:
+      1. **Clusters 3 / 14 / 15 (~23 inputs) — `accept_value` splits, the hard axis.** A
+         mutually-accepted input decoding to *different values*: 8-10 impls re-encode the empty
+         (all-default) message while csharp/java/rust×2/zig materialize a field (`19d60c` and
+         variants). That camp is the shared-callback set from F-0021/F-0022/F-0025. Minimize the
+         128-byte rep first — these are the most likely new finding of the round.
+      2. **Clusters 4, 6, 7, 8, 10, 17** — INVALID-vs-INCOMPLETE precedence splits whose camps do
+         **not** match any F-0043 row, so they are not folded into it.
+      3. **Cluster 5 (8 inputs)** — `rust-nostd` alone rejects `buffer_full` where 12 accept.
+         Decide whether it is a legal constrained-profile bound (CORELIB_PLAN §6, like the dormant
+         `bounded-lazy-seq-depth-noncanonical-frames` policy entry) or a finding.
+
 - [ ] **Re-enable `sweep_malform_truncate`'s broadened truncation when F-0043 closes.** The axis
       currently applies the full offset sweep only to the STRUCTURAL malformations; the
       schema-bound half is a two-line deletion in `engine/structured/sweep_malform_truncate.py`

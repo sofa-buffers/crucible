@@ -9,6 +9,38 @@ CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh
 # or directly: python3 oracle/cluster.py --corpus <dir> --driver name:path …
 ```
 
+## Snapshot — 2026-08-01 (corelibs 0.10.0 + sofabgen 0.22.0, 3-hour round)
+
+196.4 M execs @ 18.2k exec/s across 4 jobs, cov 721 / ft 5215, 615 new units, **0
+ASan/UBSan hits and no new crashes** (`corpus/crashes/` unchanged at 6 files, all older
+than the round). Corpus 1121 → **5306**. Clustered over the whole grown corpus:
+**5306 inputs: 3233 agree, 2073 diverge → 17 clusters.**
+
+Unlike the 2026-07-27 round, the representatives here were **byte-checked** against the
+catalogued reproducers rather than matched by shape.
+
+| # | inputs | partition | root cause |
+|---|---|---|---|
+| 1 | **1965** | all `I` · java `I`+value | **soft** — java emits an `incomplete_value` on `I`; the verdict is unanimous. Not a divergence (policy `incomplete_value: soft`) |
+| 2 | 35 | `I` (12) · `R` **dart** | **F-0038** — rep `d6 0c 02 12 ff ff 0b 07 …` extends `skipped_element_invalid_utf8.bin`; dart's residual half (generator#265 / G-0025) |
+| 12 | 2 | accept (12, empty wire) · `R` **dart** | **F-0038** — rep is `unknown_id_string_invalid_utf8.bin` (`4a 0a 8a`) **repeated 3×**, byte-exact |
+| 11 | 2 | `R` c, cpp-c-cpp · accept→`00ff01` (6) · accept→`00ff7f` (5) | **F-0033** — rep `00 ff 7f` is **byte-identical** to `u8_over_16383.bin`; all three camps intact (generator#266 / G-0026) |
+| 13 | 2 | `R` (6) · `I` (7) | **F-0043** — rep `c6 0c 2a 0a` is **byte-identical** to `string_array_over_id_trunc_004.bin`; camps match exactly (generator#267 / G-0027) |
+| 9 | 2 | `R` c, cpp, cpp-c-cpp, dart, go, ts · `I` (7) | **F-0043** — rep `56 1a 73` is the `over_len_blob`-at-the-word shape (length 57 > `maxlen` 5); camps match `over_len_blob_trunc_003` exactly |
+| 16 | 1 | `R` (8) · `I` csharp, rust×2, zig (+java) | **F-0043** — rep `56 12 82 07` is the `over_len_string`-at-the-word shape; camps match `over_len_string_trunc_004` exactly |
+| 5 | 8 | accept (12) · `R` **rust-nostd** `buffer_full` | fixed-capacity profile hits its bound where the heap profiles do not — **needs triage**: legal constrained-profile allowance (CORELIB_PLAN §6) or a finding |
+| 3 | 20 | accept→**empty** (8) · accept→`19d60c` (csharp, java, rust×2, zig) | **NEW, untriaged — the hard axis.** A mutually-accepted input decoding to *different values*: 5 impls materialize a field the other 8 drop entirely. The camp is the familiar shared-callback set (F-0021/F-0022/F-0025 neighbourhood) |
+| 14 | 2 | accept→empty (8) · →`004619d60c` (4) · →`00c60c19d60c` (java) | **NEW, untriaged** — same class as #3, three-way |
+| 15 | 1 | accept→empty (10) · →`a60603010007` (rust×2, zig) | **NEW, untriaged** — same class as #3 |
+| 4, 6, 7, 8, 10, 17 | 16, 7, 4, 3, 2, 1 | mixed `I`/`R`, camps differ per cluster | INVALID-vs-INCOMPLETE precedence family; camps do **not** match any F-0043 row, so these are **untriaged** rather than folded in |
+
+**Landscape.** The dominant cluster is the benign java soft-value one (95% of the
+diverging rows). Every *catalogued* finding that can still fire shows up exactly where it
+should and nowhere else, which is the useful negative result: no catalogued finding has
+grown a new camp. The genuine new signal is **clusters 3 / 14 / 15** — `accept_value`
+splits, the hard axis, ~23 inputs — plus the six unattributed precedence clusters and
+rust-nostd's `buffer_full`. Those are the triage queue; see `docs/TODO.md`.
+
 ## Snapshot — first pacemaker run (309 discovered inputs)
 
 **309 inputs: 53 agree, 256 diverge → 47 clusters.** The top 12 cover ~208 of the
