@@ -185,8 +185,13 @@ here:
          it closes when either does. 15 minimized to **F-0045** (468 B -> 8 B): a §7.3-skipped
          array leaves `afill` armed and the next scalar is absorbed into an array. Filed as
          generator#270 (**G-0029**).
-      2. **Clusters 4, 6, 7, 8, 10, 17** — INVALID-vs-INCOMPLETE precedence splits whose camps do
-         **not** match any F-0043 row, so they are not folded into it.
+      2. [x] **Clusters 4, 6, 7, 8, 10, 17 — DONE 2026-08-01**, all minimized and attributed:
+         **4 + 17** are F-0043 at an uncovered position (a `string_array` element, `maxlen: 64`)
+         and demonstrate its off-by-one crisply — 0 payload bytes → 8 impls say `I`, 1 byte → 3.
+         Worth appending to generator#267. **6** → **F-0046** (generator#271). **7** is a **legal**
+         divergence: CORELIB_PLAN §6.4 grants a `MAY`, raised upstream as documentation#33 —
+         re-triage once that rules. **8** is F-0044's second symptom (verdict flip; noted on
+         generator#268). **10** → **F-0047** (generator#272).
       3. **Cluster 5 (8 inputs)** — `rust-nostd` alone rejects `buffer_full` where 12 accept.
          Decide whether it is a legal constrained-profile bound (CORELIB_PLAN §6, like the dormant
          `bounded-lazy-seq-depth-noncanonical-frames` policy entry) or a finding.

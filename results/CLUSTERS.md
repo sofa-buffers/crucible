@@ -32,7 +32,11 @@ catalogued reproducers rather than matched by shape.
 | 3 | 20 | accept→**empty** (8) · accept→`19d60c` (csharp, java, rust×2, zig) | **F-0044** — minimized 2026-08-01 from the 128-byte rep to **6 bytes** (`c6 01 19 d6 0c 07`): a child of a *skipped unknown sequence* binds into the enclosing scope. The wrong camp's re-encode is byte-identical to the child header inside the skipped subtree. Cause: `sequenceBegin`'s dispatch switch has no default arm in the flat-visitor backends |
 | 14 | 2 | accept→empty (8) · →`004619d60c` (4) · →`00c60c19d60c` (java) | **F-0044 × F-0033 — no new finding.** Minimized 693 B → **6 B** (`d6 02 00 d6 0c 57`: unknown sequence id 42 carrying an over-width `u8 = 1622`). Proven by two controls: with an *in-range* value the partition is exactly F-0044's (8 vs the 5 leakers); the over-width value alone at root is exactly F-0033's 3 camps. The three-way split here **is** their product — F-0044's camp {csharp, java, rust×2, zig} intersected with F-0033's mask camp gives {csharp, rust×2, zig} and with its keep camp gives {java}. Closes when either finding is fixed |
 | 15 | 1 | accept→empty (10) · →`a60603010007` (rust×2, zig) | **F-0045** — minimized 468 B → **8 B**. A §7.3-skipped array leaves `afill` armed, so the *next* scalar is absorbed into an array. All three controls green, so it is a **state leak across fields**. The rust/zig analogue of G-0023, which #254 fixed for java/csharp only |
-| 4, 6, 7, 8, 10, 17 | 16, 7, 4, 3, 2, 1 | mixed `I`/`R`, camps differ per cluster | INVALID-vs-INCOMPLETE precedence family; camps do **not** match any F-0043 row, so these are **untriaged** rather than folded in |
+| 4, 17 | 16, 1 | `R` (5–10) · `I` (3–8) | **F-0043**, at a position the issue does not cover (a `string_array` element, `maxlen: 64`). The pair also demonstrates the off-by-one crisply: with **0** payload bytes 8 impls say `I`, with **1** byte only 3 do |
+| 6 | 7 | `I` (11) · `R` rust-std, rust-no-std | **F-0046** — minimized 70 B → **5 B**. The schema `count` bound applied to an array whose wire *kind* §7.3 says to skip; the kind-level twin of F-0042 |
+| 7 | 4 | `I` (12) · `R` zig | **legal divergence, not a finding.** CORELIB_PLAN §6.4 says a decoder **MAY** report `INVALID` mid-payload for a byte that can never appear; zig takes the MAY, the other 12 validate at payload completion. Raised upstream as [documentation#33](https://github.com/sofa-buffers/documentation/issues/33) — a `MAY` on the verdict axis contradicts §7.1's determinism requirement |
+| 8 | 3 | `I` (8) · `R` csharp, java, rust×2, zig | **F-0044, second symptom** — minimized 182 B → **6 B**. The same scope leak, but it flips accept-vs-reject instead of corrupting a value: the unskipped `202` sets the struct_array scope and the following `200` trips its element-index bound |
+| 10 | 2 | `I` (7) · `R` csharp, dart, java, rust×2, zig | **F-0047** — minimized 136 B → **8 B**. A §7.3-mistyped *sequence* element is entered rather than skipped, so its child is bound into the array. The §7.3 twin of F-0044 |
 
 **Landscape.** The dominant cluster is the benign java soft-value one (95% of the
 diverging rows). Every *catalogued* finding that can still fire shows up exactly where it
@@ -41,8 +45,10 @@ grown a new camp. All three `accept_value` clusters have since been minimized: c
 6 B), cluster 15 → **F-0045** (468 B → 8 B), and cluster 14 turned out to be the **product of
 F-0044 and F-0033** rather than a finding of its own (693 B → 6 B). Every one was driven by the
 same rule — shrink while the *camp partition* is unchanged, then prove the axis with controls
-that are individually green. The remaining triage queue is the six unattributed precedence
-clusters and rust-nostd's `buffer_full`; see `docs/TODO.md`.
+that are individually green. The six precedence clusters were then minimized the same way: two are **F-0043** at an
+uncovered position, one is **legal** (a spec `MAY`, raised as documentation#33), one is a second
+symptom of **F-0044**, and two are new findings — **F-0046** and **F-0047**. Only cluster 5
+(rust-nostd's `buffer_full`) is left; see `docs/TODO.md`.
 
 ## Snapshot — first pacemaker run (309 discovered inputs)
 
