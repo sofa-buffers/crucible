@@ -19,6 +19,77 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Family bump 2026-08-01 — corelibs 0.10.0 + sofabgen 0.22.0: two findings closed, one
+narrowed, one reshaped, one found.** Bootstrapped with the defaults on `main` (the stale POC
+branches are gone, so branch-tracking no longer needs the `FAMILY_BRANCH=main` override the
+2026-07-29 entry called for). All 11 corelibs land exactly on their `v0.10.0` tag; the
+generator binary reports the CI pseudo-version `0.0.0-20260801075630-e8c784163810`, whose
+commit is **byte-identical to the `v0.22.0` tag** — the artifact was built 16 min before the
+tag was cut. All eight replay gates green, including both report-only passes.
+
+*Closed.* **F-0039** (generator#254 + #259) and **F-0042** (all seven corelib issues + #259)
+converge on all 13; their reproducers are promoted into `corpus/regression/` (103 → 112
+inputs). Both had forced the same carve-out — the two `ARR_fp*`-vs-`ARR_fp*` cells in
+`wiretype_sweep` — which is now retired (361 → 363 vectors, green).
+
+*Two stale carve-outs retired with them.* F-0035/F-0036 (resolved in sofabgen 0.21.0) had
+kept the whole `struct_array` **element** position out of `sweep_empty_frame`; it rejoins the
+axis at 34 → 39 vectors, including two vectors for the canonical interior-gap and
+trailing-default element forms that had existed only as comments.
+
+*Narrowed.* **F-0038** is six impls down to one. The residual is `dart` and it is **codegen**:
+corelib-dart shipped its half and documents (`lib/src/decoder.dart:55-60`) that generated code
+must resolve the destination before validating, but the dart backend emits no `onStringBytes`
+override for a **string-free scope**, so those visitors inherit the validating default at
+`decoder.dart:77`. generator#258 fixed exactly this for java/csharp — `Probe.java:337` emits
+`default: return;` before a byte is buffered — and was never applied to dart.
+
+*Reshaped.* **F-0033** stopped being a spec hole: documentation#32 (`70f9123`) makes the
+declared integer width a normative validity bound, so over-width is INVALID and generated
+code must enforce it. The family split collapsed 3-way → 2-way (`c` + `cpp-c-cpp` correct,
+11 accept) and the mask-vs-keep disagreement among the accepters closed — 33 divergences, all
+`verdict`, zero `accept_value`. sofabgen 0.22.0 predates the clause, so no backend implements
+it yet.
+
+*Found — **F-0043**.* Re-enabling F-0032's carve-out (F-0032 itself is genuinely fixed) grew
+`sweep_malform_truncate` 43 → 96 vectors and exposed the **boundary offset** the carve-out had
+been hiding: a schema-bound violation is not decided at the length/element **word** but only
+once payload bytes arrive, so a message truncated exactly at that word is `I` where §5.2
+requires `R`. Two forms — an off-by-one (rust×2, java, csharp, zig; plus go/dart on the
+wrapper rows) and python deferring a blob's `maxlen` to payload completion at every offset.
+All 13 agree on the untruncated controls, which is what makes it an ordering defect rather
+than a detection one. The carve-out stays, re-pointed from F-0032 to F-0043.
+
+*Filed upstream, same day.* All three open findings attributable to codegen went to `generator`,
+one issue each: **F-0038**'s dart residual → [#265](https://github.com/sofa-buffers/generator/issues/265)
+(**G-0025**), **F-0033**'s width bound → [#266](https://github.com/sofa-buffers/generator/issues/266)
+(**G-0026**), **F-0043**'s check ordering → [#267](https://github.com/sofa-buffers/generator/issues/267)
+(**G-0027**). Each carries the per-backend split table, the isolate bytes, the controls that pin the
+axis, and a `file:line` citation for the shape being asked for — for #265 that is the java backend's
+own resolve-then-leave (`Probe.java:337`) against the five dart visitors that inherit the validating
+default instead. F-0031 stays unfiled: it is corelib-side and its camp moved under us.
+
+*Then re-validated against the spec at `70f9123`, and each issue carries the result as a comment.*
+All citations held; two gained something. **#266**: §7.1's worked example turns out to be literally
+our reproducer (*"a `u8` field whose value arrives as `16383`"*), and §1 also binds an `enum` by its
+signed 32-bit range — which the issue's original "asked for" understated, so the enum destinations
+were added (`bitfield` is deliberately not claimed). **#267**: §7.3's closing paragraph mandates
+`INCOMPLETE`-not-`INVALID` for a truncation *between* a fixlen array's count and its `fixlen_word`
+(CORELIB_PLAN §4.8) and reads as a counter-argument until one checks the vectors — none are in that
+case, since `over_len_*` are scalar fixlen and the `*_array_over_id` rows are sequence-wrapped, not
+the §4.8 count-prefixed form. Pre-empted in the issue rather than left for a maintainer to raise.
+*Generalizes: re-read the clause at the tip **before** filing, not after — the spec had moved five
+days earlier and the deciding sentence for the newest finding sat in a section none of us re-opened.*
+
+*Decision: a finding is not closed until **both** oracles agree.* **F-0031** looked resolved —
+`CORPUS=findings/F-0031 ./scripts/run.sh` is green on all 13, the sNaN bits survive
+decode+re-encode. Putting `f32_snan` back into the structured green corpus then failed
+`materialize.sh`: `c: f7f800001` vs **go, typescript, dart: `f7fc00001`**. Element access is
+where the double conversion happens, so the round-trip oracle is blind to it, and the camp had
+also changed under us (py-cython left, go joined). The vector stays out of `gen.py` and the
+finding stays open, rescoped to the materialized oracle. Generalizes: for any value-shape
+finding, re-verification means `run.sh` **and** `materialize.sh`.
+
 **Parallel fix campaign 2026-07-29 — four clusters, two findings closed.** With the family on
 `main`, the 12 real open corelib issues were six root causes, not twelve bugs, so they were worked
 as clusters: one shared branch name per cluster in every affected repo, one worker per repo, and

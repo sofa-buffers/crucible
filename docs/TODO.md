@@ -155,16 +155,36 @@ here:
       csharp backends no longer size a declared array from a header §7.3 says to skip: the
       generated `arrayBegin` now guards each allocation with `if (kind != ArrayKind.X) break;`.
       `wiretype_sweep` went **30 → 2** divergences.
-- [ ] **F-0042 — the last two `wiretype_sweep` cells, carved out until the corelib hook widens.**
-      The residual pair is `100_10_id0_ARR_fp64_mism` / `100_10_id1_ARR_fp32_mism`: an fp array
-      meeting a declared fp array of the *other* width. Both are `ArrayKind.FIXLEN`, and the
-      array-header hook carries the kind but not the fixlen element **subtype**, so no codegen
-      guard can separate them — the same root cause F-0042 already tracks
-      (corelib-go#58, -java#53, -cs#45, -dart#23, -rs-no-std#60, -rs#40, -zig#27).
-      Carved out in `engine/structured/wiretype_sweep.py` as **two cells, never the axis** (the
-      F-0034 pattern), with the deletion condition in the comment. **Delete the carve-out when
-      the hook change ships** and expect the cells to go green on their own — they are a bug,
-      not a legal divergence, which is why this is not an `oracle/policy.yaml` entry.
+- [x] **F-0042 — the last two `wiretype_sweep` cells — DONE (2026-08-01).** The corelib
+      array-header hook widened to carry the fixlen element **subtype** (all seven issues closed:
+      corelib-go#58, -java#53, -cs#45, -dart#23, -rs-no-std#60, -rs#40, -zig#27) and the backends
+      consume it in generator#259. The carve-out is deleted; `wiretype_sweep` is **361 → 363
+      vectors, green**, and the six reproducers are in `corpus/regression/` as `F0042_*`.
+
+- [x] **File the three open findings upstream — DONE (2026-08-01).** All three went to
+      `generator`; each has a G-number in `results/FINDINGS.md`. Now waiting on the fixes:
+      - **F-0038's dart residual** → [generator#265](https://github.com/sofa-buffers/generator/issues/265)
+        (**G-0025**): emit the `onStringBytes` override for a **string-free scope** so those
+        visitors stop inheriting corelib-dart's validating default. generator#258 did exactly
+        this for java/csharp; the dart backend was missed.
+      - **F-0033** → [generator#266](https://github.com/sofa-buffers/generator/issues/266)
+        (**G-0026**): enforce the declared integer width as a validity bound (documentation#32,
+        §1/§7.1 — over-width is INVALID, never masked, never kept). Today only `c` /
+        `cpp-c-cpp` are conformant.
+      - **F-0043** → [generator#267](https://github.com/sofa-buffers/generator/issues/267)
+        (**G-0027**): decide a schema-bound violation **at the word** that carries the violating
+        number, not after payload bytes arrive.
+
+- [ ] **Re-enable `sweep_malform_truncate`'s broadened truncation when F-0043 closes.** The axis
+      currently applies the full offset sweep only to the STRUCTURAL malformations; the
+      schema-bound half is a two-line deletion in `engine/structured/sweep_malform_truncate.py`
+      (43 → 96 vectors). The carve-out previously cited F-0032, which is resolved — it is F-0043
+      that keeps it, and the boundary offset is precisely what it hides.
+
+- [ ] **Re-enable `f32_snan` in `engine/structured/gen.py` when F-0031 closes.** The round-trip
+      oracle is already green family-wide; the gate is `scripts/materialize.sh`, where go,
+      typescript and dart still quiet `0x7F800001` → `0x7FC00001`. Re-enabling needs **both**
+      oracles green, not just `run.sh`.
 
 - [x] **F-0022 / generator#188** — **DONE (sofabgen 0.19.4, 2026-07-21).** The generated array-fill
       arm now carries the §7.3 guard (`if self.afill == 0 { return; }`) and `array_begin` arms `afill`
