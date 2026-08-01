@@ -137,12 +137,17 @@ def malformations():
 # payload, so truncating INTO the payload still gives R. A "schema-bound" malformation
 # (over-maxlen/count/index, invalid UTF-8) is only INVALID after the content is read; the
 # check + its ordering are generated code (maxlen/count/id are schema facts). Truncating
-# such a malformation INTO its payload is **F-0032**: go/cpp/ts/dart report INCOMPLETE
-# instead of the INVALID that §5.2 requires (documentation#15, adopted) — the F-0024 class
-# for 4 more backends. Those into-payload truncations are carved OUT of this blocking axis
-# (reproducers in findings/F-0032) until the generator fix lands; the `_complete` control
-# and the mid-varint `_trunc_tail` (the malformation fully present, then a stray tail) stay
-# blocking on all, and the structural malformations get the full broadened truncation.
+# such a malformation INTO its payload was **F-0032** (go/cpp/ts/dart reported INCOMPLETE
+# where §5.2 requires INVALID; documentation#15, adopted) — RESOLVED in the generator
+# (#222/#223/#224) + crucible#107.
+#
+# The carve-out nevertheless STAYS, for a different finding. Re-enabling it on
+# 2026-08-01 (corelibs 0.10.0 / sofabgen 0.22.0) grew the axis 43 -> 96 vectors and
+# surfaced **F-0043**: the schema-bound verdict is not established at the length/element
+# WORD but only once payload bytes arrive, so a message truncated exactly at that word is
+# INCOMPLETE on 5-7 impls where §5.2 requires INVALID (and python defers it to payload
+# completion for a blob at every offset). Reproducers in findings/F-0043. Re-enable when
+# that finding closes — the offsets are green for the reason the axis is about only then.
 STRUCTURAL = {"reserved_subtype_top", "reserved_subtype_nested",
               "reserved_subtype_str_wrapper", "reserved_subtype_blob_wrapper",
               "array_fixlen_bad_word"}
@@ -164,7 +169,7 @@ def emit(out_dir):
         vectors.append((f"{name}_trunc_tail.bin", body + TRUNC, "reject"))
         # broaden truncation (WP-09): truncate INTO the field at every offset from the
         # malformation point. For a STRUCTURAL malformation (INVALID at the word) this is R
-        # on all; for a schema-bound one it is F-0032 (go/cpp/ts/dart report I) — carved out.
+        # on all; for a schema-bound one it is F-0043 (the verdict lands late) — carved out.
         if name in STRUCTURAL:
             for k in range(invalid_at, len(body)):
                 vectors.append((f"{name}_trunc_{k:03d}.bin", body[:k], "reject"))
