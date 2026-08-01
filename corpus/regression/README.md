@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS-LOG.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (81 inputs)
+## Contents (112 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -54,6 +54,10 @@ looking. This corpus makes it automatic.
 | `F0025_control_fp32_scalar.bin`, `F0025_control_array_field.bin` (2) | F-0025 (controls) | — | a correctly-typed fp scalar, and a legit fp array at the actual array field, still store on all 12 — the skip fires only on the fp-scalar←fp-array mismatch |
 | `F0026_blob_reopen_empty.bin`, `F0026_blob_reopen_two.bin` | F-0026 | corelib-c-cpp#106 (`2416a2b`) | a re-opened `blob_array` wrapper (§7.4 replace) drops the earlier occurrence's element on **all 13** — the C object API's `sofab_object_init` now resets a sized blob's companion length, so no stale zeroed element survives |
 | `F0026_control_blob_single.bin`, `F0026_control_str_reopen.bin` (2) | F-0026 (controls) | — | a single (non-reopened) `blob_array` element, and a `string_array` reopen (never buggy), still agree on all 13 — the reset touches only the sized-blob reopen path |
+| `F0039_mistyped_array_signed.bin` | F-0039 | generator#254 (G-0023) | an `ARRAY_SIGNED` header at an `array of u8` position is **skipped** per §7.3 without sizing the destination — all 13 agree the field stays `[]`, not the `[0]` the java/csharp backends produced by resizing from a header the clause says to skip |
+| `F0039_ctl_welltyped_array.bin`, `F0039_ctl_mistyped_scalar.bin` (2) | F-0039 (controls) | — | a well-typed array still round-trips, and a mis-typed **scalar** still skips cleanly — the fix touches only the array-sizing path |
+| `F0042_r1_incount_mistyped.bin`, `F0042_r2_overcount_mistyped.bin`, `F0042_r4_trunc_between_words.bin` | F-0042 | corelib go#58 / java#53 / cs#45 / dart#23 / rs#40 / rs-no-std#60 / zig#27 + generator#259 | the fixlen-array **subtype decides before the schema `count` bound** (CORELIB_PLAN §4.8): a mistyped fp array is skipped whether its count is in-bounds or over, and a truncation between the count and `fixlen_word` is `I` — the corelib array-header hook now carries the element subtype |
+| `F0042_r3_overcount_matching.bin`, `F0042_r5_overcount_matching_nopayload.bin`, `F0042_r6_ctl_valid.bin` (3) | F-0042 (controls) | — | the rows that were already unanimous and must stay so: an over-count array whose subtype **matches** is `R` (the bound still binds a survivor), with and without payload, and the valid control still round-trips |
 
 Filenames are `F<nnnn>_<original-name>.bin`; the originals stay in `findings/<id>/` as the
 finding's own record. `F0003_overcount_clean.bin` has no original — see below.
