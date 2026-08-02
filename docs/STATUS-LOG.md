@@ -29,7 +29,7 @@ the same depth **fully closed**, with no truncation anywhere — where c and cpp
 `254:A 255:A 256:A 257:R`, so it is a clean **off-by-one** against `MAX_DEPTH = 255`, not a
 precedence bug and not a missing check. Attribution is **corelib-c-cpp**: depth is wire
 mechanics, and the affected set is exactly the two profiles sharing the C `istream` while
-`cpp`, with its own corelib, rejects correctly. Not yet filed.
+`cpp`, with its own corelib, rejects correctly. Filed as [corelib-c-cpp#126](https://github.com/sofa-buffers/corelib-c-cpp/issues/126) — the first corelib issue in days; everything else open sits with the generator.
 
 *Cluster 15 → **F-0047's second symptom**, 374 B → 5 B.* `c6 0c 26 2a 02` — a `string_array`
 element opened as a mistyped sequence with a child at id 5. Sweeping the child id breaks
