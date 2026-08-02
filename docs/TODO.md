@@ -216,8 +216,7 @@ here:
 - [x] **Boundary vectors for the format ceilings in `sweep_framing` — DONE 2026-08-02**, and
       the item's premise was half wrong. `MAX_DEPTH` now has 255-vs-256 vectors, closed and
       truncated, and the axis fails on exactly the two F-0050 vectors and nothing else (14 → 22
-      vectors). Promote to blocking when [corelib-c-cpp#126](https://github.com/sofa-buffers/corelib-c-cpp/issues/126)
-      closes.
+      vectors). **Promoted to blocking 2026-08-02** — [corelib-c-cpp#126](https://github.com/sofa-buffers/corelib-c-cpp/issues/126) fixed the same day; axis green (22 vectors).
       *Two corrections to what this item assumed.* (a) The gap was **not only** the boundary: the
       old vector nested through `hdr(0, WT_SEQ_BEG)`, i.e. root id 0 — a scalar opened as a
       sequence, which §7.3 skips — so the whole chain sat inside a skipped subtree and exercised
@@ -265,8 +264,7 @@ here:
       sequence child, child colliding with a real field id of the enclosing scope, the same
       with that field established first}. **REPORT-ONLY** in `scripts/sweep.sh` — 14/25 red
       on **F-0044** ([generator#268](https://github.com/sofa-buffers/generator/issues/268)),
-      camp {rust-std, rust-nostd, java, csharp, zig} exactly as catalogued. **Promote to
-      blocking when #268 closes.** The two collide-over-value vectors are sharper than
+      camp {rust-std, rust-nostd, java, csharp, zig} exactly as catalogued. **Promoted to blocking 2026-08-02** — #268 fixed the same day; axis green. The two collide-over-value vectors are sharper than
       F-0044's own reproducer: they show the leaked child *overwriting a live value*, not
       just appearing in an empty slot.
 
@@ -276,7 +274,7 @@ here:
       value-then-empty, repeated past `maxlen` if concatenated} + a two-distinct-ids control.
       **REPORT-ONLY** — 8/17 red on **F-0048**
       ([generator#273](https://github.com/sofa-buffers/generator/issues/273)), rust-nostd
-      alone. **Promote to blocking when #273 closes.** Two results worth keeping: the
+      alone. **Promoted to blocking 2026-08-02** — #273 fixed the same day; axis green. Two results worth keeping: the
       `empty_then_value` order **passes** (an appending decoder gets that one right by
       accident — so a suite testing only it would have proved nothing), and `struct_array`
       (id 202) passes throughout, confining F-0048 to the leaf-element wrappers.

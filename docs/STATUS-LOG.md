@@ -19,6 +19,37 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Family bump 2026-08-02 (evening) — eight of eleven findings fixed and verified the same day
+they were filed.** Every corelib moved plus sofabgen twice. Upstream closed, in a few hours:
+generator **#266, #268, #270, #271, #272, #273**, **corelib-c-cpp#126**, **corelib-cpp#65** —
+i.e. F-0033, F-0044, F-0045, F-0046, F-0047, F-0048, F-0050, F-0051.
+
+*Verified, not assumed.* All 43 vectors from the eight findings converge across 13 drivers (the
+one residual cluster is the benign java soft axis, verdict unanimous). Where a fix has a
+*direction*, the direction was checked rather than the agreement: F-0033's over-width vectors
+are `R invalid_msg` with the in-range control still `A`; F-0050's depth boundary now measures
+`255:A 256:R` on c, cpp-c-cpp and cpp alike; F-0051's reproducers accept and re-encode to the
+**empty** message, i.e. the subtree is skipped rather than rejected. Agreement alone would have
+been satisfied by a family-wide wrong answer.
+
+*All three report-only probe axes went blocking.* `sweep_framing`, `sweep_unknown_seq` and
+`sweep_repeated_elem` — built earlier the same day and each red on exactly one open finding —
+are green and folded into the blocking call. **Every probe axis now blocks; only the union pass
+is report-only.** That is the ground-rule-4 lifecycle running to completion inside one day:
+axis built red → finding filed → fix landed → axis promoted.
+
+*Reproducers promoted* into `corpus/regression/`, 117 → **160** inputs, gate green. A
+regression now fails CI instead of waiting for someone to re-run a finding by hand.
+
+*One process note worth keeping.* The first bootstrap of the evening ran a few minutes before
+corelib-cpp#66/#67 merged, so F-0050 and F-0033 were verified against a family that was already
+stale — harmless here, but it is why the re-bootstrap happened before touching F-0051. When
+upstream is moving this fast, "bootstrap then verify" has to be one step, not two.
+
+*What is left:* generator **#267** (F-0043) and **#275** (F-0049) are still open, plus
+documentation#33 (the §6.4 `MAY`, a spec question) and generator#239 (reserved words, not a
+finding).
+
 **`cpp`'s half of the Go-found cluster resolved 2026-08-02 — it is not F-0047, it is F-0051.**
 The open question from the triage was whether cpp's inclusion was codegen (add it to
 generator#272) or corelib-cpp. The answer turned out to be neither: **cpp is not affected by

@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS-LOG.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (117 inputs)
+## Contents (160 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -60,6 +60,15 @@ looking. This corpus makes it automatic.
 | `F0042_r3_overcount_matching.bin`, `F0042_r5_overcount_matching_nopayload.bin`, `F0042_r6_ctl_valid.bin` (3) | F-0042 (controls) | — | the rows that were already unanimous and must stay so: an over-count array whose subtype **matches** is `R` (the bound still binds a survivor), with and without payload, and the valid control still round-trips |
 | `F0038_unknown_id_string_invalid_utf8.bin`, `F0038_skipped_element_invalid_utf8.bin` | F-0038 | generator#257 → #258/#263 (G-0024) + generator#269 (G-0025, dart) | a string a decoder is **skipping** is never UTF-8-validated (CORELIB_PLAN §6.4: *"UTF-8 validation runs only where a `string` is materialized … never on skip, in any mode"*) — all 13 agree, where six impls and then `dart` alone used to reject `invalid_msg` |
 | `F0038_ctl_known_field_invalid_utf8.bin`, `F0038_ctl_unknown_id_string_valid_utf8.bin`, `F0038_ctl_unknown_id_blob_same_byte.bin` (3) | F-0038 (controls) | — | the three counter-directions that scope the fix to the skip path: the same bad byte in a **materialized** string is still rejected by all 13 (the strict check is not weakened), a skipped string with **valid** UTF-8 is still accepted, and the same byte in a skipped **blob** — where UTF-8 never applied — is unaffected |
+
+| `F0033_*.bin` (4) | F-0033 | generator#266 + corelib-cpp#67 | a scalar wire value **exceeding its declared width** (`u8 > 255`) is `R invalid_msg` on all 13 — the declared integer width is a validity bound (documentation#32, §1/§7.1), no longer masked or kept. Was a 3-way split. The `u8_255_ctl` control still accepts the in-range maximum |
+| `F0044_*.bin` (4) | F-0044 | generator#268 (G-0028) | a child of a **skipped unknown sequence** does not bind into the enclosing scope — 6 B (`c6 01 19 d6 0c 07`). Covers both symptoms: the value leak and the verdict flip |
+| `F0045_*.bin` (4) | F-0045 | generator#270 (G-0029) | a §7.3-skipped array leaves **no fill state armed** — the next scalar is not absorbed into an array (8 B) |
+| `F0046_*.bin` (4) | F-0046 | generator#271 (G-0030) | the schema `count` bound is **not** applied to an array whose wire *kind* §7.3 says to skip (5 B) |
+| `F0047_*.bin` (8) | F-0047 | generator#272 (G-0031) | a §7.3-mistyped **sequence** at a string-element position is skipped, not entered — its child is never bound into the array. Includes the over-index-child vectors that distinguish it from F-0051 |
+| `F0048_*.bin` (7) | F-0048 | generator#273 (G-0032) | a **repeated wrapper-array element id** replaces rather than appends (§7.4 last-wins), and no longer misfires into `buffer_full`. Includes `empty_then_value` — the order an appending decoder gets right by accident — and the blob twin |
+| `F0050_*.bin` (4) | F-0050 | corelib-c-cpp#126 | nesting depth **255 accepted, 256 rejected** (`MAX_DEPTH`, §4.9/§6.2), closed *and* truncated. The closed 256-deep vector is the one that distinguishes a ceiling defect from an INVALID-vs-INCOMPLETE precedence one |
+| `F0051_*.bin` (5) | F-0051 | corelib-cpp#65 | a wrapper's element-index bound is **suspended inside a skipped subtree** — an over-index child id no longer rejects a field §7.3 says is not the array's. `ctl_child_in_range` is the control that separates this from F-0047 |
 
 Filenames are `F<nnnn>_<original-name>.bin`; the originals stay in `findings/<id>/` as the
 finding's own record. `F0003_overcount_clean.bin` has no original — see below.
