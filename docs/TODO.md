@@ -129,14 +129,23 @@ here:
       via cross-encode's deterministic values. Mutate the *value* (floats, boundary ints, array
       sizes, unicode) and feed all 12 *encoders* → compare bytes. Reaches encoder divergences
       (and encoder UB like the old F-0002) via coverage, not just replay.
-- [ ] **Multi-impl coverage** (the biggest architectural gap). Only the C corelib actually
-      *steers* the fuzzer, so it explores C-complex paths only — F-0012 (a TS bug) was found via
-      the differential, not coverage. Instrumenting a second engine would steer toward paths
-      complex in *other* languages. The C pacemaker is saturated (cov ~569 on `probe`), so this is
-      where new depth comes from. *(update 2026-07-23: coverage **entry points** now exist for
-      go/ts/java/cs — `drivers/go/fuzz_test.go`, `drivers/ts/fuzz.ts`, `drivers/java/FuzzProbe.java`,
-      `drivers/cs/Fuzz.cs` — but none is compiled by its `build.sh` or wired into `fuzz.sh`/`nightly.yml`;
-      rust has none, zig/dart are placeholders. Remaining work: wire one in as a second steering engine.)*
+- [~] **Multi-impl coverage** (the biggest architectural gap) — **first second engine wired
+      2026-08-02; four languages still unwired.** Only the C corelib *steered* the fuzzer, so it
+      explored C-complex paths only — F-0012 (a TS bug) was found via the differential, not
+      coverage. **Go is now a real second steering engine**: `scripts/fuzz-go.sh` +
+      `drivers/go/gocorpus.py` run Go's native coverage-guided fuzzer over corelib-go's decoder,
+      seed from the shared corpus and harvest back into it; wired into `nightly.yml` after the C
+      pass at a quarter of its budget.
+      **It paid off on the first run** — 60 s, 2.99 M execs, 299 new inputs, and the differential
+      over the grown corpus went **15 → 17 clusters**: two divergence classes the C-steered
+      corpus had never produced (see `results/CLUSTERS.md`; both untriaged). That is the thesis
+      of this item, demonstrated rather than argued.
+      *Remaining:* entry points exist but are unwired for **ts** (`drivers/ts/fuzz.ts`), **java**
+      (`drivers/java/FuzzProbe.java`, Jazzer present), **csharp** (`drivers/cs/Fuzz.cs`, SharpFuzz
+      present); **rust** has none at all (cargo-fuzz present) and is the most valuable next one —
+      six of the eight open findings involve a rust backend, so its paths are where the family is
+      demonstrably weakest. zig/dart remain placeholders.
+
 - [ ] **Differential-cluster A/B** of the grammar vs byte-level corpora — the mutator's real
       "done when". Ideally in the nightly. (Mutator itself is built; `engine/mutator/DESIGN.md`.)
 
@@ -195,6 +204,15 @@ here:
       - **F-0043** → [generator#267](https://github.com/sofa-buffers/generator/issues/267)
         (**G-0027**): decide a schema-bound violation **at the word** that carries the violating
         number, not after payload bytes arrive.
+
+- [ ] **Triage the two clusters the Go engine found (2026-08-02).** Both are §5.2
+      INVALID-vs-INCOMPLETE precedence splits with camps no catalogued finding has, and both
+      have `c` + `cpp-c-cpp` as the *lenient* side — unusual, the C family is normally the
+      strict one. Neither was ever produced by ~370 M execs of C-steered fuzzing.
+      - cluster 14 (256 B): `R invalid_msg` ×11 vs `c`, `cpp-c-cpp` → `I`
+      - cluster 15 (374 B): 7 × `R` vs `c`, `cpp-c-cpp`, `go`, `py×2`, `typescript` → `I`
+      Minimize while the camp partition holds, prove the axis with green controls, then
+      attribute (corelib vs codegen) before filing. Snapshot in `../results/CLUSTERS.md`.
 
 - [ ] **Triage the 2026-08-01 fuzz round's unattributed clusters** (snapshot + camps in
       [`../results/CLUSTERS.md`](../results/CLUSTERS.md)). Priority order:

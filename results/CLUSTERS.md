@@ -9,6 +9,28 @@ CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh
 # or directly: python3 oracle/cluster.py --corpus <dir> --driver name:path …
 ```
 
+## Snapshot — 2026-08-02 (**first Go-steered round** — the second steering engine, 60 s)
+
+The first run of `scripts/fuzz-go.sh`, Crucible's second coverage engine (Go's native
+`go test -fuzz` over corelib-go's decoder). 60 s, **2.99 M execs**, 299 new inputs harvested;
+corpus 579 → **878**.
+
+**878 inputs: 258 agree, 620 diverge → 17 clusters** — up from **15**. Fifteen map onto the
+minimized-corpus snapshot below at unchanged camps (cluster 5 is F-0046 with a smaller 53 B
+representative, not a new class). **Two are new, and neither had ever appeared in a corpus
+grown by the C pacemaker:**
+
+| # | inputs | partition | status |
+|---|---|---|---|
+| **14** | 1 (256 B) | `R invalid_msg` ×11 · **`c`, `cpp-c-cpp` → `I`** | 🔴 **untriaged** — a §5.2 INVALID-vs-INCOMPLETE precedence split where the **C family alone is the lenient one**. No catalogued finding has this camp |
+| **15** | 1 (374 B) | `R invalid_msg` (cpp, csharp, dart, java, rust×2, zig) · `I` (`c`, `cpp-c-cpp`, go, py×2, typescript) | 🔴 **untriaged** — a 7-vs-6 precedence split, again with c/cpp-c-cpp lenient but a different second camp |
+
+**This is the multi-impl-coverage thesis, demonstrated.** The C pacemaker had run ~370 M execs
+across two rounds over this schema and never produced either shape, because it steers by *C*
+coverage and cannot be rewarded for reaching a path that is only complex elsewhere. One minute
+of Go-steered fuzzing found two. Both need minimizing and attributing before anything is filed
+— the camps are suggestive but a 256-byte input proves nothing on its own.
+
 ## Snapshot — 2026-08-02 (1 h 10 pacemaker round on the new sources; corpus 5306 → 5994)
 
 The first round *fuzzed against* corelib-c-cpp `17f9a8e` — the collapsed per-type dispatch in

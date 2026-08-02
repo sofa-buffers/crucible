@@ -19,6 +19,42 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Second steering engine 2026-08-02 — Go, and it found two new divergence classes in 60
+seconds.** `docs/TODO.md` had carried "Multi-impl coverage" as *the biggest architectural gap*
+since the start: only the C corelib steered the fuzzer, so the search was rewarded solely for
+reaching paths that are complex **in C**. Every finding in another language came from the
+differential over a C-grown corpus, or by hand — never from a fuzzer steering on that
+language's own decoder.
+
+*Built.* `scripts/fuzz-go.sh` + `drivers/go/gocorpus.py`. Go's native `go test -fuzz` needs no
+external framework and the entry point (`drivers/go/fuzz_test.go`) already existed unwired; the
+work was the plumbing. Go keeps its corpus — seed corpus *and* the coverage corpus under
+`$GOCACHE` — in a text format, not raw bytes, so both seeding and harvesting need conversion.
+`gocorpus.py` owns that format alone. It writes every byte as `\xNN` (always a valid Go
+literal, so no byte needs special-casing), and reading handles the richer set Go emits,
+including `\u`/`\U`, which name a **code point** and so contribute its multi-byte UTF-8
+encoding — getting that wrong would silently mangle every non-ASCII vector. Verified in both
+directions before use: 206 raw files round-tripped, and all 158 files Go itself had written
+parsed.
+
+*Result on the first run.* 60 s, 2.99 M execs, 299 new inputs, corpus 579 → 878. The
+differential over the grown corpus went **15 → 17 clusters** — two divergence classes the C
+pacemaker had never produced across ~370 M execs over the same schema. Both are §5.2
+INVALID-vs-INCOMPLETE precedence splits with camps no catalogued finding has, and in both the
+**C family is the lenient side**, which is unusual enough to be worth its own triage. Filed as
+a TODO item, deliberately untriaged: a 256-byte input with a suggestive camp proves nothing
+until it is minimized and controlled.
+
+*Why this is the argument for the item and not just a nice result.* The pacemaker cannot be
+rewarded for reaching a path that is only complex elsewhere — that is a property of
+coverage-guided search, not a tuning problem, and no amount of additional C-steered budget
+fixes it. One minute of Go-steered fuzzing beat two rounds of C-steered fuzzing on this axis
+because it was measuring something the other engine is structurally blind to.
+
+*Wired into `nightly.yml`* after the C pass at a quarter of its budget, non-blocking. Four
+languages remain unwired (ts / java / csharp have entry points; **rust has none and is the
+most valuable next**, since six of the eight open findings involve a rust backend).
+
 **Pacemaker round 2026-08-02 — first fuzzing against the rewritten C dispatch; no new root
 cause.** ~174 M execs under ASan+UBSan against corelib-c-cpp `17f9a8e`, whose
 `perf(footprint)` commit churned 265 lines of `object.c`'s per-type dispatch plus

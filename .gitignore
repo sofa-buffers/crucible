@@ -27,3 +27,6 @@ testdata/fuzz/
 
 # Python bytecode cache
 __pycache__/
+
+# Go fuzz seed corpus — regenerated from corpus/ on every scripts/fuzz-go.sh run
+/drivers/go/testdata/
