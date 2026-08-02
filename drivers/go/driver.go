@@ -96,7 +96,13 @@ func mLeaf(kind string, v reflect.Value) string {
 	case "s":
 		return fmt.Sprintf("s%d", v.Int())
 	case "fp32":
-		return mF32(float32(v.Float()))
+		// NOT v.Float(): reflect widens a float32 field to float64, and the
+		// fp32 -> fp64 widening SETS the quiet bit, destroying a signaling NaN
+		// (CORELIB_PLAN §6.5). Go has a native float32, so take the value out
+		// unwidened. This is a Crucible-side hazard, not a corelib one — the
+		// generated code and corelib-go keep the value in float32 throughout,
+		// which is why the round-trip oracle never saw it (F-0031).
+		return mF32(v.Interface().(float32))
 	case "fp64":
 		return mF64(v.Float())
 	case "string":

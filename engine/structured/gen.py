@@ -97,7 +97,11 @@ def arr_s(field_id, vals):   # signed: header, count, count zigzag varints
 def arr_fp(field_id, vals, fmt, subtype):  # fixlen array: header, count, fixlen-word, payload
     width = 4 if fmt == "<f" else 8
     word = varint((width << 3) | subtype)
-    payload = b"".join(struct.pack(fmt, v) for v in vals)
+    # An element may be given as raw bytes to pin an EXACT bit pattern that a round
+    # trip through a Python float would canonicalize — the same escape the scalar
+    # fp32()/fp64() take. CORELIB_PLAN §6.5 requires bit-exactness at the array
+    # element position too, not only at a scalar fp32.
+    payload = b"".join(v if isinstance(v, bytes) else struct.pack(fmt, v) for v in vals)
     return hdr(field_id, WT_ARR_FIX) + varint(len(vals)) + word + payload
 
 # top-level scalar fields: (id, signed?)
@@ -213,14 +217,16 @@ def vectors():
     # canonical.md:107-109) is directly visible here.
     out.append(("f32_subnorm_min",  {"f32": f32b(0x00000001)}))          # min +subnormal
     out.append(("f32_subnorm_max",  {"f32": f32b(0x007FFFFF)}))          # max subnormal
-    # NB: an fp32 *signaling* NaN (0x7F800001) is F-0031, still open — go/typescript/dart
-    # quiet it to 0x7FC00001 (double-backed fp32), violating CORELIB_PLAN:263-267
-    # (bit-for-bit, no normalization). Kept OUT of this green gate (reproducer in
-    # findings/F-0031) until fixed; the *quiet* payload NaN below is preserved by all 13.
-    # Re-measured 2026-08-01 on corelibs 0.10.0 + sofabgen 0.22.0: the ROUND-TRIP oracle is
-    # now green family-wide (the bits survive re-encode), so the residual is visible only
-    # through the MATERIALIZED oracle — element access is where the double conversion
-    # happens. Re-enabling here therefore also needs scripts/materialize.sh to be green.
+    # NB: a *scalar* fp32 signaling NaN (0x7F800001) is still held out of this gate, but
+    # for a much narrower reason than the old F-0031 note claimed. Re-checked 2026-08-02:
+    # the ROUND-TRIP oracle is green on all 13, and of the three materialized-oracle
+    # stragglers, go and typescript were CRUCIBLE'S OWN DRIVERS (reflect widening; a
+    # repacked double instead of the exposed raw channel) — both fixed. The corelibs are
+    # conformant and were never at fault. What remains is exactly one cell: **dart at the
+    # scalar position**, where the generated bits are library-private with no accessor
+    # (F-0049 / G-0033). The array position IS covered — see arr_fp32_nan_bits below, green
+    # on all 13 including dart. Re-enable this line when F-0049 closes; it needs
+    # scripts/materialize.sh green, not just run.sh.
     out.append(("f32_qnan_payload", {"f32": f32b(0x7FC00001)}))          # quiet NaN, nonzero payload
     out.append(("f32_nan_neg",      {"f32": f32b(0xFFC00000)}))          # negative NaN
     out.append(("f32_zero_pos",     {"f32": f32b(0x00000000)}))          # explicit +0.0 (canonicalizes to omitted)
@@ -278,6 +284,15 @@ def vectors():
     # byte-identical to 00_defaults.
     # fp arrays (arrays.nested): specials in both widths
     out.append(("arr_fp32_specials", {"afp32": [0.0, 1.0, -1.0, float("inf"), float("nan")]}))
+    # CORELIB_PLAN §6.5 requires bit-exactness at **every** fp32 position — "a scalar
+    # fp32 (§4.6) **and** each element of an fp32 array (§4.8)". Only the scalar
+    # position was covered; a defect confined to the array path would have been
+    # invisible. Raw bytes, so Python cannot canonicalize the payloads.
+    out.append(("arr_fp32_nan_bits", {"afp32": [f32b(0x7F800001),   # signaling NaN
+                                                f32b(0x7FC00001),   # quiet NaN, payload
+                                                f32b(0xFFC00000),   # negative NaN
+                                                f32b(0x00000001),   # min subnormal
+                                                f32b(0x3F800000)]}))  # 1.0, plain control
     out.append(("arr_fp64_specials", {"afp64": [float("-inf"), 2.5, -3.5, 1e308, 0.0]}))
     # string_array (id 200): the index-keyed element sequence (F-0008's neighbourhood)
     out.append(("sa_full", {"strarr": ["one", "two", "three", "four", "five"]}))

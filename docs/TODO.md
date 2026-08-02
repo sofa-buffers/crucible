@@ -237,10 +237,20 @@ here:
       (43 → 96 vectors). The carve-out previously cited F-0032, which is resolved — it is F-0043
       that keeps it, and the boundary offset is precisely what it hides.
 
-- [ ] **Re-enable `f32_snan` in `engine/structured/gen.py` when F-0031 closes.** The round-trip
-      oracle is already green family-wide; the gate is `scripts/materialize.sh`, where go,
-      typescript and dart still quiet `0x7F800001` → `0x7FC00001`. Re-enabling needs **both**
-      oracles green, not just `run.sh`.
+- [ ] **Re-enable the *scalar* `f32_snan` in `engine/structured/gen.py` when F-0049 closes.**
+      Narrowed 2026-08-02 from "F-0031 / three impls" to **one cell: dart at the scalar
+      position** (F-0049 / G-0033 — the generated raw bits are library-private). go and
+      typescript were **our own drivers** and are fixed; the corelibs were never at fault.
+      The **array** position is now covered and green on all 13 (`arr_fp32_nan_bits`, added
+      the same day — §6.5 requires bit-exactness at *every* fp32 position and only the scalar
+      one had a vector). Re-enabling needs `scripts/materialize.sh` green, not just `run.sh`.
+
+- [x] **fp32 sNaN at the array element position — DONE 2026-08-02.** §6.5 requires
+      bit-exactness "at **every** `fp32` position: a **scalar** `fp32` (§4.6) **and** each
+      element of an **`fp32` array** (§4.8)"; only the scalar had a vector, so a defect confined
+      to the array path was invisible. `arr_fp32_nan_bits` (sNaN / qNaN-payload / −NaN /
+      subnormal / 1.0 control, as raw bytes) is in `corpus/structured` and green on all 13.
+      Required `arr_fp()` to accept pre-packed bytes, mirroring the scalar `fp32()` escape.
 
 - [x] **F-0022 / generator#188** — **DONE (sofabgen 0.19.4, 2026-07-21).** The generated array-fill
       arm now carries the §7.3 guard (`if self.afill == 0 { return; }`) and `array_begin` arms `afill`

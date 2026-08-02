@@ -62,6 +62,19 @@ function _f32(x: number): string {
   new DataView(buf).setFloat32(0, x);
   return "f" + new DataView(buf).getUint32(0).toString(16).padStart(8, "0");
 }
+// CORELIB_PLAN §6.5: TS has no fp32 value type, so `x` above is already a widened
+// double and the widening SETS the quiet bit — an fp32 signaling NaN can never be
+// recovered from it. The generated Probe therefore captures the wire bytes
+// alongside the value (`<field>Fp32Raw`, populated on decode when the value is a
+// NaN); the round-trip path already re-encodes from them, which is why the
+// round-trip oracle sees nothing. The materialized walk is a bit-exact consumer too
+// (§6.5 "Testing"), so it must read the same raw channel rather than repack the
+// double. `off` selects the element inside an fp32 *array*'s flat payload.
+function _f32FromRaw(raw: Uint8Array, off: number): string {
+  const bits = (raw[off] | (raw[off + 1] << 8) | (raw[off + 2] << 16) |
+                (raw[off + 3] << 24)) >>> 0;   // little-endian wire order
+  return "f" + bits.toString(16).padStart(8, "0");
+}
 function _f64(x: number): string {
   const buf = new ArrayBuffer(8);
   new DataView(buf).setFloat64(0, x);
@@ -78,11 +91,16 @@ function _b(bytes: Uint8Array): string {
 // The one schema-specific piece: format a single leaf value per its kind. Reused for
 // both scalar leaves and array/wrapper elements (the descriptor's `elem` is a leaf
 // kind). u/s are number|bigint (bigint for 64-bit) → decimal via toString().
-function formatLeaf(kind: string, v: unknown): string {
+function formatLeaf(kind: string, v: unknown, raw?: unknown, off = 0): string {
   switch (kind) {
     case "u": return "u" + (v as number | bigint).toString();
     case "s": return "s" + (v as number | bigint).toString();
-    case "fp32": return _f32(v as number);
+    case "fp32":
+      // Prefer the raw wire bytes when the generated type captured them (NaN only);
+      // otherwise the widened double is lossless and repacking is exact.
+      return raw instanceof Uint8Array && off + 4 <= raw.length
+        ? _f32FromRaw(raw, off)
+        : _f32(v as number);
     case "fp64": return _f64(v as number);
     case "string": return _t(v as string);
     case "blob": return _b(v as Uint8Array);
@@ -93,17 +111,22 @@ function formatLeaf(kind: string, v: unknown): string {
 // Generic recursive walk: descriptor node + the corresponding in-memory value → the
 // materialized-form string. No schema shape is baked in here — structs, arrays, and
 // wrappers are all discovered from the node.
-function walk(node: SchemaNode, value: unknown): string {
+function walk(node: SchemaNode, value: unknown, raw?: unknown): string {
   switch (node.kind) {
     case "struct": {
       const v = value as Record<string, unknown>;
-      return "{" + node.fields!.map((c) => c.id + ":" + walk(c, v[c.name])).join(";") + "}";
+      // Thread the sibling raw-bits field (§6.5) down with each child: the generated
+      // type parks it next to the value as `<name>Fp32Raw`, for a scalar fp32 and for
+      // an fp32 array alike (there it is the flat count*4 payload).
+      return "{" + node.fields!.map((c) =>
+        c.id + ":" + walk(c, v[c.name], v[c.name + "Fp32Raw"])).join(";") + "}";
     }
     case "array":
     case "wrapper":
       // array: numeric/fp materialized to N in memory; wrapper: index order,
       // container length is the signal. Both just map over the in-memory elements.
-      return "[" + (value as unknown[]).map((el) => formatLeaf(node.elem!, el)).join(",") + "]";
+      return "[" + (value as unknown[]).map((el, i) =>
+        formatLeaf(node.elem!, el, raw, i * 4)).join(",") + "]";
     case "struct_wrapper":
       // struct_array (WP-05): elements are generated objects — an obj walk per
       // element, container length as-is (like `wrapper`).
@@ -111,7 +134,7 @@ function walk(node: SchemaNode, value: unknown): string {
         "{" + node.fields!.map((c) => c.id + ":" + walk(c, e[c.name])).join(";") + "}"
       ).join(",") + "]";
     default:
-      return formatLeaf(node.kind, value);
+      return formatLeaf(node.kind, value, raw);
   }
 }
 

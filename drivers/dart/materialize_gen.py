@@ -95,7 +95,14 @@ def _emit_array(em, elem, expr):
     em.stmt("b.write('[');")
     em.stmt(f"for (var {i} = 0; {i} < {expr}.length; {i}++) {{")
     em.stmt(f"  if ({i} != 0) b.write(',');")
-    _emit_leaf(_Indent(em, 1), elem, f"{expr}[{i}]")
+    if elem == "fp32":
+        # CORELIB_PLAN §6.5: Dart has no fp32 value type, so reading an element out
+        # of the list widens it to a double and the widening SETS the quiet bit,
+        # destroying a signaling NaN. The container is a Float32List at runtime, so
+        # its byte buffer still holds the exact wire bits — read those instead.
+        _Indent(em, 1).stmt(f"_f32Elem(b, {expr}, {i});")
+    else:
+        _emit_leaf(_Indent(em, 1), elem, f"{expr}[{i}]")
     em.stmt("}")
     em.stmt("b.write(']');")
 
@@ -196,6 +203,22 @@ void _f32(StringBuffer b, double v) {
   bd.setFloat32(0, v, Endian.big); // rounds the double to float32 (repack, §floats)
   b.write('f');
   b.write(bd.getUint32(0, Endian.big).toRadixString(16).padLeft(8, '0'));
+}
+
+// One element of an fp32 array, bit-exact (CORELIB_PLAN §6.5). `_f32` above cannot
+// be used here: its argument is already a widened double, and fp32 -> fp64 widening
+// sets the quiet bit, so a signaling NaN is gone before the function is entered.
+// A decoded fp32 array is a Float32List, whose byte buffer still holds the untouched
+// little-endian wire bits; fall back to the repack only for a plain List<double>.
+void _f32Elem(StringBuffer b, List<double> l, int i) {
+  if (l is Float32List) {
+    final u = l.buffer.asUint8List(l.offsetInBytes + i * 4, 4);
+    final bits = u[0] | (u[1] << 8) | (u[2] << 16) | (u[3] << 24);
+    b.write('f');
+    b.write(bits.toRadixString(16).padLeft(8, '0'));
+    return;
+  }
+  _f32(b, l[i]);
 }
 
 void _f64(StringBuffer b, double v) {

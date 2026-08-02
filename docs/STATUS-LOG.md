@@ -19,6 +19,45 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**F-0031 re-checked 2026-08-02 — the corelib fix was fine; two thirds of the finding was our
+own measurement apparatus.** Asked to verify F-0031 against the corelibs before filing it. The
+round-trip oracle is green on all 13 — the §6.5 raw-bytes path works family-wide — so the
+finding lived entirely in the materialized oracle, where `go`, `typescript` and `dart` still
+emitted `7fc00001` for an fp32 signaling NaN. Attribution in `FINDINGS.md` read "corelib-py +
+corelib-ts + corelib-dart; corelib-only". It was wrong on all three counts.
+
+*`go` — our driver.* `drivers/go/driver.go` read the leaf through `reflect.Value.Float()`,
+which returns `float64`: reflect widens a `float32` field, and `fp32 → fp64` widening sets the
+quiet bit. Isolated with a standalone Go program — `reflect .Float()` yields `7fc00001`,
+`.Interface().(float32)` yields `7f800001`. corelib-go and the generated code hold the value in
+a native `float32` end-to-end, which is precisely why the round-trip oracle never saw it. Go is
+a native-`fp32` target and needs no raw channel at all (§6.5); we introduced the widening.
+
+*`typescript` — our driver.* The walker repacked the widened double through `setFloat32` — the
+one thing §6.5 names as forbidden — while the generated `Probe` already exposed the wire bytes
+publicly as `f32Fp32Raw` and the round-trip path already re-encoded from them. Fixed by
+threading the sibling raw field through the descriptor walk, scalar and array alike.
+
+*`dart` — half ours, half real.* The **array** position was ours: a decoded fp32 array is a
+`Float32List`, whose byte buffer holds the untouched wire bits, but the walker read elements
+out as doubles. Fixed. The **scalar** position is not fixable from our side — the generated
+bits sit in a library-private `int? _f32Fp32Bits` with no accessor, reachable only by the
+type's own `marshal`. Split out as **F-0049 / G-0033** against the dart backend; the ts
+backend, same language class and same corelib support, exposes the analogous field publicly.
+
+*Result.* F-0031 is closed and produced **no upstream issue** — correctly. corelib-py, -ts and
+-dart had all shipped their §6.5 work. **Filing it as catalogued would have been the F-0008
+mistake three times over**, and the only reason it did not happen is that the attribution was
+re-derived from source rather than trusted. The standing rule this reinforces: a divergence
+seen through only *one* oracle deserves a check of whether the oracle itself is the defect,
+before anything is filed.
+
+*Coverage gap found on the way.* §6.5 requires bit-exactness "at **every** `fp32` position: a
+**scalar** `fp32` (§4.6) **and** each element of an **`fp32` array** (§4.8)" — we had a vector
+only for the scalar. `arr_fp32_nan_bits` now covers the array position (green on all 13,
+including dart), which is also what pins F-0049 to the scalar field's *visibility* rather than
+to Dart's float model.
+
 **Doc audit 2026-08-02 — F-0010 and the §3/§5.1 trim/pad item were stale, not open.** Reviewing
 the open-findings list surfaced a `docs/TODO.md` item asserting *"the family still ships
 trim-on-encode / fill-on-decode"* with the §3/§5.1 gates *"expected red until the family
