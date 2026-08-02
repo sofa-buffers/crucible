@@ -214,22 +214,27 @@ here:
          explained: the defect was never in the corelib.
          **This closes the 2026-08-01 round's triage — all 17 clusters attributed.**
 
-- [ ] **New sweep axis: an unknown *sequence* id carrying children** (coverage gap exposed by
-      F-0044). `sweep_framing.py` uses unknown ids (50/51) only with scalar / fixlen / array wire
-      types, so no axis ever opened an unknown SEQ_BEG with a payload inside — which is why a
-      6-byte defect had to be found by the fuzzer instead. Vectors: unknown seq × {empty, one
-      scalar child, nested sequence child, child whose id collides with a real field of the
-      enclosing scope}, at every sequence position.
+- [x] **New sweep axis: an unknown *sequence* id carrying children — DONE 2026-08-02.**
+      `engine/structured/sweep_unknown_seq.py` (§5.2 / CORELIB_PLAN §4.9), 25 vectors across
+      the root and every struct scope: unknown seq × {empty, one scalar child, nested
+      sequence child, child colliding with a real field id of the enclosing scope, the same
+      with that field established first}. **REPORT-ONLY** in `scripts/sweep.sh` — 14/25 red
+      on **F-0044** ([generator#268](https://github.com/sofa-buffers/generator/issues/268)),
+      camp {rust-std, rust-nostd, java, csharp, zig} exactly as catalogued. **Promote to
+      blocking when #268 closes.** The two collide-over-value vectors are sharper than
+      F-0044's own reproducer: they show the leaked child *overwriting a live value*, not
+      just appearing in an empty slot.
 
-- [ ] **New sweep axis: a repeated *element* id inside an array wrapper** (coverage gap exposed
-      by F-0048). **F-0019** established the §7.4 duplicate-id axis, but its vectors repeat a
-      *sequence* id (`nested`, `arrays`) and an array **wrapper** id (200) — never an **element**
-      id *inside* a wrapper, which is the cell F-0048 lives in. Second time a §7.4 blind spot has
-      cost a finding. Vectors: element id repeated × {same value, different value, empty-then-value,
-      value-then-empty, enough repeats to exceed `maxlen` if concatenated} × {`string_array`,
-      `blob_array`, `struct_array`}, plus the same at a *scalar* string field as the control that
-      already passes. Both oracles — the value split is what the round-trip oracle sees only when
-      the verdict does not flip first.
+- [x] **New sweep axis: a repeated *element* id inside an array wrapper — DONE 2026-08-02.**
+      `engine/structured/sweep_repeated_elem.py` (§7.4 × §5.1), 17 vectors over all three
+      wrappers: element id repeated × {differing values, same value, empty-then-value,
+      value-then-empty, repeated past `maxlen` if concatenated} + a two-distinct-ids control.
+      **REPORT-ONLY** — 8/17 red on **F-0048**
+      ([generator#273](https://github.com/sofa-buffers/generator/issues/273)), rust-nostd
+      alone. **Promote to blocking when #273 closes.** Two results worth keeping: the
+      `empty_then_value` order **passes** (an appending decoder gets that one right by
+      accident — so a suite testing only it would have proved nothing), and `struct_array`
+      (id 202) passes throughout, confining F-0048 to the leaf-element wrappers.
 
 - [ ] **Re-enable `sweep_malform_truncate`'s broadened truncation when F-0043 closes.** The axis
       currently applies the full offset sweep only to the STRUCTURAL malformations; the

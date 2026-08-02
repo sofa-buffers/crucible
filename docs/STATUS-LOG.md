@@ -19,6 +19,38 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Two sweep axes added 2026-08-02 — the cells F-0044 and F-0048 walked through.** Both
+findings came from the fuzzer, and both sat in a cell the sweep suite structurally could not
+reach. Each now has a dedicated axis, in `scripts/sweep.sh` as **report-only** (ground rule 4 —
+a new axis blocks only once green, or once every divergence it surfaces is catalogued).
+
+- **`sweep_unknown_seq`** (§5.2 / CORELIB_PLAN §4.9), 25 vectors over the root and every
+  struct scope. `sweep_framing` places unknown ids only at scalar / fixlen / array wire types,
+  so an unknown id opened as a **sequence with children** — the "skip the whole subtree" half
+  of the rule — was never swept. 14/25 red on **F-0044** (generator#268), camp {rust-std,
+  rust-nostd, java, csharp, zig}, exactly the catalogued one.
+- **`sweep_repeated_elem`** (§7.4 × §5.1), 17 vectors over all three wrappers.
+  `sweep_repeated_id` repeats *field* ids and re-opens wrappers, but never an **element id
+  inside one wrapper opening** — §5.1 is explicit that an element id *is* a field id in the
+  wrapper scope, so the gap was in the model, not the spec. 8/17 red on **F-0048**
+  (generator#273), rust-nostd alone.
+
+*Both axes discriminate, which is the point of building them rather than re-filing the
+reproducers.* `sweep_repeated_elem`'s `empty_then_value` vector **passes** — an appending
+decoder gets that one order right by accident, so a suite built only from F-0048's original
+shape would have proved nothing — and `struct_array` (id 202) passes throughout, confining
+F-0048 to the leaf-element wrappers. `sweep_unknown_seq`'s two collide-over-value vectors are
+sharper than F-0044's own reproducer: by establishing the real field *before* the unknown
+sequence, they show the leaked child **overwriting a live value** rather than landing in an
+empty slot.
+
+*Pattern worth naming.* Both gaps are of one kind: an axis existed for the rule, and the
+position model did not reach the place the rule also applies. §7.4 was swept at field
+positions but not element positions; unknown ids were swept at value wire types but not at
+sequences. Neither needed a new normative reading — only a wider enumeration. That is the
+cheapest class of coverage bug to fix and the most expensive to find by fuzzing, which is
+exactly the trade these axes exist to change.
+
 **F-0031 re-checked 2026-08-02 — the corelib fix was fine; two thirds of the finding was our
 own measurement apparatus.** Asked to verify F-0031 against the corelibs before filing it. The
 round-trip oracle is green on all 13 — the §6.5 raw-bytes path works family-wide — so the
