@@ -213,13 +213,22 @@ here:
       trips §7.1 and flips the verdict; threshold measured exactly at 5, and it adds **cpp** as a
       seventh affected impl whose half may be corelib-cpp rather than codegen.
 
-- [ ] **Boundary vectors for the format ceilings in `sweep_framing`** (exposed by F-0050). The
-      axis owns `MAX_DEPTH` and still missed an off-by-one, because it tests only **300** (far
-      over) and **8** (far under) — the boundary itself is never exercised. Same shape for
-      `FIXLEN_MAX` (2³¹ vs 1) and `ARRAY_MAX` (2³¹ vs 1); only `ID_MAX` has an at-boundary
-      control (`id_at_ID_MAX_ctl`), which is presumably why no off-by-one has been found there.
-      Add `at-limit → accept` / `limit+1 → reject` for all four. Two more off-by-ones could be
-      sitting in the untested boundaries right now.
+- [x] **Boundary vectors for the format ceilings in `sweep_framing` — DONE 2026-08-02**, and
+      the item's premise was half wrong. `MAX_DEPTH` now has 255-vs-256 vectors, closed and
+      truncated, and the axis fails on exactly the two F-0050 vectors and nothing else (14 → 22
+      vectors). Promote to blocking when [corelib-c-cpp#126](https://github.com/sofa-buffers/corelib-c-cpp/issues/126)
+      closes.
+      *Two corrections to what this item assumed.* (a) The gap was **not only** the boundary: the
+      old vector nested through `hdr(0, WT_SEQ_BEG)`, i.e. root id 0 — a scalar opened as a
+      sequence, which §7.3 skips — so the whole chain sat inside a skipped subtree and exercised
+      a *different depth counter*. Depth 256 built that way is unanimous; only a nest through the
+      declared `nested` (id 10) splits. Both constructions are now swept. (b) `FIXLEN_MAX` and
+      `ARRAY_MAX` get **no** boundary vectors, deliberately: §6.2 makes them *"up to 2³¹−1 (may
+      be 65,535 on constrained profiles)"*, so no single boundary value exists that the family
+      must agree on — at 65,536 a constrained profile must reject and a heap profile must accept,
+      and that split is legal. Only fixed format-wide ceilings (`ID_MAX`, `MAX_DEPTH`) can be
+      swept at their boundary, and `ID_MAX` already was.
+
 
 
 - [ ] **Triage the 2026-08-01 fuzz round's unattributed clusters** (snapshot + camps in

@@ -103,6 +103,49 @@ def emit(out_dir):
     # control: a modest, balanced 8-deep nest is valid -> accept
     add("depth_ok_ctl", hdr(0, WT_SEQ_BEG) * 8 + END * 8, "accept")
 
+    # --- MAX_DEPTH at the BOUNDARY (added 2026-08-02 after F-0050) -------------
+    # The two vectors above are 300 and 8 — far over and far under. An off-by-one at
+    # the ceiling is invisible to that, and one was: corelib-c-cpp accepted depth 256
+    # (corelib-c-cpp#126). Two things had to change, not one:
+    #
+    #   1. test 255 vs 256, not 300 vs 8; and
+    #   2. build the nest through a **declared** sequence.
+    #
+    # (2) is the subtler half. `hdr(0, WT_SEQ_BEG)` opens root id 0 — a *scalar* (u8) —
+    # as a sequence, which §7.3 says to skip, so the whole chain nests inside a skipped
+    # subtree and exercises the skip path's depth counter. Measured: 256 built that way
+    # is unanimous, while 256 built through the declared `nested` (id 10) splits. Both
+    # constructions are therefore swept: they are different counters.
+    def _nest(n, closed, declared):
+        # declared: open `nested` (id 10) first, then unknown id 4 inside it — real
+        # entry, then skipped subtree. Otherwise: mistyped root id 0 all the way down.
+        body = (hdr(10, WT_SEQ_BEG) + hdr(4, WT_SEQ_BEG) * (n - 1)) if declared \
+            else hdr(0, WT_SEQ_BEG) * n
+        return body + (END * n if closed else b"")
+
+    for declared in (True, False):
+        via = "declared" if declared else "skipped"
+        # AT the ceiling: 255 is legal. Closed -> accept; truncated -> a prefix of a
+        # valid message, so A or I but never R.
+        add(f"depth_at_MAX_DEPTH_closed_{via}", _nest(255, True, declared), "accept")
+        add(f"depth_at_MAX_DEPTH_trunc_{via}", _nest(255, False, declared), "not_reject")
+        # ONE past it: INVALID either way. The closed form is the sharp one — with every
+        # sequence balanced there is no truncation to blame, so a decoder that accepts it
+        # is not mis-ordering INVALID against INCOMPLETE, it is simply not enforcing the
+        # ceiling. That is the vector corelib-c-cpp#126 turns on.
+        add(f"depth_over_MAX_DEPTH_closed_{via}", _nest(256, True, declared), "reject")
+        add(f"depth_over_MAX_DEPTH_trunc_{via}", _nest(256, False, declared), "reject")
+
+    # --- why FIXLEN_MAX / ARRAY_MAX get no boundary vectors -------------------
+    # Deliberate, not an oversight. §6.2 gives them as "up to 2,147,483,647 (may be
+    # 65,535 on constrained profiles)" — the ceiling is *profile-dependent*, so there is
+    # no single at-the-boundary value the whole family must agree on: at 65,536 a
+    # constrained profile must reject and a heap profile must accept, and that split is
+    # legal, not a finding. The over-ceiling vectors above therefore use 2³¹, which is
+    # over the ceiling on *every* profile. `ID_MAX` and `MAX_DEPTH` are fixed
+    # format-wide, which is why only those two can be — and now are — swept at their
+    # boundary.
+
     for name, data, _ in vectors:
         with open(os.path.join(out_dir, name), "wb") as fh:
             fh.write(data)

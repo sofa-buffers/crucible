@@ -40,6 +40,14 @@ python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_
 # huge size with no payload — a driver that allocates per the declared length is a DoS
 # finding (F-0013 precedent), caught by the per-driver timeout. A non-zero result here
 # is NOT a gate failure.
+#
+# 2026-08-02: gained MAX_DEPTH **boundary** vectors (255 vs 256, closed and truncated,
+# built both through a declared sequence and through a §7.3-skipped one). It had only
+# 300-vs-8, which is why it owned the MAX_DEPTH rule and still missed the off-by-one now
+# filed as corelib-c-cpp#126 (F-0050) — the two vectors it now fails on. Promote to
+# blocking when #126 closes. FIXLEN_MAX/ARRAY_MAX deliberately get no boundary vectors:
+# §6.2 makes those ceilings profile-dependent, so no single boundary value exists that
+# the whole family must agree on — see the note in sweep_framing.py.
 echo "==> [sweep] framing & ceilings axis (report-only): stray end (§5.2) + ID_MAX/FIXLEN_MAX/ARRAY_MAX/MAX_DEPTH (§6.2)" >&2
 python3 "$SWEEP" sweep_framing \
   || echo "==> [sweep] framing axis is REPORT-ONLY — divergences above are candidate findings, not a gate failure" >&2

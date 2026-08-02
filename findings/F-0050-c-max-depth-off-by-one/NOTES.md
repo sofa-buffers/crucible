@@ -67,7 +67,24 @@ add("depth_ok_ctl",         hdr(0, WT_SEQ_BEG) * 8 + END * 8, "accept")   # far 
 300 and 8. The boundary itself — 255 accept, 256 reject — is never tested, so an off-by-one is
 structurally invisible to the axis that owns the rule.
 
-That is a general shape in that file, not a one-off: of the four ceilings it sweeps, only
-`ID_MAX` has an at-the-boundary control (`id_at_ID_MAX_ctl`). `FIXLEN_MAX`, `ARRAY_MAX` and
-`MAX_DEPTH` are all tested only far over (2³¹, 300) and far under (1, 8). Two more off-by-ones
-could be sitting in the untested boundaries right now. Tracked in `docs/TODO.md`.
+**Closed the same day.** `sweep_framing` now carries MAX_DEPTH boundary vectors — 255 and 256,
+each closed and truncated — and fails on exactly the two vectors above, nothing else. Promote
+the axis to blocking when corelib-c-cpp#126 closes.
+
+Fixing it needed **two** changes, not one, and the second was the subtler:
+
+1. test 255 vs 256 rather than 300 vs 8; and
+2. build the nest through a **declared** sequence.
+
+`hdr(0, WT_SEQ_BEG)` — what the old vector used — opens root id 0, a *scalar* (`u8`), as a
+sequence. §7.3 says skip it, so the entire chain nests inside a **skipped subtree** and
+exercises the skip path's depth counter. Measured: depth 256 built that way is **unanimous**,
+while depth 256 built through the declared `nested` (id 10) splits. They are different
+counters, and the axis now sweeps both.
+
+The other ceilings: `ID_MAX` already had an at-boundary control (`id_at_ID_MAX_ctl`), which is
+plausibly why no off-by-one has surfaced there. `FIXLEN_MAX` and `ARRAY_MAX` deliberately get
+none — §6.2 gives them as *"up to 2,147,483,647 (may be 65,535 on constrained profiles)"*, so
+the ceiling is **profile-dependent** and no single boundary value exists that the whole family
+must agree on: at 65,536 a constrained profile must reject and a heap profile must accept, and
+that split is legal. Only fixed format-wide ceilings can be swept at their boundary.

@@ -19,6 +19,28 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**`sweep_framing` gained MAX_DEPTH boundary vectors 2026-08-02 — and the gap was two-fold, not
+one.** F-0050 existed because the axis that *owns* the `MAX_DEPTH` rule tested only depth 300
+(far over) and 8 (far under), never the boundary. Fixing that alone would not have caught it.
+
+*The second half.* The old vector nested through `hdr(0, WT_SEQ_BEG)` — root id 0, a **scalar**
+(`u8`) opened as a sequence, which §7.3 says to skip. So the entire chain sat inside a skipped
+subtree and exercised the **skip path's** depth counter. Measured directly: depth 256 built that
+way is unanimous across all 13, while depth 256 built through the declared `nested` (id 10)
+splits. Two different counters, and only one of them is off by one. The axis now sweeps both
+constructions at both depths, closed and truncated — 14 → 22 vectors — and fails on exactly the
+two F-0050 vectors, nothing else.
+
+*What was deliberately not added.* `FIXLEN_MAX` and `ARRAY_MAX` get no boundary vectors. §6.2
+gives them as *"up to 2,147,483,647 (may be 65,535 on constrained profiles)"* — the ceiling is
+**profile-dependent**, so no single at-the-boundary value exists that the whole family must
+agree on: at 65,536 a constrained profile must reject and a heap profile must accept, and that
+split is legal rather than a finding. The existing over-ceiling vectors use 2³¹ precisely
+because it is over on *every* profile. Only fixed format-wide ceilings can be swept at their
+boundary, which leaves `ID_MAX` (already covered, plausibly why nothing has surfaced there) and
+`MAX_DEPTH`. The `docs/TODO.md` item had assumed all four were addable; that was wrong, and the
+reason is recorded in the axis itself so it is not re-attempted.
+
 **Both Go-found clusters triaged 2026-08-02 — and neither was what its camp suggested.**
 
 *Cluster 14 → **F-0050**, a new corelib finding.* At 256 bytes it looked like the familiar
