@@ -285,13 +285,16 @@ here:
       (43 → 96 vectors). The carve-out previously cited F-0032, which is resolved — it is F-0043
       that keeps it, and the boundary offset is precisely what it hides.
 
-- [ ] **Re-enable the *scalar* `f32_snan` in `engine/structured/gen.py` when F-0049 closes.**
-      Narrowed 2026-08-02 from "F-0031 / three impls" to **one cell: dart at the scalar
-      position** (F-0049 / G-0033 → [generator#275](https://github.com/sofa-buffers/generator/issues/275) — the generated raw bits are library-private). go and
-      typescript were **our own drivers** and are fixed; the corelibs were never at fault.
-      The **array** position is now covered and green on all 13 (`arr_fp32_nan_bits`, added
-      the same day — §6.5 requires bit-exactness at *every* fp32 position and only the scalar
-      one had a vector). Re-enabling needs `scripts/materialize.sh` green, not just `run.sh`.
+- [x] **Re-enable the *scalar* `f32_snan` in `engine/structured/gen.py` — DONE 2026-08-02.**
+      generator#275 closed the same day it was filed; the generated dart field is now the public
+      `int? f32Fp32Bits`. **Crucible's own half had to follow**: the upstream fix only *exposes*
+      the bits, and `drivers/dart/materialize_gen.py` was still formatting the widened double, so
+      the divergence would simply have become ours. The walker reads the companion now
+      (`_f32Scalar`, mirroring the `_f32Elem` array path from the same day). Verified on
+      `materialize.sh` — 108 × 13, 0 divergences, C anchor 0/108 — which is the only oracle that
+      can see it; `run.sh` was green throughout and proves nothing here. The vector is back in
+      `corpus/structured`, i.e. in a blocking gate.
+
 
 - [x] **fp32 sNaN at the array element position — DONE 2026-08-02.** §6.5 requires
       bit-exactness "at **every** `fp32` position: a **scalar** `fp32` (§4.6) **and** each

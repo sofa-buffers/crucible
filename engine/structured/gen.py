@@ -217,16 +217,12 @@ def vectors():
     # canonical.md:107-109) is directly visible here.
     out.append(("f32_subnorm_min",  {"f32": f32b(0x00000001)}))          # min +subnormal
     out.append(("f32_subnorm_max",  {"f32": f32b(0x007FFFFF)}))          # max subnormal
-    # NB: a *scalar* fp32 signaling NaN (0x7F800001) is still held out of this gate, but
-    # for a much narrower reason than the old F-0031 note claimed. Re-checked 2026-08-02:
-    # the ROUND-TRIP oracle is green on all 13, and of the three materialized-oracle
-    # stragglers, go and typescript were CRUCIBLE'S OWN DRIVERS (reflect widening; a
-    # repacked double instead of the exposed raw channel) — both fixed. The corelibs are
-    # conformant and were never at fault. What remains is exactly one cell: **dart at the
-    # scalar position**, where the generated bits are library-private with no accessor
-    # (F-0049 / G-0033). The array position IS covered — see arr_fp32_nan_bits below, green
-    # on all 13 including dart. Re-enable this line when F-0049 closes; it needs
-    # scripts/materialize.sh green, not just run.sh.
+    # CORELIB_PLAN §6.5 requires bit-exactness at every fp32 position. The scalar sNaN was
+    # held out while F-0049 was open — dart's generated raw-bits companion was library-private,
+    # so no consumer could read it. Fixed in generator#275 ("the fp32 raw-bits companion must be
+    # consumer-visible"); the walker reads it since 2026-08-02, and materialize.sh is green on
+    # all 13. Back in the gate, where a regression now fails CI.
+    out.append(("f32_snan",         {"f32": f32b(0x7F800001)}))          # signaling NaN
     out.append(("f32_qnan_payload", {"f32": f32b(0x7FC00001)}))          # quiet NaN, nonzero payload
     out.append(("f32_nan_neg",      {"f32": f32b(0xFFC00000)}))          # negative NaN
     out.append(("f32_zero_pos",     {"f32": f32b(0x00000000)}))          # explicit +0.0 (canonicalizes to omitted)

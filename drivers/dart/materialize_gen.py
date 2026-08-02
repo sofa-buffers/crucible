@@ -73,7 +73,14 @@ def _emit_leaf(em, kind, expr):
     elif kind == "s":
         em.stmt(f"b.write('s'); b.write({expr}.toString());")
     elif kind == "fp32":
-        em.stmt(f"_f32(b, {expr});")
+        # CORELIB_PLAN §6.5: Dart has no fp32 value type, so `expr` is already a widened
+        # double and the widening SET the quiet bit — a signaling NaN cannot be recovered
+        # from it. Since generator#275 the generated type parks the wire bits next to the
+        # value as `<field>Fp32Bits` (public), which is the raw channel §6.5 requires a
+        # double-only target to offer its bit-exact consumers. A materialized walk is one
+        # of those, so read the bits and fall back to the double only when they are absent
+        # (they are captured for NaN payloads only — every other value is lossless).
+        em.stmt(f"_f32Scalar(b, {expr}, {expr}Fp32Bits);")
     elif kind == "fp64":
         em.stmt(f"_f64(b, {expr});")
     elif kind == "string":
@@ -203,6 +210,19 @@ void _f32(StringBuffer b, double v) {
   bd.setFloat32(0, v, Endian.big); // rounds the double to float32 (repack, §floats)
   b.write('f');
   b.write(bd.getUint32(0, Endian.big).toRadixString(16).padLeft(8, '0'));
+}
+
+// A scalar fp32 field, bit-exact (CORELIB_PLAN §6.5). `v` has already been widened to a
+// double by the time it is a Dart value, so a signaling NaN is gone from it; `bits` is the
+// generated type's raw-wire companion (`<field>Fp32Bits`, generator#275), captured on decode
+// for a NaN payload. Absent bits mean the value is not a NaN and the repack is exact.
+void _f32Scalar(StringBuffer b, double v, int? bits) {
+  if (bits != null) {
+    b.write('f');
+    b.write((bits & 0xFFFFFFFF).toRadixString(16).padLeft(8, '0'));
+    return;
+  }
+  _f32(b, v);
 }
 
 // One element of an fp32 array, bit-exact (CORELIB_PLAN §6.5). `_f32` above cannot

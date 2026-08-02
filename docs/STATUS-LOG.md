@@ -19,6 +19,38 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**F-0049 closed 2026-08-02 — and the upstream fix was only half of it.**
+[generator#275](https://github.com/sofa-buffers/generator/issues/275) landed as
+`fix(dart): the fp32 raw-bits companion must be consumer-visible`: the generated field is now
+the public `int? f32Fp32Bits` instead of a library-private one. Ten of eleven findings are now
+resolved; only F-0043 (generator#267) remains.
+
+*The half that was ours.* Making the bits visible does not make anything read them.
+`drivers/dart/materialize_gen.py` was still formatting the widened double, so the divergence
+would have survived the fix — as **Crucible's** defect rather than dart's. The walker now reads
+the companion (`_f32Scalar`), mirroring the `_f32Elem` array path added earlier the same day.
+Worth stating plainly because it is a recurring shape: when a fix *exposes* a channel, the
+consumer side is a second piece of work, and a green upstream issue does not imply a green
+oracle.
+
+*Verified on the oracle that can see it.* `materialize.sh` — 108 × 13, 0 divergences, C anchor
+0/108. `run.sh` was green before and after and proves nothing about F-0049, which is exactly why
+the finding was scoped to the materialized oracle when it was filed.
+
+*`f32_snan` is back in `corpus/structured`* after being carved out since F-0031, so the scalar
+signalling NaN now sits in a **blocking** gate rather than in a finding directory. That closes
+the last carve-out of the F-0031 arc: of its three original stragglers, two turned out to be
+Crucible's own drivers and the third a codegen visibility gap — and it produced no upstream
+issue against a corelib, correctly.
+
+*A timing note, the mirror of this morning's.* The fix merged at 19:25 but its generator CI run
+was still in flight, and `bootstrap.sh` installs the newest **green** artifact — so a bootstrap
+right after the merge silently reinstalled the *pre-fix* build and the generated dart still had
+the private field. Verifying then would have reported "still broken". This morning the hazard
+was bootstrapping too early relative to a merge; here it is the artifact lagging the merge.
+Both come down to the same rule: check what the toolchain actually is before believing a
+verification result.
+
 **Family bump 2026-08-02 (evening) — eight of eleven findings fixed and verified the same day
 they were filed.** Every corelib moved plus sofabgen twice. Upstream closed, in a few hours:
 generator **#266, #268, #270, #271, #272, #273**, **corelib-c-cpp#126**, **corelib-cpp#65** —
