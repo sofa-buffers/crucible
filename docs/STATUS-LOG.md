@@ -42,7 +42,7 @@ threading the sibling raw field through the descriptor walk, scalar and array al
 `Float32List`, whose byte buffer holds the untouched wire bits, but the walker read elements
 out as doubles. Fixed. The **scalar** position is not fixable from our side — the generated
 bits sit in a library-private `int? _f32Fp32Bits` with no accessor, reachable only by the
-type's own `marshal`. Split out as **F-0049 / G-0033** against the dart backend; the ts
+type's own `marshal`. Split out as **F-0049 / G-0033** ([generator#275](https://github.com/sofa-buffers/generator/issues/275)) against the dart backend; the ts
 backend, same language class and same corelib support, exposes the analogous field publicly.
 
 *Result.* F-0031 is closed and produced **no upstream issue** — correctly. corelib-py, -ts and

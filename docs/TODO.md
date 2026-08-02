@@ -239,7 +239,7 @@ here:
 
 - [ ] **Re-enable the *scalar* `f32_snan` in `engine/structured/gen.py` when F-0049 closes.**
       Narrowed 2026-08-02 from "F-0031 / three impls" to **one cell: dart at the scalar
-      position** (F-0049 / G-0033 — the generated raw bits are library-private). go and
+      position** (F-0049 / G-0033 → [generator#275](https://github.com/sofa-buffers/generator/issues/275) — the generated raw bits are library-private). go and
       typescript were **our own drivers** and are fixed; the corelibs were never at fault.
       The **array** position is now covered and green on all 13 (`arr_fp32_nan_bits`, added
       the same day — §6.5 requires bit-exactness at *every* fp32 position and only the scalar
