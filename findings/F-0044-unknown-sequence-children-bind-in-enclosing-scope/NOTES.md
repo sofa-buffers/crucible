@@ -107,6 +107,43 @@ that must not be interpreted, and changes the decoded value of a message every i
 accepts. That makes it an `accept_value` divergence — the hard axis, and the core interop bug
 this harness exists to find.
 
+## Second symptom (added 2026-08-01): the same defect flips accept/reject
+
+Cluster 8 of the same fuzz round minimizes to **`verdict_flip_two_levels.bin`** =
+`d6 17 d6 0c c6 0c` — an unknown sequence (id 378) opened, then `struct_array` (202), then
+`string_array` (200), all left open.
+
+| verdict | drivers |
+|---|---|
+| `I` (**correct** — everything inside the unknown sequence is skipped; the message is merely truncated) | c, cpp, cpp-c-cpp, dart, go, py-cython, py-pure, typescript (8) |
+| `R invalid_msg` | csharp, java, rust-std, rust-no-std, zig (5) |
+
+**The same five backends, and the mechanism follows directly from the cause above.** Because
+`cur` is never switched to a skipping scope, the inner `202` is processed as the *real*
+`struct_array`, which sets `cur` to its element scope. The next frame, id `200`, is then read
+as a `struct_array` **element index** — and 200 ≥ `count: 5` trips the bound check:
+
+```java
+case 6: if (id >= 5) throw new java.io.UncheckedIOException(
+            new SofabException(SofabError.INVALID_MSG,
+                "Root_struct_array element: array index above schema capacity 5"));
+```
+(`Probe.java:478`)
+
+Two controls isolate the depth requirement:
+
+| control | bytes | result |
+|---|---|---|
+| `ctl_verdict_no_wrapper` | `d6 0c c6 0c` | all 13 agree — without the unknown wrapper the same two frames are fine |
+| `ctl_verdict_one_level` | `d6 17 d6 0c` | all 13 agree — **one** level inside the unknown sequence is not enough |
+
+So it needs two levels of nesting inside the skipped sequence: the first supplies a wrong
+scope, the second is judged against it.
+
+**Why this matters for priority:** the defect is not confined to silently corrupting a value.
+It also makes a decoder **reject a message the other eight accept**, which surfaces as a hard
+interop failure rather than a quiet one.
+
 ## Coverage gap this exposes
 
 No sweep axis covers *unknown **sequence** id carrying children*. `sweep_framing.py` uses
