@@ -33,7 +33,8 @@ axis, and one legal spec `MAY`.
 Two things this snapshot cannot show, by construction:
 
 - **F-0049** (generator#275, dart's scalar `fp32` raw bits) is invisible here — it lives only in
-  the *materialized* oracle, which this round-trip clustering does not run. It is still open.
+  the *materialized* oracle, which this round-trip clustering does not run. (It closed later the
+  same evening; `materialize.sh` is 108 × 13 green and `f32_snan` is back in the structured gate.)
 - A **family-wide wrong answer** would appear as agreement. The eight fixes were each verified
   on their reproducers' verdict *direction*, not on this collapse; the collapse is corroboration,
   not the proof.
