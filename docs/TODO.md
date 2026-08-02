@@ -205,14 +205,22 @@ here:
         (**G-0027**): decide a schema-bound violation **at the word** that carries the violating
         number, not after payload bytes arrive.
 
-- [ ] **Triage the two clusters the Go engine found (2026-08-02).** Both are §5.2
-      INVALID-vs-INCOMPLETE precedence splits with camps no catalogued finding has, and both
-      have `c` + `cpp-c-cpp` as the *lenient* side — unusual, the C family is normally the
-      strict one. Neither was ever produced by ~370 M execs of C-steered fuzzing.
-      - cluster 14 (256 B): `R invalid_msg` ×11 vs `c`, `cpp-c-cpp` → `I`
-      - cluster 15 (374 B): 7 × `R` vs `c`, `cpp-c-cpp`, `go`, `py×2`, `typescript` → `I`
-      Minimize while the camp partition holds, prove the axis with green controls, then
-      attribute (corelib vs codegen) before filing. Snapshot in `../results/CLUSTERS.md`.
+- [x] **Triage the two clusters the Go engine found — DONE 2026-08-02.** Neither was what its
+      camp suggested at 256 / 374 bytes. Cluster 14 → **F-0050**, a `corelib-c-cpp` off-by-one
+      permitting nesting depth 256 against `MAX_DEPTH` 255 (the *closed* 256-deep vector is
+      accepted, so not a precedence bug). Cluster 15 → **F-0047's second symptom** (374 B → 5 B):
+      the leaked child lands in the wrapper's index scope, so a child id ≥ the schema `count`
+      trips §7.1 and flips the verdict; threshold measured exactly at 5, and it adds **cpp** as a
+      seventh affected impl whose half may be corelib-cpp rather than codegen.
+
+- [ ] **Boundary vectors for the format ceilings in `sweep_framing`** (exposed by F-0050). The
+      axis owns `MAX_DEPTH` and still missed an off-by-one, because it tests only **300** (far
+      over) and **8** (far under) — the boundary itself is never exercised. Same shape for
+      `FIXLEN_MAX` (2³¹ vs 1) and `ARRAY_MAX` (2³¹ vs 1); only `ID_MAX` has an at-boundary
+      control (`id_at_ID_MAX_ctl`), which is presumably why no off-by-one has been found there.
+      Add `at-limit → accept` / `limit+1 → reject` for all four. Two more off-by-ones could be
+      sitting in the untested boundaries right now.
+
 
 - [ ] **Triage the 2026-08-01 fuzz round's unattributed clusters** (snapshot + camps in
       [`../results/CLUSTERS.md`](../results/CLUSTERS.md)). Priority order:

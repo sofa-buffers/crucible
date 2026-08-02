@@ -19,6 +19,39 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Both Go-found clusters triaged 2026-08-02 — and neither was what its camp suggested.**
+
+*Cluster 14 → **F-0050**, a new corelib finding.* At 256 bytes it looked like the familiar
+INVALID-vs-INCOMPLETE precedence class (11 reject, `c` + `cpp-c-cpp` say `I`). It is not. The
+input is 256 nested sequence opens, and the deciding vector was one the fuzzer never produced:
+the same depth **fully closed**, with no truncation anywhere — where c and cpp-c-cpp still
+**accept** and re-encode to the empty message. Sweeping depth through `c` gives
+`254:A 255:A 256:A 257:R`, so it is a clean **off-by-one** against `MAX_DEPTH = 255`, not a
+precedence bug and not a missing check. Attribution is **corelib-c-cpp**: depth is wire
+mechanics, and the affected set is exactly the two profiles sharing the C `istream` while
+`cpp`, with its own corelib, rejects correctly. Not yet filed.
+
+*Cluster 15 → **F-0047's second symptom**, 374 B → 5 B.* `c6 0c 26 2a 02` — a `string_array`
+element opened as a mistyped sequence with a child at id 5. Sweeping the child id breaks
+**exactly at 5**, which is the schema `count`: the leaked child lands in the *wrapper's index
+scope*, so an id at or above the count trips §7.1's over-index check and flips the verdict
+instead of corrupting a value. An in-range control (id 4) and a struct-scope control (same id,
+no `count`) are both unanimous, so it is the wrapper's bound and nothing else.
+
+*That one also widened an upstream issue.* The original F-0047 vectors put **cpp in the correct
+camp** — re-verified, they still do — while this vector puts it in the rejecting camp. So cpp
+is affected and generator#272's impl list is incomplete. But cpp's half may have a different
+owner: its generated code hands the whole wrapper to the corelib
+(`is.read(StringSeq{string_array, 5, 64})`), so enforcement is corelib-cpp's rather than
+codegen's. Recorded and deliberately **not** filed until that is confirmed — the "occasionally
+both" case, and adding an impl to the wrong issue is the F-0008 mistake in miniature.
+
+*A gate gap fell out of F-0050.* `sweep_framing` owns the `MAX_DEPTH` axis and still missed an
+off-by-one, because it tests only depth **300** (far over) and **8** (far under) — the boundary
+is never exercised. The same shape holds for `FIXLEN_MAX` and `ARRAY_MAX` (2³¹ vs 1); only
+`ID_MAX` has an at-boundary control, which is plausibly why no off-by-one has surfaced there.
+Two more could be sitting in the untested boundaries. On `docs/TODO.md` as its own item.
+
 **Second steering engine 2026-08-02 — Go, and it found two new divergence classes in 60
 seconds.** `docs/TODO.md` had carried "Multi-impl coverage" as *the biggest architectural gap*
 since the start: only the C corelib steered the fuzzer, so the search was rewarded solely for

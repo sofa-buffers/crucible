@@ -22,14 +22,16 @@ grown by the C pacemaker:**
 
 | # | inputs | partition | status |
 |---|---|---|---|
-| **14** | 1 (256 B) | `R invalid_msg` ×11 · **`c`, `cpp-c-cpp` → `I`** | 🔴 **untriaged** — a §5.2 INVALID-vs-INCOMPLETE precedence split where the **C family alone is the lenient one**. No catalogued finding has this camp |
-| **15** | 1 (374 B) | `R invalid_msg` (cpp, csharp, dart, java, rust×2, zig) · `I` (`c`, `cpp-c-cpp`, go, py×2, typescript) | 🔴 **untriaged** — a 7-vs-6 precedence split, again with c/cpp-c-cpp lenient but a different second camp |
+| 14 | 1 (256 B) | `R invalid_msg` ×11 · **`c`, `cpp-c-cpp` → `I`** | ✅ **triaged 2026-08-02 → [F-0050](../findings/F-0050-c-max-depth-off-by-one/NOTES.md)**: `corelib-c-cpp` permits nesting depth **256**, one past `MAX_DEPTH` (255). Not a precedence bug — the fully closed 256-deep vector is **accepted**. Off-by-one, corelib-side |
+| 15 | 1 (374 B) | `R invalid_msg` (cpp, csharp, dart, java, rust×2, zig) · `I` (`c`, `cpp-c-cpp`, go, py×2, typescript) | ✅ **triaged 2026-08-02 → F-0047, second symptom** (374 B → **5 B**): the child of a §7.3-skipped mistyped element leaks into the wrapper's *index* scope, so a child id ≥ the schema `count` trips §7.1 and flips the verdict. Threshold measured exactly at 5. **Adds `cpp` as a seventh affected impl**, possibly with a corelib-cpp owner rather than codegen |
 
 **This is the multi-impl-coverage thesis, demonstrated.** The C pacemaker had run ~370 M execs
 across two rounds over this schema and never produced either shape, because it steers by *C*
 coverage and cannot be rewarded for reaching a path that is only complex elsewhere. One minute
-of Go-steered fuzzing found two. Both need minimizing and attributing before anything is filed
-— the camps are suggestive but a 256-byte input proves nothing on its own.
+of Go-steered fuzzing found two. **Both were triaged the same day** — see the table. One is a new corelib finding (F-0050), the
+other a second symptom of F-0047 that also widens its impl list. Neither camp turned out to
+mean what it looked like at 256 and 374 bytes, which is the argument for minimizing before
+filing rather than after.
 
 ## Snapshot — 2026-08-02 (1 h 10 pacemaker round on the new sources; corpus 5306 → 5994)
 

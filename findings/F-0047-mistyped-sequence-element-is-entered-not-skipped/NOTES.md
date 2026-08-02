@@ -94,3 +94,55 @@ nested sequence child}*, at every sequence position. See `docs/TODO.md`.
 ```
 CORPUS=findings/F-0047-mistyped-sequence-element-is-entered-not-skipped ./scripts/run.sh
 ```
+
+---
+
+## Addendum 2026-08-02 — a second symptom, and a **seventh** affected impl
+
+The **Go steering engine**'s first run produced a cluster that minimized (374 B → **5 B**) to
+this finding's construct with a different symptom and a wider camp.
+
+**`seq_elem_child_overindex.bin`** = `c6 0c 26 2a 02` — `string_array` opened, element index 4
+opened as a **sequence** (mistyped, §7.3 says skip), and inside it a child at id **5**.
+
+| verdict | drivers |
+|---|---|
+| `I` (**correct** — element skipped, message merely truncated) | c, cpp-c-cpp, go, py-cython, py-pure, typescript (6) |
+| `R invalid_msg` | **cpp**, csharp, dart, java, rust-no-std, rust-std, zig (**7**) |
+
+### The mechanism, pinned by a threshold
+
+`string_array` declares `count: 5`, so valid element indices are 0–4. Sweeping the child id:
+
+```
+child id  0 1 2 3 4 | 5 6 7
+verdict   all agree | 7 reject
+```
+
+The break is **exactly at 5**. A decoder that leaks the child into the enclosing *wrapper*
+scope makes it element index 5, over the `count` bound, and §7.1's over-index check fires —
+flipping the verdict. `ctl_child_id_in_range.bin` (id 4) and
+`ctl_child_overindex_struct_scope.bin` (the same id 6 inside `nested`, a struct with no `count`)
+both agree on all 13, so it is the wrapper's bound and nothing else.
+
+This is the same defect as the body of this finding — the child of a skipped element is bound
+into the array — but where the original vectors show it as a *value* (`string_array[0] = "KA"`),
+this shows it as a *verdict flip*. Same shape as F-0044's second symptom.
+
+### `cpp` is new, and may have a different owner
+
+The original vectors put **cpp in the correct (`I`) camp**; re-verified 2026-08-02, they still
+do. This vector puts it in the rejecting camp, so **cpp is affected and generator#272's impl
+list is incomplete**.
+
+But cpp's half may not be codegen. Its generated code does not walk the wrapper itself — it
+hands the whole thing to the corelib:
+
+```cpp
+case 200: { sofab::StringSeq _r0{string_array, 5, 64}; is.read(_r0); }
+```
+
+The count bound is passed *in*, and enforcement lives in **corelib-cpp**'s `StringSeq` reader.
+So for the six flat-visitor backends this remains G-0031 / generator#272, while cpp's inclusion
+should be confirmed against corelib-cpp's reader before it is added there — the "occasionally
+both" case CLAUDE.md warns about. **Not yet filed** pending that check.
