@@ -19,6 +19,36 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**`cpp`'s half of the Go-found cluster resolved 2026-08-02 — it is not F-0047, it is F-0051.**
+The open question from the triage was whether cpp's inclusion was codegen (add it to
+generator#272) or corelib-cpp. The answer turned out to be neither: **cpp is not affected by
+F-0047 at all**, and adding it would have been a misfile against a real issue.
+
+*The control that separates them.* Take F-0047's construct — a `string_array` element opened as
+a mistyped sequence — and vary only the **child id**. With an in-range child (0), cpp emits the
+**empty** message: it skips the element correctly, exactly like the six conformant impls, while
+F-0047's six enter it and bind the child as `string_array[0]`. So cpp never enters the subtree,
+and cannot be rejecting the over-index case because it "found an over-index element". Its defect
+is the mirror image: the wrapper's `count` bound stays **armed while skipping**, so a child id ≥
+the count trips §7.1 from inside a subtree that §7.3 says is not the array's at all.
+
+*Not specific to §7.3.* Replacing the mistyped element with an **unknown field id** — a
+different reason to skip, same shape — reproduces it identically, and a struct-scope control
+(no `count`) is unanimous on all 13. So it is the wrapper's bound leaking into any skip.
+
+*Attribution: corelib-cpp.* The generated code passes `count` in and publishes the element type
+as `StringSeq::elemWire`; enforcement is entirely the corelib's. The sibling settles it —
+**`cpp-c-cpp` is correct**, same C++ backend, different corelib, so the split follows the
+corelib boundary (the F-0013 / F-0050 signature). corelib-cpp's own header documents the rule it
+misses: a contradicting element *"is not this array's element at all … bound or no bound"* —
+which it honours for the element and not for its children.
+
+*The general lesson, worth more than the finding.* Two defects with **opposite mechanisms** —
+enter-and-bind versus skip-but-still-enforce — produce **identical camps** on every vector where
+the child id is over the bound. Only an in-range child tells them apart. A camp match is a
+hypothesis, not an attribution; this one would have survived any amount of additional
+over-index evidence.
+
 **`sweep_framing` gained MAX_DEPTH boundary vectors 2026-08-02 — and the gap was two-fold, not
 one.** F-0050 existed because the axis that *owns* the `MAX_DEPTH` rule tested only depth 300
 (far over) and 8 (far under), never the boundary. Fixing that alone would not have caught it.
@@ -60,13 +90,12 @@ scope*, so an id at or above the count trips §7.1's over-index check and flips 
 instead of corrupting a value. An in-range control (id 4) and a struct-scope control (same id,
 no `count`) are both unanimous, so it is the wrapper's bound and nothing else.
 
-*That one also widened an upstream issue.* The original F-0047 vectors put **cpp in the correct
-camp** — re-verified, they still do — while this vector puts it in the rejecting camp. So cpp
-is affected and generator#272's impl list is incomplete. But cpp's half may have a different
-owner: its generated code hands the whole wrapper to the corelib
-(`is.read(StringSeq{string_array, 5, 64})`), so enforcement is corelib-cpp's rather than
-codegen's. Recorded and deliberately **not** filed until that is confirmed — the "occasionally
-both" case, and adding an impl to the wrong issue is the F-0008 mistake in miniature.
+*That one looked like it widened an upstream issue — and the caution paid off.* The first
+reading was that cpp had joined F-0047's enterers and generator#272's impl list was incomplete.
+It was **deliberately not filed** pending a check of whether cpp's half was codegen or corelib.
+That check (below) showed the reading was wrong outright: cpp is **not** on F-0047 at all. Had
+it been filed on the spot, it would have been the F-0008 misfile — a real impl added to a real
+issue that does not own its defect, which is harder to unpick than an obviously wrong report.
 
 *A gate gap fell out of F-0050.* `sweep_framing` owns the `MAX_DEPTH` axis and still missed an
 off-by-one, because it tests only depth **300** (far over) and **8** (far under) — the boundary

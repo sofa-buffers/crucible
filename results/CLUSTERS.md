@@ -23,7 +23,7 @@ grown by the C pacemaker:**
 | # | inputs | partition | status |
 |---|---|---|---|
 | 14 | 1 (256 B) | `R invalid_msg` ×11 · **`c`, `cpp-c-cpp` → `I`** | ✅ **triaged 2026-08-02 → [F-0050](../findings/F-0050-c-max-depth-off-by-one/NOTES.md)**: `corelib-c-cpp` permits nesting depth **256**, one past `MAX_DEPTH` (255). Not a precedence bug — the fully closed 256-deep vector is **accepted**. Off-by-one, corelib-side |
-| 15 | 1 (374 B) | `R invalid_msg` (cpp, csharp, dart, java, rust×2, zig) · `I` (`c`, `cpp-c-cpp`, go, py×2, typescript) | ✅ **triaged 2026-08-02 → F-0047, second symptom** (374 B → **5 B**): the child of a §7.3-skipped mistyped element leaks into the wrapper's *index* scope, so a child id ≥ the schema `count` trips §7.1 and flips the verdict. Threshold measured exactly at 5. **Adds `cpp` as a seventh affected impl**, possibly with a corelib-cpp owner rather than codegen |
+| 15 | 1 (374 B) | `R invalid_msg` (cpp, csharp, dart, java, rust×2, zig) · `I` (`c`, `cpp-c-cpp`, go, py×2, typescript) | ✅ **triaged 2026-08-02 → F-0047, second symptom** (374 B → **5 B**): the child of a §7.3-skipped mistyped element leaks into the wrapper's *index* scope, so a child id ≥ the schema `count` trips §7.1 and flips the verdict. Threshold measured exactly at 5. An initial reading added `cpp` as a seventh affected impl; **resolved the same day — it is not**. cpp skips the element correctly (proven by an in-range-child control) and instead keeps the wrapper bound armed *inside* the skipped subtree: a separate corelib-cpp defect, **F-0051** |
 
 **This is the multi-impl-coverage thesis, demonstrated.** The C pacemaker had run ~370 M execs
 across two rounds over this schema and never produced either shape, because it steers by *C*

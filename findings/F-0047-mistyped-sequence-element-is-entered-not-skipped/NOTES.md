@@ -129,20 +129,27 @@ This is the same defect as the body of this finding — the child of a skipped e
 into the array — but where the original vectors show it as a *value* (`string_array[0] = "KA"`),
 this shows it as a *verdict flip*. Same shape as F-0044's second symptom.
 
-### `cpp` is new, and may have a different owner
+### `cpp` is **not** on this finding — resolved 2026-08-02 → F-0051
 
-The original vectors put **cpp in the correct (`I`) camp**; re-verified 2026-08-02, they still
-do. This vector puts it in the rejecting camp, so **cpp is affected and generator#272's impl
-list is incomplete**.
+The first reading of this cluster was that cpp had joined the enterers and generator#272's impl
+list was incomplete. **That was wrong**, and one control settles it:
 
-But cpp's half may not be codegen. Its generated code does not walk the wrapper itself — it
-hands the whole thing to the corelib:
+| vector | c, cpp-c-cpp, go, py×2, ts | **cpp** | csharp, dart, java, rust×2, zig |
+|---|---|---|---|
+| mistyped element, child id **0** | accept → empty (skipped) | accept → **empty** ✅ | accept → `string_array[0]="A"` (entered) |
+| mistyped element, child id **5** | accept → empty | `R invalid_msg` | `R invalid_msg` |
 
-```cpp
-case 200: { sofab::StringSeq _r0{string_array, 5, 64}; is.read(_r0); }
-```
+With an **in-range** child, cpp produces the empty message — it skips the element correctly,
+exactly like the six conformant impls, while this finding's six enter and bind the child. So cpp
+never enters the subtree and cannot be rejecting because it found an over-index *element*. Its
+defect is the opposite one: it keeps the wrapper's `count` bound armed *while skipping*, so a
+child id ≥ the count trips §7.1 from inside the skipped subtree. Not even specific to §7.3 — an
+unknown id skipped for a different reason behaves the same.
 
-The count bound is passed *in*, and enforcement lives in **corelib-cpp**'s `StringSeq` reader.
-So for the six flat-visitor backends this remains G-0031 / generator#272, while cpp's inclusion
-should be confirmed against corelib-cpp's reader before it is added there — the "occasionally
-both" case CLAUDE.md warns about. **Not yet filed** pending that check.
+That is **corelib-cpp**, not codegen, and it is filed separately as
+**[F-0051](../F-0051-cpp-wrapper-bound-leaks-into-skipped-subtree/NOTES.md)**. This finding's
+impl list is unchanged, and generator#272 needs no edit.
+
+Same symptom, opposite mechanism: **this finding is enter-and-bind, F-0051 is
+skip-but-still-enforce.** Worth remembering — the camps overlap on every vector where the child
+id is over the bound, and only an in-range child tells them apart.
