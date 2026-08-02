@@ -163,10 +163,12 @@ here:
 
 - [x] **File the three open findings upstream — DONE (2026-08-01).** All three went to
       `generator`; each has a G-number in `results/FINDINGS.md`. Now waiting on the fixes:
-      - **F-0038's dart residual** → [generator#265](https://github.com/sofa-buffers/generator/issues/265)
-        (**G-0025**): emit the `onStringBytes` override for a **string-free scope** so those
-        visitors stop inheriting corelib-dart's validating default. generator#258 did exactly
-        this for java/csharp; the dart backend was missed.
+      - ~~**F-0038's dart residual** → [generator#265](https://github.com/sofa-buffers/generator/issues/265)
+        (**G-0025**)~~ — ✅ **FIXED 2026-08-01, verified 2026-08-02.**
+        [generator#269](https://github.com/sofa-buffers/generator/pull/269) emits the
+        resolve-then-leave override unconditionally, so a string-free scope no longer inherits
+        corelib-dart's validating default. **F-0038 is fully resolved** (all 13 agree; vectors
+        promoted into `corpus/regression/`, 112 → 117).
       - **F-0033** → [generator#266](https://github.com/sofa-buffers/generator/issues/266)
         (**G-0026**): enforce the declared integer width as a validity bound (documentation#32,
         §1/§7.1 — over-width is INVALID, never masked, never kept). Today only `c` /

@@ -19,6 +19,51 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Partial bump 2026-08-02 — corelib-c-cpp + corelib-rs-no-std refactors, and F-0038 closes.**
+Only two corelibs had moved since the 2026-08-01 bump, both with footprint work: corelib-c-cpp
+`d020545 → 17f9a8e` (*"collapse the repeated per-type dispatch in the object and stream paths"*,
+265 lines churned in `object.c`, plus `ostream.c`/`istream.c`) and corelib-rs-no-std
+`83626e4 → c2a733c` (*"shrink the decoder state to <=32 B"*, `istream.rs` rebuilt and `varint.rs`
+largely absorbed). Both are green upstream, 30/30 checks each.
+
+*Decision: bump the generator with them, not separately.* `bootstrap.sh` refuses to leave a
+stale toolchain, so refreshing the two corelibs also moved sofabgen
+`0.0.0-20260801075630-e8c784163810 → 0.0.0-20260801200345-619ec3c5c04b`. That is three moving
+variables at once, which is normally worth avoiding — but the alternative (pinning the old
+generator) would have compared corelibs from today against codegen from yesterday, and the
+script's own header argues that mix produces divergences that are artifacts of the mix. Taken
+deliberately, and the attribution below is unambiguous anyway because the corelib changes
+produced *no* behavioral delta at all.
+
+*Closed.* **F-0038** — the last one. Its dart residual (**G-0025**,
+[generator#265](https://github.com/sofa-buffers/generator/issues/265), filed 2026-08-01) was
+fixed the same day by [generator#269](https://github.com/sofa-buffers/generator/pull/269) and
+rode in on the generator bump above; the issue auto-closed at 20:03 UTC. The fix is the shape
+the issue asked for — the resolve-then-leave override emitted unconditionally, as
+generator#258 already did for java/csharp — and it deliberately left corelib-dart's validating
+`onStringBytes` default alone, which is the correct call: a hand-written visitor carries no
+schema, so the id-decides knowledge exists only in generated code. That is the same
+codegen-vs-corelib split CLAUDE.md's triage table encodes, and it held on the first try here.
+All five vectors promoted into `corpus/regression/` (112 → 117, green). **G-0024 is now fully
+resolved too** — F-0038 went six impls → one → none.
+
+*The two corelib refactors changed no observable behavior.* All eight replay gates green
+(1141 sweep vectors, 106-input materialized oracle at 0/106 anchor mismatches), no
+ASan/UBSan/panic output anywhere, and a re-cluster of the unchanged 5306-input corpus gives
+**17 → 15 clusters** with every survivor mapping one-to-one onto a catalogued finding at the
+same camps and counts. The two clusters that vanished are exactly F-0038's; the 35 inputs of
+the larger folded into the benign java soft-value cluster (1965 → 2000). For rewrites of this
+size that is the intended result, but note what it does *not* cover: the footprint claims
+themselves (host x86-64 instrumented builds are the opposite configuration), limit mode
+(its roster excludes `c`, `cpp-c-cpp` and `rust-nostd`), and anything new — this was replay,
+not search.
+
+*Unmoved, informatively.* The `rust-nostd`-only `buffer_full` cluster (8 inputs, still the one
+untriaged item from the 2026-08-01 round) survived a rewrite of the very state layout that was
+the most plausible cause of a capacity bound shifting. That weakly favours reading it as a
+deliberate fixed-capacity bound legal under CORELIB_PLAN §6 rather than a finding, but it is
+still undecided.
+
 **Family bump 2026-08-01 — corelibs 0.10.0 + sofabgen 0.22.0: two findings closed, one
 narrowed, one reshaped, one found.** Bootstrapped with the defaults on `main` (the stale POC
 branches are gone, so branch-tracking no longer needs the `FAMILY_BRANCH=main` override the

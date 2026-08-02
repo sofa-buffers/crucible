@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS-LOG.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (112 inputs)
+## Contents (117 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -58,16 +58,18 @@ looking. This corpus makes it automatic.
 | `F0039_ctl_welltyped_array.bin`, `F0039_ctl_mistyped_scalar.bin` (2) | F-0039 (controls) | — | a well-typed array still round-trips, and a mis-typed **scalar** still skips cleanly — the fix touches only the array-sizing path |
 | `F0042_r1_incount_mistyped.bin`, `F0042_r2_overcount_mistyped.bin`, `F0042_r4_trunc_between_words.bin` | F-0042 | corelib go#58 / java#53 / cs#45 / dart#23 / rs#40 / rs-no-std#60 / zig#27 + generator#259 | the fixlen-array **subtype decides before the schema `count` bound** (CORELIB_PLAN §4.8): a mistyped fp array is skipped whether its count is in-bounds or over, and a truncation between the count and `fixlen_word` is `I` — the corelib array-header hook now carries the element subtype |
 | `F0042_r3_overcount_matching.bin`, `F0042_r5_overcount_matching_nopayload.bin`, `F0042_r6_ctl_valid.bin` (3) | F-0042 (controls) | — | the rows that were already unanimous and must stay so: an over-count array whose subtype **matches** is `R` (the bound still binds a survivor), with and without payload, and the valid control still round-trips |
+| `F0038_unknown_id_string_invalid_utf8.bin`, `F0038_skipped_element_invalid_utf8.bin` | F-0038 | generator#257 → #258/#263 (G-0024) + generator#269 (G-0025, dart) | a string a decoder is **skipping** is never UTF-8-validated (CORELIB_PLAN §6.4: *"UTF-8 validation runs only where a `string` is materialized … never on skip, in any mode"*) — all 13 agree, where six impls and then `dart` alone used to reject `invalid_msg` |
+| `F0038_ctl_known_field_invalid_utf8.bin`, `F0038_ctl_unknown_id_string_valid_utf8.bin`, `F0038_ctl_unknown_id_blob_same_byte.bin` (3) | F-0038 (controls) | — | the three counter-directions that scope the fix to the skip path: the same bad byte in a **materialized** string is still rejected by all 13 (the strict check is not weakened), a skipped string with **valid** UTF-8 is still accepted, and the same byte in a skipped **blob** — where UTF-8 never applied — is unaffected |
 
 Filenames are `F<nnnn>_<original-name>.bin`; the originals stay in `findings/<id>/` as the
 finding's own record. `F0003_overcount_clean.bin` has no original — see below.
 
 ### Expected warnings (not failures)
 
-Three inputs raise a policy-`soft` `incomplete_value` warning: on an `I` verdict, `c` emits
-no partial value where `java` emits the default skeleton. That axis is `soft` in
-`oracle/policy.yaml`, so the gate still exits 0. Divergences — not warnings — are the
-signal.
+One input — `F0024_control_valid_then_trunc.bin` — raises a policy-`soft` `incomplete_value`
+warning: on an `I` verdict, `c` emits no partial value where `java` emits the default
+skeleton (`c60c0212414207`). That axis is `soft` in `oracle/policy.yaml`, so the gate still
+exits 0. Divergences — not warnings — are the signal.
 
 ## What is deliberately NOT here
 
