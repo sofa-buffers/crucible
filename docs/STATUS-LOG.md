@@ -73,7 +73,7 @@ MESSAGE_SPEC §7.4 last-wins is violated, and the capacity guard sitting on thos
 `Error::BufferFull` on **any** duplicate element id at **any** size. `r1` accumulates 4 bytes
 into a `String<64>` and still rejects.
 
-*Decision: codegen, filed as G-0032, corelib untouched.* Two independent signals, both from
+*Decision: codegen, filed as [generator#273](https://github.com/sofa-buffers/generator/issues/273) (G-0032), corelib untouched.* Two independent signals, both from
 CLAUDE.md's triage rules: **rust-std gets the identical position right**
 (`string_array[id] = _s`) — a split between two profiles of one language, which heuristic 3
 says indicts the generated container — and the corelib is schema-agnostic, having delivered

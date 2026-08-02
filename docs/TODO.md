@@ -201,7 +201,7 @@ here:
          `message.rs` 452/475, no `clear()`), so MESSAGE_SPEC §7.4 last-wins is violated and the
          accompanying guard `_e.len() != _s.len()` misfires into `buffer_full` on any duplicate
          element id at any size. rust-std gets the same position right, which is what pins it to
-         codegen (**G-0032**, not yet filed). That the rewrite of `istream.rs` left it unmoved is
+         codegen (**G-0032** → [generator#273](https://github.com/sofa-buffers/generator/issues/273)). That the rewrite of `istream.rs` left it unmoved is
          explained: the defect was never in the corelib.
          **This closes the 2026-08-01 round's triage — all 17 clusters attributed.**
 
