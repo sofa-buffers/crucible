@@ -70,3 +70,71 @@ CORPUS=findings/F-0043-schema-bound-verdict-lands-after-the-word ./scripts/run.s
 
 The axis that found it stays carved out in `sweep_malform_truncate.py` (STRUCTURAL-only
 broadened truncation) until this closes; re-enable is a two-line deletion there.
+
+---
+
+## Attribution addendum 2026-08-02 — the generator **cannot** fix this alone
+
+Written for the review of [generator#267](https://github.com/sofa-buffers/generator/issues/267)
+after the question came up whether corelib changes are needed. **They are** — for one camp, and
+the camp split in this finding is exactly the architectural split that causes it.
+
+### The mechanism
+
+Generated code already performs the right check. In the rust-no-std backend, for instance, the
+string sink carries it verbatim:
+
+```rust
+(_Loc::Root_nested, 2) => if total > 32 { self.inv = true; return; },
+```
+
+`total` is the declared length, and the corelib parsed it from the fixlen word. The defect is
+not that the check is missing or late in *generated* code — it is that **the callback carrying
+`total` never fires when the message ends at the word**. No callback, no check, so the verdict
+falls through to `INCOMPLETE`.
+
+### Verified in source, all five impls of the wrong camp
+
+Each gates the visitor call on having payload bytes in hand:
+
+| corelib | site | gate |
+|---|---|---|
+| `corelib-rs` | `src/istream.rs` | `let chunk = &buf[pos..pos + len]; v.string(id, len, 0, chunk)` — needs `len` bytes present |
+| `corelib-rs-no-std` | `src/istream.rs:308` | `if self.core.state == State::FixlenRaw { … visitor.string(self.id, self.fixlen_total, offset, chunk) }` |
+| `corelib-zig` | `src/istream.zig:376` | `visitor.string(st.id, st.total, offset, chunk)` inside the raw-payload path |
+| `corelib-java` | `IStream.java:360` | `if (state == S_FIXLEN_RAW) { … visitor.string(id, fixlenTotal, chunkOffset, data, i, take); }` |
+| `corelib-cs` | `IStream.cs:213` | `if (_state == State.FixlenRaw) { … visitor.String(_id, _fixlenTotal, chunkOffset, data, i, take); }` |
+
+Each of these *does* have a zero-payload `string(id, 0, 0, …)` call — but only for a **declared
+length of 0**, where `total` is 0 rather than the violating number. It is not a header hook.
+
+**Those five are precisely this finding's wrong camp** for `over_len_string_trunc_004`
+(rust-std, rust-no-std, java, csharp, zig).
+
+### Why the other camp gets it right
+
+They do not read the value through a payload-carrying visitor callback at all:
+
+- **typescript** — generated code uses the **cursor/pull** API (`c.wire`, `c.fixSub`,
+  `c.readFp32Raw()`), so the length word is inspectable *before* the payload is requested.
+- **c / cpp-c-cpp** — the object-descriptor path, where the corelib holds the schema and can
+  decide at the word itself.
+- **go / py / dart** — likewise surface the length before delivering payload.
+
+So the split is not "some backends are careless". It is **push/visitor versus pull/descriptor**,
+and no amount of codegen can move a decision earlier than the earliest callback it is given.
+
+### What the fix needs
+
+A header-level hook in the five push/visitor corelibs — either a dedicated
+`fixlenHeader(id, total, subtype)`, or firing `string`/`blob` once with `offset = 0` and an
+empty chunk immediately after the fixlen word — plus backends that consume it.
+
+**There is a precedent in this repo for exactly this shape: F-0042.** The corelib array-header
+hook was widened to carry the fixlen element subtype (seven corelib issues, all closed
+2026-08-01) and the backends consume it in generator#259. Same problem, same resolution:
+generated code cannot decide at a word the corelib never shows it.
+
+*Scope note:* the wrapper-element rows (`string_array_over_id_trunc_004`,
+`blob_array_over_id_trunc_004`) have a different camp — go and dart join the wrong side there —
+so the element-id half may need its own analysis. What is established above is the `maxlen` half.
