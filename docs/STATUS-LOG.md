@@ -46,9 +46,17 @@ corelib-cpp#66/#67 merged, so F-0050 and F-0033 were verified against a family t
 stale — harmless here, but it is why the re-bootstrap happened before touching F-0051. When
 upstream is moving this fast, "bootstrap then verify" has to be one step, not two.
 
-*What is left:* generator **#267** (F-0043) and **#275** (F-0049) are still open, plus
-documentation#33 (the §6.4 `MAY`, a spec question) and generator#239 (reserved words, not a
-finding).
+*What is left, and it is a clean picture.* Re-clustering the 878-input corpus against the fixed
+family gives **7 clusters, down from 17**: one benign java soft split, one legal §6.4 `MAY`
+(documentation#33), and **five that are all F-0043** ([generator#267](https://github.com/sofa-buffers/generator/issues/267),
+still open — expected to take longer). Every remaining *hard* divergence in the corpus is that
+one finding. **F-0049** (generator#275) is open too but structurally invisible to this
+clustering: it lives only in the materialized oracle. generator#239 (reserved words) is not a
+finding.
+
+*The collapse is corroboration, not proof.* A family-wide wrong answer would also show as
+agreement — each of the eight fixes was verified on its reproducers' verdict **direction**
+first, and the cluster collapse read afterwards.
 
 **`cpp`'s half of the Go-found cluster resolved 2026-08-02 — it is not F-0047, it is F-0051.**
 The open question from the triage was whether cpp's inclusion was codegen (add it to

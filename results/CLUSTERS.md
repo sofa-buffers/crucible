@@ -9,6 +9,32 @@ CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh
 # or directly: python3 oracle/cluster.py --corpus <dir> --driver name:path …
 ```
 
+## Snapshot — 2026-08-02 (evening, **post-fix**: eight findings closed upstream the same day)
+
+Same 878-input corpus as the Go-steered snapshot below, re-clustered after upstream fixed
+generator #266/#268/#270/#271/#272/#273, corelib-c-cpp#126 and corelib-cpp#65.
+
+**878 inputs: 298 agree, 580 diverge → 7 clusters** (was 258 / 620 / **17**).
+
+| # | inputs | root cause |
+|---|---|---|
+| 1 | 550 | benign java `incomplete_value` soft split — verdict unanimous, not a divergence |
+| 3 | 4 | **legal** — CORELIB_PLAN §6.4's mid-payload `MAY`; zig takes it ([documentation#33](https://github.com/sofa-buffers/documentation/issues/33)) |
+| 2, 4, 5, 6, 7 | 20, 2, 2, 1, 1 | **F-0043** at five positions ([generator#267](https://github.com/sofa-buffers/generator/issues/267), still open) |
+
+**Every remaining hard divergence in the corpus is F-0043.** Ten clusters vanished: F-0033,
+F-0044 (both symptoms), F-0045, F-0046, F-0047, F-0048, the F-0044×F-0033 product, and the two
+the Go engine had just found (F-0050, F-0051). What is left is one open finding, one benign soft
+axis, and one legal spec `MAY`.
+
+Two things this snapshot cannot show, by construction:
+
+- **F-0049** (generator#275, dart's scalar `fp32` raw bits) is invisible here — it lives only in
+  the *materialized* oracle, which this round-trip clustering does not run. It is still open.
+- A **family-wide wrong answer** would appear as agreement. The eight fixes were each verified
+  on their reproducers' verdict *direction*, not on this collapse; the collapse is corroboration,
+  not the proof.
+
 ## Snapshot — 2026-08-02 (**first Go-steered round** — the second steering engine, 60 s)
 
 The first run of `scripts/fuzz-go.sh`, Crucible's second coverage engine (Go's native
