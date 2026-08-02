@@ -154,9 +154,19 @@ here:
     recursive `$ref` schema. The **map** (`array of struct{k,v}`) is modeled in `schema.py`
     (`struct_wrapper`) yet held out of `probe` pending F-0030 — that is the "WP-05 completion"
     residue item at the top of this file.)*
-- [ ] **Corpus hygiene**: minimize `corpus/interesting/` (~44k files, never merged) with
-      libFuzzer `-merge` — only ~320 are coverage-distinct, so every full differential over it
-      pays for the redundancy.
+- [x] **Corpus hygiene — DONE 2026-08-02: 5994 → 579, all 15 clusters intact.** But **not**
+      by `-merge` alone, which this item proposed and which turns out to be actively wrong:
+      the plain merge gives 503 files and **6 clusters**, silently discarding the corpus
+      evidence for F-0045, F-0046, F-0047 and F-0048 among others. It minimizes by **C
+      coverage** while the oracle is disagreement among **13** drivers, so two C-equivalent
+      inputs can carry different divergences. The rule adopted instead — *coverage-minimal ∪
+      every hard-diverging input* (85 of them: verdict split, or agreed accept with differing
+      re-encode) — preserves hard divergences **by construction**. Soft splits are not
+      force-kept (the coverage set carries 335 anyway). Table and rationale in
+      [`../results/CLUSTERS.md`](../results/CLUSTERS.md). Local only — `corpus/interesting` is
+      gitignored, CI gates on `seeds`/`regression`/`conformance`, so this buys triage speed
+      (~10 min → under a minute per full cluster run) and changes no gate.
+      **Re-apply after every fuzz round**, or the corpus regrows redundant.
 
 ## Open — waiting on upstream, then verify
 

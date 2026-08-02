@@ -9,7 +9,86 @@ CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh
 # or directly: python3 oracle/cluster.py --corpus <dir> --driver name:path …
 ```
 
-## Snapshot — 2026-08-02 (re-cluster, not a new round: corelib-c-cpp `17f9a8e` + corelib-rs-no-std `c2a733c` + sofabgen `…619ec3c5`)
+## Snapshot — 2026-08-02 (1 h 10 pacemaker round on the new sources; corpus 5306 → 5994)
+
+The first round *fuzzed against* corelib-c-cpp `17f9a8e` — the collapsed per-type dispatch in
+`object.c`/`istream.c`/`ostream.c`. Budgeted for 3 h × 4 jobs, **stopped at 1 h 10 by request**.
+
+**~174 M execs, 0 ASan/UBSan hits, crashes unchanged at 6.** Corpus 5306 → **5994** (+688
+coverage-increasing inputs). Per-job `cov: 666 ft: 4785`, and all three jobs converged on that
+figure to the last digit — the reachable structure was saturating, not cut off mid-climb.
+
+> **Note on the job count.** `-jobs=4` was requested but libFuzzer defaults `-workers` to
+> `ncores/2` = 3 here, so three ran concurrently and the fourth stayed queued. A 4-job run on
+> this box is therefore ~6 h of wall clock, not 3. Also: a stale `fuzz-3.log` from the
+> 2026-08-01 round survives in the workspace and still reads `DONE cov: 721 ft: 5215` — those
+> are **last** round's numbers, not this one's.
+
+**5994 inputs: 3623 agree, 2371 diverge → 15 clusters** (was 3235 / 2071 / 15).
+
+**No new cluster.** Every one maps onto the re-cluster below at the same camps; the +300
+diverging inputs land entirely in existing clusters, and the arithmetic closes exactly:
+
+| # | inputs | Δ | root cause |
+|---|---|---|---|
+| 1 | **2286** | **+286** | benign java `incomplete_value` soft split — 95 % of the growth |
+| 2 | 25 | +5 | **F-0044** (generator#268) |
+| 3 | 20 | +4 | **F-0043** at a `string_array` element |
+| 4 | 8 | — | **F-0048** (generator#273) |
+| 5 | 7 | **+4** | **F-0044**, verdict-flip symptom |
+| 6 | 7 | — | **F-0046** (generator#271) |
+| 7 | 4 | — | legal — §6.4 `MAY` ([documentation#33](https://github.com/sofa-buffers/documentation/issues/33)) |
+| 8 | 2 | +1 | **F-0045** (generator#270) — new representative `033dedb58af8` (459 B) |
+| 9, 12, 14, 15 | 2, 2, 1, 1 | — | **F-0043** at four further positions |
+| 10 | 2 | — | **F-0047** (generator#272) |
+| 11 | 2 | — | **F-0033** (generator#266) |
+| 13 | 2 | — | **F-0044 × F-0033**, still no finding of its own |
+
+286 + 5 + 4 + 4 + 1 = **300** = the whole delta, so nothing re-sorted unnoticed. Cluster
+numbering shifted against the previous snapshot (5 and 6 swapped as cluster 5 grew 3 → 7);
+match by representative, not by number.
+
+**Landscape.** Only **14** of the 300 new diverging inputs are hard divergences, spread over
+three already-catalogued findings; the other 286 are the soft java axis where the verdict is
+unanimous. For a round fuzzed directly at a 265-line rewrite of the C dispatch — under ASan and
+UBSan, no crash, no sanitizer hit, no new root cause — that is the intended null result.
+
+**F-0048's cluster grew by exactly zero.** It needs a repeated element id inside a wrapper, a
+shape the mutator does not stumble into. That is the empirical case for the sweep axis added
+the same day (`sweep_repeated_elem`): what the fuzzer cannot reach has to be enumerated.
+
+**Caveat.** 1 h 10 is weaker evidence than the 3 h baseline, and 688 new coverage inputs show
+there was still structure to find. "No new cluster" here means *not in this budget*.
+
+### Corpus minimized the same day: 5994 → 579, all 15 clusters intact
+
+`corpus/interesting` had never been minimized. It now is, but **not** by the obvious means —
+a plain `libFuzzer -merge=1` is actively wrong here and the numbers say so:
+
+| corpus | files | clusters |
+|---|---|---|
+| full | 5994 | **15** |
+| `-merge=1` alone | 503 | **6** ❌ |
+| **adopted:** merge ∪ hard-diverging | **579** | **15** ✅ |
+
+`-merge=1` minimizes by **C coverage**, but the oracle is disagreement among **13** drivers.
+Two inputs identical in C coverage can diverge differently everywhere else, so the plain merge
+silently discarded the corpus evidence for **F-0045, F-0046, F-0047 and F-0048** among others —
+9 of 15 root causes gone, with no error and no warning.
+
+**The rule that is safe:** *coverage-minimal ∪ every hard-diverging input* (a verdict split, or
+an agreed accept with differing re-encode — 85 inputs). Hard divergences are then preserved
+**by construction**, not by hoping the coverage proxy tracks them. Soft splits (agreed verdict,
+differing payload) are not force-kept: the coverage-minimal set carries 335 of them anyway, so
+cluster 1 shrinks 2286 → 335 and cluster 6 loses its one soft member. Every cluster keeps its
+representative byte-identical.
+
+The win is triage speed — a full 13-driver cluster run drops from ~10 min to well under one —
+and it is **local only**: `corpus/interesting` is gitignored, so nothing here changes CI, which
+gates on `seeds` / `regression` / `conformance` instead. The durable artifact is the rule, not
+the file set.
+
+## Snapshot — 2026-08-02 (re-cluster of the unchanged corpus, no fuzzing: corelib-c-cpp `17f9a8e` + corelib-rs-no-std `c2a733c` + sofabgen `…619ec3c5`)
 
 **No fuzzing was done for this snapshot.** It re-clusters the *unchanged* 5306-input corpus
 grown by the 2026-08-01 round, against a family where only three things moved: the two

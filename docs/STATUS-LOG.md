@@ -19,6 +19,50 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Pacemaker round 2026-08-02 — first fuzzing against the rewritten C dispatch; no new root
+cause.** ~174 M execs under ASan+UBSan against corelib-c-cpp `17f9a8e`, whose
+`perf(footprint)` commit churned 265 lines of `object.c`'s per-type dispatch plus
+`istream.c`/`ostream.c`. **0 sanitizer hits, crashes unchanged at 6**, corpus 5306 → 5994
+(+688). Re-clustering the grown corpus gives 15 clusters again, every one mapping onto a
+catalogued finding at unchanged camps; of the +300 diverging inputs, 286 are the benign java
+soft axis and the remaining 14 spread over three known findings. Details in
+[`../results/CLUSTERS.md`](../results/CLUSTERS.md).
+
+*Two operational facts worth not re-learning.* `-jobs=4` does **not** mean four concurrent
+jobs: libFuzzer defaults `-workers` to `ncores/2`, so on this 6-core box three ran and the
+fourth queued — a nominal "3 h, 4 jobs" is ~6 h of wall clock. And the per-job `fuzz-N.log`
+files are **not** cleared between rounds: `fuzz-3.log` still held the 2026-08-01 round's
+`DONE cov: 721 ft: 5215` while this round was running, which reads as a current result to
+anything that just tails the logs. Both are recorded in the snapshot.
+
+*Decision: stopped at 1 h 10 of the 3 h budget, by request.* Defensible on the evidence — all
+three jobs had converged on `cov: 666 ft: 4785` to the last digit, which indicates saturation
+rather than a run cut short. But stated plainly in the snapshot: "no new cluster" means *not
+within this budget*, and 688 fresh coverage inputs say there was still structure to find. A
+null result from 1 h 10 is weaker than one from 3 h and should not be quoted as if it were the
+same.
+
+*Corpus minimized afterwards — and the obvious method was wrong.* `corpus/interesting` had
+never been minimized; `docs/TODO.md` proposed `libFuzzer -merge`. Done naively that is a
+**signal-destroying** operation here: the merge gives 503 files and **6 clusters instead of
+15**, silently discarding the corpus evidence for F-0045, F-0046, F-0047 and F-0048 among
+others. The reason is structural — `-merge=1` minimizes by **C coverage**, while the oracle is
+disagreement among **13** drivers, so two inputs indistinguishable to the C pacemaker can carry
+entirely different divergences elsewhere. The coverage proxy simply does not track the thing
+being minimized for.
+
+*Rule adopted instead: coverage-minimal ∪ every hard-diverging input.* 503 ∪ 85 = **579 files,
+all 15 clusters, every representative byte-identical**. Hard divergences are preserved **by
+construction** rather than by trusting the proxy. Verified by clustering all three corpora and
+comparing, not by assuming. Local only — the corpus is gitignored and CI gates on
+`seeds`/`regression`/`conformance` — so the gain is triage speed (a full cluster run drops from
+~10 min to under a minute) and the durable artifact is the rule, recorded in `CLUSTERS.md`.
+
+*The finding that did not grow.* F-0048's cluster stayed at exactly 8 inputs. It needs a
+repeated element id inside a wrapper — a shape the mutator does not stumble into. That is the
+empirical argument for `sweep_repeated_elem`, added the same day: what the fuzzer cannot reach
+has to be enumerated.
+
 **Two sweep axes added 2026-08-02 — the cells F-0044 and F-0048 walked through.** Both
 findings came from the fuzzer, and both sat in a cell the sweep suite structurally could not
 reach. Each now has a dedicated axis, in `scripts/sweep.sh` as **report-only** (ground rule 4 —
