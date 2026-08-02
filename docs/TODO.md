@@ -194,13 +194,16 @@ here:
          divergence: CORELIB_PLAN §6.4 grants a `MAY`, raised upstream as documentation#33 —
          re-triage once that rules. **8** is F-0044's second symptom (verdict flip; noted on
          generator#268). **10** → **F-0047** (generator#272).
-      3. **Cluster 5 of the 2026-08-01 snapshot = cluster 4 of the 2026-08-02 one (8 inputs)** —
-         `rust-nostd` alone rejects `buffer_full` where 12 accept. Decide whether it is a legal
-         constrained-profile bound (CORELIB_PLAN §6, like the dormant
-         `bounded-lazy-seq-depth-noncanonical-frames` policy entry) or a finding.
-         **Datum (2026-08-02):** it is unchanged by corelib-rs-no-std `c2a733c`, which rebuilt
-         `istream.rs` around a ≤32 B decoder state — the most plausible mover of a capacity
-         bound. That it did not budge leans toward "deliberate bound", but does not settle it.
+      3. [x] **Cluster 5 (2026-08-01) = cluster 4 (2026-08-02), 8 inputs — DONE 2026-08-02:
+         minimized to F-0048** (305 B → 11 B, 4 controls). **A finding, not the legal
+         CORELIB_PLAN §6 bound it resembled** — and not a capacity issue at all: the no-std
+         backend's wrapper-array **element** sink appends instead of replacing (generated
+         `message.rs` 452/475, no `clear()`), so MESSAGE_SPEC §7.4 last-wins is violated and the
+         accompanying guard `_e.len() != _s.len()` misfires into `buffer_full` on any duplicate
+         element id at any size. rust-std gets the same position right, which is what pins it to
+         codegen (**G-0032**, not yet filed). That the rewrite of `istream.rs` left it unmoved is
+         explained: the defect was never in the corelib.
+         **This closes the 2026-08-01 round's triage — all 17 clusters attributed.**
 
 - [ ] **New sweep axis: an unknown *sequence* id carrying children** (coverage gap exposed by
       F-0044). `sweep_framing.py` uses unknown ids (50/51) only with scalar / fixlen / array wire
@@ -208,6 +211,16 @@ here:
       6-byte defect had to be found by the fuzzer instead. Vectors: unknown seq × {empty, one
       scalar child, nested sequence child, child whose id collides with a real field of the
       enclosing scope}, at every sequence position.
+
+- [ ] **New sweep axis: a repeated *element* id inside an array wrapper** (coverage gap exposed
+      by F-0048). **F-0019** established the §7.4 duplicate-id axis, but its vectors repeat a
+      *sequence* id (`nested`, `arrays`) and an array **wrapper** id (200) — never an **element**
+      id *inside* a wrapper, which is the cell F-0048 lives in. Second time a §7.4 blind spot has
+      cost a finding. Vectors: element id repeated × {same value, different value, empty-then-value,
+      value-then-empty, enough repeats to exceed `maxlen` if concatenated} × {`string_array`,
+      `blob_array`, `struct_array`}, plus the same at a *scalar* string field as the control that
+      already passes. Both oracles — the value split is what the round-trip oracle sees only when
+      the verdict does not flip first.
 
 - [ ] **Re-enable `sweep_malform_truncate`'s broadened truncation when F-0043 closes.** The axis
       currently applies the full offset sweep only to the STRUCTURAL malformations; the

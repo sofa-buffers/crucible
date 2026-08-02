@@ -64,6 +64,34 @@ the most plausible cause of a capacity bound shifting. That weakly favours readi
 deliberate fixed-capacity bound legal under CORELIB_PLAN §6 rather than a finding, but it is
 still undecided.
 
+**Triage 2026-08-02 (same day, later) — that cluster is F-0048, and the "unmoved" reading was
+wrong.** Minimized 305 B → 11 B. It is not a capacity bound and never was: the no-std backend's
+wrapper-array **element** sink appends where every sibling sink replaces (generated
+`message.rs` 452 `string_array`, 475 `blob_array`, neither preceded by a `clear()`), so
+MESSAGE_SPEC §7.4 last-wins is violated, and the capacity guard sitting on those lines —
+`if _e.len() != _s.len()`, which presumes an empty destination — then misfires into
+`Error::BufferFull` on **any** duplicate element id at **any** size. `r1` accumulates 4 bytes
+into a `String<64>` and still rejects.
+
+*Decision: codegen, filed as G-0032, corelib untouched.* Two independent signals, both from
+CLAUDE.md's triage rules: **rust-std gets the identical position right**
+(`string_array[id] = _s`) — a split between two profiles of one language, which heuristic 3
+says indicts the generated container — and the corelib is schema-agnostic, having delivered
+every byte faithfully through `(id, total, offset, chunk)`. Chunk assembly is already done
+upstream in `acc`, so each sink arm receives a complete value and appending is never right
+there.
+
+*Worth recording as a reasoning error, not just a result.* The earlier entry read "unchanged by
+a rewrite of the state layout" as evidence for a deliberate bound. The inference was backwards:
+the rewrite changed nothing because the defect was never in the corelib at all. A corelib-side
+null result is evidence about the corelib, not about whether a finding exists — the same trap
+F-0008 fell into when it was first filed against corelib-c-cpp#84.
+
+*This closes the 2026-08-01 round.* All 17 clusters are attributed: 13 to catalogued findings,
+one legal (documentation#33), one a product of two others, and this one new. A second §7.4
+blind spot in the sweep suite is now on `docs/TODO.md` — F-0019 covers a repeated *sequence*
+id and a repeated array *wrapper* id, but never a repeated **element** id inside a wrapper.
+
 **Family bump 2026-08-01 — corelibs 0.10.0 + sofabgen 0.22.0: two findings closed, one
 narrowed, one reshaped, one found.** Bootstrapped with the defaults on `main` (the stale POC
 branches are gone, so branch-tracking no longer needs the `FAMILY_BRANCH=main` override the

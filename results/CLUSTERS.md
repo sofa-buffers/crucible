@@ -25,7 +25,7 @@ attributable to those three and nothing else — the inputs are identical.
 | 1 | **2000** | 1 (1965) | all `I` · java `I`+value | **soft** — java's `incomplete_value` on `I`; verdict unanimous. **+35: F-0038's larger cluster landed here** once dart stopped rejecting, leaving only the benign java split |
 | 2 | 20 | 3 | accept→empty (8) · →`19d60c` (csharp, java, rust×2, zig) | **F-0044** (generator#268 / G-0028) |
 | 3 | 16 | 4 | `I` (7+java) · `R` c, cpp, cpp-c-cpp, py×2 | **F-0043** at a `string_array` element (`maxlen: 64`) — rep `c6 0c 02 ca 06` |
-| **4** | **8** | **5** | accept (12) · `R` **rust-nostd** `buffer_full` | **still the only untriaged cluster.** Unchanged by the decoder-state rewrite that was its most plausible mover — weak evidence for a deliberate fixed-capacity bound (CORELIB_PLAN §6) over a finding. See `docs/TODO.md` |
+| 4 | 8 | 5 | accept (12) · `R` **rust-nostd** `buffer_full` | **F-0048** (**G-0032**) — triaged 2026-08-02, 305 B → 11 B. **Not** the CORELIB_PLAN §6 capacity bound it resembled: the no-std backend's wrapper-array *element* sink appends instead of replacing, violating §7.4 last-wins, and its `_e.len() != _s.len()` guard then misfires into `buffer_full` on **any** duplicate element id at **any** size. These 8 were the only `buffer_full` verdicts in the whole corpus |
 | 5 | 7 | 6 | `I` (10+java) · `R` rust-std, rust-nostd | **F-0046** (generator#271) |
 | 6 | 4 | 7 | `I` (11+java) · `R` zig | **legal** — CORELIB_PLAN §6.4's mid-payload `MAY`; [documentation#33](https://github.com/sofa-buffers/documentation/issues/33) |
 | 7 | 3 | 8 | `I` (8) · `R` csharp, java, rust×2, zig | **F-0044**, verdict-flip symptom |
