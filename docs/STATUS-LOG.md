@@ -41,7 +41,7 @@ as `StringSeq::elemWire`; enforcement is entirely the corelib's. The sibling set
 **`cpp-c-cpp` is correct**, same C++ backend, different corelib, so the split follows the
 corelib boundary (the F-0013 / F-0050 signature). corelib-cpp's own header documents the rule it
 misses: a contradicting element *"is not this array's element at all … bound or no bound"* —
-which it honours for the element and not for its children.
+which it honours for the element and not for its children. Filed as [corelib-cpp#65](https://github.com/sofa-buffers/corelib-cpp/issues/65).
 
 *The general lesson, worth more than the finding.* Two defects with **opposite mechanisms** —
 enter-and-bind versus skip-but-still-enforce — produce **identical camps** on every vector where
