@@ -49,12 +49,21 @@ here:
 - [x] **Dynamic-array last-element rule untestable** — RESOLVED 2026-07-28: #31 generalized
   the rule from *dynamic* to **every** wrapper array, so probe's `count: 5` wrappers test it
   (`corpus/conformance/e_wrapper_*`, the `cap_sa_*` cross-encode vectors).
-- [ ] **The family still ships trim-on-encode / fill-on-decode** (documentation#31): every
-  backend's `_trim_tail` / `_pad_to` (the old F-0010 resolution, generator#136 / sofabgen
-  0.17.2) is now non-conformant, and corelib-c-cpp additionally elides a trailing *element*
-  (F-0036, direction inverted). Crucible's vectors already assert the new rule, so the
-  §3/§5.1 gates are **expected red** until the family converges — re-verify, then promote.
-  Upstream issues still to file: the generator rollback, and corelib-c-cpp for F-0036.
+- [x] **The family still ships trim-on-encode / fill-on-decode** (documentation#31) —
+  **DONE 2026-08-02: it does not, and no upstream issue was needed.** Both halves of this item
+  had already converged and the item was simply never re-checked:
+  - *The generator rollback.* `_trim_tail` / `_pad_to` are gone from **every** backend.
+    `corpus/conformance/b_array_*` are **green**, not the "expected red" this item predicted:
+    `[1,2,3,0,0]` and `[1,2,3]` each round-trip to themselves, so they are the two distinct
+    values #31 requires rather than collapsing onto one wire form.
+  - *corelib-c-cpp for F-0036.* Already resolved in sofabgen 0.21.0 (generator#248) and
+    re-verified 2026-07-29; re-verified again 2026-08-02 — `c` itself round-trips all three
+    reproducers byte-identically, keeping the `0e 07` trailing empty frame and the `[{}]`
+    single all-default element. Nothing to file.
+
+  Both were checked on the **value**, not on agreement alone (c / go / rust-nostd read out
+  individually — C object API, heap and fixed-capacity profiles), because a family-wide wrong
+  answer is invisible to a differential oracle.
 - [ ] **Lazy-depth divergence sweep** (POC CORELIB_PLAN §6): the bounded hold-back
   (`SOFAB_LAZY_SEQ_DEPTH` = 8 in corelib-c-cpp; rs-no-std likewise) only becomes observable with
   all-default sequence chains nested deeper than 8 — `probe` nests 3. A dedicated deep schema + suite

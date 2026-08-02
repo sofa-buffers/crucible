@@ -19,6 +19,33 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Doc audit 2026-08-02 — F-0010 and the §3/§5.1 trim/pad item were stale, not open.** Reviewing
+the open-findings list surfaced a `docs/TODO.md` item asserting *"the family still ships
+trim-on-encode / fill-on-decode"* with the §3/§5.1 gates *"expected red until the family
+converges"*. Neither is true, and had not been for some time — the item was written when the
+rollback was pending and never re-checked once it landed.
+
+*What is actually the case.* `_trim_tail` / `_pad_to` are absent from every backend;
+`corpus/conformance/b_array_*` are green. `[1,2,3,0,0]` re-encodes to
+`a606 0305010203 0000 07` and `[1,2,3]` to `a606 0303010203 07`, each byte-identical to its
+input — two distinct values, which is exactly documentation#31's capacity rule. The second half
+of the item (corelib-c-cpp for F-0036) was equally stale: resolved in sofabgen 0.21.0 and
+verified 2026-07-29, and `c` still round-trips all three F-0036 reproducers byte-identically.
+Neither of the two upstream issues the item said were "still to file" is needed.
+
+*Method worth keeping.* Both were verified on the **value**, by reading c / go / rust-nostd out
+individually (C object API, heap profile, fixed-capacity profile), not on the differential's
+0-divergences alone. Crucible's oracle is *disagreement*, so a family-wide wrong answer is
+structurally invisible to it — "all 13 agree" is not evidence that the 13 are right. That
+distinction is the whole reason a green gate did not settle this question either way.
+
+*Third correction, the worst of the three.* `corpus/conformance/README.md` — which
+`ARCHITECTURE.md` names as the owner of what those vectors assert — documented a file
+`b_array_trailing_defaults_noncanonical.bin` that does not exist, and described the **old**
+trim rule. The vector on disk is `b_array_trailing_defaults_kept.bin` and asserts the
+**opposite**. The file was re-pointed at #31's rule on 2026-07-28 and its own README was never
+updated, so the single source of truth for that gate stated the inverse of what the gate checks.
+
 **Partial bump 2026-08-02 — corelib-c-cpp + corelib-rs-no-std refactors, and F-0038 closes.**
 Only two corelibs had moved since the 2026-08-01 bump, both with footprint work: corelib-c-cpp
 `d020545 → 17f9a8e` (*"collapse the repeated per-type dispatch in the object and stream paths"*,
