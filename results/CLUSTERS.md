@@ -9,6 +9,51 @@ CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh
 # or directly: python3 oracle/cluster.py --corpus <dir> --driver name:path …
 ```
 
+## Snapshot — 2026-08-02 (re-cluster, not a new round: corelib-c-cpp `17f9a8e` + corelib-rs-no-std `c2a733c` + sofabgen `…619ec3c5`)
+
+**No fuzzing was done for this snapshot.** It re-clusters the *unchanged* 5306-input corpus
+grown by the 2026-08-01 round, against a family where only three things moved: the two
+corelib footprint refactors (corelib-c-cpp's collapsed per-type dispatch, corelib-rs-no-std's
+≤32 B decoder state) and the generator bump that carried
+[generator#269](https://github.com/sofa-buffers/generator/pull/269). So every delta below is
+attributable to those three and nothing else — the inputs are identical.
+
+**5306 inputs: 3235 agree, 2071 diverge → 15 clusters** (was 3233 / 2073 / **17**).
+
+| # | inputs | was | partition | root cause |
+|---|---|---|---|---|
+| 1 | **2000** | 1 (1965) | all `I` · java `I`+value | **soft** — java's `incomplete_value` on `I`; verdict unanimous. **+35: F-0038's larger cluster landed here** once dart stopped rejecting, leaving only the benign java split |
+| 2 | 20 | 3 | accept→empty (8) · →`19d60c` (csharp, java, rust×2, zig) | **F-0044** (generator#268 / G-0028) |
+| 3 | 16 | 4 | `I` (7+java) · `R` c, cpp, cpp-c-cpp, py×2 | **F-0043** at a `string_array` element (`maxlen: 64`) — rep `c6 0c 02 ca 06` |
+| **4** | **8** | **5** | accept (12) · `R` **rust-nostd** `buffer_full` | **still the only untriaged cluster.** Unchanged by the decoder-state rewrite that was its most plausible mover — weak evidence for a deliberate fixed-capacity bound (CORELIB_PLAN §6) over a finding. See `docs/TODO.md` |
+| 5 | 7 | 6 | `I` (10+java) · `R` rust-std, rust-nostd | **F-0046** (generator#271) |
+| 6 | 4 | 7 | `I` (11+java) · `R` zig | **legal** — CORELIB_PLAN §6.4's mid-payload `MAY`; [documentation#33](https://github.com/sofa-buffers/documentation/issues/33) |
+| 7 | 3 | 8 | `I` (8) · `R` csharp, java, rust×2, zig | **F-0044**, verdict-flip symptom |
+| 8 | 2 | 9 | `R` c, cpp, cpp-c-cpp, dart, go, ts · `I` (7) | **F-0043** — rep `56 1a 73`, byte-identical to the 2026-08-01 rep |
+| 9 | 2 | 10 | `I` (7) · `R` csharp, dart, java, rust×2, zig | **F-0047** (generator#272) |
+| 10 | 2 | 11 | `R` c, cpp-c-cpp · →`00ff01` (6) · →`00ff7f` (5) | **F-0033** — rep `00 ff 7f`, byte-identical to `u8_over_16383.bin`; all three camps intact |
+| 11 | 2 | 13 | `R` (6) · `I` (7) | **F-0043** — rep `c6 0c 2a 0a`, byte-identical to `string_array_over_id_trunc_004.bin` |
+| 12 | 2 | 14 | →empty (8) · →`004619d60c` (4) · →`00c60c19d60c` (java) | **F-0044 × F-0033**, still no finding of its own |
+| 13 | 1 | 15 | →empty (10) · →`a60603010007` (rust×2, zig) | **F-0045** (generator#270 / G-0029) |
+| 14 | 1 | 16 | `R` (8) · `I` csharp, rust×2, zig (+java) | **F-0043** — rep `56 12 82 07`, byte-identical to the 2026-08-01 rep |
+| 15 | 1 | 17 | `R` (10) · `I` dart, go, ts | **F-0043**, the 1-input half of the old 4/17 pair |
+
+**Gone: the two F-0038 clusters** — old #2 (35 inputs, `I` 12 · `R` dart) and old #12 (2 inputs,
+accept 12 · `R` dart). generator#269 fixed the dart backend's string-free scope, and dart now
+agrees: the 35 fold into cluster 1 (benign java-soft only), the 2 become fully unanimous —
+which is the whole 2073 → 2071 delta. Verified independently of the clustering by replaying
+F-0038's five vectors: 0 divergences across 13 drivers. `4a 0a 8a`
+(`unknown_id_string_invalid_utf8.bin`) is no longer the representative of any cluster.
+
+**Landscape.** Every surviving cluster maps one-to-one onto the 2026-08-01 snapshot at the
+same camps and the same input counts; where that snapshot quoted representative bytes, the
+new representatives are byte-identical (#8, #10, #11, #14). No cluster gained a camp, no new
+cluster appeared. For two rewrites of this size — 265 lines churned in `object.c`'s dispatch,
+`istream.rs` rebuilt around a ≤32 B state with `varint.rs` largely absorbed — that null result
+*is* the finding. The useful caveat is what a re-cluster cannot see: it re-answers old
+questions, so it proves the refactors preserve behavior on known inputs and says nothing about
+inputs the old corpus never contained. A fresh round on these sources is the missing evidence.
+
 ## Snapshot — 2026-08-01 (corelibs 0.10.0 + sofabgen 0.22.0, 3-hour round)
 
 196.4 M execs @ 18.2k exec/s across 4 jobs, cov 721 / ft 5215, 615 new units, **0

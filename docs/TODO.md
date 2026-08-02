@@ -194,9 +194,13 @@ here:
          divergence: CORELIB_PLAN §6.4 grants a `MAY`, raised upstream as documentation#33 —
          re-triage once that rules. **8** is F-0044's second symptom (verdict flip; noted on
          generator#268). **10** → **F-0047** (generator#272).
-      3. **Cluster 5 (8 inputs)** — `rust-nostd` alone rejects `buffer_full` where 12 accept.
-         Decide whether it is a legal constrained-profile bound (CORELIB_PLAN §6, like the dormant
+      3. **Cluster 5 of the 2026-08-01 snapshot = cluster 4 of the 2026-08-02 one (8 inputs)** —
+         `rust-nostd` alone rejects `buffer_full` where 12 accept. Decide whether it is a legal
+         constrained-profile bound (CORELIB_PLAN §6, like the dormant
          `bounded-lazy-seq-depth-noncanonical-frames` policy entry) or a finding.
+         **Datum (2026-08-02):** it is unchanged by corelib-rs-no-std `c2a733c`, which rebuilt
+         `istream.rs` around a ≤32 B decoder state — the most plausible mover of a capacity
+         bound. That it did not budge leans toward "deliberate bound", but does not settle it.
 
 - [ ] **New sweep axis: an unknown *sequence* id carrying children** (coverage gap exposed by
       F-0044). `sweep_framing.py` uses unknown ids (50/51) only with scalar / fixlen / array wire
