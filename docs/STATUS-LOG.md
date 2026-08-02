@@ -19,6 +19,25 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Verification bump 2026-08-02 (late) — three corelibs moved, nothing regressed.** Re-pulled
+the whole family: corelib-dart `1b83161` (**perf/word-wise-varints**), corelib-zig `29ca282`
+(**perf/swar-varint-codecs**) and corelib-go `c6e0952` (tests only — fp32 NaN-bit coverage, the
+go-side counterpart of F-0031/F-0049). The other eight corelibs and sofabgen were already at
+tip.
+
+*Two of the three are varint codec rewrites*, which is the change class this suite exists for —
+the varint reader is the hottest path in the format and carries F-0016's 64-bit overflow check
+in the tenth byte. Result: **all 8 gates green, all 11 sweep axes green** (`sweep_varint` 25/25,
+`wiretype_sweep` 363/363), both oracles green (`materialize.sh` 108 × 13, C anchor 0/108), and
+re-clustering the 878-input corpus reproduces the previous state exactly — 7 clusters, same
+representatives, same counts. No new divergence anywhere.
+
+*F-0043 re-checked and unchanged.* Still open (generator#267, awaiting review), and its camps
+are byte-for-byte the catalogued ones across all four clusters — the corelib work did not move
+it. Nothing to re-attribute.
+
+*Catalogue state: 51 findings, exactly one open.*
+
 **F-0049 closed 2026-08-02 — and the upstream fix was only half of it.**
 [generator#275](https://github.com/sofa-buffers/generator/issues/275) landed as
 `fix(dart): the fp32 raw-bits companion must be consumer-visible`: the generated field is now

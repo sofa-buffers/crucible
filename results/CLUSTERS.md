@@ -14,7 +14,10 @@ CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh
 Same 878-input corpus as the Go-steered snapshot below, re-clustered after upstream fixed
 generator #266/#268/#270/#271/#272/#273, corelib-c-cpp#126 and corelib-cpp#65.
 
-**878 inputs: 298 agree, 580 diverge → 7 clusters** (was 258 / 620 / **17**).
+**878 inputs: 298 agree, 580 diverge → 7 clusters** (was 258 / 620 / **17**). *Re-confirmed
+later the same day* against corelib-dart `1b83161`, corelib-zig `29ca282` and corelib-go
+`c6e0952` — two of them varint codec rewrites — with identical clusters, representatives and
+counts.
 
 | # | inputs | root cause |
 |---|---|---|
