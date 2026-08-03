@@ -19,6 +19,31 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The tolerance axis, and an oracle that can see something the others cannot (2026-08-03).**
+`sweep_tolerance` (CORELIB_PLAN §7.2 class **5b**) is blocking: 49 vectors over all 7 sequence
+positions, green on all 13 drivers.
+
+*Why it needed a new kind of assertion.* Every existing axis asks "do they agree?" and then
+"is the verdict right?". Neither question can catch a family that is **uniformly** too strict,
+because 13 rejects is unanimous and unanimity is what green looks like. It also cannot catch a
+family that accepts a non-canonical form and echoes it straight back. So the runner gained
+`expect="same:<twin>"` — accept **and** re-encode to the same bytes as the named canonical
+vector. That is the contract change; the axis is its first user, and `sweep_varint`'s
+non-minimal vectors are the obvious second.
+
+*The axis was verified by breaking it.* A green new test that cannot fail is worth nothing, and
+the first attempt at a negative test proved the point: putting an extra field id 7 inside the
+`nested` struct changed nothing, because id 7 is undeclared there and §7.3-skipped — the test
+was wrong, not the check. Making the canonical twin an empty frame instead produced **28
+conformance failures**, four per position. The check fails when it should.
+
+*Scope, deliberately.* Class 5b names two families; the non-minimal **varint** half is already
+swept exhaustively by `sweep_varint` (WP-03) with the same `expect="accept"` reasoning, so it is
+cross-referenced rather than duplicated — a second copy would only be a second place for the two
+to disagree. This axis owns the sequence-end half, which is where F-0054 lived. Had all 13
+implementations applied `ID_MAX` to wire type 7 — nine of them did — that finding would never
+have surfaced at all.
+
 **One finding, one folder, one write-up (2026-08-03).** The catalog was restructured rather than
 patched again. Every entry — `F-00NN` **and** `G-00NN` — now has a folder under `findings/` whose
 `NOTES.md` owns everything about it: the defect, the reproducer, the attribution and a

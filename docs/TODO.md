@@ -115,17 +115,18 @@ here:
       - over-index element × truncation **inside** the fixlen word → F-0043's finer offset
       Cheapest home for all three is `sweep_framing`, which already owns both parents.
 
-- [ ] **A tolerance axis — the class the differential oracle structurally cannot see**
-      (CORELIB_PLAN §7.2 test class **5b**, added 2026-08-03). Non-canonical but well-formed
-      input MUST decode to the value it denotes and re-encode canonically, never `INVALID`.
-      An implementation that is *uniformly too strict* produces **no divergence at all**, so
-      the oracle is blind to it — F-0054 surfaced only by the accident of a 4-vs-9 split. It
-      is testable regardless, because sweep vectors carry an **absolute** expectation
-      (`add(..., "accept")`), not cross-impl agreement. The spec names the cases: a
-      non-minimal varint (§4.1) at a **field header**, at a **`fixlen_word`** and at an
-      **element count**; and a **sequence-end header with a non-zero id** (§4.9). Home is
-      `sweep_framing` for the seq-end case, and the varint cases want their own axis since
-      they cut across every position.
+- [x] **A tolerance axis — DONE 2026-08-03** (`engine/structured/sweep_tolerance.py`, blocking).
+      CORELIB_PLAN §7.2 class **5b**: non-canonical but well-formed input MUST decode to the
+      value it denotes and re-encode canonically. The class the differential oracle is
+      structurally blind to — a family that is *uniformly* too strict is unanimous, and
+      unanimity is what green looks like everywhere else. **49 vectors** over all 7 sequence
+      positions: a sequence-end id of 3 and of `ID_MAX`, and id 0 spelled non-minimally
+      (`87 00`, `87 80 00`), against the over-`ID_MAX` and over-64-bit-varint rejects as the
+      strict-side contrast. The varint half of 5b stays in `sweep_varint` (WP-03) rather than
+      being duplicated here. Green on all 13.
+      **The runner gained `expect="same:<twin>"`** for it — accept *and* normalize, asserted
+      against the canonical twin's re-encode. Verified by deliberately breaking a twin: 28
+      conformance failures, so the check can fail rather than merely being green.
 
 - [ ] **A vector for F-0054's normalization half.** The 6-byte isolate closes a *skipped*
       unknown subtree, so the whole message re-encodes to the empty byte string and the
