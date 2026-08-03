@@ -1,5 +1,7 @@
 # F-0052 — the cpp backend never arms `readArray`'s element-width bound, so `cpp` masks an over-width array element
 
+**Filed 2026-08-03 as [generator#279](https://github.com/sofa-buffers/generator/issues/279).**
+
 **Found 2026-08-03** by the 4-hour pacemaker round (577 M execs, corpus 878 → 2609) — the one
 new cluster of that round, minimized 49 B → 11 B and then rebuilt as a clean isolate.
 
