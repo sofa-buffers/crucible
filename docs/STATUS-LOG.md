@@ -19,6 +19,24 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**F-0055 closed 2026-08-03 — one open finding left.** generator#283 landed as `bd67d2b`
+("stack only live scopes, so a deep skip can't lose") at 16:53, and its CI artifact arrived
+shortly after. Verified on sofabgen `0.0.0-20260803165303-bd67d2b2f84c`, the **first build
+carrying it**: an earlier sweep the same afternoon still showed the camp because the vendored
+generator was 67 minutes older. The closed ticket was deliberately not taken as the resolution —
+the isolate was.
+
+*Read out per driver, because this finding is the reason that rule exists.* F-0055 was silent
+**loss**: rust-no-std accepted a message and returned it empty. Had the fix gone the other way
+and every implementation returned empty, the differential oracle would have reported the same
+unanimous "0 divergences". It now re-encodes `5602200000c03f07` (`nested.f32 = 1.5`) like the
+other twelve, with `r3_depth9_wrapper_lost` at `c60c020a4107`; both controls unchanged, and
+`materialize.sh` 108 × 13 clean.
+
+Reproducers promoted (`F0055_*`, gate 176 → **181**, green), camp deleted from
+`known-clusters.txt`. **Tally: 53 resolved, 1 open** — F-0043 / generator#267, which still
+produces seven clusters and is the last finding waiting on the generator.
+
 **The tracking table had rotted, and that is a structural fault not a slip (2026-08-03).**
 `results/FINDINGS.md` carries two tables: the findings catalog and *"Tracking issues (generator
 repo)"*. Nine of the ten `G-00NN` rows read **open** while their generator issues were closed —

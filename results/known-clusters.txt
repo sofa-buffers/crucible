@@ -21,4 +21,3 @@ I:csharp,dart,go,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,py-cy
 I:csharp,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,dart,go,py-cython,py-pure,typescript  # F-0043 — over_len_string, further offset (generator#267)
 I:dart,go,typescript | reject:c,cpp,cpp-c-cpp,csharp,java,py-cython,py-pure,rust-nostd,rust-std,zig  # F-0043 — over_len_string at the word (generator#267)
 I:c,cpp,cpp-c-cpp,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:typescript  # F-0043, finer offset — over-index element truncated INSIDE the fixlen word; only typescript decides at the earliest decidable point
-accept:c,cpp,cpp-c-cpp,csharp,dart,go,java,py-cython,py-pure,rust-std,typescript,zig | accept:rust-nostd  # F-0055 — no-std visitor scope stack overflows at depth 9 and the error is discarded; a later field is silently lost
