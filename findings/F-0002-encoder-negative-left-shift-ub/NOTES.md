@@ -1,9 +1,6 @@
 # F-0002 — corelib-c-cpp encoder: left shift of a negative value (UB)
 
-**Status:** ✅ **resolved** — fixed upstream in [corelib-c-cpp#70](https://github.com/sofa-buffers/corelib-c-cpp/pull/70) (issue #69 closed). Re-verified 2026-07-08 against **sofabgen 0.15.1 + corelib-c-cpp@main**: the round-trip re-encode of `i_negative.bin` runs clean under the C driver's UBSan build (no left-shift runtime error).
-**Found:** Phase 3, first run after switching the canonical form to round-trip
-re-encoding (which exercises the *encoder*, under the C driver's UBSan build)
-**Axis:** memory-safety / UB (sanitizer, not a differential divergence)
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## What
 

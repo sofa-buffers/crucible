@@ -1,15 +1,6 @@
 # F-0004 — invalid UTF-8 in a string: four behaviors, driven by the string type
 
-**Status:** ✅ **RESOLVED 2026-07-18** (sofabgen 0.18.0 + corelibs@main, Crucible
-[#55](https://github.com/sofa-buffers/crucible/issues/55)). With the strict-UTF-8
-check ON family-wide, an invalid-UTF-8 `string` is rejected `R invalid_msg` by **all
-12 drivers** (was the 4-way raw/U+FFFD/empty/reject split); valid controls still
-accept and round-trip. See the resolution section at the end. Spec basis:
-`MESSAGE_SPEC.md` §8 (opt-in strict UTF-8 check, default-off allowed; conformance +
-this fuzzer run it ON); implementation epic [generator#85](https://github.com/sofa-buffers/generator/issues/85).
-**Found:** Phase 3, C-pacemaker → differential loop; **corrected** with a clean
-isolate (the original write-up was skewed — see below)
-**Axis:** verdict + accept_value (hard, when the check is on)
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## The true split (clean isolate)
 

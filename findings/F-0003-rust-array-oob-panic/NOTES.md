@@ -9,26 +9,7 @@
 > reproducer is contaminated (over-count *and* truncated), so rust/zig report `I`
 > there; the clean isolate above is the correct test.
 
-**Status:** ✅ **crash fixed** — bounds check added in sofabgen's Rust backend; PR
-[sofa-buffers/generator#87](https://github.com/sofa-buffers/generator/pull/87)
-(codegen root cause G-0007, issue [generator#78](https://github.com/sofa-buffers/generator/issues/78)).
-⚠️ **residual divergence — now triaged & tracked:** re-verifying 2026-07-08
-(**sofabgen 0.15.1 + corelib-rs / corelib-rs-no-std @main**) shows the fix makes Rust
-**accept** the over-long array (silently dropping the excess elements): both `rust-std`
-and `rust-nostd` now return a decoded message where the other **10** drivers reject it.
-The crash became an **accept-vs-reject verdict divergence, 2 vs 10**. **Triage result:**
-an over-**count** scalar array (wire count > schema `count` N) is **INVALID** per
-MESSAGE_SPEC §3+§7 — the excess-drop is a codegen bug, not legal leniency; **no**
-`policy.yaml` allow-entry. Tracked in
-[**generator#100**](https://github.com/sofa-buffers/generator/issues/100) (the Rust
-backend must reject, like c/cpp-c-cpp). **Axis: crash → verdict (`R`).** Note this is a
-**different axis from F-0001**: over-length → `R` (INVALID); truncation → `I`
-(INCOMPLETE). The new third verdict `I` (crucible#8) does **not** apply here.
-See the re-run table below.
-**Found:** Phase 3, first differential run over the **C-pacemaker's** discovered
-corpus (a crash 8 hand-seeds never reached)
-**Axis:** crash (memory-safety-adjacent — a panic, not UB)
-**Affects:** `corelib-rs` (std) **and** `corelib-rs-no-std` — both panic
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## What
 

@@ -1,11 +1,6 @@
 # F-0001 — a truncated trailing varint: Go rejects, C/Rust accept
 
-**Status:** ✅ **RESOLVED — the target is met.** Spec-resolved (§7 finish-less: truncated =
-INCOMPLETE), and the family now implements it: **all 12 drivers emit `I`** on both seeds
-(was 7-accept vs 5-reject). **Verified green 2026-07-13, re-verified 2026-07-17** — both
-reproducers (`80`, `ff ff ff`) live in the green `corpus/regression/` gate, so a
-regression fails CI. Tracked upstream as [generator#86](https://github.com/sofa-buffers/generator/issues/86)
-(the epic may still be formally open; the observable target is met).
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 > **Note on the one residual difference:** `java` additionally emits an
 > `incomplete_value` payload on `I` (`I 5607a606…`) where the other 11 emit a bare `I`.

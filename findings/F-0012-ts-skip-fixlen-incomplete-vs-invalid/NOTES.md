@@ -1,10 +1,6 @@
 # F-0012 — corelib-ts skip path: INCOMPLETE instead of INVALID for a malformed fixlen word in an unknown field
 
-**Status:** open — **corelib-ts bug**, filed **[corelib-ts#49](https://github.com/sofa-buffers/corelib-ts/issues/49)**. TS-only.
-**Found:** 2026-07-16 by the **coverage-guided fuzzer** (`scripts/fuzz.sh`, 43k-input
-`corpus/interesting`) — the **single largest divergence class** (Cluster 1, ~66% of the
-clustered divergences: TS `I` vs the other 11 `R invalid_msg`).
-**Axis:** verdict (INVALID vs INCOMPLETE — the §5.2 precedence family).
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## The divergence (clean 11-vs-1)
 

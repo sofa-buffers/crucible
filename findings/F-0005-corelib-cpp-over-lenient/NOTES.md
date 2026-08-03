@@ -7,12 +7,7 @@
 > (filed corelib-py#38), part of the broader [F-0007](../F-0007-invalid-vs-incomplete-precedence/NOTES.md)
 > precedence family. Not a regression of F-0005.
 
-**Status:** ✅ **resolved** — fixed upstream in corelib-cpp ([issue #22](https://github.com/sofa-buffers/corelib-cpp/issues/22) closed). Re-verified 2026-07-08 against **sofabgen 0.15.1 + corelib-cpp@main**: `cpp_accepts_malformed.bin` no longer diverges — corelib-cpp now rejects it in step with the rest of the family.
-**Found:** Phase 3, by clustering the pacemaker's divergences (`oracle/cluster.py`)
-— the single largest divergence source after F-0001
-**Axis:** verdict + accept_value (hard)
-**Affects:** `corelib-cpp` (the pure-C++20 corelib). Its sibling `corelib-c-cpp`
-(the C++ wrapper over the C corelib) does **not** have this bug — they disagree.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## What
 

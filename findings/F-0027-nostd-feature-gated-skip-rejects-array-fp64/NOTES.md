@@ -1,9 +1,6 @@
 # F-0027 — rust-nostd rejects a §7.3-skippable array / fp64 field the schema never declares
 
-**Status:** 🔴 **OPEN** — **[generator#215](https://github.com/sofa-buffers/generator/issues/215)**
-(sofabgen) with **`corelib-rs-no-std`** implicated (the "occasionally both" shape of F-0010). Found 2026-07-22 by the **WP-01 union pass** of the wiretype
-(§7.3) sweep (`engine/structured/wiretype_sweep.py::emit_union`), the first time the sweep family ran
-against a schema (`schema/probe-union.sofab.yaml`) that declares **no array and no fp field**.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 **Axis:** wiretype (§7.3), union pass — verdict split. **Impls:** `rust-nostd` alone (1) vs the other
 **12** (incl. `rust-std`, which shares the *same generated code*). Report-only; the union pass is **not**

@@ -1,8 +1,6 @@
 # F-0032 — a schema-bound INVALID that is also truncated is reported INCOMPLETE (§5.2 precedence), varying by bound & backend
 
-**Status:** 🟢 **RESOLVED** (2026-07-24) — all 13 drivers now `R` on every (bound, backend) truncation.
-Found 2026-07-23 by the **WP-09 broadened malform×truncation** axis
-(`engine/structured/sweep_malform_truncate.py`); the F-0024 §5.2-ordering class ([generator#216](https://github.com/sofa-buffers/generator/issues/216)).
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## Resolution — the codegen splits fixed upstream; the cpp residual was in THIS driver
 

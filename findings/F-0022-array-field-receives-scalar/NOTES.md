@@ -1,11 +1,6 @@
 # F-0022 — an array-declared field receiving a scalar of its element type: decoded, not skipped
 
-**Status:** **open — generator-only, the mirror of F-0021.** MESSAGE_SPEC §7.3 requires the
-field to be **skipped**; five backends decode the bare scalar as a one-element array. Filed as
-[generator#188](https://github.com/sofa-buffers/generator/issues/188).
-**Axis:** verdict (accept-with-wrong-value vs skip) — all 12 accept; the 5 store a value the 7
-do not. **Found:** 2026-07-20 by the **wire-type sweep** (`engine/structured/wiretype_sweep.py`)
-on sofabgen 0.19.3, the first run of that suite.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## The observation
 

@@ -1,10 +1,6 @@
 # F-0034 — dart falsely rejects a §7.3-skippable fixlen field because the generated `maxlen` guard ignores the wire subtype
 
-**Status:** 🔴 OPEN — codegen (sofabgen **dart** backend), **G-0019**. Filed as
-[generator#224](https://github.com/sofa-buffers/generator/issues/224) (write-up in [`ISSUE.md`](ISSUE.md)).
-Found 2026-07-23 by the wiretype
-(§7.3) sweep on the sofabgen CI build `0.0.0-20260723154129-241dc8f44efb` +
-corelib-dart `origin/main` (`f9e64ec`) — the first run after that corelib bump.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## Divergence
 

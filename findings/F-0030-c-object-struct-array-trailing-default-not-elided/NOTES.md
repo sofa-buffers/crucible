@@ -1,8 +1,6 @@
 # F-0030 — c re-encodes an all-default array-of-struct as N empty struct frames (§5.1 trailing-elision not applied to sequence-form elements)
 
-**Status:** 🔴 **OPEN** — [corelib-c-cpp#109](https://github.com/sofa-buffers/corelib-c-cpp/issues/109) (pure-C object API — the `c` driver).
-Found 2026-07-23 by the **WP-05 array-of-struct integration** — the moment a `struct_array`
-(`array of struct{k:u32, v:string}`, id 202, count 5) was added to `schema/probe.sofab.yaml`.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 **Axis:** accept_value (round-trip). **Impls:** `c` (1) vs the other **12** (incl. `cpp-c-cpp`, the C++
 object layer over the *same* corelib-c-cpp istream/ostream). **Corelib, not codegen** — the trailing-run

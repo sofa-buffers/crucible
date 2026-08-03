@@ -1,21 +1,6 @@
 # F-0019 — a repeated sequence (struct) field id: 11 profiles merge, TypeScript replaces
 
-**Status:** ✅ **RESOLVED (sofabgen 0.19.2, 2026-07-19).** MESSAGE_SPEC **§7.4**
-([documentation#23](https://github.com/sofa-buffers/documentation/pull/23), merged `0894035`)
-defines the rule: the last occurrence of each field id wins, a re-opened sequence
-**continues** its scope (structs + unions merge), and an **array wrapper is replaced** whole.
-Both codegen halves landed — [generator#175](https://github.com/sofa-buffers/generator/issues/175)
-(TypeScript decodes into the existing member; the C++ backend clears a wrapper before filling)
-and the corelib side [corelib-c-cpp#99](https://github.com/sofa-buffers/corelib-c-cpp/issues/99).
-**Re-verified on 0.19.2:** all 7 vectors (3 reproducers + 4 controls) → **all 12 agree, 0
-divergences**; the generated TS decode now shows `decodeInto(c, new Probe())`. Promoted into the
-green `corpus/regression/` gate (44 → 51). Closed the F-0015 way: hole → clause (§7.4) →
-codegen → verified.
-**Axis:** accept_value (round-trip) — all 12 **accept**; the re-encoded value differs. Invisible
-to any accept/reject oracle.
-**Found:** 2026-07-19, by the 24 h pacemaker round (11.4 G execs); surfaced as the dominant
-`accept_value` class in the post-fuzz stage-C differential, then delta-debugged from a
-1456-byte fuzzer input down to 20 bytes.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## The observation
 

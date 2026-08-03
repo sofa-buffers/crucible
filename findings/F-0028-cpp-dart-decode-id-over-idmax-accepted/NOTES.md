@@ -1,8 +1,6 @@
 # F-0028 — cpp & dart accept a field id over ID_MAX on decode (skip instead of INVALID)
 
-**Status:** 🔴 **OPEN** — [corelib-cpp#47](https://github.com/sofa-buffers/corelib-cpp/issues/47) +
-[corelib-dart#14](https://github.com/sofa-buffers/corelib-dart/issues/14) (two decoders, same gap).
-Found 2026-07-23 by the **WP-04 framing & ceilings sweep** (`engine/structured/sweep_framing.py`).
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 **Axis:** framing/ceilings (§6.2), verdict split. **Impls:** `cpp`, `dart` (2) accept vs the other **11**
 reject. **Corelib, not codegen** (the id ceiling is a format constant, not a schema fact; the check

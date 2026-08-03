@@ -14,18 +14,7 @@
 > (see Root cause). The differential *symptom* (only `cpp-c-cpp` hangs) was real;
 > the attribution was one layer too shallow. Codegen-weakness log: **G-0011**.
 
-**Status:** open — **[generator#126](https://github.com/sofa-buffers/generator/issues/126)**
-(sofabgen C++ backend). A 4-byte untrusted input makes the generated fixed-capacity
-string-array fill loop forever (no output, no crash — a denial-of-service).
-**Found:** 2026-07-15 by the **structure-aware mutator** (engine/mutator) → the
-differential loop, localized by the new comparator per-driver **timeout** (the
-input hung `cpp-c-cpp`; every other driver returned in milliseconds).
-**Axis:** liveness / DoS (a hang, distinct from F-0003's panic-crash).
-**Affects:** the **fixed-capacity C++ profile** (the `cpp-c-cpp` driver / embedded
-target). The heap C++ profile (`cpp`, `std::vector`), the pure-C object API (`c`,
-same `istream.c`), Go, and Rust all decode the input fine — it is specifically the
-generated `_FixedStrSeq`/`_FixedBlobSeq` fill on the corelib's fixed-capacity
-`InlineVector`.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## Reproduce
 

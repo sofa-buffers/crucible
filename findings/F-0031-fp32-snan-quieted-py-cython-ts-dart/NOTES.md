@@ -1,7 +1,6 @@
 # F-0031 — an fp32 *signaling* NaN is quieted (0x7F800001 → 0x7FC00001) by py-cython / typescript / dart
 
-**Status:** 🔴 **OPEN** — [corelib-py#49](https://github.com/sofa-buffers/corelib-py/issues/49) (Cython engine) + [corelib-ts#66](https://github.com/sofa-buffers/corelib-ts/issues/66) + [corelib-dart#15](https://github.com/sofa-buffers/corelib-dart/issues/15).
-Found 2026-07-23 by the **WP-06 float-specials cross-encode + materialized** value vectors.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 **Axis:** accept_value (round-trip **and** materialized/raw-bits). **Impls:** `py-cython`, `typescript`,
 `dart` (3) vs the other **10** (incl. `py-pure`). **Corelib, not codegen** — fp32 storage/materialization

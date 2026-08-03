@@ -13,14 +13,7 @@
 > `fp32`/`fp64` → explicit INVALID), and the §6.3 `InvalidMessage` row. (Provenance migrated from the
 > retired `spec-proposals.md`.) The rest of this file is the original analysis.
 
-**Status:** open — **spec-precedence question** (candidate MESSAGE_SPEC clarification),
-not a single-repo bug. The one cleanly-isolated, single-culprit instance is split
-out as **[F-0006](../F-0006-corelib-py-fixlen-fp-incomplete-vs-invalid/NOTES.md)**
-and filed as [corelib-py#38](https://github.com/sofa-buffers/corelib-py/issues/38).
-**Found:** 2026-07-15, clustering the grown `corpus/interesting` after the sofabgen
-0.16.1 + corelibs@main bump — now the dominant hard-divergence family (see
-`results/CLUSTERS.md`), having displaced the resolved F-0005.
-**Axis:** verdict (hard) — `R` (INVALID) vs `I` (INCOMPLETE).
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 > **Update 2026-07-15 — family narrowed to the C corelib.** With F-0006 fixed
 > (corelib-py#38 closed), corelib-py now returns `R` on `56 0a 59` / `56 0a 09`, so

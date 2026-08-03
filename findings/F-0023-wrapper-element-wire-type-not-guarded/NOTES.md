@@ -1,11 +1,6 @@
 # F-0023 — a mis-typed array-wrapper element is not skipped: the §7.3 guard is missing on the wrapper-element loop
 
-**Status:** **open — generator-only.** MESSAGE_SPEC §7.3 requires a mis-typed field to be
-**skipped**; §5.1 makes a wrapper element a normal field — so a mis-typed element must be
-skipped too. Four backends reject or mis-accept it instead. Filed as [generator#189](https://github.com/sofa-buffers/generator/issues/189).
-**Axis:** verdict (reject / mis-accept vs skip) — the conformant 7 skip; ts/py reject, cpp/
-cpp-c-cpp mis-handle. **Found:** 2026-07-20 by the **wire-type sweep**
-(`engine/structured/wiretype_sweep.py`) on sofabgen 0.19.3.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## Not a spec hole — §5.1 + §7.3 already compose
 

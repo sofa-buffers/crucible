@@ -1,5 +1,7 @@
 # F-0055 — the no-std visitor's scope stack holds 8 entries, and its overflow is discarded — a field after the unwind is **silently lost**
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **✅ RESOLVED 2026-08-03** — [generator#283](https://github.com/sofa-buffers/generator/issues/283)
 fixed by `bd67d2b`, *"stack only live scopes, so a deep skip can't lose"*.
 

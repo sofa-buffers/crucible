@@ -1,5 +1,7 @@
 # F-0036 — **direction inverted 2026-07-28**: a trailing all-default element must be KEPT, and `c` is the only implementation that drops it
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Filed:** [generator#248](https://github.com/sofa-buffers/generator/issues/248) — **filed
 against the wrong side and being corrected**; see the banner below.
 

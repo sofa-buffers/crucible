@@ -1,7 +1,6 @@
 # F-0029 — corelib-ts (cursor decoder) reports INCOMPLETE for nesting past MAX_DEPTH
 
-**Status:** 🔴 **OPEN** — [corelib-ts#65](https://github.com/sofa-buffers/corelib-ts/issues/65).
-Found 2026-07-23 by the **WP-04 framing & ceilings sweep** (`engine/structured/sweep_framing.py`).
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 **Axis:** framing/ceilings (§4.9/§6.2), verdict split. **Impls:** `typescript` (1) reports `I` vs the
 other **12** reject (`R`). **Corelib, not codegen**; the fix location is pinned to one of corelib-ts's

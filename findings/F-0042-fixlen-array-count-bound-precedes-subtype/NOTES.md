@@ -1,5 +1,7 @@
 # F-0042 — the schema `count` bound is applied before the fixlen subtype decides the field is skippable
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Assigned 2026-07-29.** This finding did not previously exist in Crucible's catalog: the
 divergence was tracked from 2026-07-25 in
 [generator#232](https://github.com/sofa-buffers/generator/issues/232) only, first as an open

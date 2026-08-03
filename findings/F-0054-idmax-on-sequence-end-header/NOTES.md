@@ -1,5 +1,7 @@
 # F-0054 — the `ID_MAX` ceiling and a **sequence-end** header's id
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 > **✅ RESOLVED 2026-08-03 — specified (`main@acd27a4`, Option B) and fixed in all three repos
 > the same day.** The attribution moved twice before landing here, so the slug is deliberately
 > neutral; the divergence, the isolate and the controls never changed — only which camp was
