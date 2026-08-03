@@ -1,5 +1,7 @@
 # F-0054 — the `ID_MAX` ceiling is not applied to a **sequence-end** header's id
 
+**Filed 2026-08-03:** [corelib-go#67](https://github.com/sofa-buffers/corelib-go/issues/67), [corelib-py#58](https://github.com/sofa-buffers/corelib-py/issues/58), [corelib-ts#83](https://github.com/sofa-buffers/corelib-ts/issues/83)
+
 **Found 2026-08-03** in the first review of the nightly's accumulated corpus. Cluster of
 **4 inputs**, minimized 56 B → 31 B → rebuilt as a **6-byte** isolate.
 

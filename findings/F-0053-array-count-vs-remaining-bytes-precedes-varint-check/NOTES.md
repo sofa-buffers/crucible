@@ -1,5 +1,7 @@
 # F-0053 — an array count larger than the remaining bytes short-circuits to `INCOMPLETE` before the element varint is validated
 
+**Filed 2026-08-03:** [corelib-go#66](https://github.com/sofa-buffers/corelib-go/issues/66), [corelib-ts#82](https://github.com/sofa-buffers/corelib-ts/issues/82)
+
 **Found 2026-08-03** in the first review of the nightly's accumulated corpus (8512 inputs,
 17 camps, 9 of them unexplained). Cluster of **50 inputs**, minimized 25 B → **12 B**.
 
