@@ -1,5 +1,7 @@
 # F-0055 — the no-std visitor's scope stack holds 8 entries, and its overflow is discarded — a field after the unwind is **silently lost**
 
+**Filed 2026-08-03 as [generator#283](https://github.com/sofa-buffers/generator/issues/283).**
+
 **Found 2026-08-03** while triaging the two large `rust-nostd`-only camps from the nightly
 corpus. Reached by reading the generated source after four black-box hypotheses had been
 refuted; isolated to **24 bytes**.
