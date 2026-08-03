@@ -1,5 +1,7 @@
 # F-0035 — generated struct-array element decode appends id-blind (10 backends), corrupting values on id gaps and reopens
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Filed:** [generator#247](https://github.com/sofa-buffers/generator/issues/247)
 
 **Family:** `poc/omit-all-default-sequences` (found 2026-07-27, the day WP-05 folded

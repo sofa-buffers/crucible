@@ -1,5 +1,7 @@
 # F-0046 — the schema `count` bound is applied to an array whose wire **kind** §7.3 says to skip
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Found 2026-08-01** by delta-minimizing cluster 6 of the 3-hour pacemaker round
 (corelibs **0.10.0** + sofabgen **0.22.0**): **70 bytes → 5 bytes**.
 

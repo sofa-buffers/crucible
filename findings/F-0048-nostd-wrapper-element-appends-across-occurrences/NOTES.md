@@ -1,5 +1,7 @@
 # F-0048 — a repeated **wrapper-array element id** is appended to, not replaced, on `rust-no-std` — surfacing as a spurious `buffer_full`
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Found 2026-08-02** by triaging **cluster 4** of the 2026-08-02 re-cluster (= cluster 5 of
 the 2026-08-01 snapshot), the last untriaged cluster of that round: **305 bytes → 11 bytes**.
 

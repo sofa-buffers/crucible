@@ -1,5 +1,7 @@
 # F-0039 — a §7.3-mistyped **array** is allocated into the declared field (java, csharp)
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Found 2026-07-29** by the `wiretype_sweep` axis (§7.3) on the first run of the
 family that carries the sparse-array rewrite — corelibs **0.9.0 @ main**, sofabgen
 **0.21.0**. 30 of the sweep's 332 vectors split; every one of them is an array

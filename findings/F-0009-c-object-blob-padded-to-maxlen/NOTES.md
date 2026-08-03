@@ -5,17 +5,7 @@
 > with a length companion). Re-verified: short blobs (`[0x01]`, `[0x00]`, `[0x00 0x01]`) round-trip in `c`
 > and match the family; the sub-`maxlen` vectors rejoined the green `corpus/structured/` gate.
 
-**Status:** open — **triaged & filed [generator#128](https://github.com/sofa-buffers/generator/issues/128)**
-(sofabgen C backend; codegen weakness **G-0012**). **Not** a corelib bug — the C
-corelib already provides the fix primitive (`SOFAB_OBJECT_FIELD_BLOB_SIZED`); the C
-backend just doesn't use it.
-**Found:** 2026-07-15 by the **cross-encode / structured-value oracle**
-(`scripts/cross-encode.sh`) on its first run — a divergence on a *valid* value the
-malformed-wire fuzzer never reached.
-**Axis:** accept_value (round-trip) — the same value re-encodes to different bytes.
-**Affects:** the `c` driver (the C corelib's generated **object API**,
-`message_probe_decode`/`_encode`) — **only**. Every other driver, *including the C++
-wrapper `cpp-c-cpp` over the same C `istream.c`/`ostream.c`*, preserves the blob.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## The divergence
 

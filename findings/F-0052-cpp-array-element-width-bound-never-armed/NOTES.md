@@ -1,5 +1,7 @@
 # F-0052 — the cpp backend never arms `readArray`'s element-width bound, so `cpp` masks an over-width array element
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **✅ RESOLVED 2026-08-03** — [generator#279](https://github.com/sofa-buffers/generator/issues/279)
 closed; verified on sofabgen `0.0.0-20260803154628-1e4359a8a1c0`.
 

@@ -8,15 +8,7 @@
 > [documentation#17](https://github.com/sofa-buffers/documentation/pull/17) (`1018e0c`, CORELIB_PLAN §4.6/§5.2/§6.3);
 > see [F-0007](../F-0007-invalid-vs-incomplete-precedence/NOTES.md). The rest of this file is the original analysis.
 
-**Status:** open — filed upstream as a **corelib-py** decoder bug. Surfaced
-2026-07-15 while re-verifying findings after the sofabgen 0.16.1 + corelib-py@main
-bump (corelib-py commit `e14e4ba` "decode resource limits + un-eager array
-allocation", #31/#34).
-**Found:** re-running the F-0005 reproducer (`56 0a 59`) — cpp is now fixed (rejects,
-F-0005 resolved), but **corelib-py moved from `R` to `I`** on the same bytes.
-**Axis:** verdict (hard, `oracle/policy.yaml`) — `I` (INCOMPLETE) vs `R` (INVALID).
-**Affects:** `corelib-py` — **both** engines (`py-cython` native `_speedups` and
-`py-pure`), i.e. the shared `src/sofab/decoder.py`, not codegen.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## The divergence (11 vs 1)
 

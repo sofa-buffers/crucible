@@ -1,9 +1,6 @@
 # F-0033 — a scalar wire value exceeding its declared width splits the family 3 ways (reject / mask / keep) — spec hole
 
-**Status:** 🔴 **OPEN (spec hole)** — **[documentation#26](https://github.com/sofa-buffers/documentation/issues/26)**. Found 2026-07-23 by the **C
-pacemaker fuzzing round** (34 M execs) — the differential replay of the grown corpus surfaced it as an
-`accept_value` cluster; the hand-built value corpus never carried an over-width scalar (`gen.py` only
-emits in-range values).
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 **Axis:** accept_value (round-trip) + verdict — a **3-way** split. **Family-wide / spec**, not one impl's
 bug: the spec explicitly leaves scalar value-range outside the wire-validity clauses, so no single impl is

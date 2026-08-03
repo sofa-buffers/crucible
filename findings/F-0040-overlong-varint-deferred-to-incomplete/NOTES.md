@@ -1,5 +1,7 @@
 # F-0040 — corelib-c-cpp reports `INCOMPLETE` for a varint that is already overlong
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Found 2026-07-29** in the post-bootstrap cluster triage of `corpus/interesting`
 (1121 inputs) on corelibs **0.9.0 @ main** / sofabgen **0.21.0** — cluster 6, 4 inputs.
 

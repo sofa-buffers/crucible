@@ -1,13 +1,6 @@
 # F-0020 — a header wire type ≠ the field's declared type: four incompatible behaviors
 
-**Status:** ✅ **RESOLVED (sofabgen 0.19.3, 2026-07-20).** MESSAGE_SPEC **§7.3**
-([documentation#23](https://github.com/sofa-buffers/documentation/pull/23), `0894035`): a field
-whose header wire type ≠ its declared type is **skipped** as if its id were unknown. Landed
-over three releases — corelib-cpp#43 + corelib-c-cpp#100 + generator#174 (0.18.x/0.19.2), and
-the final array-into-scalar corner **generator#183/#184 in 0.19.3** (split out as F-0021).
-**Re-verified on 0.19.3:** the full 66-vector sweep (every field id × every wire type) → **0
-divergences** — axis-green, not just isolate-green. 3 representative reproducers + 2 controls
-promoted into the green `corpus/regression/` gate.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 **corelib-c-cpp fix recipe (historical — migrated from the retired `spec-proposals.md`; the fix actually
 landed via corelib-c-cpp#100 `fd5086a`):** `istream.c:493` presets `ctx->target_opt` to the *actual* wire

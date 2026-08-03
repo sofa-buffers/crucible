@@ -1,12 +1,6 @@
 # F-0018 — embedded U+0000 in a `string`: the C object API projects to first-NUL (by design)
 
-**Status:** **by-design / allowed divergence** (`oracle/policy.yaml`, 2026-07-18) — **not a bug, not a fix.**
-A `string` carrying an embedded U+0000 is valid on the wire and preserved by the 10
-length-carrying profiles; the two corelib-c-cpp object-API profiles (`c`, `cpp-c-cpp`)
-re-encode it up to the first NUL, because their string representation is a NUL-terminated
-`char[]`. Inherent to the C-string convenience, not a decode error.
-**Axis:** accept_value (round-trip) — all 12 **accept**; the re-encoded value differs. Sanctioned in policy.yaml.
-**Found:** 2026-07-18 while adding F-0004's embedded-U+0000 valid control (crucible#55).
+**Status:** ⚪ **by-design / allowed divergence** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 ## The observation
 

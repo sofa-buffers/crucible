@@ -31,8 +31,20 @@ changes (or on manual dispatch), with layer caching via `type=gha`.
 
 ## The replay gate (`replay.yml`) — blocking
 
-Bootstraps the corelibs (their `main` tips) + sofabgen, builds all 12 replay
-drivers, and runs the five **green** oracles in sequence; any divergence fails the
+Two jobs. **`catalog`** runs first and needs no drivers at all — it asserts that
+`results/FINDINGS.md` and its write-ups declare the same state:
+
+```sh
+python3 scripts/check-catalog.py   # catalog row <-> findings/<id>/NOTES.md, and the G-00NN table <-> its sections
+```
+
+`results/FINDINGS.md` **owns** a finding's status; every other place that shows one
+must carry the same state token (✅ / 🔴 / ⚪). Added 2026-08-03 after all three
+non-owning representations were found stale at once — the check exists because
+intending to keep them in sync demonstrably did not.
+
+**`differential`** bootstraps the corelibs (their `main` tips) + sofabgen, builds all 12
+replay drivers, and runs the five **green** oracles in sequence; any divergence fails the
 job:
 
 ```sh

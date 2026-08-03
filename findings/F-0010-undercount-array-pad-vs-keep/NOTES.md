@@ -1,17 +1,6 @@
 # F-0010 — under-count fixed array round-trips to different values (pad-to-capacity vs keep-count)
 
-**Status:** ✅ **RESOLVED in sofabgen 0.17.2** ([generator#136](https://github.com/sofa-buffers/generator/issues/136),
-PR #137) — the trim/pad question is settled family-wide. The clause was **adopted
-upstream — [documentation#18](https://github.com/sofa-buffers/documentation/pull/18)**
-merged (`ac621db`, §3 + §5.1), closing [documentation#16](https://github.com/sofa-buffers/documentation/issues/16).
-A simpler **always-N** alternative was considered and rejected — *"a present fixed array always carries
-exactly `N` elements on the wire"*: it would change only the keep-M camp and match the systems camp's
-current encoding, but forgoes the trailing-default compaction; the adopted **sparse fill-to-N** reading
-keeps that compaction. (Design alternative migrated from the retired `spec-proposals.md`.)
-Like F-0001 (truncation) / F-0004 (UTF-8): resolved spec-first, then per-impl.
-**Attribution settled: codegen (sofabgen), not corelib** — both fixes need schema
-knowledge (`N`, fixed-vs-dynamic) the schema-agnostic corelib array writers don't
-have; the corelibs faithfully write `count = len(passed slice)` and are correct.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 **Re-verified 2026-07-16 (sofabgen 0.17.2):** the R1/R2 reproducers (`u32_count3`,
 `i16_count1`) now round-trip to the **canonical count 3 / count 1 on all 12 drivers** —

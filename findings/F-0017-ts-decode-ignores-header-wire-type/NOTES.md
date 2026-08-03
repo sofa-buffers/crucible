@@ -1,5 +1,7 @@
 # F-0017 — TS generated decode ignores the header wire type (stream mis-framing)
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Oracle:** verdict (hard). **Attribution:** generator (sofabgen **TypeScript backend**) — **G-0014**.
 **Upstream:** [generator#160](https://github.com/sofa-buffers/generator/issues/160). **Found:** 2026-07-17, 3 h fuzz on sofabgen 0.17.7 (cluster 2, 94/5607 sample inputs; minimized 127 B → 24 B → this 3 B isolate).
 

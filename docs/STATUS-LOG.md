@@ -19,6 +19,27 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The third strand, and the point at which intent was replaced by a check (2026-08-03).**
+Reviewing the catalog from the outside — opening `findings/<id>/NOTES.md` the way a reader
+arriving from an issue link does — showed the rot had a third strand, the largest of them:
+**46 mismatches**. Four write-ups declared `**Status:** 🔴 OPEN` for findings the catalog had
+marked resolved (F-0022, F-0027 through F-0034 among them), and **22 carried no status line at
+all**, so every one of them read as unresolved to anyone who landed there directly.
+
+*Two false alarms worth recording, because both would have caused damage if acted on.* The
+F-0023 and F-0025 rows looked like broken markdown with unescaped pipes; they are correctly
+escaped as `\|` and it was the *checker's* naive split that was wrong. And F-0018 has no
+resolution because it is by-design — an allowed divergence, not an open item — so it now
+carries a distinct ⚪ token rather than being forced into ✅ or 🔴.
+
+*The fix is `scripts/check-catalog.py`, wired into `replay.yml` as a first, driver-free job.*
+It asserts the **state token** agrees across the catalog row, `NOTES.md`, the `G-00NN` tracking
+row and the `## G-00NN` section — and that every catalog row has a directory and vice versa. The
+prose is not compared: it lives with exactly one owner per fact. Three strands of the same
+duplication rotted in a single day while everyone involved intended to keep them current, which
+is the argument for a gate rather than a resolution to be more careful. All 55 findings and 30
+codegen entries now agree.
+
 **The same rot on the other strand — the standalone codegen entries (2026-08-03).** Repairing the
 paired `G-00NN` rows raised the obvious question about the twelve **standalone** ones, which carry
 their state in a table row *and* a `## G-00NN` section. Checked rather than assumed, and three had

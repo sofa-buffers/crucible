@@ -1,5 +1,7 @@
 # F-0044 — a child of a **skipped unknown sequence** binds into the enclosing scope
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Found 2026-08-01** by minimizing cluster 3 of the 3-hour pacemaker round (corelibs
 **0.10.0** + sofabgen **0.22.0**). The fuzzer's representative was 128 bytes of repeated
 wrapper open/close noise; the defect is **6 bytes**.

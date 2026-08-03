@@ -1,5 +1,7 @@
 # F-0047 — a §7.3-mistyped **sequence** at a string-element position is entered, not skipped — but only when it has content
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Found 2026-08-01** by delta-minimizing cluster 10 of the 3-hour pacemaker round
 (corelibs **0.10.0** + sofabgen **0.22.0**): **136 bytes → 8 bytes**.
 

@@ -1,5 +1,7 @@
 # F-0037 — the C++ generated decode materializes a phantom element when it skips a mistyped child inside `struct_array` (cpp + cpp-c-cpp)
 
+
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Filed:** [generator#249](https://github.com/sofa-buffers/generator/issues/249)
 
 **Family:** `poc/omit-all-default-sequences` (found 2026-07-27 by the §7.3 wiretype
