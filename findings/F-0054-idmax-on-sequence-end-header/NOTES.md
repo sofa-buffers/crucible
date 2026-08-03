@@ -1,11 +1,9 @@
 # F-0054 — the `ID_MAX` ceiling and a **sequence-end** header's id
 
-> **Attribution has moved twice; the slug is deliberately neutral so it need not move again.**
-> The divergence, the isolate and the controls have never changed — only the question of which
-> camp is conformant. Current basis is **Option B**, pending
-> [documentation#35](https://github.com/sofa-buffers/documentation/pull/35). **The merged
-> `main` of the spec still says Option A**, under which the other camp is at fault. See
-> [History](#history) before acting on this.
+> **Settled 2026-08-03 at `main@acd27a4`** (documentation#35, Option B). The attribution moved
+> twice before landing here, so the slug is deliberately neutral; the divergence, the isolate and
+> the controls never changed — only which camp was conformant. See [History](#history) for what
+> was filed against whom, since two earlier positions were communicated upstream.
 
 **Found 2026-08-03** in the first review of the nightly's accumulated corpus. Cluster of
 **4 inputs**, minimized 56 B → 31 B → rebuilt as a **6-byte** isolate.
@@ -45,9 +43,9 @@ A field header carrying an id over `ID_MAX` with wire type **0 (unsigned)** is r
 13, inside a skipped subtree or at the top level — verified separately, and correct under every
 option. The split is specific to **wire type 7**.
 
-## Spec basis — Option B, pending documentation#35
+## Spec basis — `CORELIB_PLAN.md` at `main@acd27a4`
 
-The proposed §4.9 keeps the encoder rule (a sequence end MUST be written as exactly `0x07`) and
+§4.9 keeps the encoder rule (a sequence end MUST be written as exactly `0x07`) and
 adds, for the decoder: the id is **discarded**, but *"discarded is not unvalidated"* — the header
 is an ordinary field header and its id is bounded by `ID_MAX` exactly as every other header's is,
 so an id above the ceiling is `INVALID`. §6.2 states the ceiling binds **every** field header
@@ -58,7 +56,7 @@ encoding of an in-range id — `0x87 0x00` for id 0, or an id of 3 — decodes a
 sequence end and re-encodes as `0x07`. This is what separates B from the abandoned Option C,
 which would have made those `INVALID` too.
 
-#35 also names an over-ceiling **id** in the §5.2 and §6.3 `INVALID` enumerations. They listed
+§5.2 and §6.3 now also name an over-ceiling **id** in the §5.2 and §6.3 `INVALID` enumerations. They listed
 only *"a length or count above its maximum"*; the id ceiling lived in §6.2 alone, which is a
 large part of why this case stayed arguable — the enumeration a reader checks did not list it.
 
@@ -121,8 +119,8 @@ written as exactly `0x07` — was never in dispute; only the decoder's treatment
 | | decoder | id 0 | id 3 | id `ID_MAX` | id `ID_MAX + 1` |
 |---|---|---|---|---|---|
 | **C** — proposed, abandoned | only id 0 is legal | accept | `INVALID` | `INVALID` | `INVALID` |
-| **A** — documentation#34, **merged** | any id accepted, `ID_MAX` does not apply | accept | accept | accept | accept |
-| **B** — documentation#35, **open** | `ID_MAX` applies, then the id is discarded | accept | accept | accept | `INVALID` |
+| **A** — documentation#34, merged then reverted | any id accepted, `ID_MAX` does not apply | accept | accept | accept | accept |
+| **B** — documentation#35, **merged `acd27a4`** | `ID_MAX` applies, then the id is discarded | accept | accept | accept | `INVALID` |
 
 1. **Filed** against the four accepters on the reading that `ID_MAX` binds every header —
    [corelib-go#67](https://github.com/sofa-buffers/corelib-go/issues/67),
@@ -156,7 +154,6 @@ written as exactly `0x07` — was never in dispute; only the decoder's treatment
    finding's sites: [corelib-go#69](https://github.com/sofa-buffers/corelib-go/issues/69),
    [corelib-py#59](https://github.com/sofa-buffers/corelib-py/issues/59),
    [corelib-ts#85](https://github.com/sofa-buffers/corelib-ts/issues/85). Each states up front
-   that #35 is still open and asks that the change not land before it merges.
-
-If #35 is rejected, this finding reverts to step 3 — the isolate and the controls hold either
-way, and only one test point is in dispute at all.
+   that #35 was still open at filing time.
+6. **#35 merged** as `acd27a4` the same day. The three issues are unblocked and the basis is no
+   longer provisional: Option B is the normative rule.

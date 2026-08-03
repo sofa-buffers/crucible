@@ -19,6 +19,19 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**F-0054 settled 2026-08-03 — documentation#35 merged as `acd27a4`, Option B is normative.** The
+provisional wording is out of the catalog, the finding and `docs/TODO.md`; the `ID_MAX` ×
+sequence-end sweep cell is pinned to **`reject`**, with the at-or-below-`ID_MAX` and
+over-64-bit-varint cells pinned alongside it. Upstream is clean: the eight Option-A issues, their
+eight draft PRs **and** their eight branches are gone, and F-0054 stands on three issues —
+corelib-go#69, corelib-py#59, corelib-ts#85.
+
+*The cost of getting this wrong twice, recorded plainly:* three positions on one clause in a day,
+19 issues/PRs opened and 16 of them withdrawn, and three repos that received two contradictory
+instructions each before the right one. What made it recoverable was that the isolate and its
+three controls never moved — only the question of which camp they indicted. A finding whose
+*evidence* is stable survives its own attribution being wrong.
+
 **F-0054 turned back 2026-08-03 — Option B raised, and the spec inversion below is being
 reverted.** Reading the eight draft PRs the re-filing produced made the cost of the merged
 Option A concrete: each of the nine rejecters carries **one unconditional** `if (id > ID_MAX)`
