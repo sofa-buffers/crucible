@@ -9,6 +9,42 @@ CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh
 # or directly: python3 oracle/cluster.py --corpus <dir> --driver name:path …
 ```
 
+## Snapshot — 2026-08-03 (**4-hour pacemaker round**, 577 M execs; corpus 878 → 2609)
+
+Three jobs (not four — libFuzzer caps `-workers` at `ncores/2` here, so a fourth would only
+queue and double the wall clock). **577 M execs, 0 ASan/UBSan hits, crashes unchanged at 6.**
+Corpus 878 → **2609** (+1731). All three jobs converged on `cov: 666 ft: 4786`.
+
+**2609 inputs: 1254 agree, 1355 diverge → 8 clusters** (was 298 / 580 / **7**).
+
+Seven map onto the previous snapshot at unchanged representatives. **One is new:**
+
+| # | inputs | partition | status |
+|---|---|---|---|
+| 6 | 1 (49 B) | `R invalid_msg` c, cpp-c-cpp, csharp, java, rust×2, zig · `I` cpp, dart, go, py×2, ts | ✅ **triaged the same night — and it split into two defects** |
+
+*It decomposed rather than resolving to one cause.* Minimized 49 B → 24 B, then rebuilt as a
+clean isolate: an `arrays.i8` element carrying **5208** (far outside `i8`), with the array
+truncated after it.
+
+- **[F-0052](../findings/F-0052-cpp-array-element-width-bound-never-armed/NOTES.md)** — on the
+  *complete* form, **cpp alone accepts** and re-encodes the element as 88 (5208 mod 256). The
+  C++ backend never arms `readArray`'s `ElemBound`, so corelib-cpp#67's check never runs.
+  Codegen, **G-0034**.
+- **F-0043, third bound** — on the *truncated* form, dart/go/py×2/typescript defer the verdict
+  to array completion though they reject the complete form. The finding's existing rule
+  (`maxlen`, element id) now shown on the declared-integer-width bound too. Recorded as an
+  addendum; **not** appended to generator#267 while it is under review.
+
+Counting cpp in the second group would have overstated F-0043's camp by one — it is in the `I`
+camp for the *opposite* reason, never detecting the violation at all. The in-range-element
+control is what separates them.
+
+**Corpus minimized afterwards: 2609 → 547**, all 8 clusters intact with identical
+representatives, by the rule established 2026-08-02 — *coverage-minimal ∪ every hard-diverging
+input* (520 ∪ 32). A plain `-merge=1` would again have kept only the 520 and dropped divergence
+evidence the C coverage proxy cannot see.
+
 ## Snapshot — 2026-08-02 (evening, **post-fix**: eight findings closed upstream the same day)
 
 Same 878-input corpus as the Go-steered snapshot below, re-clustered after upstream fixed

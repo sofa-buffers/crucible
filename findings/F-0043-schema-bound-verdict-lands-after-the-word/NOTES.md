@@ -138,3 +138,37 @@ generated code cannot decide at a word the corelib never shows it.
 *Scope note:* the wrapper-element rows (`string_array_over_id_trunc_004`,
 `blob_array_over_id_trunc_004`) have a different camp — go and dart join the wrong side there —
 so the element-id half may need its own analysis. What is established above is the `maxlen` half.
+
+---
+
+## Addendum 2026-08-03 — the same rule at a **third** bound: the declared integer width
+
+The 4-hour pacemaker round produced a cluster that isolates to this finding's rule on an axis it
+did not previously cover. **`width_elem_trunc.bin`** = `a6 06 0c 05 b0 51` (6 B) — `arrays.i8`
+(`count 5`) declares five elements, the first carries **5208** (far outside `i8`), and the
+message ends there.
+
+| verdict | drivers |
+|---|---|
+| `R invalid_msg` (**correct** — §5.2, INVALID dominates INCOMPLETE) | c, cpp-c-cpp, csharp, java, rust-no-std, rust-std, zig (7) |
+| `I` | cpp, dart, go, py-cython, py-pure, typescript (6) |
+
+The violating element is **fully on the wire** — only elements 2–5 are missing — so every
+implementation has read it. `ctl_width_elem_inrange_trunc.bin` is the same truncation with an
+in-range element and is unanimous `I`, so the truncation alone is not the trigger.
+
+**Five of the six deferrers reject the *complete* form.** dart, go, py-cython, py-pure and
+typescript all emit `R invalid_msg` when the array is closed — they detect the violation, just
+not until the array finishes. That is exactly this finding's defect (the verdict lands after the
+word rather than at it), now shown on the **declared integer width** bound that documentation#32
+added, alongside the `maxlen` and element-id bounds already documented above.
+
+**`cpp` is in this camp for a different reason** and is *not* an instance of this finding: it
+never detects the over-width element at all, complete or truncated, because the C++ backend
+leaves `readArray`'s element-width bound unarmed — split out as
+[F-0052](../F-0052-cpp-array-element-width-bound-never-armed/NOTES.md). Counting it here would
+overstate this finding's camp by one.
+
+*Not yet added to generator#267*, which is under review: the issue's own camps are unchanged
+(re-verified 2026-08-03, all four clusters byte-for-byte as catalogued), and this is a new axis
+rather than a correction. Worth appending once the review settles.

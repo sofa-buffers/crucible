@@ -79,6 +79,16 @@ here:
 
 ## Open — engine & oracles
 
+- [ ] **Over-width vectors at the array-element position** (gap exposed by F-0052). The
+      declared-integer-width bound (documentation#32, §1/§7.1) has vectors only at **scalar**
+      positions — F-0033's four, now in `corpus/regression/`. Nothing tested an over-width
+      **array element**, which is how cpp's masking survived F-0033's closure and needed a
+      4-hour fuzz round to surface. Same scalar-only blind spot F-0049 had for fp32 raw bits, in
+      the same week. Best home is a `sweep_overbound` case rather than a one-off vector: that
+      axis already sweeps §7.1 bounds at every position, and the width bound arrived after it
+      was written.
+
+
 - [ ] **Finer reject-class taxonomy** (`oracle/canonical.md` + drivers + comparator + `policy.yaml`).
       Investigated 2026-07-17: the corelibs collapse *all* malformed-wire reasons into one
       `InvalidMessage` (spec §6.3), so a *semantic* taxonomy (truncated / bad-varint / depth /

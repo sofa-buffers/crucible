@@ -19,6 +19,39 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**4-hour pacemaker round 2026-08-03 — 577 M execs, one new cluster, which decomposed into two
+defects.** Corpus 878 → **2609**, 0 ASan/UBSan hits, crashes unchanged at 6, all three jobs
+converged on `cov: 666 ft: 4786`. Run at **3 jobs deliberately**: libFuzzer caps `-workers` at
+`ncores/2` on this box, so a fourth would have queued and doubled the wall clock — the trap from
+the 2026-08-02 round, now avoided rather than re-learned.
+
+*Seven of the eight clusters are the known state.* The new one minimized to an `arrays.i8`
+element of 5208 with the array truncated after it — and rebuilding it as a clean isolate with
+controls showed it was **not one finding**:
+
+- **F-0052 / G-0034** — on the *complete* form, cpp alone accepts and re-encodes the element as
+  **88** (5208 mod 256). corelib-cpp shipped the check in #67, but as an **opt-in**
+  (`readArray(…, ElemBound elem = {})` behind `if (elem.armed)`), and the C++ backend passes two
+  arguments at all ten call sites — `grep -c ElemBound` on the generated header is 0. Codegen,
+  the F-0042 shape: a corelib widens a hook and the fix completes only when the backend consumes
+  it. Corroborated by `cpp-c-cpp` being correct: same backend, different corelib API.
+- **F-0043, third bound** — on the *truncated* form, dart/go/py×2/typescript defer to array
+  completion although they reject the complete form. Same rule as the finding's `maxlen` and
+  element-id rows, now on documentation#32's declared-integer-width bound.
+
+*The mistake this avoided.* Both defects put their impls in the same `I` camp on the truncated
+vector, so the obvious reading was one finding with a seven-impl camp. cpp is there for the
+**opposite** reason — it never detects the violation at all — and folding it in would have
+overstated F-0043 by one impl and hidden a codegen bug behind a precedence one. The separating
+control is an *in-range* element, the same shape that separated F-0047 from F-0051 the day
+before. Twice in two days, a camp match was a hypothesis rather than an attribution.
+
+*Coverage gap recorded.* The declared-width bound had vectors only at **scalar** positions
+(F-0033's four). Nothing tested an over-width **array element** — which is why cpp's masking
+survived F-0033's closure and needed 577 M execs to surface. That is the same scalar-only blind
+spot F-0049 had for fp32 raw bits, in the same week; `docs/TODO.md` now carries it as a
+`sweep_overbound` extension rather than a one-off vector.
+
 **Verification bump 2026-08-02 (late) — three corelibs moved, nothing regressed.** Re-pulled
 the whole family: corelib-dart `1b83161` (**perf/word-wise-varints**), corelib-zig `29ca282`
 (**perf/swar-varint-codecs**) and corelib-go `c6e0952` (tests only — fp32 NaN-bit coverage, the
