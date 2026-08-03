@@ -19,6 +19,37 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**F-0054 turned back 2026-08-03 — Option B raised, and the spec inversion below is being
+reverted.** Reading the eight draft PRs the re-filing produced made the cost of the merged
+Option A concrete: each of the nine rejecters carries **one unconditional** `if (id > ID_MAX)`
+between splitting the header and dispatching on the wire type, and A makes every one of them
+grow a per-wire-type exception there — nine drivers, eight repos, several with two or three
+decode surfaces apiece, in the header hot path.
+
+*Decision: propose Option B — bound the id's value like every other header's, then discard it.*
+The §4.1 objection that killed Option C does not reach B: C constrained the **spelling** (it
+would have made `0x87 0x00`, a non-minimal id 0, `INVALID`), while B constrains the **value** and
+leaves §4.1 untouched. Behavioural cost is identical to A — exactly one test point moves, the
+isolate itself; only C would have moved three. And B is the only option that *removes* branching:
+the nine stay untouched and `corelib-go` deletes the exception it already carries
+(`cursor.go:272`). Filed as
+[documentation#35](https://github.com/sofa-buffers/documentation/pull/35), which reverts #34 and
+keeps its tolerance test class 5b.
+
+*What the code archaeology showed, and it corrected the earlier write-up.* The three accepters do
+**not** share one gap: `corelib-ts` never computes the id for an end marker, `corelib-py`
+computes it and checks it after the seq-end branch, and `corelib-go` carries a written-out
+`t != TypeSequenceEnd` exception — it had coded Option A before Option A existed. That is the
+strongest evidence for A, and it is recorded in the finding rather than argued away. It also
+turned up a separate defect: go's two decode surfaces **disagree** with each other
+(`cursor.go:272` has the exception, `decoder.go:65` does not), which is a finding under either
+option.
+
+*Housekeeping.* F-0054's directory now carries an outcome-neutral slug — the attribution moved
+twice in one day and the slug moved with it, which is churn the id already prevents. The eight
+issues and their draft PRs are held, not closed, until #35 is decided; the finding records that
+it reverts to the nine if #35 is rejected.
+
 **F-0054 inverted 2026-08-03 — the spec settled the question against the way we filed it.** The
 finding reported the four impls that *accept* an over-`ID_MAX` id on a sequence-end header. The
 merged `CORELIB_PLAN.md` (`main@51c777d`) now says accepting is required: §4.9 — a decoder *"MUST

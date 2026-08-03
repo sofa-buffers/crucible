@@ -106,10 +106,12 @@ here:
       - overlong varint (§4.1) × skipped array with a count outrunning the input → F-0053
       - `ID_MAX` (§6.2) × **sequence-end** wire type → F-0054 (`sweep_framing` puts the
         over-ceiling id only on an *unsigned* header, and its stray-end vectors all use the
-        canonical single-byte `0x07`). **Note the expectation is `accept`, not `reject`:**
-        §4.9/§6.2 exempt the end marker from `ID_MAX` — the id is discarded and the marker
-        re-encodes to `0x07`. Only a header varint over §4.1's 64-bit bound is `INVALID`
-        here, which is a separate vector.
+        canonical single-byte `0x07`). **The expectation depends on how
+        [documentation#35](https://github.com/sofa-buffers/documentation/pull/35) lands** —
+        `reject` under Option B (the id is discarded but still bounded), `accept` under the
+        merged Option A. Write the vector either way; pin its expectation once #35 is
+        decided. An id *at or below* `ID_MAX` is `accept` under both, and a header varint
+        over §4.1's 64-bit bound is `INVALID` under both — those two are safe to pin now.
       - over-index element × truncation **inside** the fixlen word → F-0043's finer offset
       Cheapest home for all three is `sweep_framing`, which already owns both parents.
 
