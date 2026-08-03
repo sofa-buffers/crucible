@@ -19,6 +19,34 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Nightly-corpus triage 2026-08-03 — four of seven unknown camps explained, two new findings.**
+The first review of CI's accumulated corpus (8512 inputs, 17 camps) produced **F-0053** (an array
+count outrunning the input short-circuits to `INCOMPLETE` before the element varint is validated
+— corelib-go, corelib-ts; threshold measured exactly at count 11) and **F-0054** (`ID_MAX` not
+applied to a sequence-end header's id — corelib-go, -py, -ts), plus addenda to **F-0052** (second
+symptom: masking degrades a truncated message to `I`) and **F-0043** (a finer truncation offset
+that moves five impls out of its "correct" camp).
+
+*Both new findings sit in the corelib, which is a shift.* Everything filed in the previous two
+days was codegen. These are wire mechanics in a skip path, where no schema knowledge exists and
+generated code is not consulted at all.
+
+*Three camps are left open on purpose.* `c5d8b383` (cpp alone) and the pair `7f7060b8` /
+`8e989f1f` (rust-nostd alone) resisted the cheap isolates. For the rust pair, message size, a
+large *skipped* payload and the §6.4 mid-payload `MAY` are each ruled out by explicit controls —
+which is worth more than a guess, because the `MAY` isolate splits **zig**, not rust-nostd, and
+would have been an easy misattribution. They are on `docs/TODO.md` with what has been eliminated.
+
+*Two refuted hypotheses were worth the time.* An overlong varint inside a skipped array, and an
+over-`ID_MAX` id on a *data* header, both agree across all 13 — and each refutation narrowed the
+next isolate. F-0054's final form is 6 bytes because the failed attempt established that the
+ceiling *is* enforced on ordinary headers, leaving the end marker as the only candidate.
+
+*A tooling footgun, recorded so it is not re-hit.* The minimizer spawns all 13 drivers per
+candidate, and `run.sh` rebuilds them — `cargo` briefly unlinks the rust binary while relinking.
+Running a minimization concurrently with any `run.sh` kills it with a `FileNotFoundError` that
+looks like a timeout. Two runs were lost to this before the pattern was clear.
+
 **Corpus policy reversed 2026-08-03 — CI's corpus strictly dominated ours, and we had been
 throwing ours away.** Reviewing the first nightly to run the Go engine (it worked: 8700 seeds,
 11.3 M execs, 180 new inputs, step green) surfaced something larger than the nightly's own

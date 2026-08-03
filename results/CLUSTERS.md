@@ -9,6 +9,33 @@ CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh
 # or directly: python3 oracle/cluster.py --corpus <dir> --driver name:path …
 ```
 
+## Snapshot — 2026-08-03 (**the nightly's own corpus**, 8512 inputs — first time anyone looked)
+
+Not a fuzz round: this is CI's accumulated corpus, downloaded from the nightly artifact and
+clustered against locally built drivers. All 17 camps reproduce exactly, so they are current
+against the fixed family, not a stale-CI artifact.
+
+**8512 inputs: 3317 agree, 5195 diverge → 17 camps.** Ten were accounted for; **seven were not**,
+and had been accumulating unexamined because the nightly clusters, uploads and nobody opened the
+artifact. Four are now explained:
+
+| camp | inputs | minimized | outcome |
+|---|---|---|---|
+| `bb5bbb08` | 50 | 25 B → **12 B** | **[F-0053](../findings/F-0053-array-count-vs-remaining-bytes-precedes-varint-check/NOTES.md)** — an array `count` outrunning the remaining bytes short-circuits to `INCOMPLETE` before the element varint is checked (corelib-go, corelib-ts). Threshold measured exactly at count 11 |
+| `ee44aadf` | 4 | 56 B → **6 B** | **[F-0054](../findings/F-0054-id-max-not-checked-on-sequence-end-header/NOTES.md)** — `ID_MAX` is not applied to a **sequence-end** header's id (corelib-go, -py, -ts) |
+| `057e0fe2` | 30 | 331 B → **10 B** | **F-0052, second symptom** — cpp masks the over-width element, so a message that is also truncated degrades to `I` instead of `R` |
+| `647f8d0d` | 1 | 11 B → **4 B** | **F-0043, finer offset** — an over-index element truncated *inside* the fixlen word. The subtype is in the word's first byte, so the verdict is decidable there; only typescript decides that early, moving five impls from F-0043's "correct" camp into the late one |
+
+**Three still open**, recorded in `docs/TODO.md` rather than guessed at: `c5d8b383` (cpp alone
+rejects; the obvious F-0046-shaped isolate does not reproduce it) and the pair `7f7060b8` /
+`8e989f1f` (rust-nostd alone rejects; size, skipped-payload size and the §6.4 `MAY` are all ruled
+out).
+
+**Method note.** Two hypotheses were tested and *refuted* on the way — an overlong varint inside a
+skipped array (agrees everywhere) and an over-`ID_MAX` id on a data header (agrees everywhere) —
+before the third framing landed. Each refutation narrowed the next isolate, which is why the
+final ones are 6 and 12 bytes rather than 25 and 56.
+
 ## Snapshot — 2026-08-03 (**4-hour pacemaker round**, 577 M execs; corpus 878 → 2609)
 
 Three jobs (not four — libFuzzer caps `-workers` at `ncores/2` here, so a fourth would only

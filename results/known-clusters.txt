@@ -21,3 +21,7 @@ I:c,cpp,cpp-c-cpp,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescrip
 I:csharp,dart,go,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,py-cython,py-pure,typescript  # F-0043 — string_array over-index element (generator#267)
 I:csharp,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,dart,go,py-cython,py-pure,typescript  # F-0043 — over_len_string, further offset (generator#267)
 I:dart,go,typescript | reject:c,cpp,cpp-c-cpp,csharp,java,py-cython,py-pure,rust-nostd,rust-std,zig  # F-0043 — over_len_string at the word (generator#267)
+I:go,typescript | reject:c,cpp,cpp-c-cpp,csharp,dart,java,py-cython,py-pure,rust-nostd,rust-std,zig  # F-0053 — array count vs remaining bytes precedes the varint check (corelib-go, corelib-ts)
+I:cpp | reject:c,cpp-c-cpp,csharp,dart,go,java,py-cython,py-pure,rust-nostd,rust-std,typescript,zig  # F-0052, second symptom — cpp masks the over-width element, so a truncated message degrades to I (generator#279)
+I:go,py-cython,py-pure,typescript | reject:c,cpp,cpp-c-cpp,csharp,dart,java,rust-nostd,rust-std,zig  # F-0054 — ID_MAX not checked on a sequence-end header (corelib-go, -py, -ts)
+I:c,cpp,cpp-c-cpp,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:typescript  # F-0043, finer offset — over-index element truncated INSIDE the fixlen word; only typescript decides at the earliest decidable point

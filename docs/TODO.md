@@ -79,6 +79,34 @@ here:
 
 ## Open — engine & oracles
 
+- [ ] **Three camps from the nightly corpus still untriaged** (2026-08-03). The review of CI's
+      8512-input corpus explained 4 of 7 unknown camps (F-0053, F-0054, plus addenda to F-0052
+      and F-0043). Three resist a cheap answer:
+      - `c5d8b383` (2 inputs, minimized 62 B → **29 B**) — 12 `I` · **cpp rejects**. An fp32
+        array with NaN-ish payloads in `arrays.nested`, followed by a §7.3-mistyped
+        `ARRAY_SIGNED` at the same id with `count 36` over the schema's 5, then EOF. The obvious
+        F-0046-shaped isolate (mistyped array, over-count, truncated) does **not** reproduce it,
+        so the fp32 payload before it is part of the trigger.
+      - `7f7060b8` (22 inputs, 1247 B) and `8e989f1f` (1 input, 3861 B) — both **rust-nostd
+        alone rejects** `invalid_msg` where the rest say `I` / accept. Ruled out: message size
+        (4000-byte valid messages are fine on all 13), a large *skipped* payload (fine to 2000 B),
+        and the §6.4 mid-payload UTF-8 `MAY` (that isolate splits `zig`, not rust-nostd). The
+        divergence appears only near the end of each input (~1132 / ~3776 B), so something
+        accumulates. Needs an uninterrupted minimization run — **note the footgun**: the
+        minimizer races `run.sh`, which rebuilds the rust driver and briefly unlinks its binary,
+        so nothing else may run concurrently.
+
+- [ ] **Sweep the product cells the nightly corpus exposed.** Three of the four camps triaged on
+      2026-08-03 live where two correct axes meet and neither sweeps the intersection — the same
+      shape as F-0044, F-0048 and F-0053 before them:
+      - overlong varint (§4.1) × skipped array with a count outrunning the input → F-0053
+      - `ID_MAX` (§6.2) × **sequence-end** wire type → F-0054 (`sweep_framing` puts the
+        over-ceiling id only on an *unsigned* header, and its stray-end vectors all use the
+        canonical single-byte `0x07`)
+      - over-index element × truncation **inside** the fixlen word → F-0043's finer offset
+      Cheapest home for all three is `sweep_framing`, which already owns both parents.
+
+
 - [~] **Over-width vectors at the array-element position — WRITTEN 2026-08-03, carved out
       until [generator#279](https://github.com/sofa-buffers/generator/issues/279) closes.**
       `sweep_overbound` now derives the declared element width from the schema

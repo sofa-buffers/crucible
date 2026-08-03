@@ -84,3 +84,26 @@ it.
 
 `docs/TODO.md` carries the follow-up: extend the over-width vectors to the array-element
 position, ideally as a `sweep_overbound` axis case rather than a one-off vector.
+
+---
+
+## Addendum 2026-08-03 — second symptom: `I` instead of `R` when the message is also truncated
+
+The nightly-corpus review turned up a **30-input** cluster that is this finding again with a
+different surface. `r4_overwidth_elem_truncated.bin` = `a6 06 0c 05 fe 03 02 02 02 02` (10 B) —
+the same over-width `i8` element, but the enclosing `arrays` sequence is never closed.
+
+| vector | 12 others | **cpp** |
+|---|---|---|
+| `r2_i8_array_elem_over` (closed) | `R invalid_msg` | `A`, element masked to 88 |
+| **`r4_overwidth_elem_truncated`** (unclosed) | `R invalid_msg` | **`I`** |
+
+Same cause, two faces. Because cpp never detects the over-width element, the only irregularity
+it still sees is the unclosed sequence — so the verdict degrades to `INCOMPLETE` instead of the
+`INVALID` §5.2 requires (`INVALID` dominates, and the violation is fully on the wire).
+
+An in-range control with the same unclosed sequence is unanimous `I`, so the truncation alone is
+not the trigger.
+
+Worth noting for the fix: arming `ElemBound` resolves **both** rows at once — there is no
+separate truncation path to handle.

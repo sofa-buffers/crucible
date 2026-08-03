@@ -172,3 +172,51 @@ overstate this finding's camp by one.
 *Not yet added to generator#267*, which is under review: the issue's own camps are unchanged
 (re-verified 2026-08-03, all four clusters byte-for-byte as catalogued), and this is a new axis
 rather than a correction. Worth appending once the review settles.
+
+---
+
+## Addendum 2026-08-03 (b) — one byte finer, and five more impls are late
+
+The nightly-corpus review produced a cluster that is this finding's rule at a **finer truncation
+offset** than any row above, and it moves five implementations from the correct camp into the
+late one.
+
+**`overindex_trunc_in_fixlen_word.bin`** = `c6 0c 2a c2` (4 B) — `string_array` opened, an
+element at index 5 (`count: 5`, so over-index), and the message ends **inside** the fixlen word:
+`c2` is the first byte of an unfinished varint.
+
+| verdict | drivers |
+|---|---|
+| `R invalid_msg` (**correct**) | **typescript** only |
+| `I` | the other 12 |
+
+### Why typescript is the correct one here
+
+The existing rows stop at the *coarser* offset: `ctl_overindex_trunc_at_header.bin`
+(`c6 0c 2a`, ending right after the element header) is unanimous `I`, and correctly so —
+corelib-cpp's own reader documents why: *"only a message ending between the element header and
+its fixlen word is INCOMPLETE rather than INVALID, since there the subtype, and with it whether
+the field is an element at all, is not yet decidable."*
+
+But one byte later the subtype **is** decidable. A `fixlen_word` is
+`(length << 3) | subtype`, so the subtype occupies the low three bits of its **first** byte —
+`0xc2 & 7 == 2 == String` — regardless of how many bytes the varint goes on to use. At that
+point the element has passed the §7.3 test (wire type Fixlen, subtype String), it *is* an
+element of this array, its id is over `count`, and §7.1 makes that `INVALID` — which §5.2 says
+outranks the truncation. Only the *length* is still unknown, and the verdict does not depend on
+it.
+
+`ctl_overindex_mistyped_skipped.bin` confirms the ordering is otherwise sound everywhere: an
+over-index element whose wire type contradicts the schema is skipped per §7.3 by all 13, with no
+reject — so nobody is applying the bound ahead of the type test.
+
+### What it adds to this finding
+
+The catalogued wrapper rows put **c, cpp, cpp-c-cpp, py-cython, py-pure** in the *correct*
+camp. They are correct only at the coarser offset: with the truncation one byte later, all five
+join the late camp, and only typescript decides at the earliest point the wire permits. The
+finding's reach is therefore wider than its rows suggest — the "correct" side of the
+`string_array_over_id` row is a matter of degree, not of conformance.
+
+*Not appended to generator#267 while it is under review* — same reasoning as the width addendum:
+the issue's own camps are unchanged, and this refines rather than corrects them.
