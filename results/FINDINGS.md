@@ -95,26 +95,30 @@ paired `F-00NN` row in the table above.
 
 ## Tracking issues (generator repo)
 
-**For a paired entry (`G-00NN (= F-00NN)`) the *finding* row above owns the resolution detail —
-what was verified, how, and against which build.** This table carries only the upstream ticket
-and its state. Restating the resolution in both places is what left nine rows here reading
-"open" on 2026-08-03 while their findings had been closed for a day.
+**This table is an index, not a record.** Each row carries the upstream ticket and a one-glyph
+state; the resolution detail lives in exactly one place per entry — the **finding row above** for
+a paired entry (`G-00NN (= F-00NN)`), and the **`## G-00NN` section below** for a standalone one.
+
+Restating a resolution in two places is what rotted this table twice over: nine paired rows read
+"open" on 2026-08-03 while their findings had been closed for a day, and three standalone
+sections (G-0011, G-0012, G-0013) still read "open" for tickets closed in mid-July, with G-0006
+disagreeing with its own row about the release. Both were repaired 2026-08-03.
 
 | id | issue | status |
 |---|---|---|
-| G-0001 | [generator#79](https://github.com/sofa-buffers/generator/issues/79) | fixed — PR [#88](https://github.com/sofa-buffers/generator/pull/88) (0.15.1) |
-| G-0002 | [generator#80](https://github.com/sofa-buffers/generator/issues/80) | fixed — PR [#91](https://github.com/sofa-buffers/generator/pull/91) (0.15.1); family-wide UTF-8 continues as F-0004 / [#85](https://github.com/sofa-buffers/generator/issues/85) |
-| G-0003 | [generator#81](https://github.com/sofa-buffers/generator/issues/81) | fixed — PR [#92](https://github.com/sofa-buffers/generator/pull/92) (0.15.1) |
-| G-0004 | [generator#82](https://github.com/sofa-buffers/generator/issues/82) | fixed — PR [#93](https://github.com/sofa-buffers/generator/pull/93) (0.15.1) |
-| G-0005 | [generator#83](https://github.com/sofa-buffers/generator/issues/83) | fixed — PR [#89](https://github.com/sofa-buffers/generator/pull/89) (0.15.1) |
-| G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) | fixed — PR [#90](https://github.com/sofa-buffers/generator/pull/90) (0.15.1) |
+| G-0001 | [generator#79](https://github.com/sofa-buffers/generator/issues/79) | ✅ **resolved** in sofabgen 0.15.1 — detail and verification in the **G-0001** section below. |
+| G-0002 | [generator#80](https://github.com/sofa-buffers/generator/issues/80) | ✅ **resolved** in sofabgen 0.15.1 — detail and verification in the **G-0002** section below. |
+| G-0003 | [generator#81](https://github.com/sofa-buffers/generator/issues/81) | ✅ **resolved** in sofabgen 0.15.1 — detail and verification in the **G-0003** section below. |
+| G-0004 | [generator#82](https://github.com/sofa-buffers/generator/issues/82) | ✅ **resolved** in sofabgen 0.15.1 — detail and verification in the **G-0004** section below. |
+| G-0005 | [generator#83](https://github.com/sofa-buffers/generator/issues/83) | ✅ **resolved** in sofabgen 0.15.1 — detail and verification in the **G-0005** section below. |
+| G-0006 | [generator#84](https://github.com/sofa-buffers/generator/issues/84) | ✅ **resolved** in sofabgen 0.15.1 — detail and verification in the **G-0006** section below. |
 | G-0007 (= F-0003) | [generator#78](https://github.com/sofa-buffers/generator/issues/78) | fixed — PR [#87](https://github.com/sofa-buffers/generator/pull/87) |
-| G-0008 | [generator#105](https://github.com/sofa-buffers/generator/issues/105) | ✅ **fixed** — PR [generator#106](https://github.com/sofa-buffers/generator/pull/106) (sofabgen 0.15.3): status-surfacing `TryDecode`/`tryDecode`; part of §7 epic [#86](https://github.com/sofa-buffers/generator/issues/86) |
-| G-0013 | [#142](https://github.com/sofa-buffers/generator/issues/142) + [#149](https://github.com/sofa-buffers/generator/issues/149) | ✅ **fully fixed 2026-07-17.** 0.17.4 (#142): DoS gone (cpp 226 MB → 10 MB) + 9 heap backends reject. 0.17.6 (#149→#151 fixed-capacity C family + #150 no_std): `c`/`cpp-c-cpp`/`rust-nostd` reject too. Re-verified: all 12 `R` on `overindex_clean`; `overindex_clean.bin` in the regression gate. **Original:** ✅ DoS gone (cpp 226 MB → 10 MB) + the 9 heap backends reject. ❌ Residual (#149): `c`/`cpp-c-cpp`/`rust-nostd` still accept + silently drop via `_FixedStrSeq`'s #126 guard — the split flipped to a verdict split (9 `R` vs 3 `A`); §7/§7.1 require both camps to reject. **Original:** The heap backends (go, rust-std, cpp, py×2, java, ts, cs, zig) emit an **unbounded** container + fill for an index-keyed array, so the schema's `count: N` is enforced nowhere: an element at index ≥ N is **kept** (the 3 fixed-capacity profiles drop it — G-0011's #126 guard), and the `while (len <= id) push(default)` fill materializes `id+1` elements, so a **9-byte** input at index 2,000,000 costs cpp **226 MB** / go **122 MB** vs ~8 MB fixed — an unbounded-allocation DoS (the half of F-0008 that #126 left unfixed). Crucible finding **F-0013** |
-| G-0012 | [generator#128](https://github.com/sofa-buffers/generator/issues/128) | ✅ **fixed in sofabgen 0.17.1** (commit `25d5853`, sized blob descriptor; re-verified 2026-07-16 — short blobs round-trip in `c`). Was: C backend generates a `blob` field as a bare `uint8_t[maxlen]` + the plain fixed-full-capacity `SOFAB_OBJECT_FIELD(...BLOB)` descriptor, with **no length member**. A blob is opaque bytes (no NUL recovery), so the object API pads a sub-`maxlen` blob to `maxlen` and drops an all-zero one — round-trip data loss. Fix: emit `{ uintX field_len; uint8_t field[N]; }` + `SOFAB_OBJECT_FIELD_BLOB_SIZED` (the corelib already provides it, byte-identical wire; the C++ backend already uses `FixedBytes<N>`). Crucible finding **F-0009** (found by the cross-encode oracle) |
-| G-0011 | [generator#126](https://github.com/sofa-buffers/generator/issues/126) | ✅ **fixed in sofabgen 0.17.1** (commit `483c281`, bounded fill loop; re-verified 2026-07-16 — `c6 0c c6 07` → `I`, no hang). Was: C++ backend's generated `_FixedStrSeq`/`_FixedBlobSeq` (fixed-capacity string/blob arrays) do `while (out->size() <= id) out->emplace_back()`, but the corelib's fixed-capacity `InlineVector::emplace_back` is a no-op once full, so a wire element index `id ≥ N` (capacity) **loops forever** — a 4-byte DoS (`c6 0c c6 07`). Fixed-capacity C++ profile only; heap `std::vector` grows/terminates. Crucible finding **F-0008** (first mis-filed corelib-c-cpp#84, redirected via crucible#16). Fix: bound the fill by `N`, drop an over-capacity index (like the C/Zig backends) |
-| G-0010 | [generator#120](https://github.com/sofa-buffers/generator/issues/120) | ✅ **fixed in sofabgen 0.16.2** (commit `26f1f4c`, PR #121): the generated zig `decode` now binds `feed(chunk)→Status` and surfaces `.incomplete` as `error.IncompleteMessage`. **Crucible driver.zig updated** to match (`error.Incomplete` → `error.IncompleteMessage`, two sites). **Re-verified 2026-07-15:** zig builds, F-0001 `80` → `I`, and the full 12-driver box is green. Was: sofabgen 0.16.1's zig backend `try`-discarded the new `Error!Status` return (compile error) — the zig analogue of G-0008. |
-| G-0009 | [generator#112](https://github.com/sofa-buffers/generator/issues/112) | ✅ **fixed in sofabgen 0.16.1** (commit `7899c4b`, "heap unbounded array -> std::vector, not std::array<T,0>"). **Re-verified in Crucible 2026-07-15:** repro `03 03 07 08 09` → cpp decodes `[7,8,9]` (was `[]`) matching the family; cpp rejoined the limit-mode `arr` dimension (`scripts/run-limits.sh`), green. Was: sofabgen 0.16.0 C++ heap backend emitted a schema-*unbounded* array as `std::array<T, 0>`, silently dropping every element of an *accepted* array (the `max_dyn_array_count` cap itself still fired). Sibling of [generator#104](https://github.com/sofa-buffers/generator/issues/104) (C backend) |
+| G-0008 | [generator#105](https://github.com/sofa-buffers/generator/issues/105) | ✅ **resolved** in sofabgen 0.15.3 — detail and verification in the **G-0008** section below. |
+| G-0013 | [#142](https://github.com/sofa-buffers/generator/issues/142) + [#149](https://github.com/sofa-buffers/generator/issues/149) | ✅ **resolved** in sofabgen 0.17.4 + 0.17.6 — detail and verification in the **G-0013** section below. |
+| G-0012 | [generator#128](https://github.com/sofa-buffers/generator/issues/128) | ✅ **resolved** in sofabgen 0.17.1 — detail and verification in the **G-0012** section below. |
+| G-0011 | [generator#126](https://github.com/sofa-buffers/generator/issues/126) | ✅ **resolved** in sofabgen 0.17.1 — detail and verification in the **G-0011** section below. |
+| G-0010 | [generator#120](https://github.com/sofa-buffers/generator/issues/120) | ✅ **resolved** in sofabgen 0.16.2 — detail and verification in the **G-0010** section below. |
+| G-0009 | [generator#112](https://github.com/sofa-buffers/generator/issues/112) | ✅ **resolved** in sofabgen 0.16.1 — detail and verification in the **G-0009** section below. |
 | G-0019 (= F-0034) | [generator#224](https://github.com/sofa-buffers/generator/issues/224) | ✅ **fixed** (sofabgen `ff2a55e5`, 2026-07-24, "gate the maxlen header guard on subtype"); re-verified all 13 skip → `A`. Crucible finding **F-0034** |
 | G-0020 (= F-0035) | [generator#247](https://github.com/sofa-buffers/generator/issues/247) | ✅ **resolved in sofabgen 0.21.0** (issue closed). **Re-verified 2026-07-29** against corelibs 0.9.0 @ main + sofabgen 0.21.0 (the first fully-merged sparse-array family): all reproducers agree across the 13-driver roster. ~~open~~ — struct-array element decode appends id-blind in 10 backends (leaf elements place by id, struct elements `append`); §5.1 id-is-index violated, values corrupted on gaps/reopens. Found 2026-07-27 on the poc family. Crucible finding **F-0035** |
 | G-0021 (= F-0036) | [generator#248](https://github.com/sofa-buffers/generator/issues/248) | ✅ **resolved in sofabgen 0.21.0** (issue closed). **Re-verified 2026-07-29** against corelibs 0.9.0 @ main + sofabgen 0.21.0 (the first fully-merged sparse-array family): all reproducers agree across the 13-driver roster. ~~open~~ — generated marshals never trim the trailing all-default sequence-element run (§3/§5.1) nor omit the `M = 0` wrapper (POC §2); 12 of 13 non-canonical on re-encode, only `c` normalizes. Crucible finding **F-0036** |
@@ -292,8 +296,9 @@ directly, so no driver change is required.
 
 ## G-0006 — generated Go `types.go` uses `bytes.Equal` without importing `bytes`
 
-**Status:** **fixed** in sofabgen 0.15.2 (PR
-[#90](https://github.com/sofa-buffers/generator/pull/90), fixes #84) · **Lang:**
+**Status:** ✅ **fixed** in sofabgen 0.15.1 (PR
+[#90](https://github.com/sofa-buffers/generator/pull/90), fixes #84 — merged 2026-07-08
+20:22 UTC, and v0.15.1 was cut 21:43 the same day, so 0.15.1 already carries it) · **Lang:**
 go · **Where:** `generator/generators/golang/` (per-file import collection for
 named/nested types) · **Severity:** was build-breaking
 
@@ -360,6 +365,11 @@ F-0003's `array_overflow.bin`: the rebuilt Rust driver goes from panic (exit 101
 to clean accept (exit 0) on both the `rs` and `rs-no-std` variants.
 
 ## G-0008 — generated one-shot decode discards the INCOMPLETE status (C#, Java)
+
+**Status:** ✅ **fixed** in sofabgen 0.15.3 — PR
+[generator#106](https://github.com/sofa-buffers/generator/pull/106) added the
+status-surfacing `TryDecode`/`tryDecode`; part of the §7 epic
+[generator#86](https://github.com/sofa-buffers/generator/issues/86).
 
 **Where:** the generated `Probe.Decode`/`Probe.decode` for the *status-returning*
 corelibs — C# (`Message.cs`) and Java (`Probe.java`).
@@ -535,7 +545,10 @@ out of `scripts/run.sh` / `run-limits.sh` (the box runs over the other 11 driver
 
 ## G-0011 — generated fixed-capacity C++ string/blob-array fill infinite-loops (DoS)
 
-**Status:** open — [generator#126](https://github.com/sofa-buffers/generator/issues/126).
+**Status:** ✅ **fixed in sofabgen 0.17.1** (commit `483c281`, bounded fill loop) —
+[generator#126](https://github.com/sofa-buffers/generator/issues/126) closed
+2026-07-15. Re-verified 2026-07-16: `c6 0c c6 07` → `I`, no hang. Fix: bound the fill
+by `N` and drop an over-capacity index, as the C and Zig backends already did.
 Surfaced 2026-07-15 by the structure-aware mutator + the comparator per-driver
 timeout (Crucible finding **F-0008**). **Lang:** cpp (fixed-capacity / `c-cpp`
 profile) · **Where:** the generator C++ backend, generated `_FixedStrSeq` /
@@ -582,7 +595,11 @@ codegen.
 
 ## G-0012 — C backend generates a blob field without a length (round-trip data loss)
 
-**Status:** open — [generator#128](https://github.com/sofa-buffers/generator/issues/128).
+**Status:** ✅ **fixed in sofabgen 0.17.1** (commit `25d5853`, sized blob descriptor) —
+[generator#128](https://github.com/sofa-buffers/generator/issues/128) closed
+2026-07-15. Re-verified 2026-07-16: short blobs round-trip in `c`. Fix: emit
+`{ uintX field_len; uint8_t field[N]; }` + `SOFAB_OBJECT_FIELD_BLOB_SIZED` — the corelib
+already provided it, wire bytes unchanged.
 Surfaced 2026-07-15 by the cross-encode / structured-value oracle (Crucible finding
 **F-0009**). **Lang:** c · **Where:** the generator C backend, generated `probe.h`
 struct + `probe.c` field descriptors.
@@ -621,8 +638,13 @@ object API then matches the rest of the family byte-for-byte.
 
 ## G-0013 — the heap backends never enforce an index-keyed array's schema `count`
 
-**Status:** open — **filed [generator#142](https://github.com/sofa-buffers/generator/issues/142)**
-(2026-07-17; spec target = reject per §7). Crucible finding **F-0013** (found
+**Status:** ✅ **fully fixed 2026-07-17**, in two steps —
+[generator#142](https://github.com/sofa-buffers/generator/issues/142) (sofabgen 0.17.4:
+the DoS is gone, cpp 226 MB → 10 MB, and the 9 heap backends reject) then
+[generator#149](https://github.com/sofa-buffers/generator/issues/149) → #151/#150
+(0.17.6: the fixed-capacity C family and no_std reject too, closing the residual where
+`c`/`cpp-c-cpp`/`rust-nostd` still accepted and silently dropped). Re-verified: all 12
+emit `R` on `overindex_clean`, which is in the green regression gate. Crucible finding **F-0013** (found
 2026-07-16 while building `corpus/regression/`). Affects every **heap** profile: go,
 rust-std, cpp, py-cython, py-pure, java, typescript, csharp, zig. The fixed-capacity
 profiles (c, cpp-c-cpp, rust-nostd) are correct.

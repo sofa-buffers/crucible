@@ -19,6 +19,24 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The same rot on the other strand — the standalone codegen entries (2026-08-03).** Repairing the
+paired `G-00NN` rows raised the obvious question about the twelve **standalone** ones, which carry
+their state in a table row *and* a `## G-00NN` section. Checked rather than assumed, and three had
+drifted the *opposite* way from the paired rows: **G-0011, G-0012 and G-0013** read `**Status:**
+open` in their sections while their table rows said fixed — for generator#126 and #128, closed
+2026-07-15, and #142/#149, closed 2026-07-17. Nearly three weeks stale. **G-0006** contradicted
+itself on the release (section 0.15.2, row 0.15.1) and **G-0008** had no `**Status:**` line at all.
+
+*The version question was settled rather than picked.* PR generator#90 merged 2026-07-08 20:22 UTC
+and v0.15.1 was cut 21:43 the same day; `compare/v0.15.1...<merge sha>` confirms containment, so
+the row was right and the section wrong.
+
+*Ownership assigned the other way round from the paired case, and deliberately.* A standalone entry
+has no finding row, so the **section** owns the detail and the table row shrinks to a state plus a
+pointer. For G-0011/G-0012/G-0013 the table cell had grown to hold the entire write-up — several
+hundred words duplicating the section beneath it — which is precisely why the two could disagree
+for weeks without anyone noticing. The table header now states both directions of ownership.
+
 **F-0055 closed 2026-08-03 — one open finding left.** generator#283 landed as `bd67d2b`
 ("stack only live scopes, so a deep skip can't lose") at 16:53, and its CI artifact arrived
 shortly after. Verified on sofabgen `0.0.0-20260803165303-bd67d2b2f84c`, the **first build
