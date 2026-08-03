@@ -79,30 +79,25 @@ here:
 
 ## Open — engine & oracles
 
-- [ ] **Three camps from the nightly corpus still untriaged** (2026-08-03). The review of CI's
-      8512-input corpus explained 4 of 7 unknown camps (F-0053, F-0054, plus addenda to F-0052
-      and F-0043). Three resist a cheap answer:
-      - `c5d8b383` (2 inputs, minimized 62 B → **29 B**) — 12 `I` · **cpp rejects**. An fp32
-        array with NaN-ish payloads in `arrays.nested`, followed by a §7.3-mistyped
-        `ARRAY_SIGNED` at the same id with `count 36` over the schema's 5, then EOF. The obvious
-        F-0046-shaped isolate (mistyped array, over-count, truncated) does **not** reproduce it,
-        so the fp32 payload before it is part of the trigger.
-      - `7f7060b8` (22 inputs) and `8e989f1f` (1 input) — both **rust-nostd alone rejects**
-        `invalid_msg`. Minimized with the batched minimizer to **150 B** and **1116 B**; no
-        single-byte deletion holds the partition at either, so both are genuine minima for byte
-        deletion. Ruled out by control: message size, large *skipped* payloads, and the §6.4
-        mid-payload UTF-8 `MAY` (that isolate splits `zig`, not rust-nostd). The two-sided
-        binary search says *accumulation* — shortest prefix 1132, latest start 0, i.e. nothing
-        can be stripped from the front.
-        **Likely the same root cause as F-0055** (the no-std visitor's 8-entry scope stack whose
-        overflow is discarded): a desynchronised `cur` can land on a scope whose next field
-        trips `inv`, presenting as `R invalid_msg`. **Not proven** — F-0055's proven form is
-        silent *loss*, not a reject. Closing this needs a vector that demonstrates the reject
-        path directly.
-        **F-0055 was fixed 2026-08-03** (generator#283, `bd67d2b`), so the cheap test now exists:
-        re-cluster the next nightly artifact. If both camps are gone, the hypothesis is
-        confirmed and these close with it; if they survive, they are a genuinely separate defect
-        and the guesswork ends either way.
+- [x] **The three untriaged nightly camps — CLOSED 2026-08-03.** Rather than waiting for the next
+      nightly, the 2026-08-03 06:09 artifact (still retained) was re-clustered against the
+      post-fix family. **17 camps → 11**, and the three resolved as follows:
+      - `7f7060b8` (22 inputs) and `8e989f1f` — **gone**. The standing hypothesis (the same root
+        cause as F-0055) is confirmed by their disappearance under generator#283's fix.
+      - `c5d8b383` — **survives, and is its own defect**: minimized 62 B → 32 B → a 22-byte
+        isolate, triaged to **F-0056** (corelib-cpp re-parses a fixlen array's payload as a
+        varint on the truncated-resume path). The earlier reconstruction failed because it
+        guessed the fp32 *values* mattered; it is the **continuation bit** in the payload bytes.
+      Also worth recording: re-clustering surfaced one camp that is new only in *signature* —
+      F-0043 at the declared-width bound, whose partition moved when generator#279 pushed `cpp`
+      from the `I` camp into the reject camp. Proven with three controls, not a new class.
+
+- [ ] **A fixlen-payload-as-varint axis** (from F-0056). No axis emits a fixlen element payload
+      made of **continuation bytes**, because none had a reason to care what the bytes of a
+      well-formed element look like. F-0056 is exactly a reader that mis-seeks into such a
+      payload and reads it as a varint — invisible to every value-shaped vector. Cheap to emit:
+      a fixlen payload of `0x80`/`0xff` at every fixlen position, followed by a truncated field,
+      with a terminator-every-N control alongside.
 
 - [ ] **Sweep the product cells the nightly corpus exposed.** Three of the four camps triaged on
       2026-08-03 live where two correct axes meet and neither sweeps the intersection — the same
@@ -308,7 +303,7 @@ here:
 
 
 
-- [ ] **Triage the 2026-08-01 fuzz round's unattributed clusters** (snapshot + camps in
+- [x] **Triage the 2026-08-01 fuzz round's unattributed clusters** — **DONE**, all 17 clusters attributed (the sub-items below record how). (snapshot + camps in
       [`../results/CLUSTERS.md`](../results/CLUSTERS.md)). Priority order:
       1. [x] **Cluster 3 — DONE 2026-08-01: minimized to F-0044** (128 B -> 6 B, three controls).
          A child of a *skipped unknown sequence* binds into the enclosing scope on the
