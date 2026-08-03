@@ -92,6 +92,22 @@ here:
       F-0043 at the declared-width bound, whose partition moved when generator#279 pushed `cpp`
       from the `I` camp into the reject camp. Proven with three controls, not a new class.
 
+- [ ] **Chunked re-feed in the drivers (`SOFAB_SPLIT=k`)** — the oracle and the gate exist
+      (`oracle/chunk_invariance.py`, `scripts/run-chunked.sh`, contract section written); **no
+      driver implements it yet**, so the gate skips loudly rather than passing vacuously.
+      Raised by [crucible#130](https://github.com/sofa-buffers/crucible/issues/130), which asked
+      for exactly two things: a split strategy that cuts at **metadata/payload boundaries**, and
+      an assertion that an `I` actually **resumes**. Sweeping every split point delivers the
+      first without the harness knowing where the boundaries are; comparing the final line
+      against the whole-message line delivers the second.
+      *The obstacle is per-language plumbing:* every driver decodes one-shot
+      (`DecodeProbe(data)`, `Probe::try_decode(data)`, …), so honouring the variable means
+      reaching the corelib's streaming `feed` plus the generated visitor. **Land one driver at a
+      time** — chunk invariance is an intra-driver invariant, so a single driver already earns
+      its keep and none of this needs all 13 to be useful.
+      *Note it would not have caught crucible#130 itself*: generated code calls the correct
+      `readBlob()`, never the broken raw overload. It catches that defect's **class**.
+
 - [ ] **A fixlen-payload-as-varint axis** (from F-0056). No axis emits a fixlen element payload
       made of **continuation bytes**, because none had a reason to care what the bytes of a
       well-formed element look like. F-0056 is exactly a reader that mis-seeks into such a

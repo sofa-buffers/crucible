@@ -1,6 +1,6 @@
 # F-0056 — corelib-cpp re-parses a fixlen array's payload as a varint when a later field truncates
 
-**Status:** 🔴 **OPEN** — filed as [corelib-cpp#71](https://github.com/sofa-buffers/corelib-cpp/issues/71) (2026-08-03, against `main` @ `2466869`) — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Status:** ✅ **RESOLVED** — [corelib-cpp#71](https://github.com/sofa-buffers/corelib-cpp/issues/71) fixed by [corelib-cpp#72](https://github.com/sofa-buffers/corelib-cpp/pull/72), merged the same day — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 **Found 2026-08-03** by re-clustering CI's 8512-input nightly corpus against the post-fix family.
 It is the camp `c5d8b383`, which had resisted triage since the morning review: an earlier attempt
@@ -97,6 +97,30 @@ if (!consumed_)
 that path is also taken on the truncated-resume, the reader restarts inside the payload and the
 next varint it reads is made of the element bytes. The 10-byte threshold is consistent with that
 and with nothing else this axis produced.
+
+## Resolution
+
+Fixed by [corelib-cpp#72](https://github.com/sofa-buffers/corelib-cpp/pull/72) (`main` @ `48f06db`).
+The inferred site was right, and the fix names the mechanism more precisely than this write-up
+did: a nested `read()` that runs out of bytes returns **unconsumed**, exactly as a *declined*
+field does, so a truncation fell into the decline path — `p_` rewound to a payload the callback
+had already descended *through*, and `skipPayload()` re-read it under the metadata of whatever
+innermost field the descent stopped at. `parseTopLevel` had guarded this all along
+(`sofab.hpp:3133`); `dispatchLevel` never did. The fix bails out at the field's start when the
+callback reported incomplete, before the decline-skip.
+
+Verified 2026-08-03 against `48f06db`: all seven reproducers now agree with the 12-implementation
+consensus — the three triggers moved `R` → `I`, the four controls unchanged. Full suite green
+(nine gates, 1104 sweep vectors, `materialize.sh` 0/108). Promoted to the `corpus/regression/`
+gate as `F0056_*` (181 → **188** inputs); the camp signature is deleted from
+`results/known-clusters.txt`.
+
+**An adjacent defect the fix deliberately left open** is filed as
+[crucible#130](https://github.com/sofa-buffers/crucible/issues/130): `read(void *, size_t)`, the
+raw blob read, sets `error_` rather than `incomplete_` on a short payload and drops the buffered
+tail, so the message never completes. Reproduced against `48f06db`. It is invisible to this suite
+twice over — generated code calls `readBlob()`, which is correct, and the replay driver feeds each
+message **whole**, while the defect lives at a chunk boundary.
 
 ## Reproducers
 

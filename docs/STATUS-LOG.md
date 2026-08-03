@@ -82,6 +82,36 @@ removed. The check enforces that their states agree instead.
 
 Folders: **72** (55 findings + 17 standalone codegen defects). Index rows: **90**.
 
+**F-0056 closed, and the harness gap it exposed written down (2026-08-03).** corelib-cpp#72
+merged the same day; the fix names the mechanism more precisely than the finding did — a nested
+`read()` that runs out of bytes returns *unconsumed*, exactly as a **declined** field does, and
+the two were conflated. Verified against `48f06db`: all seven reproducers join the
+12-implementation consensus, full suite green (nine gates, 1104 sweep vectors, materialize
+0/108). Promoted to the regression gate (181 → **188**), camp signature deleted.
+
+*The interesting part is what the fix deliberately left open.* Its author flagged that
+`read(void *, size_t)` — the raw blob read — sets `error_` rather than `incomplete_`, and filed
+it as [crucible#130](https://github.com/sofa-buffers/crucible/issues/130). I had probed that path
+and reported "no split", which was **wrong**: my vectors declared a length of 20 against a
+`maxlen` of 4, so they were over-bound and correctly `INVALID` rather than merely truncated. A
+direct API probe against `48f06db` reproduces the issue's table line for line — `INVALID` then
+unrecoverable, the buffered tail dropped, `blob=0 B` even after the rest arrives, while
+`readBlob()` is correct in every row.
+
+*Why this suite cannot see it, twice over.* Generated code calls `readBlob()`, so the broken
+overload is never reached; and the replay driver feeds every record **whole**, while the defect
+lives at a chunk boundary. The corpus can be as large as it likes and will never contain a
+chunk boundary.
+
+*So the gate was built and the drivers were not.* `oracle/chunk_invariance.py` +
+`scripts/run-chunked.sh` implement both of #130's asks — sweeping every split point covers the
+metadata/payload boundaries without the harness knowing where they are, and comparing the final
+line against the whole-message line asserts that an `I` resumes. **No driver implements
+`SOFAB_SPLIT` yet**, because every one of them decodes one-shot; the gate therefore skips
+loudly rather than passing vacuously, which is the one thing it must not do — a driver ignoring
+the variable produces byte-identical output. Landing one driver at a time is enough: alone among
+these oracles, chunk invariance compares a driver *against itself*.
+
 **The third strand, and the point at which intent was replaced by a check (2026-08-03).**
 Reviewing the catalog from the outside — opening `findings/<id>/NOTES.md` the way a reader
 arriving from an issue link does — showed the rot had a third strand, the largest of them:
