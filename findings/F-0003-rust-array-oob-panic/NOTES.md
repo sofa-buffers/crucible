@@ -118,3 +118,9 @@ pre-existing (not a regression) on the 2026-07-16 corelib bump:** reverting core
 + corelib-rs-no-std to their pre-pull commits (`03b44f6`/`3e4a69f`) yields the *same*
 `I` on this input — the rust tips changed nothing here. Not a new finding; a data point
 for documentation#15. (Clean-input regression gate stays green.)
+
+## Resolution
+
+**Impls:** corelib-rs, corelib-rs-no-std · **Axis:** crash → **verdict**
+
+✅ **fully resolved** — crash fixed by [generator#87](https://github.com/sofa-buffers/generator/pull/87) (issue [#78](https://github.com/sofa-buffers/generator/issues/78)); the residual over-count *accept* divergence ([generator#100](https://github.com/sofa-buffers/generator/issues/100)) is **fixed in sofabgen 0.16.1** (commit `ca0fda7`, "reject over-count scalar arrays in every backend"). **Re-verified 2026-07-15:** a clean non-truncated over-count(8>5) array → **all 12 drivers reject** (`R invalid_msg`); rust-std/nostd now reject with the family

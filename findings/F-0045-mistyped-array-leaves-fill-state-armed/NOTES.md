@@ -99,3 +99,9 @@ strictly worse than the mis-decode §7.3 forbids.
 ```
 CORPUS=findings/F-0045-mistyped-array-leaves-fill-state-armed ./scripts/run.sh
 ```
+
+## Resolution
+
+**Impls:** generator (**rust-std, rust-no-std, zig**; codegen) — `array_begin` arms `afill`/`askip` on the kind *family* `Unsigned`/`Signed` keyed only by `(scope, id)`, not on the field's **declared** kind (`message.rs:500`, `message.zig:415`). The **rust/zig analogue of G-0023**, which generator#254 fixed for the java/csharp allocation arm — which is why those two are in the correct camp here · **Axis:** accept_value
+
+✅ **RESOLVED 2026-08-02** — generator#270 fixed and closed the same day it was filed. the §7.3-skipped array no longer leaves the fill counter armed. **Re-verified** on the post-fix family (sofabgen `0.0.0-20260802183113-4865f8515430`, corelibs @ main): all vectors converge across 13 drivers, and the verdict *direction* was checked, not just agreement. Reproducers promoted into the green `corpus/regression/` gate (117 → 160 inputs). *Original report:

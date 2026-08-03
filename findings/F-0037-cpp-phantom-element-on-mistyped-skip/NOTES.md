@@ -53,3 +53,9 @@ CORPUS=findings/F-0037-cpp-phantom-element-on-mistyped-skip ./scripts/run.sh
 Carved out of the blocking wiretype axis at the (202,) element position until fixed
 (the F-0034 pattern), and out of `sweep_empty_frame`'s element cells where the
 phantom contributes to the split.
+
+## Resolution
+
+**Impls:** generator (**C++ backend**, codegen, **G-0022**) — `cpp` *and* `cpp-c-cpp` (the shared artifact is the generated `probe.hpp`; neither corelib can grow the container from its skip path) · **Axis:** accept_value (round-trip; a decoded-**value** defect)
+
+✅ **RESOLVED in sofabgen 0.21.0** — [generator#249](https://github.com/sofa-buffers/generator/issues/249) closed. **Re-verified 2026-07-29** against corelibs **0.9.0 @ main** + sofabgen **0.21.0** — the first family carrying the merged sparse-array rewrite (documentation#29/#31). Both reproducers agree, and the §7.3 wiretype sweep no longer shows a `cpp` camp at the element position. *History:* Found 2026-07-27 by the §7.3 wiretype sweep at the new WP-05 element position (all 8 mistyped constructs split identically, poc family). NB once G-0021 lands, the trailing-trim hides this from the round-trip oracle — only the materialized dump still shows the phantom (the F-0010 masking lesson). The F-0017/F-0020 neighborhood (C++ backend wire-type gates). Carved out of the blocking wiretype-axis cells at the (202,) element position; reproducers in `findings/F-0037…/`

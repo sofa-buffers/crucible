@@ -63,3 +63,9 @@ Held out of the blocking `corpus/regression/` gate and the framing axis kept **r
 `id_over_idmax` → all 13 `R`, promote the reproducer + the `id_at_idmax_ctl` control into the gate, and
 flip the framing axis's id-ceiling vectors to blocking. (`FIXLEN_MAX`, `ARRAY_MAX`, stray-end, and the
 `MAX_DEPTH` split F-0029 are tracked with the same axis.)
+
+## Resolution
+
+**Impls:** corelib-cpp + corelib-dart (decoders); **corelib-only, not codegen** · **Axis:** verdict
+
+✅ **RESOLVED (re-verified 2026-07-25)** — [corelib-cpp#47](https://github.com/sofa-buffers/corelib-cpp/issues/47) + [corelib-dart#14](https://github.com/sofa-buffers/corelib-dart/issues/14) fixed; all 13 now reject a field id > ID_MAX on **decode** (the framing §6.2 sweep is green). Reproducer `id_over_idmax.bin` = `808080804005` (id 2³¹, wire unsigned, value 5). **Root cause:** both enforce `ID_MAX` in their **encoder** (`corelib-cpp include/sofab/sofab.hpp:475` `putHeader`; `corelib-dart encoder.dart:140`) but the **decoder** reads `header >> 3` with no ceiling check (`sofab.hpp:1410/:1812`; `decoder.dart:221`) → a wire id > ID_MAX is treated as unknown and skipped. `corelib-c-cpp` **does** check it in the decoder (`istream.c:485`), so `cpp-c-cpp` rejects — pinning the gap to the pure-C++ (`cpp`) and Dart decoders. **Attribution — corelib:** ID_MAX is a format constant, not schema; the check is wire mechanics the family (incl. corelib-c-cpp in the same C++ profile) already performs. Control `id_at_idmax_ctl.bin` (id ID_MAX, largest valid) → all 13 accept. **Found 2026-07-23 by the WP-04 framing & ceilings sweep** (`engine/structured/sweep_framing.py`). *(F-0027 is reserved by PR #88 / WP-01, not yet on main.)

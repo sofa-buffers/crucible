@@ -72,3 +72,9 @@ CORPUS=findings/F-0036-trailing-default-struct-elem-not-retrimmed ./scripts/run.
 
 Carved out of the blocking `sweep_empty_frame` axis until fixed
 (`trailing_empty_elem`, `empty_frame`/`frame_only` at the 202 element position).
+
+## Resolution
+
+**Impls:** corelib-c-cpp (`sofab_object_encode`'s recursive `_field_is_default` elision — the corelib-c-cpp#109 / F-0030 fix, now over-reaching); the other 12 are correct · **Axis:** accept_value (round-trip)
+
+✅ **RESOLVED in sofabgen 0.21.0** — [generator#248](https://github.com/sofa-buffers/generator/issues/248) closed. **Re-verified 2026-07-29** against corelibs **0.9.0 @ main** + sofabgen **0.21.0** — the first family carrying the merged sparse-array rewrite (documentation#29/#31). All three reproducers agree **and** round-trip byte-identically, so the family converged on the spec-correct side of the inversion, not merely on agreement: `trailing_empty_elem` keeps its `0e 07` empty frame (§2 last-element rule) and `alldefault_elem_only` keeps `[{}]` rather than collapsing to the omitted wrapper. *History:* **DIRECTION INVERTED 2026-07-28.** Originally filed the other way round ([generator#248](https://github.com/sofa-buffers/generator/issues/248): *12 of 13 fail to trim the trailing run*), because §3/§5.1 then declared a `count: N` array "fixed-length with exactly N logical elements". **[documentation#31](https://github.com/sofa-buffers/documentation/pull/31) removed that reading** — `count` is a capacity, the wire carries the length, and the **last element is always written** — so keeping it is correct and eliding it shortens the array. The generator issue is being corrected and the finding re-attributed to corelib-c-cpp. Reproducers unchanged in `findings/F-0036…/`; the expectation attached to them flipped

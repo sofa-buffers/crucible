@@ -86,3 +86,9 @@ child ids inside it are not element indices.
 
 *Caveat:* the line above is where the bound is consulted, not a confirmed root cause. The
 behavioural evidence is solid; the exact code path is for the maintainer to confirm.
+
+## Resolution
+
+**Impls:** **corelib-cpp** (`cpp` only; `cpp-c-cpp`, same backend, other corelib, is correct) · **Axis:** verdict
+
+✅ **RESOLVED 2026-08-02** — corelib-cpp#65 fixed and closed the same day it was filed. `fix(decode): suspend the element-index bound inside a skipped subtree` — the fix the finding proposed, verbatim. **Re-verified** on the post-fix family (sofabgen `0.0.0-20260802183113-4865f8515430`, corelibs @ main): all vectors converge across 13 drivers, and the verdict *direction* was checked, not just agreement. Reproducers promoted into the green `corpus/regression/` gate (117 → 160 inputs). *Original report:

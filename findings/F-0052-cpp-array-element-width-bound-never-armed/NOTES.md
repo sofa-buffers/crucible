@@ -7,6 +7,8 @@ closed; verified on sofabgen `0.0.0-20260803154628-1e4359a8a1c0`.
 
 ## Resolution
 
+**Impls:** generator (sofabgen **C++ backend**) — **G-0034** · **Axis:** verdict / accept_value
+
 All 6 reproducers produce **no cluster** against the current family. Verified on the **value**,
 not on agreement: the three `*_elem_over` forms and `r4_overwidth_elem_truncated` are
 `R invalid_msg` on all 13 — cpp no longer masks 5208 to 88, and no longer degrades the truncated

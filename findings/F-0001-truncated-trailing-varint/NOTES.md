@@ -66,6 +66,10 @@ lineages reject, so "reject truncated input" is the better-supported reading.
 
 ## Resolution path
 
+**Impls:** {c,cpp,c-cpp,rust-std,rust-nostd,java,csharp} vs {go,py-cython,py-pure,typescript,zig} · **Axis:** verdict
+
+✅ **resolved — target met.** Spec-resolved (§7 finish-less: truncated = INCOMPLETE); corelibs → [generator#86](https://github.com/sofa-buffers/generator/issues/86); Crucible third verdict `I` → [crucible#8](https://github.com/sofa-buffers/crucible/issues/8). The target — **every impl emits `I`**, not accept/reject — is **met**: verified green 2026-07-13 and re-verified 2026-07-17, all 12 drivers emit `I` on both seeds (was 7-accept/5-reject). Both reproducers are in the green `corpus/regression/` gate. *(java additionally emits an `incomplete_value` payload on `I` — a **soft** axis, tracked separately; the verdict itself is unanimous.)
+
 This was the canonical case behind PLAN §8: is decoding of truncated input
 **specified** or **undefined**? **RESOLVED** by MESSAGE_SPEC §7 (finish-less,
 documentation PR #12): truncated input is **specified** — it is `INCOMPLETE`, a

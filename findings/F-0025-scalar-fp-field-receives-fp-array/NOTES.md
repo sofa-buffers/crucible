@@ -112,3 +112,9 @@ scalar←array corner (generator#183), F-0022 the array←scalar arm (generator#
 wrapper-element loop (generator#189). This is the **fp** scalar←array corner that generator#183 left
 uncovered — the sweep's last non-green residual. Isolate-green is not axis-green: F-0021's vectors
 only exercised integer positions, so its fix looked complete while the fp position stayed broken.
+
+## Resolution
+
+**Impls:** generator (sofabgen) — rust-std/rust-nostd/csharp/java/zig backends; **generator-only** · **Axis:** accept_value
+
+✅ **RESOLVED — [generator#193](https://github.com/sofa-buffers/generator/issues/193) fixed & closed** (post-0.19.4 sofabgen; verified on the CI build `0.0.0-20260722065611-f61a29b31c01`, 2026-07-22). Was a clean **7-skip vs 5-store** split (the wiretype §7.3 sweep's last residual after F-0022/F-0023 landed in 0.19.4). generator#183 (F-0021) armed the discard counter (`askip`) for **integers** only — (1) generated `arrayBegin` armed `askip` only for `Unsigned`\|`Signed`, never `Fixlen` (fp); (2) the `fp32()`/`fp64()` callbacks lacked the `askip` guard `unsigned()`/`signed()` carry. The fix (mirroring #183/#188, generator-only, no corelib change) arms `askip` for the fp array kinds and adds the guard to both fp callbacks. **Re-verified:** both reproducers (`f32_recv_array_fp32`, `f64_recv_array_fp64`) → **all 12 skip** (re-encode to the empty-scalar form `5607a606560707c60c07ce0c07`), the two controls agree, and the **wiretype (§7.3) sweep is green** (319 vectors, 0 divergences) — promoted **report-only → blocking** in `scripts/sweep.sh`. The 2 reproducers + 2 controls promoted into the green `corpus/regression/` gate (`F0025_*`, 73 → 77). **Isolate-green ≠ axis-green** — F-0021's vectors only exercised integer positions, so its fix looked complete while the fp position stayed broken until the sweep enumerated it. **Found 2026-07-21 by the wire-type sweep**; resolved 2026-07-22

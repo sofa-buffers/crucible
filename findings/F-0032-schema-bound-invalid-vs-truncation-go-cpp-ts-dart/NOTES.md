@@ -4,6 +4,10 @@
 
 ## Resolution — the codegen splits fixed upstream; the cpp residual was in THIS driver
 
+**Impls:** generator (schema-bound check ordering; **codegen**) — G-0018 · **Axis:** verdict
+
+✅ **RESOLVED (re-verified 2026-07-25)** — the go/ts/dart/zig/rust codegen splits closed in the generator (#222/#223/#224); the **cpp** residual was the Crucible driver bypassing the generated `try_decode` (fixed in **crucible#107**), and the cpp measure-schema's own §7.3 subtype-gate gap ([corelib-cpp#51/#52](https://github.com/sofa-buffers/corelib-cpp/issues/51), `80ec210`, = generator#229) is now fixed too, so cpp `try_decode` skips a mismatched fixlen correctly. **Re-verified 2026-07-25:** all 13 agree `R` on the F-0032 vectors and the wiretype §7.3 sweep is green. [generator#216](https://github.com/sofa-buffers/generator/issues/216). Structural malformations (reserved subtype, bad array element-word — INVALID at the word) are `R` on all 13; only *schema-bound* violations (checked after reading the payload/elements) split. maxlen/count/id are schema facts → the check + its ordering are generated code (F-0024 was this in the rust backend, generator#190). Fix: reject as soon as the deciding word/header shows the violation, before propagating a truncation Incomplete. **Found 2026-07-23 by WP-09** (broadened malform×truncation). Bound into-payload truncations carved out of the blocking axis (`STRUCTURAL` set) until fixed; structural truncations + `_complete` controls stay blocking
+
 The go/ts/dart/zig/rust splits were genuine **codegen** and closed in the generator (generator#222/#223/#224,
 header-hook ordering) — verified `R` on those backends. The last-standing **cpp** residual was **not** codegen:
 the generated `message::Probe::try_decode` is correct — it installs the §5.2 measure-phase `sofab::schema`

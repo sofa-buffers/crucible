@@ -92,3 +92,9 @@ divergent).
 The §7.3 axis. F-0017 fixed one isolate; F-0020 opened the axis; 0.19.2 closed 47/55. This is
 the last 8 — the array-into-scalar corner the shared-callback backends miss. Isolate-green is
 not axis-green.
+
+## Resolution
+
+**Impls:** generator (sofabgen) — rust-std/rust-nostd/csharp/java/zig backends; **generator-only** · **Axis:** verdict / accept_value
+
+✅ **RESOLVED (sofabgen 0.19.3, 2026-07-20)** — [generator#183](https://github.com/sofa-buffers/generator/issues/183) (PR #184). After 0.19.2 closed 47/55 of the §7.3 axis (F-0020), these 8 remain: clean **7-skip vs 5-decode** split. The 5 are the corelibs that deliver an integer array **element-by-element through the scalar `unsigned()`/`signed()` callback** (with `arrayBegin(id,kind,count)` announced first); the generated visitor dispatches on the id alone so the element lands in the scalar's arm. **Not** "visitor vs pull" — go/python are visitor-based and skip (they route arrays to a distinct method). **Generator-only, no corelib change** (verified per source: all 5 announce `arrayBegin`+count before the elements): the generated `arrayBegin` sets `skip_remaining=count` for a scalar-declared id, `unsigned()`/`signed()` honour it. The delivery design is deliberate (streaming, zero-alloc — rust-nostd/zig need it) and stays. Found re-checking F-0020 on 0.19.2

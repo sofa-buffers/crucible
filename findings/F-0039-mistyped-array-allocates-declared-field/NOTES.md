@@ -76,3 +76,9 @@ also be a false `INVALID`.
 Both corelibs hand the generated code a correctly parsed `(id, kind, count)` triple;
 neither knows `arrays.u8` is declared unsigned. `cpp-c-cpp` and `c` sit on the same
 corelibs and are correct, which rules the corelib out from the other side.
+
+## Resolution
+
+**Impls:** generator (**java + csharp backends**, codegen, **G-0023**) — the corelibs hand both a correctly parsed `(id, kind, count)`; `c`/`cpp-c-cpp` on the same corelibs are correct · **Axis:** accept_value
+
+✅ **RESOLVED 2026-08-01** — [generator#254](https://github.com/sofa-buffers/generator/issues/254) (G-0023) closed 2026-07-29; the backends consume the widened `ArrayKind` in [generator#259](https://github.com/sofa-buffers/generator/issues/259). **Re-verified 2026-08-01** against corelibs **0.10.0 @ main** + sofabgen **0.22.0**: all three reproducers converge on all 13 (the mistyped `ARRAY_SIGNED` header leaves the `array of u8` field `[]`, not `[0]`). Promoted into the regression gate as `F0039_*.bin`, and the two `ARR_fp*`-vs-`ARR_fp*` cells this shared with F-0042 are back in the blocking `wiretype_sweep` axis (361 -> 363 vectors, green)

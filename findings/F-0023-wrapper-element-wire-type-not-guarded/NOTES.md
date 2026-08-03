@@ -97,3 +97,9 @@ python3 oracle/cluster.py --corpus findings/F-0023-wrapper-element-wire-type-not
 
 Build via `./scripts/run.sh` — never point the comparator at `drivers/*/build/` after a
 limit-mode run (probe-dyn binaries mis-report a sweep as ~all divergent).
+
+## Resolution
+
+**Impls:** generator (sofabgen) — ts/py/cpp/cpp-c-cpp backends; **generator-only** · **Axis:** verdict
+
+✅ **RESOLVED (sofabgen 0.19.4, 2026-07-21)** — [generator#189](https://github.com/sofa-buffers/generator/issues/189). The wrapper-element loop now emits the same §7.3 guard the struct-field dispatch already had — TS `if (c.wire !== Fixlen \|\| c.fixSub !== String) { c.skip(c.wire); continue; }` (`message.ts:372`), Py `if _ef0.type != FIXLEN or _ef0.subtype != STRING: d.skip(); continue` (`message.py:446`), and the C++ `_StrSeq` element loop — so a mis-typed element is skipped instead of read as the declared type. **Re-verified:** all 5 isolates (blob / fp32 / signed scalar / sequence element + control) → 0 divergences across all 12; promoted into the green gate (`F0023_*`). **Not a spec hole:** §5.1 makes a wrapper element a normal field, §7.3 says a mis-typed field is skipped — they compose. **Root cause:** generator#174 added the §7.3 guard to *struct-field dispatch* but **not to the array-wrapper element loop**, so ts/py rejected, cpp mis-accepted a blob as the string, cpp-c-cpp rejected a subtype mismatch. **The third §7.3 position the guard missed** (after F-0020 struct fields, F-0022 array-fill arms). **Found 2026-07-20 by the wire-type sweep** — validated across all 12

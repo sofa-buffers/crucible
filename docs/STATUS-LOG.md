@@ -19,6 +19,26 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**One finding, one folder, one write-up (2026-08-03).** The catalog was restructured rather than
+patched again. Every entry — `F-00NN` **and** `G-00NN` — now has a folder under `findings/` whose
+`NOTES.md` owns everything about it: the defect, the reproducer, the attribution and a
+`## Resolution` chapter. `results/FINDINGS.md` is reduced to a single index table — link, upstream
+ticket, state — and went from **917 lines to 113**.
+
+*What moved.* The 60 kB of resolution prose that lived in the catalog's status column was migrated
+into the write-ups as `## Resolution`, cut at the changelog marker where one had accreted (only
+F-0010 genuinely had); the 19 `## G-00NN` detail sections became folders. Five codegen entries —
+G-0014 through G-0018 — turned out to exist **only** as sections, in no table at all, which is its
+own answer to how well two representations track each other. The "Phase 1 note" moved to this log,
+where narrative belongs.
+
+*Paired entries deliberately do not get a second folder.* Where a `G-00NN` is the generator side of
+an `F-00NN`, its row points at that finding's folder. One defect, one write-up — creating
+`findings/G-0027/` beside `findings/F-0043/` would have rebuilt the duplication this whole exercise
+removed. The check enforces that their states agree instead.
+
+Folders: **72** (55 findings + 17 standalone codegen defects). Index rows: **90**.
+
 **The third strand, and the point at which intent was replaced by a check (2026-08-03).**
 Reviewing the catalog from the outside — opening `findings/<id>/NOTES.md` the way a reader
 arriving from an issue link does — showed the rot had a third strand, the largest of them:
@@ -77,7 +97,7 @@ Reproducers promoted (`F0055_*`, gate 176 → **181**, green), camp deleted from
 produces seven clusters and is the last finding waiting on the generator.
 
 **The tracking table had rotted, and that is a structural fault not a slip (2026-08-03).**
-`results/FINDINGS.md` carries two tables: the findings catalog and *"Tracking issues (generator
+`results/FINDINGS.md` then carried two tables: the findings catalog and *"Tracking issues (generator
 repo)"*. Nine of the ten `G-00NN` rows read **open** while their generator issues were closed —
 G-0026, G-0028 through G-0035 — and in most cases the paired `F-00NN` row above had said
 **resolved** for a day. Only G-0027 (generator#267) was genuinely open.
@@ -2457,6 +2477,19 @@ representative. It recovers past crashes (re-runs a crashed driver on the
 remaining inputs). First run: 256 divergences → 47 clusters, top 12 ≈ 208, mapping
 to F-0001/F-0004/F-0005 (+ the F-0003 crash cluster). Snapshot +
 finding-mapping in `results/CLUSTERS.md`.
+
+## Phase 1 note (moved from results/FINDINGS.md, 2026-08-03)
+
+The loop found F-0001 on its **first run** over hand-written seeds — before any
+coverage-guided or structure-aware fuzzing. That is the differential oracle
+working as designed: a divergence no single-implementation fuzzer could report,
+because no impl crashes — they simply disagree. Phase 2 (adding Rust, C++,
+Python, Java, TypeScript, C#, and Zig) grew it from 1-vs-1 into a
+7-accept-vs-5-reject **two-camp** split — four independent lineages (Go, Python,
+TypeScript, Zig) reject where the C/C++/Rust/Java/C# camp accepts. That is exactly
+the extra signal more implementations buy: a lone outlier is ambiguous; four
+independent rejects point firmly at the answer — and the split cuts across the
+systems/managed line, so it is a genuine per-decoder design difference.
 
 ## First finding
 

@@ -66,3 +66,9 @@ input logs to stderr but the driver still emits its canonical line and the
 differential loop completes. The coverage pacemaker (libFuzzer build) would halt
 on this — which is the correct behavior there, and is how continuous fuzzing will
 re-surface it until fixed.
+
+## Resolution
+
+**Impls:** corelib-c-cpp · **Axis:** ub (sanitizer)
+
+✅ resolved — [corelib-c-cpp#70](https://github.com/sofa-buffers/corelib-c-cpp/pull/70) merged (verified @ sofabgen 0.15.1)

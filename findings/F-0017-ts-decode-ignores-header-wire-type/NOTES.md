@@ -86,3 +86,9 @@ by the wire. The `default:` branch already models the wire-typed dispatch.
 - `wrong_wire_type_misframed.bin` = `05 00 01` — the hard 11-vs-1 isolate (TS `I`, family `R`)
 - `misframe_proof_u8.bin` = `05 07` — TS `A` with `u8 = 7`, proving the wire type is ignored
 - `cluster2_original_24B.bin` = the byte-minimized fuzzer rep this reduced from
+
+## Resolution
+
+**Impls:** generator (sofabgen **TypeScript backend**, codegen) — **G-0014** · **Axis:** verdict
+
+✅ **RESOLVED 2026-07-18** — [generator#160](https://github.com/sofa-buffers/generator/issues/160) fixed in **sofabgen 0.18.0** ([PR #161](https://github.com/sofa-buffers/generator/pull/161), "frame each decoded field by header wire type"). **Re-verified:** isolate `05 00 01` → **all 12 `R invalid_msg`** (ts was `I`). The generated TS decode now consults the header wire type per field before picking the reader. Promoted `F0017_ts_wiretype_iso.bin` into the green `corpus/regression/` gate

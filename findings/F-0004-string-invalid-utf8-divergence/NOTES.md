@@ -52,6 +52,10 @@ F-0004's status is unchanged — only the camp membership above.
 
 ## Resolution — MESSAGE_SPEC.md §8
 
+**Impls:** 4-way · **Axis:** verdict + value
+
+✅ **RESOLVED 2026-07-18** (sofabgen 0.18.0, crucible#55). The `SOFAB_STRICT_UTF8` epic landed family-wide — 0.18.0 codegen for rust/java/cs/zig ([generator#162](https://github.com/sofa-buffers/generator/pull/162)) + corelib-internal checks (c/cpp/go/py/ts) + always-strict Unicode types. **Crucible built all drivers with the check ON** (`drivers/c` + `drivers/cpp` c-cpp variant opt in via `-DSOFAB_ENABLE_STRICT_UTF8` + `utf8.c`; zig supplies `build_options.strict_utf8=true`) and added 11 invalid-UTF-8 seeds (`engine/structured/utf8_seeds.py`, reusing corelib-c-cpp's `invalid_utf8` vectors) + 3 valid controls. **Verified:** the 4-way raw/U+FFFD/empty/reject split is gone — every malformed vector → **all 12 `R invalid_msg`**, every valid control → **all 12 `A`** and round-trips. Promoted into `corpus/regression/` (29→43). *(Embedded U+0000 is accepted by all 12 but the C object API truncates it on re-encode — a separate value axis, split out as **F-0018**.)
+
 `string` is UTF-8; `blob` is the type for opaque bytes. The **strict, conformant**
 behavior is to reject invalid UTF-8 as `INVALID` (§7). Because validation has a
 cost and several native string types don't check, the corelib **MAY gate the

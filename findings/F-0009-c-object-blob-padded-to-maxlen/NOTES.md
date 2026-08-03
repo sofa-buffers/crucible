@@ -59,3 +59,9 @@ descriptor. **Filed [generator#128](https://github.com/sofa-buffers/generator/is
 The green cross-encode gate (`corpus/structured/`) uses only full-`maxlen` blobs so
 it stays a clean regression gate; the sub-`maxlen` reproducers live here as the
 finding, mirroring how open findings are kept out of the green seed gate.
+
+## Resolution
+
+**Impls:** generator (sofabgen C backend) — G-0012 · **Axis:** accept_value (round-trip)
+
+✅ **resolved** — [generator#128](https://github.com/sofa-buffers/generator/issues/128) fixed in **sofabgen 0.17.1** (commit `25d5853`, sized blob descriptor). **Re-verified 2026-07-16:** short blobs round-trip in `c`, matching the family; the sub-`maxlen` vectors are back in the green `corpus/structured/` gate (52 inputs, 0 divergences). Root cause: C backend generates `blob` as a bare `uint8_t[maxlen]` + plain `SOFAB_OBJECT_FIELD(...BLOB)` (fixed full-capacity) with **no length**; should use `SOFAB_OBJECT_FIELD_BLOB_SIZED` (the corelib already provides it, byte-identical wire). `[0x01]` → c `01 00 00 00` vs family `01`; `[0x00]` → c drops it. Even the C++ wrapper `cpp-c-cpp` (same C `istream/ostream`) preserves it. **Found by the cross-encode / structured-value oracle** on its first run

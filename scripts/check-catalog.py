@@ -4,18 +4,18 @@
 `results/FINDINGS.md` is the single source of truth for a finding's **status**. But the
 same status is legible in three other places, and each of them has drifted at least once:
 
-  1. the catalog row itself                        (owner)
-  2. `findings/<id>/NOTES.md`                      (the reproducer write-up)
-  3. the `G-00NN` tracking-table row               (upstream ticket index)
-  4. the `## G-00NN` detail section                (standalone codegen write-up)
+`findings/<id>/NOTES.md` is the single owner of everything about a finding. `results/
+FINDINGS.md` is a pure index: one row per entry, carrying the link, the upstream ticket and
+the state — nothing that can drift out of step with the write-up.
 
-On 2026-08-03 all three non-owners were found stale at once: nine paired G rows read
-"open" against closed issues, three standalone G sections read "open" for tickets closed
-in mid-July, and 25 NOTES.md either contradicted the catalog or carried no status at all.
-Each was invisible because whichever representation you happened to read looked complete.
+That structure exists because the previous one rotted on three strands in a single day: a
+tracking table whose rows read "open" against closed issues, detail sections that disagreed
+with their own rows, and 46 write-ups that either contradicted the index or declared nothing
+at all. Being careful is not a fix — a check is.
 
-Being careful is not a fix — a check is. This asserts the *state token* (✅ / 🔴) agrees
-everywhere it appears; the prose stays in exactly one owner per fact and is not compared.
+This asserts the **state token** (✅ / 🔴 / ⚪) in the index matches the one in the write-up,
+and that the index and `findings/` cover exactly the same set of entries. Prose is never
+compared: it has one owner.
 
 Run: `python3 scripts/check-catalog.py`   (exit 1 on any mismatch)
 """
@@ -55,7 +55,7 @@ def rows(prefix):
         if not line.startswith("| "):
             continue
         c = cells(line)
-        m = re.match(rf"\[?({prefix}-\d+)\]?", c[0])
+        m = re.match(rf"[\*\[\s]*({prefix}-\d+)", c[0])
         if m:
             out.append((m.group(1), c, line))
     return out
@@ -65,7 +65,7 @@ def main():
     errors = []
     text = open(CATALOG, encoding="utf-8").read()
 
-    # --- findings: catalog row is the owner; NOTES.md must agree ------------------
+    # --- every row: the write-up it points at must declare the same state --------
     catalog = {}
     for fid, cells, _ in rows("F"):
         state = token(cells[-1])
@@ -77,11 +77,11 @@ def main():
 
     dirs = {}
     for name in sorted(os.listdir(FINDINGS_DIR)):
-        m = re.match(r"(F-\d+)", name)
+        m = re.match(r"([FG]-\d+)", name)
         if m and os.path.isdir(os.path.join(FINDINGS_DIR, name)):
             dirs[m.group(1)] = name
 
-    for fid in sorted(set(catalog) | set(dirs)):
+    for fid in sorted(set(catalog) | {d for d in dirs if d.startswith("F-")}):
         if fid not in dirs:
             errors.append(f"{fid}: in the catalog but has no findings/ directory")
             continue
@@ -104,31 +104,35 @@ def main():
                 f"{fid}: catalog says {catalog[fid]}, NOTES.md says {state}"
             )
 
-    # --- codegen entries: table row vs its detail section -------------------------
-    sections = {
-        m.group(1): m.group(2)
-        for m in re.finditer(r"^## (G-\d+) —(.*?)(?=^## |\Z)", text, re.S | re.M)
-    }
+    # --- codegen rows: standalone ones own a folder, paired ones borrow the F one -
     for gid, cells, line in rows("G"):
         state = token(cells[-1])
+        paired = re.search(r"=\s*(F-\d+)", cells[0])
         if state is None:
-            errors.append(f"{gid}: tracking row declares no state — ✅, 🔴/🟡 or ⚪")
+            errors.append(f"{gid}: index row declares no state — ✅, 🔴/🟡 or ⚪")
             continue
-        paired = "(= F-" in line.split("|")[1]
-        body = sections.get(gid)
-        if body is None:
-            if not paired:
-                errors.append(f"{gid}: standalone entry with no `## {gid}` section")
+        if paired:
+            fid = paired.group(1)
+            if fid not in catalog:
+                errors.append(f"{gid}: paired with {fid}, which has no row")
+            elif catalog[fid] is not None and state != catalog[fid]:
+                errors.append(
+                    f"{gid}: says {state}, but {fid} — the same defect — says {catalog[fid]}"
+                )
             continue
-        m = re.search(r"^\*\*Status:\*\*(.*)$", body, re.M)
+        if gid not in dirs:
+            errors.append(f"{gid}: standalone codegen entry with no findings/ directory")
+            continue
+        notes = os.path.join(FINDINGS_DIR, dirs[gid], "NOTES.md")
+        m = re.search(r"^\*\*Status:\*\*(.*)$", open(notes, encoding="utf-8").read(), re.M)
         if not m:
-            errors.append(f"{gid}: section has no `**Status:**` line")
+            errors.append(f"{gid}: NOTES.md has no `**Status:**` line")
             continue
         sec = token(m.group(1))
         if sec is None:
-            errors.append(f"{gid}: section `**Status:**` declares no state (✅ or 🔴)")
+            errors.append(f"{gid}: NOTES.md `**Status:**` declares no state")
         elif sec != state:
-            errors.append(f"{gid}: tracking row says {state}, `## {gid}` section says {sec}")
+            errors.append(f"{gid}: index says {state}, NOTES.md says {sec}")
 
     if errors:
         print(f"catalog check: {len(errors)} mismatch(es)\n", file=sys.stderr)
@@ -143,7 +147,7 @@ def main():
 
     print(
         f"catalog check: OK — {len(catalog)} findings, {len(rows('G'))} codegen entries, "
-        "every state token agrees"
+        f"{len(dirs)} folders; every state token agrees"
     )
     return 0
 

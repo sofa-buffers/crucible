@@ -90,3 +90,9 @@ none — §6.2 gives them as *"up to 2,147,483,647 (may be 65,535 on constrained
 the ceiling is **profile-dependent** and no single boundary value exists that the whole family
 must agree on: at 65,536 a constrained profile must reject and a heap profile must accept, and
 that split is legal. Only fixed format-wide ceilings can be swept at their boundary.
+
+## Resolution
+
+**Impls:** **corelib-c-cpp** (`c` + `cpp-c-cpp`, the two profiles sharing the C `istream`; `cpp` with its own corelib rejects correctly) · **Axis:** verdict
+
+✅ **RESOLVED 2026-08-02** — corelib-c-cpp#126 fixed and closed the same day it was filed. `fix(istream): count bound sequences towards the MAX_DEPTH ceiling` — the boundary is now 255 accept / 256 reject on all 13. **Re-verified** on the post-fix family (sofabgen `0.0.0-20260802183113-4865f8515430`, corelibs @ main): all vectors converge across 13 drivers, and the verdict *direction* was checked, not just agreement. Reproducers promoted into the green `corpus/regression/` gate (117 → 160 inputs). *Original report:
