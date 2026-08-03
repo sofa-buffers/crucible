@@ -19,6 +19,50 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The tracking table had rotted, and that is a structural fault not a slip (2026-08-03).**
+`results/FINDINGS.md` carries two tables: the findings catalog and *"Tracking issues (generator
+repo)"*. Nine of the ten `G-00NN` rows read **open** while their generator issues were closed —
+G-0026, G-0028 through G-0035 — and in most cases the paired `F-00NN` row above had said
+**resolved** for a day. Only G-0027 (generator#267) was genuinely open.
+
+*The cause is duplicated ownership, not forgetfulness.* A paired entry stated its resolution
+twice, in the F row and again in the G row, and closing a finding touched one of them. That is
+the same failure CLAUDE.md's single-source rule describes, occurring **inside one file** rather
+than across two — which is why it went unnoticed. Fixed by making the F row the owner: a paired
+G row now carries the ticket and its state plus a pointer, and the table says so in a header
+note.
+
+*One row is deliberately amber rather than green.* G-0035 (= F-0055) — generator#283 is closed,
+the fix `bd67d2b` landed at 16:53, but its generator CI run was still building, so no sofabgen
+artifact carries it. Bootstrap correctly stayed on the last green build, F-0055 is therefore
+**not** verifiable yet and stays open. A closed upstream ticket is not a resolution here; the
+isolate is.
+
+**Catalog swept 2026-08-03 — F-0052 and F-0053 closed, two findings left open.** After F-0054
+landed, the four open findings were re-measured together against the current family: corelibs at
+`main` and sofabgen refreshed to the CI build `0.0.0-20260803154628-1e4359a8a1c0` (the vendored
+one was a day old, which matters when the finding *is* a codegen defect).
+
+*Result: 33 reproducers, 8 clusters — and all eight belong to the two findings that are still
+open upstream.* F-0043 (generator#267) accounts for seven, F-0055 (generator#283) for the eighth,
+still the silent-loss form where rust-no-std alone returns the empty message. F-0052 and F-0053
+produce **no cluster at all**.
+
+*Closed, each verified by verdict rather than by agreement.* F-0052 — generator#279 armed the C++
+backend's `readArray` element bound; `cpp` no longer masks 5208 to 88, and the `ctl_u8_array_inrange`
+control still round-trips `c801`, so the bound was armed without over-tightening. F-0053 —
+corelib-go#68 and corelib-ts#84 moved the element-varint check ahead of the count-vs-remaining
+short-circuit; `r1_count11_overlong_elem` is `R invalid_msg` where those two said `I`, and count 11
+with enough bytes still accepts. Both were checked on `materialize.sh` too (108 × 13, 0 divergences,
+0/108 C-anchor mismatches), which for F-0052 is not ceremony: it is a *value* defect, and a masked
+element that still round-trips is what the round-trip oracle can miss.
+
+*Housekeeping in the same sweep.* Eleven reproducers promoted to `corpus/regression/` (165 → **176**,
+gate green), and **three** camp signatures deleted from `known-clusters.txt` — F-0052 had two, its
+accept form and its truncated-`I` second symptom. F-0010's status cell was normalized: it has been
+resolved since 2026-08-02 but opened with the historical *"spec-RESOLVED, corelibs converging"*, so
+it counted as open to anything parsing the catalog. Tally is now **50 resolved, 2 open**.
+
 **F-0054 closed 2026-08-03 — fixed in all three repos the same day it was specified.**
 corelib-go#70, corelib-py#60 and corelib-ts#86 landed within the hour: go deleted its
 `t != TypeSequenceEnd` exception (a removal, and it reconciled go's two decode surfaces as a side
