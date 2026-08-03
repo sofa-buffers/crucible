@@ -1,9 +1,32 @@
 # F-0054 — the `ID_MAX` ceiling and a **sequence-end** header's id
 
-> **Settled 2026-08-03 at `main@acd27a4`** (documentation#35, Option B). The attribution moved
-> twice before landing here, so the slug is deliberately neutral; the divergence, the isolate and
-> the controls never changed — only which camp was conformant. See [History](#history) for what
-> was filed against whom, since two earlier positions were communicated upstream.
+> **✅ RESOLVED 2026-08-03 — specified (`main@acd27a4`, Option B) and fixed in all three repos
+> the same day.** The attribution moved twice before landing here, so the slug is deliberately
+> neutral; the divergence, the isolate and the controls never changed — only which camp was
+> conformant. See [History](#history) for what was filed against whom, since two earlier
+> positions were communicated upstream.
+
+## Resolution
+
+| repo | fix | what it did |
+|---|---|---|
+| corelib-go | [#70](https://github.com/sofa-buffers/corelib-go/pull/70) | deleted the `t != TypeSequenceEnd &&` exception in `cursor.go` — a removal, no new branch. This also made its two decode surfaces agree, so the self-contradiction below is **closed**, not deferred |
+| corelib-py | [#60](https://github.com/sofa-buffers/corelib-py/pull/60) | bounded the id in **both** engines |
+| corelib-ts | [#86](https://github.com/sofa-buffers/corelib-ts/pull/86) | bounded the id on **all three** decode surfaces |
+
+**Verified by verdict, not by agreement.** The differential run reports `5 inputs: 5 agree, 0
+diverge`, which on its own proves nothing here: had the family over-tightened onto Option C, the
+three controls would have flipped to `R` *together* and the run would look identical. So the
+verdicts were read out per driver — the isolate is `R invalid_msg` on all 13, and id 0, id 3 and
+id `ID_MAX` are `A` on all 13. Exactly one test point moved.
+
+corelib-go's own suite additionally pins the **normalization half** this isolate structurally
+cannot show: on `0x87 0x00` the visitor sees `seqbegin/14`, `seqend` — the id is provably
+discarded, not carried through — and it asserts that on both decode surfaces.
+
+All five inputs are now in the green `corpus/regression/` gate as `F0054_*`, **controls
+included**, and the camp signature is removed from `results/known-clusters.txt` so a regression
+is reported as NEW rather than matched as known.
 
 **Found 2026-08-03** in the first review of the nightly's accumulated corpus. Cluster of
 **4 inputs**, minimized 56 B → 31 B → rebuilt as a **6-byte** isolate.
@@ -82,8 +105,9 @@ thing that can be said for A.
 `cursor.go:272` carries the wire-type exception; `decoder.go:65` has the same check **without**
 it. Two decode surfaces of one corelib disagree about this input, and only the one the Crucible
 driver exercises is measured. That is the §6.5 defect class ("a guard added to one surface but
-not another") and is worth its own finding regardless of how #35 lands — under A `decoder.go` is
-wrong, under B `cursor.go` is.
+not another"). **Closed by corelib-go#70**: removing the exception from `cursor.go` was the
+F-0054 fix *and* the reconciliation, so the two surfaces now agree. Under A the fix would have
+had to go the other way, into `decoder.go`.
 
 ## Untested residual — the normalization half
 

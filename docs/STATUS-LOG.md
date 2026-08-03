@@ -19,6 +19,21 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**F-0054 closed 2026-08-03 — fixed in all three repos the same day it was specified.**
+corelib-go#70, corelib-py#60 and corelib-ts#86 landed within the hour: go deleted its
+`t != TypeSequenceEnd` exception (a removal, and it reconciled go's two decode surfaces as a side
+effect, so that sub-finding never needed filing), py bounded the id in both engines, ts on all
+three surfaces. The five reproducers are in the green `corpus/regression/` gate as `F0054_*`,
+**controls included**, and the camp signature is *deleted* from `known-clusters.txt` — a resolved
+camp left in the baseline would match a regression as "known" and hide it.
+
+*The verification is the part worth remembering.* `run.sh` reported `5 agree, 0 diverge`, and
+that is exactly the signal Option C would have produced too: over-tighten everywhere and the
+three controls flip to `R` **together**, so the oracle sees unanimity. The verdicts were
+therefore read out per driver — isolate `R invalid_msg` ×13, controls `A` ×13 — confirming that
+exactly one test point moved. This is the same class §7.2's new tolerance tests exist for, and
+Crucible's own gap on it is still open in `docs/TODO.md`.
+
 **F-0054 settled 2026-08-03 — documentation#35 merged as `acd27a4`, Option B is normative.** The
 provisional wording is out of the catalog, the finding and `docs/TODO.md`; the `ID_MAX` ×
 sequence-end sweep cell is pinned to **`reject`**, with the at-or-below-`ID_MAX` and
