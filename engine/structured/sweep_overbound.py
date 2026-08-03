@@ -19,6 +19,18 @@ reject** (`R`), plus an at-bound control that all 13 must **accept**:
   * string_array           -> an element id >= count 5 (over-index)  expect R
   * blob_array element      -> the blob analogue of both (over-maxlen + over-index);
                               exercises the _BlobSeq heap path F-0013 left untested.
+  * numeric array element   -> a value outside the declared element WIDTH, at both ends
+                              for signed types, plus at-bound controls  expect R / A
+                              (currently carved out — see _F0052_CARVEOUT below)
+
+**The width is a bound too** (added 2026-08-03). documentation#32 made a scalar's declared
+width a normative validity bound — §1: "not merely a storage hint" — and that binds an
+array *element* exactly as it binds a scalar. This axis swept `count` and `maxlen` from the
+start; the width arrived later and was never added, while F-0033's width vectors sat only
+at SCALAR positions. The gap cost F-0052: cpp masking an over-width array element survived
+F-0033's closure and took a 4-hour fuzz round to surface. The bound is read from the schema
+via `Position.itype` (WP-11 — no literal 255/65535 in this file), and 64-bit widths are
+skipped because no encodable value can exceed them.
 
 WP-07 adds, per bounded position, a **mid-magnitude** over (2×bound) and a **large**
 over (index `BIG` = 100_000, declared but not materialized — a well-formed element at
@@ -43,7 +55,19 @@ from gen import (  # noqa: E402
     WT_FIX, WT_SEQ_BEG, WT_SEQ_END, FL_FP32, FL_FP64, FL_STRING, FL_BLOB,
     hdr, varint, fixlen, arr_u, arr_s, arr_fp,
 )
-from sweep_positions import POSITIONS, place  # noqa: E402
+from sweep_positions import POSITIONS, INT_RANGE, place  # noqa: E402
+
+# --- CARVE-OUT: the element-width vectors, while generator#279 is open ------------
+# The width vectors below are written and ready; they are held back because this axis is
+# BLOCKING and `cpp` fails all nine of them (F-0052 / generator#279 — the C++ backend
+# never arms `readArray`'s `ElemBound`, so an over-width array element is masked and
+# kept). Every other implementation rejects correctly, and the at-bound controls pass on
+# all 13, so the moment #279 lands this is a one-line deletion.
+#
+# Same shape as the F-0026 carve-out this file's siblings used: hold the one red cell,
+# not the whole axis, and name the condition for removing it. Verified 2026-08-03:
+# 67 vectors, 9 divergences, all cpp-only, 0 conformance failures.
+_F0052_CARVEOUT = True
 
 # A "large but harness-safe" over-bound (WP-07): big enough to catch a decoder that
 # allocates per the DECLARED length/count/index (the F-0013 amplification class), small
@@ -73,6 +97,37 @@ def emit(out_dir):
                 else arr_s(p.fid, list(range(1, n + 1)))
             vectors.append((f"{tag}_overcount.bin", place(p.path, over), "reject"))
             vectors.append((f"{tag}_atcount_ctl.bin", place(p.path, at), "accept"))
+
+            # --- the declared ELEMENT WIDTH as a bound (added 2026-08-03, F-0052) ----
+            # documentation#32 made a scalar's declared width a normative validity bound
+            # (§1: "not merely a storage hint"), and that binds an array element exactly
+            # as it binds a scalar. The axis swept `count` and `maxlen` but never the
+            # width, and F-0033's width vectors sat only at SCALAR positions — so cpp
+            # masking an over-width array element survived F-0033's closure and needed a
+            # 4-hour fuzz round to surface (generator#279). The bound comes from the
+            # schema via `p.itype`, not a literal.
+            rng = INT_RANGE.get(p.itype)
+            if rng and not _F0052_CARVEOUT:
+                lo, hi = rng
+                enc = arr_u if p.cat == "arr_u" else arr_s
+                # first element over the top of the range, the rest well inside
+                vectors.append((f"{tag}_elem_over_width.bin",
+                                place(p.path, enc(p.fid, [hi + 1] + [1] * (n - 1))),
+                                "reject"))
+                # the boundary itself must still be accepted — an off-by-one in the
+                # check would otherwise pass unnoticed, the shape F-0050 was
+                vectors.append((f"{tag}_elem_at_width_ctl.bin",
+                                place(p.path, enc(p.fid, [hi] + [1] * (n - 1))),
+                                "accept"))
+                if lo < 0:
+                    # signed: the bound has two ends, and only the negative one exercises
+                    # zig-zag's asymmetry (min is representable, min-1 is not)
+                    vectors.append((f"{tag}_elem_under_width.bin",
+                                    place(p.path, enc(p.fid, [lo - 1] + [1] * (n - 1))),
+                                    "reject"))
+                    vectors.append((f"{tag}_elem_at_min_ctl.bin",
+                                    place(p.path, enc(p.fid, [lo] + [1] * (n - 1))),
+                                    "accept"))
             # WP-07: mid-magnitude over (2N elements) — still R (a count-prefixed array
             # can't declare a huge count without materializing the elements, so no BIG here).
             mk = arr_u if p.cat == "arr_u" else arr_s

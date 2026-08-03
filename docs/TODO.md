@@ -79,14 +79,20 @@ here:
 
 ## Open — engine & oracles
 
-- [ ] **Over-width vectors at the array-element position** (gap exposed by F-0052). The
-      declared-integer-width bound (documentation#32, §1/§7.1) has vectors only at **scalar**
-      positions — F-0033's four, now in `corpus/regression/`. Nothing tested an over-width
-      **array element**, which is how cpp's masking survived F-0033's closure and needed a
-      4-hour fuzz round to surface. Same scalar-only blind spot F-0049 had for fp32 raw bits, in
-      the same week. Best home is a `sweep_overbound` case rather than a one-off vector: that
-      axis already sweeps §7.1 bounds at every position, and the width bound arrived after it
-      was written.
+- [~] **Over-width vectors at the array-element position — WRITTEN 2026-08-03, carved out
+      until [generator#279](https://github.com/sofa-buffers/generator/issues/279) closes.**
+      `sweep_overbound` now derives the declared element width from the schema
+      (`Position.itype` + `INT_RANGE`, no literals — WP-11) and emits, per integer array
+      position: over-the-top, at-the-top control, and for signed types under-the-bottom plus an
+      at-minimum control. 49 → **67 vectors**. Verified: exactly **9 divergences, all `cpp`
+      alone** (F-0052), every other impl correct, all at-bound controls green, 0 conformance
+      failures. Because the axis is **blocking**, the width block sits behind
+      `_F0052_CARVEOUT = True` — the F-0026 pattern: hold the one red cell, not the whole axis.
+      **Removing it is a one-line deletion** when #279 lands; re-run and the axis should read 67
+      vectors, 0 divergences.
+      64-bit widths are skipped by construction — no encodable value exceeds them, the same
+      reasoning corelib-cpp's `ElemBound::of<E>()` uses to stay unarmed there.
+
 
 
 - [ ] **Finer reject-class taxonomy** (`oracle/canonical.md` + drivers + comparator + `policy.yaml`).

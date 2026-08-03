@@ -77,6 +77,11 @@ def _load_bounds(path=SCHEMA):
                 b["count"] = it.get("count", 0)
                 if "maxlen" in it:
                     b["maxlen"] = it["maxlen"]
+                # The declared ELEMENT type. Since documentation#32 a scalar's declared
+                # width is a normative validity bound (§1/§7.1), and that binds an array
+                # element as much as a scalar — the axis needs the width from the schema
+                # rather than a literal (WP-11). F-0052 is what the gap cost.
+                b["itype"] = it.get("type", "")
             elif t in ("string", "blob") and "maxlen" in spec:
                 b["maxlen"] = spec["maxlen"]
             out[(tuple(scope), fid)] = b
@@ -102,12 +107,29 @@ def _maxlen(path, fid):
     return _BOUNDS.get((path, fid), {}).get("maxlen", 0)
 
 
+def _itype(path, fid):
+    """The declared element type of an array position ('u8', 'i16', 'fp32', …)."""
+    return _BOUNDS.get((path, fid), {}).get("itype", "")
+
+
+# Inclusive value range a declared integer width admits (§1: "a validity bound, not
+# merely a storage hint"). 64-bit widths are omitted deliberately — their range is the
+# wire accumulator's own, so no encodable value exceeds them and there is nothing to
+# sweep. Mirrors corelib-cpp's `ElemBound::of<E>()`, which is likewise unarmed at 64 bit.
+INT_RANGE = {
+    "u8":  (0, 255),                  "i8":  (-128, 127),
+    "u16": (0, 65535),                "i16": (-32768, 32767),
+    "u32": (0, 4294967295),           "i32": (-2**31, 2**31 - 1),
+}
+
+
 @dataclass(frozen=True)
 class Position:
     path: tuple
     fid: int
     cat: str
     elem: str = ""       # element category for a wrapper
+    itype: str = ""      # declared element type of an array ('u8', 'i16', 'fp32', …)
     count: int = 0       # schema count for arrays / wrappers
     maxlen: int = 0      # schema maxlen for strings / blobs
 
@@ -134,14 +156,14 @@ POSITIONS = [
     Position((10,), 2, "str", maxlen=_maxlen((10,), 2)),
     Position((10,), 3, "blob", maxlen=_maxlen((10,), 3)),
     # arrays struct (id 100): eight numeric arrays + the nested fp-array struct
-    Position((100,), 0, "arr_u", count=_count((100,), 0)), Position((100,), 1, "arr_s", count=_count((100,), 1)),
-    Position((100,), 2, "arr_u", count=_count((100,), 2)), Position((100,), 3, "arr_s", count=_count((100,), 3)),
-    Position((100,), 4, "arr_u", count=_count((100,), 4)), Position((100,), 5, "arr_s", count=_count((100,), 5)),
-    Position((100,), 6, "arr_u", count=_count((100,), 6)), Position((100,), 7, "arr_s", count=_count((100,), 7)),
+    Position((100,), 0, "arr_u", count=_count((100,), 0), itype=_itype((100,), 0)), Position((100,), 1, "arr_s", count=_count((100,), 1), itype=_itype((100,), 1)),
+    Position((100,), 2, "arr_u", count=_count((100,), 2), itype=_itype((100,), 2)), Position((100,), 3, "arr_s", count=_count((100,), 3), itype=_itype((100,), 3)),
+    Position((100,), 4, "arr_u", count=_count((100,), 4), itype=_itype((100,), 4)), Position((100,), 5, "arr_s", count=_count((100,), 5), itype=_itype((100,), 5)),
+    Position((100,), 6, "arr_u", count=_count((100,), 6), itype=_itype((100,), 6)), Position((100,), 7, "arr_s", count=_count((100,), 7), itype=_itype((100,), 7)),
     Position((100,), 10, "seq_struct"),
     # arrays.nested (id 100 -> 10): fp arrays
-    Position((100, 10), 0, "arr_fp32", count=_count((100, 10), 0)),
-    Position((100, 10), 1, "arr_fp64", count=_count((100, 10), 1)),
+    Position((100, 10), 0, "arr_fp32", count=_count((100, 10), 0), itype=_itype((100, 10), 0)),
+    Position((100, 10), 1, "arr_fp64", count=_count((100, 10), 1), itype=_itype((100, 10), 1)),
     # wrapper *elements* (WP-11: moved here from wiretype_sweep's private list so every
     # axis sweeps them — §4.6 reserved-subtype now covers them too, not only §7.3). The
     # element (id 0) is a fixlen leaf inside the wrapper sequence; its maxlen is the
