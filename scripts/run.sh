@@ -61,6 +61,16 @@ set -- \
 TIMEOUT_ARG=""
 [ -n "${TIMEOUT:-}" ] && TIMEOUT_ARG="--timeout $TIMEOUT"
 
+# MINIMIZE=<datei>: shrink one input while its camp partition holds, using the roster
+# above. Same reason cluster.py takes --driver: the roster lives in exactly one place.
+if [ -n "${MINIMIZE:-}" ]; then
+    OUT="${MINIMIZE_OUT:-${MINIMIZE%.bin}.min.bin}"
+    echo "==> minimizing $MINIMIZE -> $OUT" >&2
+    # shellcheck disable=SC2086
+    python3 "$ROOT/oracle/minimize.py" --input "$MINIMIZE" --output "$OUT" "$@"
+    exit $?
+fi
+
 if [ "${CLUSTER:-0}" = "1" ]; then
     # Reduce the divergences to root-cause clusters (best over a big fuzzed corpus).
     echo "==> clustering divergences over $(ls "$CORPUS" | grep -vc -e gitkeep -e "\.md$") input(s)" >&2

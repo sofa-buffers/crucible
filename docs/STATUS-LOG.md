@@ -19,6 +19,32 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Minimizer rebuilt batched 2026-08-03 — ~80× on the case that mattered.** Triaging the
+nightly corpus stalled on two large representatives: the delta-minimizer ran for over half an
+hour on a 1132-byte input at **~3 % CPU** and produced nothing.
+
+*The profile explains it, and it is not computation.* Measured across the 13 drivers: a 1-input
+corpus costs **1507 ms**, a 100-input corpus **10 ms per input**. Java alone is 441 ms of JVM
+boot, python/csharp/typescript ~200 ms each. Checking a hundred candidates is therefore *cheaper*
+than checking one, and the old minimizer paid the 1.5 s for **every** shrink attempt — spending
+its entire run in process teardown while the CPU idled.
+
+*Rebuilt to batch every candidate of a round into one corpus*, plus an optimistic step: deletions
+that each hold alone are first tried together (back to front so indices stay valid), falling back
+to one at a time only if the combination fails. Result on the same inputs — 25 B: 57 s → 16 s
+with byte-identical output; **1132 B: >35 min with no result → 2 min 15 s, down to 150 B**.
+
+*It replaced the old one rather than joining it*, and moved from a scratch directory into
+`oracle/` beside `comparator.py` and `cluster.py`. It takes the driver roster as `--driver
+name:path` the way `cluster.py` does and is reached via `MINIMIZE=<file> ./scripts/run.sh`, so
+the roster stays defined in exactly one place instead of a fourth copy.
+
+*What it unblocked.* `7f7060b8` — the 22-input camp where `rust-nostd` alone rejects — is now a
+150-byte reproducer where no single-byte deletion holds the partition. That is a genuine minimum
+for byte deletion and consistent with the accumulation signature the two-sided binary search
+found earlier (shortest prefix 1132, latest start 0: nothing can be stripped from the front). The
+case is analysable for the first time.
+
 **Nightly-corpus triage 2026-08-03 — four of seven unknown camps explained, two new findings.**
 The first review of CI's accumulated corpus (8512 inputs, 17 camps) produced **F-0053** (an array
 count outrunning the input short-circuits to `INCOMPLETE` before the element varint is validated
