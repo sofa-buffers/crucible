@@ -16,7 +16,7 @@ batched delta-minimizer, then rebuilt as a 22-byte isolate.
 |---|---|
 | `a6 06` `56` | open `arrays` (id 100), then `nested` (id 10) |
 | `05 03 20` | id 0, **ARRAY_FIXLEN**, count 3, `fixlen_word` = fp32 / 4 bytes per element |
-| `ff` × 12 | the 3 × 4 payload bytes — every byte has the continuation bit set |
+| `ff` × 12 | the 3 × 4 payload bytes. An fp32 has no continuation bit — but *read as a varint*, every one of these bytes has bit 7 set |
 | `04 24` | id 0, ARRAY_SIGNED, count 36 — a §7.3-mistyped repeat, and the input ends here |
 
 | verdict | drivers |
@@ -26,9 +26,15 @@ batched delta-minimizer, then rebuilt as a 22-byte isolate.
 
 ## What actually triggers it — the payload is read as a varint
 
-Neither the float values nor the §7.3 mistyping matter. Two conditions do, and both are necessary:
+Neither the float values nor the §7.3 mistyping matter. Two conditions do, and both are necessary.
 
-**1. The fp32 payload must be an unbroken run of continuation bytes.**
+A note on wording first, because it is the whole finding: **an fp32 has no continuation bit.**
+Bit 7 marking "another byte follows" is a *varint* convention (§4.1); an fp32 element is four raw
+IEEE-754 bytes with no such structure. That bit 7 of those bytes decides anything at all is not a
+property of the data — it is the proof of the defect, because it means something is reading a
+varint where a payload lies.
+
+**1. Read as a varint, the payload must be an unbroken run of continuation bytes.**
 
 | payload, ×3 elements | cpp |
 |---|---|
@@ -39,9 +45,10 @@ Neither the float values nor the §7.3 mistyping matter. Two conditions do, and 
 | `7f 7f 7f 7f` | `I` |
 | `00 00 80 3f` (= 1.0) | `I` |
 
-The value is irrelevant; the **continuation bit** is everything. `ffffffff` is a NaN and so is
-`0000c07f`, but only the first triggers — which is what ruled out the "NaN-ish payload" reading
-the camp was first filed under.
+The float value is irrelevant; **bit 7 of each byte** is everything. `ffffffff` is a NaN and so
+is `0000c07f` — but `0x7f` has bit 7 clear, so a varint reader stops there, and only the first
+triggers. That is what ruled out the "NaN-ish payload" reading the camp was first filed under,
+and it is why the values in the table below (`1.0`, `0x7f7f7f7f`) matter only for their bytes.
 
 **2. The run must exceed 10 bytes**, §4.1's 64-bit varint bound:
 
