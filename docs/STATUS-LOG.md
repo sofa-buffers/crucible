@@ -19,6 +19,36 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Corpus policy reversed 2026-08-03 — CI's corpus strictly dominated ours, and we had been
+throwing ours away.** Reviewing the first nightly to run the Go engine (it worked: 8700 seeds,
+11.3 M execs, 180 new inputs, step green) surfaced something larger than the nightly's own
+result: its clustering reported **17 camps on 8512 inputs**, against 8 on our local 547.
+
+*Measured rather than assumed.* Downloading the nightly artifact and clustering it against our
+own freshly built drivers reproduced all 17 exactly, so it is not a family-version artifact. The
+two corpora overlap in **21 files — 3 %**; they are near-disjoint lineages. And clustering the
+**union** (9038 inputs) yields **17** — the same as CI's alone. Our corpus contributes **zero**
+divergence classes CI does not already have, after far more CPU: 577 M execs last night alone.
+
+*Why: we minimized after every round and CI never did.* The rule adopted 2026-08-02 —
+coverage-minimal ∪ hard-diverging — preserves the divergences measurable **at the moment of
+minimizing**. An input that only starts diverging after the next corelib rewrite is discarded
+first. The STATUS-LOG entry that introduced it said hard divergences are "preserved by
+construction"; that holds for the instant it is run and not for the corpus's future, which is
+the property that actually matters for a corpus.
+
+*Policy now:* the corpus is the **union**, kept whole (9038). Minimization stays a tool for
+speeding up an ad-hoc triage run, never maintenance of the canonical set. The ~10× slower full
+cluster run is the price, and it is small next to nine unexamined divergence classes.
+
+*And the nightly's clustering is now read by a machine.* It has clustered and uploaded since it
+was written; nobody opened the artifact, and the unexplained camps accumulated unnoticed.
+`oracle/cluster.py --baseline` now diffs every camp against `results/known-clusters.txt` — a
+camp is listed there only once **explained** (a catalogued finding, a legal divergence, a benign
+soft axis) — and exits non-zero otherwise, turning that step red inside an otherwise green run.
+Ten camps are accounted for today; **seven are not**, and they are the triage queue. An unread
+artifact is not a signal.
+
 **4-hour pacemaker round 2026-08-03 — 577 M execs, one new cluster, which decomposed into two
 defects.** Corpus 878 → **2609**, 0 ASan/UBSan hits, crashes unchanged at 6, all three jobs
 converged on `cov: 666 ft: 4786`. Run at **3 jobs deliberately**: libFuzzer caps `-workers` at

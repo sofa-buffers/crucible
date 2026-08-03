@@ -65,7 +65,12 @@ if [ "${CLUSTER:-0}" = "1" ]; then
     # Reduce the divergences to root-cause clusters (best over a big fuzzed corpus).
     echo "==> clustering divergences over $(ls "$CORPUS" | grep -vc -e gitkeep -e "\.md$") input(s)" >&2
     # shellcheck disable=SC2086
-    python3 "$ROOT/oracle/cluster.py" --corpus "$CORPUS" --top "${TOP:-20}" $TIMEOUT_ARG "$@"
+    # BASELINE=<file>: diff every camp against the accounted-for set; a camp that is
+    # not in it exits non-zero (see results/known-clusters.txt for why).
+    BASE_ARG=""
+    [ -n "${BASELINE:-}" ] && BASE_ARG="--baseline $BASELINE"
+    # shellcheck disable=SC2086
+    python3 "$ROOT/oracle/cluster.py" --corpus "$CORPUS" --top "${TOP:-20}" $TIMEOUT_ARG $BASE_ARG "$@"
 else
     echo "==> differential comparison over $(ls "$CORPUS" | grep -vc -e gitkeep -e "\.md$") input(s)" >&2
     # shellcheck disable=SC2086

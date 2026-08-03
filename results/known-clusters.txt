@@ -1,0 +1,23 @@
+# Accounted-for cluster camps — the baseline `oracle/cluster.py --baseline` diffs against.
+#
+# A camp belongs here ONLY once it is explained: a catalogued finding, a legal
+# divergence, or a benign soft axis. Anything else is reported as NEW and the run
+# exits non-zero. That is deliberate — the nightly has clustered and uploaded its
+# result since it was written, nobody read the artifact, and nine unexplained camps
+# accumulated unnoticed until 2026-08-03. An unread artifact is not a signal.
+#
+# The signature is the (driver-set, verdict) partition ONLY — not the representative
+# and not the accepted bytes — so it survives the corpus changing under it.
+#
+# Format: <signature>  # <label>
+
+I:c,cpp,cpp-c-cpp,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescript,zig | I:java  # benign — java emits an incomplete_value payload on I; the verdict is unanimous (policy incomplete_value: soft)
+I:cpp,dart,go,py-cython,py-pure,typescript | reject:c,cpp-c-cpp,csharp,java,rust-nostd,rust-std,zig  # F-0043 — declared-width bound, truncated (addendum 2026-08-03, generator#267)
+accept:cpp | reject:c,cpp-c-cpp,csharp,dart,go,java,py-cython,py-pure,rust-nostd,rust-std,typescript,zig  # F-0052 — cpp masks an over-width array element (generator#279)
+I:csharp,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,dart,go,typescript  # F-0043 — over_len_blob at the word (generator#267)
+I:csharp,dart,go,rust-nostd,rust-std,typescript,zig | I:java | reject:c,cpp,cpp-c-cpp,py-cython,py-pure  # F-0043 — string_array element, maxlen 64 (generator#267)
+I:py-cython,py-pure | reject:c,cpp,cpp-c-cpp,csharp,dart,go,java,rust-nostd,rust-std,typescript,zig  # F-0043 — the py-cython/py-pure deferral row (generator#267)
+I:c,cpp,cpp-c-cpp,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescript | I:java | reject:zig  # legal — CORELIB_PLAN 6.4 mid-payload MAY; zig takes it (documentation#33)
+I:csharp,dart,go,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,py-cython,py-pure,typescript  # F-0043 — string_array over-index element (generator#267)
+I:csharp,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,dart,go,py-cython,py-pure,typescript  # F-0043 — over_len_string, further offset (generator#267)
+I:dart,go,typescript | reject:c,cpp,cpp-c-cpp,csharp,java,py-cython,py-pure,rust-nostd,rust-std,zig  # F-0043 — over_len_string at the word (generator#267)
