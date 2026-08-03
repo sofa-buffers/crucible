@@ -19,6 +19,25 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The tracking table had rotted, and that is a structural fault not a slip (2026-08-03).**
+`results/FINDINGS.md` carries two tables: the findings catalog and *"Tracking issues (generator
+repo)"*. Nine of the ten `G-00NN` rows read **open** while their generator issues were closed —
+G-0026, G-0028 through G-0035 — and in most cases the paired `F-00NN` row above had said
+**resolved** for a day. Only G-0027 (generator#267) was genuinely open.
+
+*The cause is duplicated ownership, not forgetfulness.* A paired entry stated its resolution
+twice, in the F row and again in the G row, and closing a finding touched one of them. That is
+the same failure CLAUDE.md's single-source rule describes, occurring **inside one file** rather
+than across two — which is why it went unnoticed. Fixed by making the F row the owner: a paired
+G row now carries the ticket and its state plus a pointer, and the table says so in a header
+note.
+
+*One row is deliberately amber rather than green.* G-0035 (= F-0055) — generator#283 is closed,
+the fix `bd67d2b` landed at 16:53, but its generator CI run was still building, so no sofabgen
+artifact carries it. Bootstrap correctly stayed on the last green build, F-0055 is therefore
+**not** verifiable yet and stays open. A closed upstream ticket is not a resolution here; the
+isolate is.
+
 **Catalog swept 2026-08-03 — F-0052 and F-0053 closed, two findings left open.** After F-0054
 landed, the four open findings were re-measured together against the current family: corelibs at
 `main` and sofabgen refreshed to the CI build `0.0.0-20260803154628-1e4359a8a1c0` (the vendored
