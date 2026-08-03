@@ -1,6 +1,21 @@
 # F-0053 — an array count larger than the remaining bytes short-circuits to `INCOMPLETE` before the element varint is validated
 
-**Filed 2026-08-03:** [corelib-go#66](https://github.com/sofa-buffers/corelib-go/issues/66), [corelib-ts#82](https://github.com/sofa-buffers/corelib-ts/issues/82)
+**✅ RESOLVED 2026-08-03** — [corelib-go#66](https://github.com/sofa-buffers/corelib-go/issues/66)
+and [corelib-ts#82](https://github.com/sofa-buffers/corelib-ts/issues/82) both closed and fixed
+(corelib-go#68, corelib-ts#84).
+
+## Resolution
+
+All 5 reproducers produce **no cluster** against both corelibs' current `main`.
+`r1_count11_overlong_elem` is now `R invalid_msg` on all 13 — go and typescript previously said
+`I`, folding a malformed message into truncation against §5.2's precedence. The controls hold:
+`ctl_count11_enough_bytes` is still `A`, `ctl_count10_same_bytes` and `ctl_bare_overlong` still
+`R`. Read out per driver rather than inferred from "0 divergences", since a family-wide
+over-rejection would present as the same unanimity.
+
+Both oracles green (`materialize.sh` 108 × 13, 0 divergences, 0/108 C-anchor mismatches).
+Reproducers are in the `corpus/regression/` gate as `F0053_*`, controls included, and the camp
+signature is deleted from `results/known-clusters.txt`.
 
 **Found 2026-08-03** in the first review of the nightly's accumulated corpus (8512 inputs,
 17 camps, 9 of them unexplained). Cluster of **50 inputs**, minimized 25 B → **12 B**.

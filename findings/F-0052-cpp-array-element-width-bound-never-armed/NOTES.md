@@ -1,6 +1,25 @@
 # F-0052 — the cpp backend never arms `readArray`'s element-width bound, so `cpp` masks an over-width array element
 
-**Filed 2026-08-03 as [generator#279](https://github.com/sofa-buffers/generator/issues/279).**
+**✅ RESOLVED 2026-08-03** — [generator#279](https://github.com/sofa-buffers/generator/issues/279)
+closed; verified on sofabgen `0.0.0-20260803154628-1e4359a8a1c0`.
+
+## Resolution
+
+All 6 reproducers produce **no cluster** against the current family. Verified on the **value**,
+not on agreement: the three `*_elem_over` forms and `r4_overwidth_elem_truncated` are
+`R invalid_msg` on all 13 — cpp no longer masks 5208 to 88, and no longer degrades the truncated
+form to `I` (the second symptom, which was its own camp). The control `ctl_u8_array_inrange` still
+re-encodes `…c801…`, so 200 in a `u8` array is preserved rather than clipped: the fix armed the
+bound without over-tightening it.
+
+Both oracles were run, per the rule that a round-trip pass is not a resolution: `materialize.sh`
+is 108 × 13 with 0 divergences and 0/108 mismatches against the C anchor. This mattered here more
+than usual — F-0052 is a *value* defect, and a masked element that still round-trips is exactly
+what the round-trip oracle can miss.
+
+Reproducers promoted to the green `corpus/regression/` gate as `F0052_*`, controls included, and
+**both** camp signatures (the accept form and the truncated `I` form) are deleted from
+`results/known-clusters.txt` so a regression is reported as NEW rather than matched as known.
 
 **Found 2026-08-03** by the 4-hour pacemaker round (577 M execs, corpus 878 → 2609) — the one
 new cluster of that round, minimized 49 B → 11 B and then rebuilt as a clean isolate.

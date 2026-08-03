@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS-LOG.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (165 inputs)
+## Contents (176 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -92,6 +92,8 @@ excluded, each because the family still legitimately splits on it:
 | `F-0008/hang_min.bin`, `hang_orig.bin` | the hang is fixed (generator#126) and they terminate, but both end mid-sequence, so py says `R` (eager) and the family `I` (lazy) — documentation#15 again |
 | `F0054_r2_seqend_id_over_IDMAX.bin`, `F0054_r1_seqend_id_huge.bin` | F-0054 | CORELIB_PLAN §4.9/§6.2 (documentation#35) + corelib-go#70, corelib-py#60, corelib-ts#86 | a **sequence-end** header whose id is over `ID_MAX` is `R invalid_msg` on all 13 — the id is discarded but still bounded, so the ceiling binds every header without a wire-type exception |
 | `F0054_ctl_seqend_canonical.bin`, `F0054_ctl_seqend_id_small.bin`, `F0054_ctl_seqend_id_at_IDMAX.bin` | F-0054 (controls) | — | the **counter-direction, and the reason these three are in the gate**: a seq-end id of 0, of 3 and of `ID_MAX` stay **accepted** by all 13. The abandoned Option C would have rejected all three, and a family-wide over-tightening is invisible to the differential oracle — it would read as unanimous agreement. These pin the direction the way CORELIB_PLAN §7.2 class 5b requires |
+| `F0052_*.bin` (6) | F-0052 | generator#279 (`sofabgen 0.0.0-20260803154628`) | an over-width **array element** is `R invalid_msg` on all 13 — the C++ backend arms `readArray`'s `ElemBound`, so `cpp` neither masks 5208 to 88 nor degrades the truncated form to `I`. The `ctl_u8_array_inrange` control asserts the counter-direction: 200 in a `u8` array still round-trips as `c801`, so the bound is armed without over-tightening |
+| `F0053_*.bin` (5) | F-0053 | corelib-go#68 + corelib-ts#84 | an overlong element varint inside an array whose `count` outruns the remaining bytes is `R invalid_msg`, not `I` — §5.2 precedence, validated before the count-vs-remaining short-circuit. Controls pin both edges: count 11 with enough bytes still accepts, count 10 on the same bytes still rejects |
 
 (F-0004's original `invalid_utf8.bin` was the last exclusion here; it graduated in
 2026-07-18 once the strict-UTF-8 check went ON family-wide — the 11 malformed-form

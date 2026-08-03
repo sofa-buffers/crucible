@@ -19,6 +19,31 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Catalog swept 2026-08-03 — F-0052 and F-0053 closed, two findings left open.** After F-0054
+landed, the four open findings were re-measured together against the current family: corelibs at
+`main` and sofabgen refreshed to the CI build `0.0.0-20260803154628-1e4359a8a1c0` (the vendored
+one was a day old, which matters when the finding *is* a codegen defect).
+
+*Result: 33 reproducers, 8 clusters — and all eight belong to the two findings that are still
+open upstream.* F-0043 (generator#267) accounts for seven, F-0055 (generator#283) for the eighth,
+still the silent-loss form where rust-no-std alone returns the empty message. F-0052 and F-0053
+produce **no cluster at all**.
+
+*Closed, each verified by verdict rather than by agreement.* F-0052 — generator#279 armed the C++
+backend's `readArray` element bound; `cpp` no longer masks 5208 to 88, and the `ctl_u8_array_inrange`
+control still round-trips `c801`, so the bound was armed without over-tightening. F-0053 —
+corelib-go#68 and corelib-ts#84 moved the element-varint check ahead of the count-vs-remaining
+short-circuit; `r1_count11_overlong_elem` is `R invalid_msg` where those two said `I`, and count 11
+with enough bytes still accepts. Both were checked on `materialize.sh` too (108 × 13, 0 divergences,
+0/108 C-anchor mismatches), which for F-0052 is not ceremony: it is a *value* defect, and a masked
+element that still round-trips is what the round-trip oracle can miss.
+
+*Housekeeping in the same sweep.* Eleven reproducers promoted to `corpus/regression/` (165 → **176**,
+gate green), and **three** camp signatures deleted from `known-clusters.txt` — F-0052 had two, its
+accept form and its truncated-`I` second symptom. F-0010's status cell was normalized: it has been
+resolved since 2026-08-02 but opened with the historical *"spec-RESOLVED, corelibs converging"*, so
+it counted as open to anything parsing the catalog. Tally is now **50 resolved, 2 open**.
+
 **F-0054 closed 2026-08-03 — fixed in all three repos the same day it was specified.**
 corelib-go#70, corelib-py#60 and corelib-ts#86 landed within the hour: go deleted its
 `t != TypeSequenceEnd` exception (a removal, and it reconciled go's two decode surfaces as a side
