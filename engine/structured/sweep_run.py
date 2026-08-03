@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.join(HERE, "..", ".."))  # repo root for oracle.compa
 from oracle.comparator import run_driver, parse  # noqa: E402
 
 AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserved_subtype",
-        "sweep_truncation", "sweep_malform_truncate", "sweep_varint", "sweep_empty_frame"]
+        "sweep_truncation", "sweep_malform_truncate", "sweep_varint", "sweep_empty_frame", "sweep_tolerance"]
 
 # `sweep_varint` (WP-03, §2 varint canonicality) is blocking and now **fully
 # conformance-asserting**. It used to be agreement-only for its non-minimal vectors
@@ -79,6 +79,7 @@ def run_axis(name, emitter="emit"):
         vectors = getattr(mod, emitter)(d)          # [(fname, bytes, expect)]
     corpus = [(fn, data) for fn, data, _ in vectors]
     expect = {fn: exp for fn, _, exp in vectors}
+    index_of = {fn: i for i, (fn, _) in enumerate(corpus)}
 
     # verdict per driver per input
     outs = {}
@@ -118,6 +119,27 @@ def run_axis(name, emitter="emit"):
         # a prefix of a valid message is A (complete) or I (incomplete), never R
         elif exp == "not_reject" and v == "R":
             conformance.append((fn, "prefix of a valid message emitted R (INVALID)"))
+        # `same:<twin>` — accept AND normalize: a non-canonical but well-formed input
+        # must decode to the value its canonical twin denotes and re-encode to the same
+        # bytes. This is the half that accept-vs-reject cannot see: a family that
+        # accepted the input and echoed the non-canonical form back would agree with
+        # itself and pass every other check (CORELIB_PLAN §7.2 class 5b).
+        elif exp.startswith("same:"):
+            twin = exp.split(":", 1)[1]
+            j = index_of.get(twin)
+            if j is None:
+                conformance.append((fn, f"twin {twin} is not in this axis"))
+            elif v != "A":
+                conformance.append((fn, f"expected A (normalizes to {twin}), all 13 emit {v}"))
+            else:
+                tw_v = {parse(outs[dn][j] or "")[0] for dn, _ in DRIVERS}
+                tw_p = {parse(outs[dn][j] or "")[1] for dn, _ in DRIVERS}
+                if tw_v != {"A"} or len(tw_p) != 1:
+                    conformance.append((fn, f"canonical twin {twin} is not itself agreed-accept"))
+                elif next(iter(pays.values())) != next(iter(tw_p)):
+                    conformance.append(
+                        (fn, f"accepted but NOT normalized — re-encode differs from {twin}")
+                    )
     return len(corpus), divergences, conformance, soft
 
 

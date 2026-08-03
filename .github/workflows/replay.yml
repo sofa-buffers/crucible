@@ -88,12 +88,12 @@ jobs:
         run: ./scripts/run-limits.sh
 
       # Structural sweeps: a normative rule enumerated across EVERY schema position,
-      # checked for agreement AND conformance. **All eleven probe axes block** — the last
+      # checked for agreement AND conformance. **All twelve probe axes block** — the last
       # three (framing/ceilings, unknown-sequence, repeated-element-id) were promoted
       # 2026-08-02 when corelib-c-cpp#126, generator#268 and generator#273 landed; only the
       # union pass inside sweep.sh is still report-only. sweep.sh rebuilds vs probe, so it is
       # safe here after limit mode (which leaves probe-dyn binaries).
-      - name: Structural sweep gate (all eleven probe axes blocking)
+      - name: Structural sweep gate (all twelve probe axes blocking)
         run: ./scripts/sweep.sh
 
       # Element-access oracle (oracle/materialized.md): every driver dumps the DECODED

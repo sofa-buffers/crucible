@@ -7,6 +7,12 @@
 #   * conformance — accept-vs-reject matches what the spec requires (a family-wide
 #                   wrong answer is agreement-green but conformance-red).
 #
+# sweep_tolerance (§7.2 class 5b) additionally uses `expect="same:<twin>"`: the input
+# must be accepted AND re-encode to the same bytes as its canonical twin. That is the
+# only assertion in the suite that catches a family which is *uniformly* too strict or
+# which accepts a non-canonical form and echoes it straight back — both are unanimous,
+# and unanimity is what every other check calls green.
+#
 # Blocking axes (must stay green): sweep_repeated_id (§7.4), sweep_overbound (§7.1),
 # sweep_reserved_subtype (§4.6), sweep_truncation (§7), sweep_malform_truncate (§5.2 —
 # F-0024 resolved in sofabgen 0.19.4, promoted from report-only), wiretype_sweep (§7.3 —
@@ -31,8 +37,8 @@ SWEEP="$ROOT/engine/structured/sweep_run.py"
 echo "==> [sweep] building the 13 drivers against probe (seed differential)" >&2
 CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
 
-echo "==> [sweep] blocking axes: repeated-id (§7.4) + over-bound (§7.1) + reserved-subtype (§4.6) + truncation (§7) + malform×truncate (§5.2) + wiretype (§7.3) + varint (§2 canonicality) + empty-frame (§2 omission) + framing/ceilings (§5.2/§6.2) + unknown-sequence (§5.2/§4.9) + repeated-element-id (§7.4×§5.1)" >&2
-python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_truncation sweep_malform_truncate wiretype_sweep sweep_varint sweep_empty_frame sweep_framing sweep_unknown_seq sweep_repeated_elem
+echo "==> [sweep] blocking axes: repeated-id (§7.4) + over-bound (§7.1) + reserved-subtype (§4.6) + truncation (§7) + malform×truncate (§5.2) + wiretype (§7.3) + varint (§2 canonicality) + empty-frame (§2 omission) + framing/ceilings (§5.2/§6.2) + unknown-sequence (§5.2/§4.9) + repeated-element-id (§7.4×§5.1) + tolerance (§7.2 class 5b)" >&2
+python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_truncation sweep_malform_truncate wiretype_sweep sweep_varint sweep_empty_frame sweep_framing sweep_unknown_seq sweep_repeated_elem sweep_tolerance
 
 # --- all three former report-only probe axes are BLOCKING since 2026-08-02 ----
 # sweep_framing (WP-04), sweep_unknown_seq and sweep_repeated_elem were report-only
