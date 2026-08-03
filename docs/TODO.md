@@ -99,14 +99,18 @@ here:
         trips `inv`, presenting as `R invalid_msg`. **Not proven** — F-0055's proven form is
         silent *loss*, not a reject. Closing this needs a vector that demonstrates the reject
         path directly.
+        **F-0055 was fixed 2026-08-03** (generator#283, `bd67d2b`), so the cheap test now exists:
+        re-cluster the next nightly artifact. If both camps are gone, the hypothesis is
+        confirmed and these close with it; if they survive, they are a genuinely separate defect
+        and the guesswork ends either way.
 
 - [ ] **Sweep the product cells the nightly corpus exposed.** Three of the four camps triaged on
       2026-08-03 live where two correct axes meet and neither sweeps the intersection — the same
       shape as F-0044, F-0048 and F-0053 before them:
       - overlong varint (§4.1) × skipped array with a count outrunning the input → F-0053
-      - `ID_MAX` (§6.2) × **sequence-end** wire type → F-0054 (`sweep_framing` puts the
-        over-ceiling id only on an *unsigned* header, and its stray-end vectors all use the
-        canonical single-byte `0x07`). **Expectation is `reject`** — settled by
+      - [x] `ID_MAX` (§6.2) × **sequence-end** wire type → F-0054 — **DONE 2026-08-03**, swept by
+        `sweep_tolerance` over all 7 sequence positions *and* the union position, with all three
+        cells pinned. What follows is kept as the reasoning. **Expectation is `reject`** — settled by
         [documentation#35](https://github.com/sofa-buffers/documentation/pull/35)
         (`main@acd27a4`): the end marker's id is discarded but still bounded by `ID_MAX`.
         Pin three cells while here — id over `ID_MAX` → `reject`, id *at or below*
@@ -128,12 +132,14 @@ here:
       against the canonical twin's re-encode. Verified by deliberately breaking a twin: 28
       conformance failures, so the check can fail rather than merely being green.
 
-- [ ] **A vector for F-0054's normalization half.** The 6-byte isolate closes a *skipped*
-      unknown subtree, so the whole message re-encodes to the empty byte string and the
-      discarded id is unobservable — it proves the verdict only. §4.9 also requires the
-      marker to **re-encode as `0x07`**. Needs a non-zero-id end marker closing a
-      **declared** sequence, checked against the round-trip oracle (and `materialize.sh`).
-
+- [x] **A vector for F-0054's normalization half — DONE 2026-08-03** by
+      `engine/structured/sweep_tolerance.py`. The 6-byte isolate closes a *skipped* subtree, so
+      its whole message re-encodes to the empty byte string and the discarded id is
+      unobservable — it proved the verdict only. Every tolerance vector instead closes a
+      **declared** sequence holding a real field and carries `expect="same:<twin>"`, so the
+      re-encode is asserted against the canonical twin's bytes. The runner additionally fails a
+      `same:` vector whose twin re-encodes to the empty message, so this blind spot cannot come
+      back silently.
 
 - [~] **Over-width vectors at the array-element position — WRITTEN 2026-08-03, carved out
       until [generator#279](https://github.com/sofa-buffers/generator/issues/279) closes.**
