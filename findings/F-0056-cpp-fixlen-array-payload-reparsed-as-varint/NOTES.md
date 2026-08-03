@@ -1,6 +1,6 @@
 # F-0056 — corelib-cpp re-parses a fixlen array's payload as a varint when a later field truncates
 
-**Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Status:** 🔴 **OPEN** — filed as [corelib-cpp#71](https://github.com/sofa-buffers/corelib-cpp/issues/71) (2026-08-03, against `main` @ `2466869`) — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 
 **Found 2026-08-03** by re-clustering CI's 8512-input nightly corpus against the post-fix family.
 It is the camp `c5d8b383`, which had resisted triage since the morning review: an earlier attempt
