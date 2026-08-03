@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS-LOG.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (160 inputs)
+## Contents (165 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -90,6 +90,8 @@ excluded, each because the family still legitimately splits on it:
 | `F-0018/embedded_nul.bin` | **by-design allowed divergence** (not a bug). Embedded U+0000 is valid UTF-8 and accepted by all 12; the C object API stores strings NUL-terminated (`char[]` + `strlen`), so `c`/`cpp-c-cpp` project `A\0B` → `A` on re-encode while the other 10 preserve it. Sanctioned in `oracle/policy.yaml` (axis `accept_value`, MESSAGE_SPEC §8) — see `findings/F-0018` |
 | `F-0003/array_overflow.bin` | the original is over-count **and truncated**, so rust reports `I` and the family `R` — that is the open precedence spec-hole ([documentation#15](https://github.com/sofa-buffers/documentation/issues/15)), not the over-count axis the finding is about |
 | `F-0008/hang_min.bin`, `hang_orig.bin` | the hang is fixed (generator#126) and they terminate, but both end mid-sequence, so py says `R` (eager) and the family `I` (lazy) — documentation#15 again |
+| `F0054_r2_seqend_id_over_IDMAX.bin`, `F0054_r1_seqend_id_huge.bin` | F-0054 | CORELIB_PLAN §4.9/§6.2 (documentation#35) + corelib-go#70, corelib-py#60, corelib-ts#86 | a **sequence-end** header whose id is over `ID_MAX` is `R invalid_msg` on all 13 — the id is discarded but still bounded, so the ceiling binds every header without a wire-type exception |
+| `F0054_ctl_seqend_canonical.bin`, `F0054_ctl_seqend_id_small.bin`, `F0054_ctl_seqend_id_at_IDMAX.bin` | F-0054 (controls) | — | the **counter-direction, and the reason these three are in the gate**: a seq-end id of 0, of 3 and of `ID_MAX` stay **accepted** by all 13. The abandoned Option C would have rejected all three, and a family-wide over-tightening is invisible to the differential oracle — it would read as unanimous agreement. These pin the direction the way CORELIB_PLAN §7.2 class 5b requires |
 
 (F-0004's original `invalid_utf8.bin` was the last exclusion here; it graduated in
 2026-07-18 once the strict-UTF-8 check went ON family-wide — the 11 malformed-form

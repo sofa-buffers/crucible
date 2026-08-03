@@ -19,6 +19,91 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**F-0054 closed 2026-08-03 — fixed in all three repos the same day it was specified.**
+corelib-go#70, corelib-py#60 and corelib-ts#86 landed within the hour: go deleted its
+`t != TypeSequenceEnd` exception (a removal, and it reconciled go's two decode surfaces as a side
+effect, so that sub-finding never needed filing), py bounded the id in both engines, ts on all
+three surfaces. The five reproducers are in the green `corpus/regression/` gate as `F0054_*`,
+**controls included**, and the camp signature is *deleted* from `known-clusters.txt` — a resolved
+camp left in the baseline would match a regression as "known" and hide it.
+
+*The verification is the part worth remembering.* `run.sh` reported `5 agree, 0 diverge`, and
+that is exactly the signal Option C would have produced too: over-tighten everywhere and the
+three controls flip to `R` **together**, so the oracle sees unanimity. The verdicts were
+therefore read out per driver — isolate `R invalid_msg` ×13, controls `A` ×13 — confirming that
+exactly one test point moved. This is the same class §7.2's new tolerance tests exist for, and
+Crucible's own gap on it is still open in `docs/TODO.md`.
+
+**F-0054 settled 2026-08-03 — documentation#35 merged as `acd27a4`, Option B is normative.** The
+provisional wording is out of the catalog, the finding and `docs/TODO.md`; the `ID_MAX` ×
+sequence-end sweep cell is pinned to **`reject`**, with the at-or-below-`ID_MAX` and
+over-64-bit-varint cells pinned alongside it. Upstream is clean: the eight Option-A issues, their
+eight draft PRs **and** their eight branches are gone, and F-0054 stands on three issues —
+corelib-go#69, corelib-py#59, corelib-ts#85.
+
+*The cost of getting this wrong twice, recorded plainly:* three positions on one clause in a day,
+19 issues/PRs opened and 16 of them withdrawn, and three repos that received two contradictory
+instructions each before the right one. What made it recoverable was that the isolate and its
+three controls never moved — only the question of which camp they indicted. A finding whose
+*evidence* is stable survives its own attribution being wrong.
+
+**F-0054 turned back 2026-08-03 — Option B raised, and the spec inversion below is being
+reverted.** Reading the eight draft PRs the re-filing produced made the cost of the merged
+Option A concrete: each of the nine rejecters carries **one unconditional** `if (id > ID_MAX)`
+between splitting the header and dispatching on the wire type, and A makes every one of them
+grow a per-wire-type exception there — nine drivers, eight repos, several with two or three
+decode surfaces apiece, in the header hot path.
+
+*Decision: propose Option B — bound the id's value like every other header's, then discard it.*
+The §4.1 objection that killed Option C does not reach B: C constrained the **spelling** (it
+would have made `0x87 0x00`, a non-minimal id 0, `INVALID`), while B constrains the **value** and
+leaves §4.1 untouched. Behavioural cost is identical to A — exactly one test point moves, the
+isolate itself; only C would have moved three. And B is the only option that *removes* branching:
+the nine stay untouched and `corelib-go` deletes the exception it already carries
+(`cursor.go:272`). Filed as
+[documentation#35](https://github.com/sofa-buffers/documentation/pull/35), which reverts #34 and
+keeps its tolerance test class 5b.
+
+*What the code archaeology showed, and it corrected the earlier write-up.* The three accepters do
+**not** share one gap: `corelib-ts` never computes the id for an end marker, `corelib-py`
+computes it and checks it after the seq-end branch, and `corelib-go` carries a written-out
+`t != TypeSequenceEnd` exception — it had coded Option A before Option A existed. That is the
+strongest evidence for A, and it is recorded in the finding rather than argued away. It also
+turned up a separate defect: go's two decode surfaces **disagree** with each other
+(`cursor.go:272` has the exception, `decoder.go:65` does not), which is a finding under either
+option.
+
+*Housekeeping.* F-0054's directory now carries an outcome-neutral slug — the attribution moved
+twice in one day and the slug moved with it, which is churn the id already prevents. The eight
+issues and their draft PRs are held, not closed, until #35 is decided; the finding records that
+it reverts to the nine if #35 is rejected.
+
+**F-0054 inverted 2026-08-03 — the spec settled the question against the way we filed it.** The
+finding reported the four impls that *accept* an over-`ID_MAX` id on a sequence-end header. The
+merged `CORELIB_PLAN.md` (`main@51c777d`) now says accepting is required: §4.9 — a decoder *"MUST
+accept a sequence-end header (wire type `0b111`) carrying **any** id, discard that id, and
+re-encode the marker as `0x07`"*, a non-zero id being *"**not** `INVALID`"* but normalized away as
+a non-minimal varint is; §6.2 adds that `ID_MAX` bounds *"the id of a **value-bearing** field
+header"* and not the end marker; §5.2/§6.3 never listed the case. So the divergence stands, the
+attribution flips: the four accepters are conformant, the **nine rejecters** are the defect —
+8 corelib repos, and the fix is a *removal* (drop the `ID_MAX` guard on wire type 7).
+
+*Decision: the merged document is the only authority.* The three issues we filed were closed the
+same day "resolved-by-decision" on a proposed rule — a seq-end id fixed at 0, non-zero `INVALID` —
+that **never became normative**; the spec change they deferred to landed the opposite rule. That
+comment also announced flipping the two `ctl_seqend_*` controls to `R`, which the merged text
+contradicts. Neither an issue comment nor a PR's commit rationale is a clause: F-0054 was rewritten
+from §4.9/§6.2/§5.2/§7.2 as merged, and the stale closures are recorded in the finding's *History*
+so nobody re-derives the rule from them. Re-filing against the eight repos is still open.
+
+*What it exposes about the harness.* §7.2 gained test class **5b, tolerance tests** — a decoder
+must not be *stricter* than the format allows — and Crucible has no axis for it. An implementation
+that is uniformly too strict yields **no divergence**, so the differential oracle is structurally
+blind; F-0054 surfaced only because the family happened to split 4-vs-9. Sweep vectors carry an
+absolute expectation, so the class is testable; two `docs/TODO.md` items now cover it (the
+tolerance axis, and a vector for the normalization half — the present isolate closes a *skipped*
+subtree, so the discarded id is unobservable and only the verdict is proven).
+
 **F-0055 found 2026-08-03 — silent data loss in rust-no-std, and the first finding this week
 reached by reading source rather than by probing.** Chasing the two large `rust-nostd`-only camps
 refuted four hypotheses in a row (message size, large skipped payloads, the §6.4 mid-payload
