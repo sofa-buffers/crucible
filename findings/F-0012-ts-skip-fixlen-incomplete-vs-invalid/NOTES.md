@@ -71,3 +71,9 @@ others are worth a follow-up pass once TS lands. `reject_class` differences
 Kept OUT of the green gates (like the other divergent-input findings). The seed +
 cross-encode + union + limit gates stay green (well-formed inputs); this lives in the
 fuzzer corpus.
+
+## Resolution
+
+**Impls:** corelib-ts · **Axis:** verdict
+
+✅ **resolved — [corelib-ts#49](https://github.com/sofa-buffers/corelib-ts/issues/49) fixed** (`0279378`, "validate fixlen word in the cursor skip path (§5.2 precedence)"). Root cause: `src/decode/cursor.ts` `skipValue` checked only `len > FIXLEN_MAX`, never the subtype/fp-width, so a reserved subtype or wrong-width fp in the skip path → `take()` → `INCOMPLETE` on truncation. **Re-verified 2026-07-17:** `aa7e79` / `5df35d07` → TS now `R invalid_msg` (was `I`), aligned with the family; the valid-skip controls stay `A`/`I`. **Found by the coverage-guided fuzzer** — was the single largest divergence class (~66%, 11-vs-1). The TS analogue of the fixed F-0006/F-0007; the PR #37 audit's "§5.2 all-12-compliant" only covered known small field ids

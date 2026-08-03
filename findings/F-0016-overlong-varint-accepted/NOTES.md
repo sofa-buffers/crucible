@@ -61,3 +61,9 @@ Per-impl (verified against source):
 Kept out of `corpus/regression/` until the family converges (target: all 12 → `R invalid_msg`;
 the control stays `A`). Promote the two over-64-bit vectors once fixed; the control can go in
 now (already green).
+
+## Resolution
+
+**Impls:** corelib-cpp, corelib-go, corelib-rs-no-std, corelib-py, corelib-java, corelib-cs, corelib-ts (7) · **Axis:** verdict + accept_value
+
+✅ **RESOLVED** — all 7 fixed & closed; **re-measured 2026-07-17: all 12 `R invalid_msg`** on both over-64-bit vectors (baseline 8A/4R), control still `A`; promoted into the green `corpus/regression/` gate (29 inputs). Was filed per-impl (corelib-side, the varint reader): [corelib-cpp#39](https://github.com/sofa-buffers/corelib-cpp/issues/39), [corelib-go#48](https://github.com/sofa-buffers/corelib-go/issues/48), [corelib-rs-no-std#45](https://github.com/sofa-buffers/corelib-rs-no-std/issues/45), [corelib-py#43](https://github.com/sofa-buffers/corelib-py/issues/43), [corelib-ts#53](https://github.com/sofa-buffers/corelib-ts/issues/53), [corelib-java#41](https://github.com/sofa-buffers/corelib-java/issues/41), [corelib-cs#37](https://github.com/sofa-buffers/corelib-cs/issues/37). Each caps the byte count at 10 but never checks the **10th byte's** overflow bits; the 3 that reject (c-cpp/rs/zig) do a pre-shift room test (`istream.c:110`). Spec §4.1/§6.3 already require `INVALID`. `ff…ff 01` (2⁶⁴−1) is accepted by all — not an off-by-one. **Found by the coverage-guided fuzzer** (2nd 1 h round) — cluster 2 minimized to it

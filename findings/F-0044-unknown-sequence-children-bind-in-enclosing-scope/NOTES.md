@@ -157,3 +157,9 @@ see `docs/TODO.md`.
 ```
 CORPUS=findings/F-0044-unknown-sequence-children-bind-in-enclosing-scope ./scripts/run.sh
 ```
+
+## Resolution
+
+**Impls:** generator (**csharp, java, rust-std, rust-no-std, zig** — the flat-visitor backends; codegen) — `sequenceBegin`'s dispatch switch has **no default arm**, so an unmatched id leaves `cur` at the parent (`Probe.java:464`, `Message.cs:388`); the recursive-descent backends skip the subtree (`message.ts:165` `default: c.skip(c.wire)`) and are correct · **Axis:** accept_value
+
+✅ **RESOLVED 2026-08-02** — generator#268 fixed and closed the same day it was filed. `sequenceBegin`'s dispatch gained the default arm; a skipped unknown sequence no longer leaks children. **Re-verified** on the post-fix family (sofabgen `0.0.0-20260802183113-4865f8515430`, corelibs @ main): all vectors converge across 13 drivers, and the verdict *direction* was checked, not just agreement. Reproducers promoted into the green `corpus/regression/` gate (117 → 160 inputs). *Original report:

@@ -62,3 +62,9 @@ Carved out of the blocking axes until fixed (the F-0034 pattern):
 `sweep_repeated_id` (202 element reopen) and `sweep_empty_frame`
 (`interior_gap_elem`, `empty_merge` at the element position) mark the cells with
 this finding id.
+
+## Resolution
+
+**Impls:** generator (codegen, **G-0020**) — 10 backends (go, rust×2, cpp-c-cpp object layer, py×2, java, ts, cs, zig); `c`/`cpp`/`dart` place by id · **Axis:** accept_value (round-trip; a decoded-**value** corruption)
+
+✅ **RESOLVED in sofabgen 0.21.0** — [generator#247](https://github.com/sofa-buffers/generator/issues/247) closed. **Re-verified 2026-07-29** against corelibs **0.9.0 @ main** + sofabgen **0.21.0** — the first family carrying the merged sparse-array rewrite (documentation#29/#31). All three reproducers (`ctl_dense`, `gap_elem`, `reopen_elem`) now agree across the 13-driver roster. *History:* Found 2026-07-27, the day WP-05 folded `struct_array` into `probe` (poc family). §5.1: the element id IS the index, length = highest present id + 1; corelib-cpp's `MessageSeq` documents it verbatim with this exact counterexample (`sofab.hpp:3040`). Smoking gun in one generated file: `message.py` places `string_array` by id (`list[_ef0.id] = …`) but `append`s `struct_array` elements. The `cpp` vs `cpp-c-cpp` split inside one language indicts the generated container (triage step 3). Dense-id control agrees on all 13 — canonical wire is always dense, which is why the value corpus never saw it. Carved out of the blocking `sweep_repeated_id` + `sweep_empty_frame` cells; reproducers in `findings/F-0035…/`

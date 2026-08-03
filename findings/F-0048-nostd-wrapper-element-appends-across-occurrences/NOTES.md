@@ -127,3 +127,9 @@ duplicate-id axis and MESSAGE_SPEC §7.4, but its vectors repeat a *sequence* id
 (`nested`, `arrays`) and an array **wrapper** id — never an **element** id *inside* a wrapper.
 That is the untested cell, and it is the second time a §7.4 blind spot has produced a finding
 here. `docs/TODO.md` carries a sweep-axis item to close it.
+
+## Resolution
+
+**Impls:** generator (sofabgen **no-std backend**) — **G-0032** · **Axis:** verdict (latent accept_value)
+
+✅ **RESOLVED 2026-08-02** — generator#273 fixed and closed the same day it was filed. the wrapper-element sink replaces instead of appending, and the capacity guard no longer misfires. **Re-verified** on the post-fix family (sofabgen `0.0.0-20260802183113-4865f8515430`, corelibs @ main): all vectors converge across 13 drivers, and the verdict *direction* was checked, not just agreement. Reproducers promoted into the green `corpus/regression/` gate (117 → 160 inputs). *Original report:

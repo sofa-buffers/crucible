@@ -72,3 +72,9 @@ landing at ≥ 64 — leaving `varint_shift = 70` with the continuation flag set
 continuation flag is set, `varint_shift >= bits` means the encoding can no longer
 terminate within ten bytes, so return the overflow code immediately instead of asking
 for more input.
+
+## Resolution
+
+**Impls:** corelib-c-cpp (`src/istream.c`, `_varint_decode`) — `c` + `cpp-c-cpp`; `cpp` (same generated C++ over corelib-cpp) rejects with the family, which pins it to the corelib · **Axis:** verdict
+
+✅ **RESOLVED 2026-07-29** — [corelib-c-cpp#118](https://github.com/sofa-buffers/corelib-c-cpp/pull/118) merged, issue [#116](https://github.com/sofa-buffers/corelib-c-cpp/issues/116) closed. One added guard in `_varint_decode()`: the width test now also runs on **exit**, so a tenth byte that still sets the continuation flag is INVALID immediately instead of asking for an eleventh that can never make it valid. 17 repo CI checks green (incl. powerpc-be); `c` and `cpp-c-cpp` flip `I` → `R invalid_msg`, the other 11 unchanged. **Re-verified 2026-07-29** on corelibs @ main + sofabgen `7dfb61b`: all isolates and controls agree across the 13-driver roster, and the vectors are promoted into `corpus/regression/` (97 → 103 inputs, green). *History:* §4.1 (INVALID iff longer than 10 bytes) + §5.2 precedence (malformed *regardless of what follows*). The width guard is evaluated on **entry for the next byte**, so `varint_shift` reaches 70 and the verdict waits for an 11th byte that never comes. Controls: a legal non-minimal 10-byte varint → all 13 `A`; an 11-byte varint → all 13 `R`, so neither the rule nor the width is wrong, only the boundary. **Found 2026-07-29**, cluster 6

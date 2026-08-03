@@ -10,6 +10,8 @@
 
 ## Resolution
 
+**Impls:** **corelib-go, corelib-py, corelib-ts** (4 drivers, 3 repos) · **Axis:** verdict
+
 | repo | fix | what it did |
 |---|---|---|
 | corelib-go | [#70](https://github.com/sofa-buffers/corelib-go/pull/70) | deleted the `t != TypeSequenceEnd &&` exception in `cursor.go` — a removal, no new branch. This also made its two decode surfaces agree, so the self-contradiction below is **closed**, not deferred |

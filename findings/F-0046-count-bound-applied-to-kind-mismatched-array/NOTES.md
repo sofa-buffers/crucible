@@ -70,3 +70,9 @@ ordering slip rather than a design gap.
 ```
 CORPUS=findings/F-0046-count-bound-applied-to-kind-mismatched-array ./scripts/run.sh
 ```
+
+## Resolution
+
+**Impls:** generator (**rust-std, rust-no-std**; codegen) — every other backend, zig included, already orders it correctly, so a per-backend slip rather than a design gap · **Axis:** verdict
+
+✅ **RESOLVED 2026-08-02** — generator#271 fixed and closed the same day it was filed. the schema `count` is no longer applied to an array whose wire kind §7.3 says to skip. **Re-verified** on the post-fix family (sofabgen `0.0.0-20260802183113-4865f8515430`, corelibs @ main): all vectors converge across 13 drivers, and the verdict *direction* was checked, not just agreement. Reproducers promoted into the green `corpus/regression/` gate (117 → 160 inputs). *Original report:

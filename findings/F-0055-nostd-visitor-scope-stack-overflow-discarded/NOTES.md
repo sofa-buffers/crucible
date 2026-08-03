@@ -7,6 +7,8 @@ fixed by `bd67d2b`, *"stack only live scopes, so a deep skip can't lose"*.
 
 ## Resolution
 
+**Impls:** generator (sofabgen **no-std backend**) — **G-0035** · **Axis:** accept_value
+
 Verified on sofabgen `0.0.0-20260803165303-bd67d2b2f84c`, the **first artifact carrying the fix**
 — the preceding build was 67 minutes older, so a sweep run shortly before still showed the camp.
 A closed upstream ticket was explicitly not treated as a resolution here; the isolate was.

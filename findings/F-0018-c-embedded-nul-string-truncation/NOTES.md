@@ -56,3 +56,9 @@ boundary; that is what makes it a projection rather than a lossless store.)
 
 Reproducer kept here as the record. It stays **out** of the green `corpus/regression/` gate —
 it legitimately diverges, by policy.
+
+## Resolution
+
+**Impls:** corelib-c-cpp object API (NUL-terminated string, by design) · **Axis:** accept_value (round-trip)
+
+⚪ **by-design / allowed divergence** — **not a bug.** A `string` with an embedded U+0000 is valid on the wire and preserved by the 10 length-carrying profiles; the C object API stores strings NUL-terminated (`char[]` + `strlen`), so it projects to first-NUL — the corelib still receives the full bytes correctly, and the lossless path is the byte/length visitor API. Sanctioned in `oracle/policy.yaml` (axis `accept_value`, spec MESSAGE_SPEC §8: preservation of embedded U+0000 is implementation-defined for a NUL-terminated profile). Reproducer in `findings/`; kept out of the green gate. (Surfaced 2026-07-18 adding F-0004's embedded-NUL control; earlier SOFABGEN G-0015 codegen entry withdrawn.)

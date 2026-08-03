@@ -91,3 +91,9 @@ independently the same day through the §7.3 wiretype sweep with an `ARRAY_SIGNE
 `u8[]` slot. This is its fixlen-array face: same `arrayBegin` allocation block, same two
 backends. It is codegen; rows 2 and 4 are corelib. Keeping them apart is what keeps each issue
 fixable on its own.
+
+## Resolution
+
+**Impls:** **corelib** — 7 on row 2 (csharp, dart, go, java, rust-std, rust-nostd, zig), 5 on row 4 (csharp, dart, go, java, rust-nostd); the array header hook fires before the `fixlen_word` or omits the subtype, so generated code cannot express the order at all · **Axis:** verdict
+
+✅ **RESOLVED 2026-08-01** — all seven corelib issues closed 2026-08-01 ([go#58](https://github.com/sofa-buffers/corelib-go/issues/58), [java#53](https://github.com/sofa-buffers/corelib-java/issues/53), [cs#45](https://github.com/sofa-buffers/corelib-cs/issues/45), [dart#23](https://github.com/sofa-buffers/corelib-dart/issues/23), [rs#40](https://github.com/sofa-buffers/corelib-rs/issues/40), [rs-no-std#60](https://github.com/sofa-buffers/corelib-rs-no-std/issues/60), [zig#27](https://github.com/sofa-buffers/corelib-zig/issues/27)) — the array-header hook now carries the fixlen element subtype, consumed by the backends in [generator#259](https://github.com/sofa-buffers/generator/issues/259). **Re-verified 2026-08-01** against corelibs **0.10.0** + sofabgen **0.22.0**: all six vectors converge on all 13. Promoted into the regression gate as `F0042_*.bin`; the two carved-out `wiretype_sweep` cells are blocking again

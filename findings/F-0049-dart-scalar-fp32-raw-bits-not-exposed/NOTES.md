@@ -81,3 +81,9 @@ attribution was **wrong on all three counts**, established 2026-08-02:
 
 So F-0031 produced no upstream issue and never should have: two thirds of it was our own
 measurement apparatus, and the corelibs had shipped their §6.5 work.
+
+## Resolution
+
+**Impls:** generator (sofabgen **dart backend**) — **G-0033** · **Axis:** accept_value (materialized oracle only)
+
+✅ **RESOLVED 2026-08-02** — [generator#275](https://github.com/sofa-buffers/generator/issues/275) fixed and closed the same day it was filed: `fix(dart): the fp32 raw-bits companion must be consumer-visible` (sofabgen `0.0.0-20260802192533-88a6833a2f72`). The generated field is now the public `int? f32Fp32Bits`. **Crucible's own half had to follow** — the fix only *exposes* the bits; `drivers/dart/materialize_gen.py` was still formatting the widened double, so the divergence would have persisted as ours. The walker now reads the companion (`_f32Scalar`), mirroring the `_f32Elem` array path added the same day. **Verified on the oracle that can see it**: `materialize.sh` 108 × 13, 0 divergences, C anchor 0/108 — `run.sh` was green throughout and says nothing here. `f32_snan` is back in `corpus/structured`, so the scalar sNaN now sits in a blocking gate. *Original report:

@@ -52,3 +52,9 @@ cursor/parseTopLevel path), tighten validation to reject the same malformed
 frames the rest of the family rejects. The c-cpp wrapper and the C corelib are a
 reference for the intended strictness. This is a **corelib** bug (not codegen);
 `oracle/cluster.py` gives the exact reproducer set.
+
+## Resolution
+
+**Impls:** corelib-cpp · **Axis:** verdict + value
+
+✅ resolved — [corelib-cpp#22](https://github.com/sofa-buffers/corelib-cpp/issues/22) closed. Re-verified 2026-07-15 (sofabgen 0.16.1): cpp rejects the reproducer `56 0a 59` in step with the family. **Note:** on that same input corelib-py now returns `I` where the family returns `R` — a *new*, unrelated divergence split out as **F-0006

@@ -100,3 +100,9 @@ F-0010/F-0013: `maxlen` is schema knowledge the schema-agnostic corelibs do not 
 Kept **out of** `corpus/regression/` (they diverge by design until the clause lands and the
 family converges). Promote `control_string_8_within_maxlen32.bin` now if desired (it is
 already green); promote the three over-bound vectors once the family agrees.
+
+## Resolution
+
+**Impls:** family-wide (spec) · **Axis:** verdict + accept_value
+
+✅ **RESOLVED — spec clause adopted *and* implemented, verified against the pre-bump baseline.** **sofabgen 0.17.5** (`b0b2832`, "reject over-maxlen strings/blobs as INVALID on decode (Option B)") → **all 12 drivers `R invalid_msg`** on all three over-`maxlen` vectors (baseline: 9 accept / 2 `invalid_msg` / 1 `buffer_full`). Both halves: the 9 heap backends enforce `maxlen`, **and** rust-nostd's `buffer_full` became `invalid_msg`. Within-`maxlen` control still accepts on all 12. All four vectors promoted into the green `corpus/regression/` gate. **The arc closed in one day:** hole → clause (documentation#19) → spec PR merged (#20) → codegen (0.17.5) → verified

@@ -71,3 +71,9 @@ classes (java `incomplete_value` soft, F-0028/F-0029, and the F-0032 §5.2 schem
 family), and this one — an `accept_value` cluster with two distinct re-encoded values — was the new
 signal. The hand-built value corpus (`gen.py`) never emits an over-width scalar, so only fuzzing reached
 it.
+
+## Resolution
+
+**Impls:** spec hole (documentation) — family-wide, no single impl wrong · **Axis:** accept_value + verdict
+
+✅ **RESOLVED 2026-08-02** — generator#266 + corelib-cpp#67 fixed and closed the same day it was filed. the declared integer width is now enforced as a validity bound in every backend, and corelib-cpp stopped masking a narrow **array element** to its declared width. **Re-verified** on the post-fix family (sofabgen `0.0.0-20260802183113-4865f8515430`, corelibs @ main): all vectors converge across 13 drivers, and the verdict *direction* was checked, not just agreement. Reproducers promoted into the green `corpus/regression/` gate (117 → 160 inputs). *Original report:

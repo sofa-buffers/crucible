@@ -63,3 +63,9 @@ Held out of the blocking `corpus/regression/` gate and the framing axis kept **r
 fix lands. When it lands: re-bootstrap, verify `depth_over_maxdepth` → all 13 `R`, promote the reproducer
 + the `depth_ok_ctl` control into the gate, flip the framing axis's MAX_DEPTH vectors to blocking.
 (The `ID_MAX` split is the sibling F-0028; `FIXLEN_MAX`/`ARRAY_MAX`/stray-end are green on the same axis.)
+
+## Resolution
+
+**Impls:** corelib-ts (`src/decode/cursor.ts`); **corelib-only, not codegen** · **Axis:** verdict
+
+✅ **RESOLVED (re-verified 2026-07-25)** — [corelib-ts#65](https://github.com/sofa-buffers/corelib-ts/issues/65) fixed (the `cursor.skipSequence` MAX_DEPTH gate the read path already had); all 13 reject `R` (the framing §6.2 sweep is green). Reproducer `depth_over_maxdepth.bin` = `06`×300 (300 unclosed sequence-opens). **ts** → `I`, **12 others** → `R`. **Root cause:** corelib-ts's `fast.ts:195-198` and `state.ts:331-335` both enforce `MAX_DEPTH`, but `cursor.ts` (the hit path) increments `depth` (`:170`) only for the stray-end (`:162`) and EOF-incomplete (`:151`) checks, never comparing to `MAX_DEPTH` → 300 opens → EOF depth>0 → `I`. An **internal inconsistency** in corelib-ts. Fix: the one-line guard `if (this.depth >= MAX_DEPTH) throw invalidMsgError(...)` at `cursor.ts:170`, mirroring the other two paths. MAX_DEPTH exceedance is adopted-INVALID (§5.2, [documentation#17](https://github.com/sofa-buffers/documentation/pull/17)), so it dominates INCOMPLETE — **not** the open documentation#15 corner. **Attribution — corelib-ts:** format constant, wire mechanics, already present in its sibling decode paths. Control `depth_ok_ctl.bin` (balanced depth 8) → all 13 accept. **Found 2026-07-23 by the WP-04 framing & ceilings sweep

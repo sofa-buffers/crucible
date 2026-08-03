@@ -108,3 +108,9 @@ in a non-monotonic, not-yet-understood way. That broader
 a MESSAGE_SPEC precedence clarification rather than a single corelib bug. corelib-py
 is filed now because its behavior is fully root-caused and uniformly wrong for every
 L ≠ 8.
+
+## Resolution
+
+**Impls:** corelib-py (both engines) · **Axis:** verdict
+
+✅ **resolved** — [corelib-py#38](https://github.com/sofa-buffers/corelib-py/issues/38) fixed & closed. corelib-py `main` now validates fp fixed width at the FIXLEN header (before payload read). **Re-verified 2026-07-15:** `56 0a 59` / `56 02 38` → all 11 drivers `R`. Was surfaced by the `e14e4ba` un-eager-allocation bump; the clean single-culprit slice of F-0007

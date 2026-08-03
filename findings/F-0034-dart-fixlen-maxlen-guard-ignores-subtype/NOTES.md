@@ -103,3 +103,9 @@ cell is carved out of emission via `KNOWN_OPEN` in
 `STRUCTURAL` carve-out precedent, so the axis stays green-except-known until the generator
 fix lands. The isolate + control live here (kept **out** of the green `corpus/regression/`
 gate while open); re-enable emission and promote them into the gate once fixed.
+
+## Resolution
+
+**Impls:** generator (sofabgen **dart** backend, codegen) — **G-0019** · **Axis:** verdict
+
+✅ **RESOLVED (sofabgen `ff2a55e5`, 2026-07-24)** — [generator#224](https://github.com/sofa-buffers/generator/issues/224) fixed (commit `ff2a55e5`, "gate the maxlen header guard on subtype"); **re-verified: all 13 skip → `A`** (dart was the lone `R`). corelib-dart `f9e64ec` added `onFixlenHeader(id, subtype, length)` (a §5.2 header hand-off so a schema-bound consumer can reject over-`maxlen` at the header, before truncation); the generated dart `ProbeNested.onFixlenHeader` (`message.dart`) enforces `case 3: if (length > 4) e.inv = true` **without gating on `subtype`**, so an fp64 (8) at the blob slot trips `8 > 4 → INVALID` instead of being skipped. **Attribution — codegen, corelib not implicated:** `subtype==blob`/`maxlen==4` are schema facts the corelib can't know; it faithfully reports `(subtype, length)` and `shouldRead(id 3, fixlen)` legitimately returns true (the blob/fp64 subtype split is invisible to the corelib) → the subtype gate belongs in generated code. Fix: `if (subtype == FixlenType.blob && length > 4) …` (same latent bug at the id-2 string arm, `maxlen 32`, not surfaced only because no swept construct's payload exceeds 32). **Found 2026-07-23 by the wiretype (§7.3) sweep** on the first run after the corelib-dart bump; the divergent cell was carved out of the blocking wiretype axis until fixed — **now re-enabled** (carve-out dropped) and the isolate + control **promoted into the green `corpus/regression/` gate

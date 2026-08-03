@@ -132,3 +132,9 @@ as **[documentation#15](https://github.com/sofa-buffers/documentation/issues/15)
 was untouched by that pull (still `0e15785`) and sofabgen is unchanged (0.17.1), so the
 py driver is byte-identical. Not a new finding; a data point for documentation#15. Kept
 out of the green gates like the other reproducers.
+
+## Resolution
+
+**Impls:** generator (sofabgen C++ backend) — G-0011 · **Axis:** liveness / DoS
+
+✅ **resolved** — [generator#126](https://github.com/sofa-buffers/generator/issues/126) fixed in **sofabgen 0.17.1** (commit `483c281`, "bound fixed-capacity string/blob-seq fill loop"). **Re-verified 2026-07-16:** `c6 0c c6 07` → `I` (terminates, no hang). Root cause: generated `_FixedStrSeq`/`_FixedBlobSeq` do `while (out->size() <= id) out->emplace_back()`, but `InlineVector::emplace_back` no-ops once full, so `id ≥ N` spins forever. Heap `cpp`, C object API `c`, go, rust all return `I`. **Correction:** first mis-filed against corelib-c-cpp#84 (closed — not a corelib bug; the maintainer redirected in [crucible#16](https://github.com/sofa-buffers/crucible/issues/16)); re-targeted to codegen. Found by the mutator + localized by the per-driver timeout

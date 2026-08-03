@@ -112,3 +112,9 @@ written. Tracked like F-0001/F-0004 (spec-first, family-wide).
 Kept OUT of the green `corpus/structured/` cross-encode gate (which uses count-0 and
 full-count arrays, all green); the under-count vectors live here as the finding —
 mirroring how F-0004/F-0009's divergent inputs are kept out of the green gates.
+
+## Resolution
+
+**Impls:** family-wide (spec) · **Axis:** accept_value (round-trip)
+
+✅ **resolved — re-resolved 2026-08-02 after the spec superseded the first fix; see the trail below.** *(History: spec-RESOLVED, corelibs converging.)* Clause **adopted → [documentation#18](https://github.com/sofa-buffers/documentation/pull/18)** merged (§3+§5.1, sparse fill-to-N: decode materializes N, canonical encode **elides the trailing default run** → canonical wire is count 3). **Audit 2026-07-16:** neither camp fully compliant yet — {c, rust×2, cpp, cpp-c-cpp, zig} must **trim trailing defaults on encode** (they emit count 5, observable); {go, py×2, java, ts, cs} must **fill-to-N on decode** (they keep M — latent, round-trip-masked). Traced to **codegen, not corelib** (corelib array writers correctly write `count = len(passed slice)`); filed **[generator#136](https://github.com/sofa-buffers/generator/issues/136)** with R1/R2 reproducers — **✅ fixed in sofabgen 0.17.2** (PR #137): all 12 backends now emit the canonical count 3/1 on the R1/R2 reproducers (C via corelib-c-cpp#87). The trim/pad question is resolved family-wide. **(The same go changeset introduced a separate omission regression — split out as F-0011.)** **Found by the cross-encode oracle, slice 2** (array value space)

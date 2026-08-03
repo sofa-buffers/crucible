@@ -140,3 +140,9 @@ land here as `c=R` vs others=`I` verdict splits — but they are not minimal iso
 2. Per corelib in the `I`-at-wrong-L camp, minimal-isolate its decoder's
    check-ordering and file individually (corelib-py already done → #38).
 3. Consider a `policy.yaml` note once the spec clause lands (verdict stays hard).
+
+## Resolution
+
+**Impls:** corelib-c-cpp (c + cpp-c-cpp) · **Axis:** verdict
+
+✅ **resolved** — [corelib-c-cpp#82](https://github.com/sofa-buffers/corelib-c-cpp/issues/82) fixed & closed (`635966d`, "reject wrong-width fixlen fp32/fp64 as INVALID (#82)(#83)"). **Re-verified 2026-07-15 (sofabgen 0.17.0):** `56 0a 09` / `56 02 10` → all 12 drivers `R`. Direct analogue of the closed corelib-py#38. (A family-wide MESSAGE_SPEC §7 precedence clause remains a nice-to-have.)

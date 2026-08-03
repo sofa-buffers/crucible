@@ -8,6 +8,8 @@ and [corelib-ts#82](https://github.com/sofa-buffers/corelib-ts/issues/82) both c
 
 ## Resolution
 
+**Impls:** **corelib-go, corelib-ts** · **Axis:** verdict
+
 All 5 reproducers produce **no cluster** against both corelibs' current `main`.
 `r1_count11_overlong_elem` is now `R invalid_msg` on all 13 — go and typescript previously said
 `I`, folding a malformed message into truncation against §5.2's precedence. The controls hold:

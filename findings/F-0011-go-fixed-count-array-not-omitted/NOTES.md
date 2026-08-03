@@ -60,3 +60,9 @@ under-count value.
 Kept OUT of the green gates (like the other divergent-input findings). The seed +
 cross-encode gates are **red on go** until generator#139 lands; the other 11 backends are
 green and F-0010 has converged for them.
+
+## Resolution
+
+**Impls:** corelib-go (codegen) · **Axis:** accept_value (round-trip)
+
+✅ **resolved — [generator#139](https://github.com/sofa-buffers/generator/issues/139) fixed in sofabgen 0.17.3** (commit `0713b94`). Short-lived regression: commit `684656d` (0.17.2, while fixing F-0010) made go emit all-default `count:N` arrays explicitly instead of omitting them (§2); go-only. **Re-verified 2026-07-16 (0.17.3):** `empty_arrays` → all 12 omit the arrays; full box green again. Found on the 0.17.2 bump, fixed on the 0.17.3 bump same day

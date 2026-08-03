@@ -71,3 +71,9 @@ is minimal and pins exactly one impl as the lone `I`.
 
 Kept **out of** `corpus/regression/` (they diverge by design until the three fixes land).
 Promote each into the gate as its issue closes — the F-0007/F-0006/F-0012 precedent.
+
+## Resolution
+
+**Impls:** corelib-c-cpp, corelib-py, corelib-ts · **Axis:** verdict
+
+✅ **resolved** — all three fixed & closed the same day: [corelib-c-cpp#89](https://github.com/sofa-buffers/corelib-c-cpp/issues/89) (`ab062e3`), [corelib-py#41](https://github.com/sofa-buffers/corelib-py/issues/41) (`d4fe94f`), [corelib-ts#51](https://github.com/sofa-buffers/corelib-ts/issues/51) (`7a9033f`, "validate fixlen element word **before truncation guard**" — the ordering diagnosis). **Re-verified 2026-07-17 (0.17.5):** all three isolates → **all 12 `R invalid_msg`**; promoted into the green `corpus/regression/` gate. The **array** analogue of the fixed F-0006/F-0007/F-0012 (all scalar-path). Three minimal isolates, each pinning one impl as the lone `I`. **Found by the 1 h fuzzer round**: corelib-ts#49 removed the dominant cluster (divergence rate 86%→32%), unmasking these residuals — all one class. Nice detail: corelib-py's scalar branch already *comments* the array width check ("the eager element-width check on the fixlen-array path below") that was never written; corelib-ts#49 *identified* the ordering trap and sidestepped it in `skipValue` but not in the known-field path

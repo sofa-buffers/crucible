@@ -91,3 +91,9 @@ python3 oracle/cluster.py --corpus findings/F-0022-array-field-receives-scalar \
 
 Build via `./scripts/run.sh` — never point the comparator at `drivers/*/build/` after a
 limit-mode run (probe-dyn binaries there mis-report a sweep as ~all divergent).
+
+## Resolution
+
+**Impls:** generator (sofabgen) — rust-std/rust-nostd/csharp/java/zig backends; **generator-only** · **Axis:** verdict / accept_value
+
+✅ **RESOLVED (sofabgen 0.19.4, 2026-07-21)** — [generator#188](https://github.com/sofa-buffers/generator/issues/188). The array-fill arm now carries the §7.3 guard (`if self.afill == 0 { return; }`) and `array_begin` arms `afill` only at a real array position — so a bare scalar with no preceding `array_begin` falls through and is skipped, symmetric to the F-0021 `askip` fix; no corelib change. **Re-verified:** all 5 isolates (`u8[]`/`i8[]`/`fp32[]`←scalar + 2 controls) → 0 divergences across all 12, and the wiretype sweep no longer flags any array-field←scalar position; promoted into the green gate (`F0022_*`). **Root cause:** the five shared-callback backends delivered an array element-by-element through the same `unsigned()`/`signed()`/fp callback as a lone scalar; generator#183 (F-0021, 0.19.3) had guarded the **scalar arms** but not the **array-fill arms** `(Root_arrays,n)=>fill`, so a scalar inside the `arrays` scope was stored as element 0. **F-0020/F-0021 looked axis-green but were isolate-green** — their vectors only tested the scalar-field position, never the array-field position. **Found 2026-07-20 by the wire-type sweep** (`engine/structured/wiretype_sweep.py`) on its first run — 7-skip vs 5-decode, validated across all 12

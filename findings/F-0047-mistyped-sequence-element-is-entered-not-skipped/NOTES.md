@@ -155,3 +155,9 @@ impl list is unchanged, and generator#272 needs no edit.
 Same symptom, opposite mechanism: **this finding is enter-and-bind, F-0051 is
 skip-but-still-enforce.** Worth remembering — the camps overlap on every vector where the child
 id is over the bound, and only an in-range child tells them apart.
+
+## Resolution
+
+**Impls:** generator (**csharp, dart, java, rust-std, rust-no-std, zig**; codegen) — F-0044's five plus dart; the same missing skipping-scope, different trigger · **Axis:** accept_value + verdict
+
+✅ **RESOLVED 2026-08-02** — generator#272 fixed and closed the same day it was filed. a mistyped sequence element is skipped whole, content or not. **Re-verified** on the post-fix family (sofabgen `0.0.0-20260802183113-4865f8515430`, corelibs @ main): all vectors converge across 13 drivers, and the verdict *direction* was checked, not just agreement. Reproducers promoted into the green `corpus/regression/` gate (117 → 160 inputs). *Original report:
