@@ -38,7 +38,7 @@ jobs:
     # doc mismatch needs no drivers to detect — and because being careful is not a fix.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Catalog consistency
         run: python3 scripts/check-catalog.py
 
