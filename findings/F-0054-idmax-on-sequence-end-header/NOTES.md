@@ -71,8 +71,8 @@ of *"three independent corelibs sharing one gap"* was too glib:
 
 | repo | site | what it actually does |
 |---|---|---|
-| corelib-ts | `src/decode/fast.ts:92-101` | the `if (type === WireType.SequenceEnd) { … continue; }` block precedes `const id = this.upper()`, so the id is **never computed** for an end marker and never reaches `if (id > ID_MAX)` |
-| corelib-py | `src/sofab/decoder.py:309-317` | `field_id` **is** computed, then the `SEQUENCE_END` block returns `Field(0, …)`, and only *after* it comes `if field_id > ID_MAX`. A branch-order consequence of discarding the id |
+| corelib-ts | `src/decode/fast.ts:92-101`, `cursor.ts:160`/`:171` and `:435`/`:440`, `state.ts:136-141` — **three** surfaces | the sequence-end branch precedes `const id = this.upper()`, so the id is **never computed** for an end marker and never reaches `if (id > ID_MAX)`. Same shape in all three |
+| corelib-py | `src/sofab/decoder.py:309-317` **and** `_speedups.pyx:1683-1690` — both engines | `field_id` **is** computed, then the `SEQUENCE_END` block returns `Field(0, …)`, and only *after* it comes `if field_id > ID_MAX`. Identical branch order in the pure and Cython engines, which is why both py drivers are affected |
 | corelib-go | `cursor.go:272` | `if t != TypeSequenceEnd && (h>>3) > uint64(IDMax)` — a **deliberate, written-out exception**, not an oversight |
 
 corelib-go is the interesting case: it had coded Option A's rule before anyone wrote it down.
@@ -149,6 +149,14 @@ written as exactly `0x07` — was never in dispute; only the decoder's treatment
    corelib-go delete the one it has. Filed as
    [documentation#35](https://github.com/sofa-buffers/documentation/pull/35), which reverts #34.
 
-**Pending #35:** close the eight issues and their draft PRs; the three from step 1 become correct
-again, though they were closed on C's reasoning rather than B's and their comments say so. If #35
-is rejected, this finding reverts to step 3 — the isolate and controls hold either way.
+5. **Cleaned up 2026-08-03.** The eight A-issues and all eight draft PRs are **closed**
+   (`not planned`), each with a note that #35 reverts the rule they implement. The three from
+   step 1 stay closed but are marked superseded — they carried *two* obsolete instructions, C's
+   in the closure and A's in my later comment. F-0054 is now filed fresh on B, against this
+   finding's sites: [corelib-go#69](https://github.com/sofa-buffers/corelib-go/issues/69),
+   [corelib-py#59](https://github.com/sofa-buffers/corelib-py/issues/59),
+   [corelib-ts#85](https://github.com/sofa-buffers/corelib-ts/issues/85). Each states up front
+   that #35 is still open and asks that the change not land before it merges.
+
+If #35 is rejected, this finding reverts to step 3 — the isolate and the controls hold either
+way, and only one test point is in dispute at all.
