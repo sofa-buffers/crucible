@@ -106,9 +106,30 @@ here:
       - overlong varint (§4.1) × skipped array with a count outrunning the input → F-0053
       - `ID_MAX` (§6.2) × **sequence-end** wire type → F-0054 (`sweep_framing` puts the
         over-ceiling id only on an *unsigned* header, and its stray-end vectors all use the
-        canonical single-byte `0x07`)
+        canonical single-byte `0x07`). **Note the expectation is `accept`, not `reject`:**
+        §4.9/§6.2 exempt the end marker from `ID_MAX` — the id is discarded and the marker
+        re-encodes to `0x07`. Only a header varint over §4.1's 64-bit bound is `INVALID`
+        here, which is a separate vector.
       - over-index element × truncation **inside** the fixlen word → F-0043's finer offset
       Cheapest home for all three is `sweep_framing`, which already owns both parents.
+
+- [ ] **A tolerance axis — the class the differential oracle structurally cannot see**
+      (CORELIB_PLAN §7.2 test class **5b**, added 2026-08-03). Non-canonical but well-formed
+      input MUST decode to the value it denotes and re-encode canonically, never `INVALID`.
+      An implementation that is *uniformly too strict* produces **no divergence at all**, so
+      the oracle is blind to it — F-0054 surfaced only by the accident of a 4-vs-9 split. It
+      is testable regardless, because sweep vectors carry an **absolute** expectation
+      (`add(..., "accept")`), not cross-impl agreement. The spec names the cases: a
+      non-minimal varint (§4.1) at a **field header**, at a **`fixlen_word`** and at an
+      **element count**; and a **sequence-end header with a non-zero id** (§4.9). Home is
+      `sweep_framing` for the seq-end case, and the varint cases want their own axis since
+      they cut across every position.
+
+- [ ] **A vector for F-0054's normalization half.** The 6-byte isolate closes a *skipped*
+      unknown subtree, so the whole message re-encodes to the empty byte string and the
+      discarded id is unobservable — it proves the verdict only. §4.9 also requires the
+      marker to **re-encode as `0x07`**. Needs a non-zero-id end marker closing a
+      **declared** sequence, checked against the round-trip oracle (and `materialize.sh`).
 
 
 - [~] **Over-width vectors at the array-element position — WRITTEN 2026-08-03, carved out

@@ -19,6 +19,32 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**F-0054 inverted 2026-08-03 — the spec settled the question against the way we filed it.** The
+finding reported the four impls that *accept* an over-`ID_MAX` id on a sequence-end header. The
+merged `CORELIB_PLAN.md` (`main@51c777d`) now says accepting is required: §4.9 — a decoder *"MUST
+accept a sequence-end header (wire type `0b111`) carrying **any** id, discard that id, and
+re-encode the marker as `0x07`"*, a non-zero id being *"**not** `INVALID`"* but normalized away as
+a non-minimal varint is; §6.2 adds that `ID_MAX` bounds *"the id of a **value-bearing** field
+header"* and not the end marker; §5.2/§6.3 never listed the case. So the divergence stands, the
+attribution flips: the four accepters are conformant, the **nine rejecters** are the defect —
+8 corelib repos, and the fix is a *removal* (drop the `ID_MAX` guard on wire type 7).
+
+*Decision: the merged document is the only authority.* The three issues we filed were closed the
+same day "resolved-by-decision" on a proposed rule — a seq-end id fixed at 0, non-zero `INVALID` —
+that **never became normative**; the spec change they deferred to landed the opposite rule. That
+comment also announced flipping the two `ctl_seqend_*` controls to `R`, which the merged text
+contradicts. Neither an issue comment nor a PR's commit rationale is a clause: F-0054 was rewritten
+from §4.9/§6.2/§5.2/§7.2 as merged, and the stale closures are recorded in the finding's *History*
+so nobody re-derives the rule from them. Re-filing against the eight repos is still open.
+
+*What it exposes about the harness.* §7.2 gained test class **5b, tolerance tests** — a decoder
+must not be *stricter* than the format allows — and Crucible has no axis for it. An implementation
+that is uniformly too strict yields **no divergence**, so the differential oracle is structurally
+blind; F-0054 surfaced only because the family happened to split 4-vs-9. Sweep vectors carry an
+absolute expectation, so the class is testable; two `docs/TODO.md` items now cover it (the
+tolerance axis, and a vector for the normalization half — the present isolate closes a *skipped*
+subtree, so the discarded id is unobservable and only the verdict is proven).
+
 **F-0055 found 2026-08-03 — silent data loss in rust-no-std, and the first finding this week
 reached by reading source rather than by probing.** Chasing the two large `rust-nostd`-only camps
 refuted four hypotheses in a row (message size, large skipped payloads, the §6.4 mid-payload

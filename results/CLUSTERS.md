@@ -22,7 +22,7 @@ artifact. Four are now explained:
 | camp | inputs | minimized | outcome |
 |---|---|---|---|
 | `bb5bbb08` | 50 | 25 B → **12 B** | **[F-0053](../findings/F-0053-array-count-vs-remaining-bytes-precedes-varint-check/NOTES.md)** — an array `count` outrunning the remaining bytes short-circuits to `INCOMPLETE` before the element varint is checked (corelib-go, corelib-ts). Threshold measured exactly at count 11 |
-| `ee44aadf` | 4 | 56 B → **6 B** | **[F-0054](../findings/F-0054-id-max-not-checked-on-sequence-end-header/NOTES.md)** — `ID_MAX` is not applied to a **sequence-end** header's id (corelib-go, -py, -ts) |
+| `ee44aadf` | 4 | 56 B → **6 B** | **[F-0054](../findings/F-0054-over-idmax-id-on-sequence-end-wrongly-rejected/NOTES.md)** — an over-`ID_MAX` id on a **sequence-end** header is wrongly rejected; §4.9/§6.2 require accepting and discarding it (the nine rejecters, 8 corelib repos) |
 | `057e0fe2` | 30 | 331 B → **10 B** | **F-0052, second symptom** — cpp masks the over-width element, so a message that is also truncated degrades to `I` instead of `R` |
 | `647f8d0d` | 1 | 11 B → **4 B** | **F-0043, finer offset** — an over-index element truncated *inside* the fixlen word. The subtype is in the word's first byte, so the verdict is decidable there; only typescript decides that early, moving five impls from F-0043's "correct" camp into the late one |
 
