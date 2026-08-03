@@ -87,14 +87,18 @@ here:
         `ARRAY_SIGNED` at the same id with `count 36` over the schema's 5, then EOF. The obvious
         F-0046-shaped isolate (mistyped array, over-count, truncated) does **not** reproduce it,
         so the fp32 payload before it is part of the trigger.
-      - `7f7060b8` (22 inputs, 1247 B) and `8e989f1f` (1 input, 3861 B) — both **rust-nostd
-        alone rejects** `invalid_msg` where the rest say `I` / accept. Ruled out: message size
-        (4000-byte valid messages are fine on all 13), a large *skipped* payload (fine to 2000 B),
-        and the §6.4 mid-payload UTF-8 `MAY` (that isolate splits `zig`, not rust-nostd). The
-        divergence appears only near the end of each input (~1132 / ~3776 B), so something
-        accumulates. Needs an uninterrupted minimization run — **note the footgun**: the
-        minimizer races `run.sh`, which rebuilds the rust driver and briefly unlinks its binary,
-        so nothing else may run concurrently.
+      - `7f7060b8` (22 inputs) and `8e989f1f` (1 input) — both **rust-nostd alone rejects**
+        `invalid_msg`. Minimized with the batched minimizer to **150 B** and **1116 B**; no
+        single-byte deletion holds the partition at either, so both are genuine minima for byte
+        deletion. Ruled out by control: message size, large *skipped* payloads, and the §6.4
+        mid-payload UTF-8 `MAY` (that isolate splits `zig`, not rust-nostd). The two-sided
+        binary search says *accumulation* — shortest prefix 1132, latest start 0, i.e. nothing
+        can be stripped from the front.
+        **Likely the same root cause as F-0055** (the no-std visitor's 8-entry scope stack whose
+        overflow is discarded): a desynchronised `cur` can land on a scope whose next field
+        trips `inv`, presenting as `R invalid_msg`. **Not proven** — F-0055's proven form is
+        silent *loss*, not a reject. Closing this needs a vector that demonstrates the reject
+        path directly.
 
 - [ ] **Sweep the product cells the nightly corpus exposed.** Three of the four camps triaged on
       2026-08-03 live where two correct axes meet and neither sweeps the intersection — the same

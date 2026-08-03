@@ -19,6 +19,36 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**F-0055 found 2026-08-03 — silent data loss in rust-no-std, and the first finding this week
+reached by reading source rather than by probing.** Chasing the two large `rust-nostd`-only camps
+refuted four hypotheses in a row (message size, large skipped payloads, the §6.4 mid-payload
+`MAY`, repeated sequence re-opens). The fifth attempt read the generated visitor instead, and the
+defect was one line:
+
+    stack: heapless::Vec<_Loc, 8>,
+    let _ = self.stack.push(self.cur);
+
+`MAX_DEPTH` is **255** (§6.2), so nine levels is legal — and the discarded `Result` means that
+past eight the push does nothing, the matching `pop` restores the wrong scope, and a field
+written after the unwind **binds nowhere**. rust-no-std accepts the message and returns it empty:
+no error, no rejection, a field the sender wrote simply gone. Of the three possible outcomes that
+is the worst.
+
+*Threshold exactly at the capacity*, 24-byte isolate, `rust-std` correct with the same schema and
+generator (growable `Vec`) — so codegen, **G-0035**.
+
+*Why the existing depth vectors could not see it.* Nesting **only** unknown sequences is
+unaffected to depth 14: every scope is `Dead`, the dropped pushes are the deepest, and the
+surplus pops return `unwrap_or(Root)` — accidentally the right answer. The corruption needs a
+**real scope underneath the overflow**. F-0050's vectors nest 255/256 deep and set no field, so
+they pass. Two correct-looking tests, and the cell between them empty — the same shape as F-0044,
+F-0048, F-0053 and F-0054 before it.
+
+*What it does not close.* The two camps that led here still show `rust-nostd` **rejecting**, and
+F-0055's proven form is silent loss. The mechanism plausibly explains both — a desynchronised
+scope can trip `inv` — but that is stated as unproven in `docs/TODO.md` rather than assumed. Four
+refuted hypotheses in one session is a good reason not to accept the fifth on plausibility.
+
 **Minimizer rebuilt batched 2026-08-03 — ~80× on the case that mattered.** Triaging the
 nightly corpus stalled on two large representatives: the delta-minimizer ran for over half an
 hour on a 1132-byte input at **~3 % CPU** and produced nothing.
