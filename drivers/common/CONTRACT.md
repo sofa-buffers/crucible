@@ -28,6 +28,39 @@ Persistent mode is mandatory: one process handles the whole corpus. Fork+exec
 per input caps throughput ~1000× and is why the generator's `encode`/`decode`
 CLI is *not* reused here.
 
+### Optional: `SOFAB_SPLIT=k` — chunked re-feed (NOT YET IMPLEMENTED BY ANY DRIVER)
+
+When `SOFAB_SPLIT` is set to a positive integer `k`, a driver feeds each record as
+**two chunks into one decoder** — `[0,k)` then `[k,end)` — and emits the canonical line
+of the **final** state. Unset, or `k >= len`, is today's behaviour: one feed.
+
+This exists because the replay protocol hands a record over whole, so a defect that only
+appears at a chunk boundary is invisible to every gate here. CORELIB_PLAN §6.4 (for UTF-8)
+and §7.2 item 4 (for the decoder at large) require that **a chunk boundary must not change
+the outcome**, and `scripts/run-chunked.sh` checks exactly that: for every input and every
+split point, the split line must equal the whole line. Sweeping `k` covers every
+metadata/payload boundary without the harness knowing where they are.
+
+Two properties follow, and neither is reachable otherwise:
+
+- **chunk invariance** — the outcome does not depend on how the bytes arrived;
+- **resumability** — an `I` after the first chunk must still reach the right verdict *and
+  value* after the second. corelib-cpp's raw blob read returned `INVALID` and then dropped
+  the buffered tail, so the message never completed even once the rest arrived
+  ([crucible#130](https://github.com/sofa-buffers/crucible/issues/130)).
+
+Unlike every other oracle in this repo the check is **not differential** — it compares a
+driver against itself. So it needs no second implementation to be useful, drivers can opt in
+one at a time, and it is the only gate that can catch a defect the whole family shares.
+
+**A driver that ignores the variable emits byte-identical output, which is indistinguishable
+from passing.** Support is therefore declared explicitly to the gate, never inferred: it runs
+only the drivers named in `SOFAB_SPLIT_DRIVERS` and skips loudly when that is empty.
+
+The obstacle is that every driver today decodes one-shot (`DecodeProbe(data)`,
+`Probe::try_decode(data)`, …); honouring `SOFAB_SPLIT` means reaching the corelib's streaming
+`feed` and the generated visitor, which differs per language. Tracked in `docs/TODO.md`.
+
 ## Decode core requirements
 
 - Decode the candidate bytes into the `probe` message using the corelib's real
