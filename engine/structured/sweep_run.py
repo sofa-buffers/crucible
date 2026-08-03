@@ -52,7 +52,8 @@ AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserve
 # against it — scripts/sweep.sh rebuilds the roster before invoking `--union` and
 # rebuilds back to probe after (the SCHEMA-switch discipline, ground rule 3).
 UNION_AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound",
-              "sweep_reserved_subtype", "sweep_truncation", "sweep_empty_frame"]
+              "sweep_reserved_subtype", "sweep_truncation", "sweep_empty_frame",
+              "sweep_tolerance"]
 
 # The 13-driver roster, mirroring scripts/run.sh. Built by ./scripts/run.sh already.
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -136,6 +137,15 @@ def run_axis(name, emitter="emit"):
                 tw_p = {parse(outs[dn][j] or "")[1] for dn, _ in DRIVERS}
                 if tw_v != {"A"} or len(tw_p) != 1:
                     conformance.append((fn, f"canonical twin {twin} is not itself agreed-accept"))
+                elif not next(iter(tw_p)):
+                    # The twin re-encodes to nothing, so "same payload" is satisfied by
+                    # any driver that also produces nothing — the comparison proves no
+                    # normalization at all. This is the blind spot F-0054's own isolate
+                    # had, and an axis must not be allowed to reintroduce it silently.
+                    conformance.append(
+                        (fn, f"twin {twin} re-encodes to the EMPTY message — "
+                             "the vector cannot observe normalization")
+                    )
                 elif next(iter(pays.values())) != next(iter(tw_p)):
                     conformance.append(
                         (fn, f"accepted but NOT normalized — re-encode differs from {twin}")

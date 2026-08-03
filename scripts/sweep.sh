@@ -56,7 +56,8 @@ python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_
 # The union feature lives in a separate schema (the full-scale probe has no union),
 # so it is invisible to the axes above. This pass rebuilds the 13 drivers against
 # schema/probe-union.sofab.yaml, runs the union axes (wiretype §7.3, repeated-id §7.4,
-# over-bound §7.1, reserved-subtype §4.6, truncation §7), then rebuilds back to probe
+# over-bound §7.1, reserved-subtype §4.6, truncation §7, empty-frame §2, tolerance
+# §7.2/5b), then rebuilds back to probe
 # so the binaries are never left in the probe-union state (ground rule 3 — the same
 # footgun run-limits.sh has). REPORT-ONLY per project precedent (a new axis is not
 # blocking until it is green or every divergence it surfaces is a catalogued finding);

@@ -65,7 +65,8 @@ from gen import (  # noqa: E402
     varint, WT_SEQ_BEG, WT_SEQ_END, hdr, scalar_u,
 )
 from sweep_positions import (  # noqa: E402
-    POSITIONS, STRUCT_CHILDREN, place, valid_field,
+    POSITIONS, STRUCT_CHILDREN, UNION_SEQ_POSITION, UNION_MEMBER_POSITIONS,
+    place, valid_field,
 )
 
 ID_MAX = (1 << 31) - 1          # CORELIB_PLAN §6.2, fixed format-wide
@@ -165,6 +166,43 @@ def emit(out_dir):
     for _, _, e in vectors:
         by[e] = by.get(e, 0) + 1
     print(f"{len(vectors)} vectors: " + ", ".join(f"{k}={v}" for k, v in sorted(by.items())))
+    return vectors
+
+
+def emit_union(out_dir):
+    """The same rule over schema/probe-union.sofab.yaml (roster rebuilt by sweep.sh).
+
+    A union is an ordinary sequence on the wire, so §4.9 binds its closing marker exactly
+    as it binds a struct's — but the union lives in its own schema, so the probe pass
+    above cannot reach it. This is the product cell F-0044, F-0048, F-0053 and F-0054 all
+    came out of: two axes each correct, the place they meet untested.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    u = UNION_SEQ_POSITION
+    tag = scalar_u(0, 5)                       # tag (id 0) = 5 — keeps the message non-empty
+    member = valid_field(UNION_MEMBER_POSITIONS[0].cat, UNION_MEMBER_POSITIONS[0].fid)
+    vectors = []
+
+    def add(name, end_bytes, expect):
+        vectors.append((f"{name}.bin", tag + hdr(u.fid, WT_SEQ_BEG) + member + end_bytes, expect))
+
+    ctl = "u_end_canonical_ctl.bin"
+    add("u_end_canonical_ctl", END, "accept")
+    add("u_end_id_small", seq_end(3), f"same:{ctl}")
+    add("u_end_id_at_ID_MAX", seq_end(ID_MAX), f"same:{ctl}")
+    add("u_end_id0_nonminimal", seq_end_nonminimal(1), f"same:{ctl}")
+    add("u_end_id0_nonminimal2", seq_end_nonminimal(2), f"same:{ctl}")
+    add("u_end_id_over_ID_MAX", seq_end(ID_MAX + 1), "reject")
+    add("u_end_varint_over_64bit",
+        b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x02", "reject")
+
+    for name, data, _ in vectors:
+        with open(os.path.join(out_dir, name), "wb") as fh:
+            fh.write(data)
+    by = {}
+    for _, _, e in vectors:
+        by[e] = by.get(e, 0) + 1
+    print(f"{len(vectors)} union vectors: " + ", ".join(f"{k}={v}" for k, v in sorted(by.items())))
     return vectors
 
 
