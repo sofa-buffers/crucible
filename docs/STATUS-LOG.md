@@ -19,6 +19,24 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The tolerance axis reached the union, and a false green was caught on the way (2026-08-03).**
+`sweep_tolerance` gained an `emit_union` and joined the union pass. A union is an ordinary
+sequence on the wire, so §4.9 binds its closing marker exactly as it binds a struct's — but it
+lives in `schema/probe-union.sofab.yaml`, which the probe pass cannot reach. That is the same
+product cell F-0044, F-0048, F-0053 and F-0054 all came out of: two axes each correct, the place
+they meet untested.
+
+*The first run of it was green for the wrong reason.* Invoking the axis directly leaves the
+drivers built against `probe`, where the union id is simply unknown and every vector is skipped —
+green, and meaningless. Only `scripts/sweep.sh` rebuilds the roster against `probe-union`, which
+is what the runner's own banner says and what the re-run used.
+
+*That prompted a guard the axis should have had from the start.* A `same:<twin>` vector now fails
+if the twin re-encodes to the **empty** message: "same payload" is otherwise satisfied by any
+driver that also produces nothing, proving no normalization whatsoever. That is precisely the
+blind spot F-0054's isolate had, and an axis built to close it must not be able to reintroduce it
+silently. Both passes stay green with the guard in place, so the twins carry real values.
+
 **The tolerance axis, and an oracle that can see something the others cannot (2026-08-03).**
 `sweep_tolerance` (CORELIB_PLAN §7.2 class **5b**) is blocking: 49 vectors over all 7 sequence
 positions, green on all 13 drivers.
