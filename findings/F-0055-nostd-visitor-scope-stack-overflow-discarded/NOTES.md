@@ -1,6 +1,28 @@
 # F-0055 — the no-std visitor's scope stack holds 8 entries, and its overflow is discarded — a field after the unwind is **silently lost**
 
-**Filed 2026-08-03 as [generator#283](https://github.com/sofa-buffers/generator/issues/283).**
+**✅ RESOLVED 2026-08-03** — [generator#283](https://github.com/sofa-buffers/generator/issues/283)
+fixed by `bd67d2b`, *"stack only live scopes, so a deep skip can't lose"*.
+
+## Resolution
+
+Verified on sofabgen `0.0.0-20260803165303-bd67d2b2f84c`, the **first artifact carrying the fix**
+— the preceding build was 67 minutes older, so a sweep run shortly before still showed the camp.
+A closed upstream ticket was explicitly not treated as a resolution here; the isolate was.
+
+All 5 reproducers agree across 13 drivers, and the values are the point: rust-no-std re-encodes
+`5602200000c03f07` (`nested.f32 = 1.5`) where it previously returned the **empty message**, and
+`r3_depth9_wrapper_lost` yields `c60c020a4107`. Both controls (`ctl_depth8_ok` at the capacity
+boundary, `ctl_no_nesting`) are unchanged.
+
+The verdicts were read out per driver rather than inferred from "0 divergences". For a silent-loss
+defect that check is not optional: had the fix gone the other way and *every* implementation
+returned the empty message, the differential oracle would have reported the same unanimous
+agreement. `materialize.sh` is 108 × 13 with 0 divergences and 0/108 mismatches against the C
+anchor.
+
+Reproducers promoted to the green `corpus/regression/` gate as `F0055_*`, both controls included,
+and the camp signature is deleted from `results/known-clusters.txt` so a regression reports as
+NEW.
 
 **Found 2026-08-03** while triaging the two large `rust-nostd`-only camps from the nightly
 corpus. Reached by reading the generated source after four black-box hypotheses had been
