@@ -1,7 +1,12 @@
 # F-0058 — sofabgen's Zig backend shares one reassembly buffer across every split payload, so array elements alias each other
 
-**Status:** 🔴 **OPEN** — filed against the generator (see [`results/FINDINGS.md`](../../results/FINDINGS.md),
-which owns this finding's state; this file is the evidence). Also logged as codegen defect **G-0036**.
+**Status:** ✅ **RESOLVED** — [generator#293](https://github.com/sofa-buffers/generator/issues/293) fixed by
+generator#294 (`alloc.dupe` out of the shared `acc`), which turned out to be **incomplete**: re-measuring took
+the axis from 25 mismatches to 14, not to 0. The residual was filed as
+[generator#295](https://github.com/sofa-buffers/generator/issues/295) and fixed by generator#296 — *the
+streaming decoder owns its payloads, it cannot borrow*. Verified 2026-08-04 over the 9038-input fuzzed corpus:
+**19 mismatches → 0**. See [`results/FINDINGS.md`](../../results/FINDINGS.md), which owns this finding's state;
+this file is the evidence. Also logged as codegen defect **G-0036**.
 
 **Found 2026-08-04**, on the first run of the **chunked-decode axis**
 ([crucible#132](https://github.com/sofa-buffers/crucible/issues/132)). It is invisible to every
@@ -119,16 +124,16 @@ that is to miss.
 
 ## Effect on the Crucible gates
 
-`zig` is deliberately **not** in `scripts/run-chunked.sh`'s opt-in roster while this is open — it
-would make the gate permanently red for a defect that is already filed, which is what
-`results/known-clusters.txt` exists to prevent for the differential gates. It **is** in the
-encode-invariance roster: that axis is unaffected. Add it to the chunked roster when this closes;
-the one-line change is the whole fix.
+`zig` was held out of `scripts/run-chunked.sh`'s opt-in roster while this was open. **Back in as of
+2026-08-04**, after the residual fix — and re-measured rather than assumed, which mattered: the
+first fix closed the issue while leaving 14 live mismatches, so taking the closed ticket as proof
+would have put the driver back into a blocking gate carrying them.
 
 ## A neighbouring, separate question
 
-corelib-zig documents that a string or blob arriving whole in one chunk is **borrowed** from that
-chunk and that "a fed chunk must outlive the message". Every other backend here copies. That makes
-`SOFAB_CHUNK_SCRUB` inapplicable to zig (the driver exits 3 and the gate reports it as such) and
-raises a family-level question the spec does not answer: what is the chunk-lifetime contract? That
-is **not** this finding — recorded separately in `docs/TODO.md`.
+corelib-zig documented that a string or blob arriving whole in one chunk was **borrowed** from that
+chunk and that "a fed chunk must outlive the message", which made `SOFAB_CHUNK_SCRUB` inapplicable
+there while every other backend copied. generator#296 resolved that from the implementation side by
+removing the borrow from the streaming path entirely, so the scrub axis now applies to zig like
+everywhere else and the driver's exit-3 carve-out is gone. The family-level *spec* question remains
+open as [documentation#37](https://github.com/sofa-buffers/documentation/issues/37).
