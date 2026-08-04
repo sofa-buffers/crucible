@@ -111,21 +111,58 @@ here:
         too, but that is F-0059, a defect, not a contract.) So corelib-ts is alone. The question:
         is there a minimum, and is it discoverable?
 
-- [ ] **Put `py-pure` back in `scripts/run-encode.sh` when F-0059 closes**
+- [x] **Put `py-pure` back in `scripts/run-encode.sh` — DONE 2026-08-04**, same day F-0059 closed
+      ([corelib-py#62](https://github.com/sofa-buffers/corelib-py/pull/62)).
+
+- [ ] ~~Put `py-pure` back in `scripts/run-encode.sh` when F-0059 closes~~
       ([corelib-py#61](https://github.com/sofa-buffers/corelib-py/issues/61)). Its pure engine
       keeps writing into the drained buffer after a flush, so everything past the first flush is
       lost. `py-cython` is correct and stays in the roster — which is what makes this an
       engine-parity break rather than a corelib-wide one. Both engines are in the **chunked**
       roster and pass it. Adding the name back is the whole change.
 
-- [ ] **Put `zig` back in `scripts/run-chunked.sh` when F-0058 closes**
-      ([generator#293](https://github.com/sofa-buffers/generator/issues/293)). It is absent from
+- [ ] **Put `typescript` back in `scripts/run-chunked.sh` when F-0060 closes**
+      ([generator#297](https://github.com/sofa-buffers/generator/issues/297)). Its generated
+      visitor calls the fatal `TextDecoder` without the try/catch its own corelib performs, so a
+      chunked decode of invalid UTF-8 raises a platform `TypeError` instead of `SofabError`. It
+      stays in the **encode** roster, which is unaffected.
+
+- [ ] **The split sweep does not scale to a fuzzed corpus, and that is a real gap.**
+      `SOFAB_SPLIT` is swept over every interior `k`, so its cost is O(maxlen) *per driver*: over
+      `corpus/seeds` (maxlen 40) that is 311 runs and unnoticeable; over `corpus/interesting`
+      (maxlen 12 224) it is ~12 000 runs per driver, about 44 hours for the roster. So the
+      fuzzed-corpus pass runs `--modes chunk,scrub` only — and the mode that is *missing* there is
+      precisely the one that says **which boundary** broke. Sampling split points (say 64 per
+      input, drawn per-input rather than globally) would keep the diagnostic and bound the cost;
+      a global sweep is the wrong shape once inputs vary in length by two orders of magnitude.
+
+- [ ] **Wire the fuzzed corpus into the streaming axes routinely.** The 2026-08-04 run was manual
+      and immediately produced F-0060 (12 436 mismatches) plus 19 more instances of the F-0058
+      residual — on a corpus the hand-written suites had declared green. `nightly.yml` already
+      grows `corpus/interesting`; running `--modes chunk,scrub` over it there costs about a minute
+      per driver and is where the yield is.
+
+- [ ] **Put `zig` back in `scripts/run-chunked.sh`** — **still blocked.**
+      [generator#293](https://github.com/sofa-buffers/generator/issues/293) was fixed upstream on
+      2026-08-04 and the reassembly path is genuinely repaired (the `["ab","cd"]` reproducer is
+      correct at every chunk size now), but re-measuring took the axis from **25 mismatches to 14,
+      not to 0**: `["one","two","three","four"]` at `SOFAB_CHUNK=4` still turns element 1 into
+      element 3's bytes. Filed as
+      [generator#295](https://github.com/sofa-buffers/generator/issues/295) — a *different* path,
+      cause not yet pinned (the obvious carry-buffer hypothesis does not fit the data: all four
+      fields straddle at that size and only one corrupts). **Re-measure rather than assume when
+      #295 closes** — that is exactly what caught this. It is absent from
       that gate's opt-in roster only because its generated chunked reassembly shares one buffer
       across split payloads, so two wrapper-array elements alias each other — including it would
       make the gate permanently red for an already-filed defect. It **is** in the encode roster;
       that axis is unaffected. Adding the word back is the whole change.
 
-- [ ] **Un-quarantine `cpp-c-cpp-dyn` when F-0057 closes.** It is in `drivers/roster` without
+- [x] **Un-quarantine `cpp-c-cpp-dyn` — DONE 2026-08-04**, same day F-0057 closed
+      ([corelib-c-cpp#132](https://github.com/sofa-buffers/corelib-c-cpp/pull/132)). Back in the
+      blocking roster and in both streaming gates; the blocking roster is 15 again. The reasoning
+      is kept below because the mechanism outlives this instance of it.
+
+- [ ] ~~Un-quarantine `cpp-c-cpp-dyn` when F-0057 closes.~~ It is in `drivers/roster` without
       the `blocking` tag while [corelib-c-cpp#131](https://github.com/sofa-buffers/corelib-c-cpp/issues/131)
       is open: every zero-length array aborts an asserts-enabled build, and a crashing driver
       poisons every subsequent record in its batch, so `sweep_empty_frame` would be permanently

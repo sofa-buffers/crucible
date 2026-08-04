@@ -1,6 +1,6 @@
 # F-0057 — corelib-c-cpp aborts on every zero-length array when `allow_dynamic` is on
 
-**Status:** 🔴 **OPEN** — [corelib-c-cpp#131](https://github.com/sofa-buffers/corelib-c-cpp/issues/131).
+**Status:** ✅ **RESOLVED** — [corelib-c-cpp#131](https://github.com/sofa-buffers/corelib-c-cpp/issues/131) fixed by [corelib-c-cpp#132](https://github.com/sofa-buffers/corelib-c-cpp/pull/132), merged 2026-08-04 (`assert(var != NULL || element_count == 0)` — the precondition was simply too strong; a zero-element array has no payload to write and so no destination to require).
 [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's state; this file is the evidence.
 
 **Found 2026-08-04**, on the **first run** of a configuration that did not exist in Crucible
@@ -124,8 +124,9 @@ growable destination at once, rather than requiring each wrapper to remember the
 
 ## Effect on the Crucible gates
 
-`cpp-c-cpp-dyn` is **quarantined** in `drivers/roster` while this is open — a crashing driver
+`cpp-c-cpp-dyn` was **quarantined** in `drivers/roster` while this was open — a crashing driver
 takes the whole process down and poisons every subsequent record in the same batch, so
-`sweep_empty_frame` would be permanently red and stop meaning "something new broke". The
-configuration is still built and still runs under `ROSTER_TAG=` (the full roster). The
-quarantine entry names this finding and must be removed when it closes.
+`sweep_empty_frame` would have been permanently red and stopped meaning "something new broke".
+**Quarantine lifted 2026-08-04** with the upstream fix; the driver is back in the blocking roster
+and in both streaming gates. The entry named this finding, which is what made the removal a
+mechanical step rather than an archaeology exercise.
