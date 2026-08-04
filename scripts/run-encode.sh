@@ -30,10 +30,17 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CORPUS="${CORPUS:-$ROOT/corpus/structured}"
 
-# Drivers known to implement SOFAB_ENCODE. Empty until the first one lands — see
-# docs/TODO.md. Add a name here only once it demonstrably re-encodes through each
-# surface its meta declares.
-SUPPORTED="${SOFAB_ENCODE_DRIVERS:-}"
+# Drivers known to implement SOFAB_ENCODE. Add a name here only once it demonstrably
+# re-encodes through each surface its meta declares — a driver that ignores the
+# variables emits byte-identical output, so this list is the only thing standing
+# between the gate and a vacuous pass. The rest are tracked in docs/TODO.md.
+# py-pure is deliberately ABSENT while F-0059 (corelib-py#61) is open: its pure
+# engine keeps writing into the drained buffer after a flush, so everything past
+# the first flush is lost. Its Cython sibling is correct and stays in — which is
+# what makes this an engine-parity break rather than a corelib-wide one. Same
+# reasoning as zig on the chunked gate: a gate permanently red for an already-filed
+# defect stops meaning "something new broke".
+SUPPORTED="${SOFAB_ENCODE_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp typescript java csharp dart zig py-cython}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [encode] no driver implements SOFAB_ENCODE yet — nothing to check." >&2

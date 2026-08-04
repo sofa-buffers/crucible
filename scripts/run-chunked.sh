@@ -35,9 +35,18 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 
-# Drivers known to implement SOFAB_SPLIT. Empty until the first one lands —
-# see docs/TODO.md. Add a name here only once it demonstrably re-feeds.
-SUPPORTED="${SOFAB_SPLIT_DRIVERS:-}"
+# Drivers known to implement the chunking variables. Add a name here only once it
+# demonstrably re-feeds — a driver that ignores them emits byte-identical output, so
+# this list is the only thing standing between the gate and a vacuous pass. Each of
+# these announces its configuration on stderr when a variable is set, so "does it
+# really re-feed" is checkable rather than asserted (see drivers/common/CONTRACT.md).
+# The rest are tracked in docs/TODO.md.
+# zig is deliberately ABSENT while F-0058 (generator#293) is open: its generated
+# chunked reassembly shares one buffer across split payloads, so two wrapper-array
+# elements alias each other. Including it would make this gate permanently red for a
+# defect that is already filed — the same reasoning results/known-clusters.txt rests
+# on. Add it back when F-0058 closes; that one word is the whole change.
+SUPPORTED="${SOFAB_SPLIT_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp typescript java csharp dart py-cython py-pure}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [chunked] no driver implements SOFAB_SPLIT yet — nothing to check." >&2

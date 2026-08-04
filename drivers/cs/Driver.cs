@@ -232,6 +232,108 @@ internal static class Driver
     private static string ErrLine(SofabException e) =>
         e.Error == SofabError.LimitExceeded ? "L" : "R " + RejectClass(e);
 
+    // ---- the streaming axes (drivers/common/CONTRACT.md) ------------------------
+    //
+    // The replay protocol hands each record over whole and re-encodes it with one
+    // call, so neither streaming surface of the generated API is reachable through
+    // it. Unset, every variable below is today's behaviour byte for byte.
+    //
+    // C#'s generated Decoder exposes Status, so the verdict comes from there rather
+    // than from Finish(), which throws when the stream ended mid-field.
+    private static int EnvInt(string name) =>
+        int.TryParse(Environment.GetEnvironmentVariable(name), out var v) ? v : 0;
+
+    private static readonly int Split = EnvInt("SOFAB_SPLIT");
+    private static readonly int Chunk = EnvInt("SOFAB_CHUNK");
+    private static readonly int Flush = EnvInt("SOFAB_FLUSH");
+    private static readonly bool Scrub =
+        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SOFAB_CHUNK_SCRUB")) &&
+        Environment.GetEnvironmentVariable("SOFAB_CHUNK_SCRUB") != "0";
+    private static readonly string Encode0 = InitEncode();
+    private static readonly bool Chunking = Split != 0 || Chunk != 0 || Scrub;
+
+    private static string InitEncode()
+    {
+        var e = Environment.GetEnvironmentVariable("SOFAB_ENCODE");
+        if (string.IsNullOrEmpty(e)) e = "new";
+        if (e != "new" && e != "to" && e != "stream")
+        {
+            Console.Error.WriteLine($"crucible-cs: unknown SOFAB_ENCODE={e} " +
+                "(this backend has new, to, stream)");
+            Environment.Exit(2);
+        }
+        return e;
+    }
+
+    // Announce on stderr (never parsed). A driver that silently ignored these would
+    // be indistinguishable from one that honours them — stdout is identical either
+    // way — so this makes "it really re-feeds" checkable rather than asserted.
+    private static void AnnounceCfg()
+    {
+        if (Split != 0 || Chunk != 0 || Scrub || Flush != 0 || Encode0 != "new")
+        {
+            Console.Error.WriteLine($"crucible-cs: streaming cfg split={Split} " +
+                $"chunk={Chunk} scrub={(Scrub ? 1 : 0)} enc={Encode0} flush={Flush}");
+        }
+    }
+
+    /// How the record is cut on its way in. Never an empty chunk; a 0-byte record
+    /// yields none at all.
+    private static List<byte[]> ChunksOf(byte[] data)
+    {
+        var outp = new List<byte[]>();
+        int len = data.Length;
+        if (len == 0) return outp;
+        if (Chunk > 0)
+        {
+            for (int o = 0; o < len; o += Chunk)
+            {
+                int n = Math.Min(Chunk, len - o);
+                var c = new byte[n];
+                Array.Copy(data, o, c, 0, n);
+                outp.Add(c);
+            }
+            return outp;
+        }
+        if (Split > 0 && Split < len)
+        {
+            var a = new byte[Split];
+            var b = new byte[len - Split];
+            Array.Copy(data, 0, a, 0, Split);
+            Array.Copy(data, Split, b, 0, len - Split);
+            outp.Add(a);
+            outp.Add(b);
+            return outp;
+        }
+        var whole = new byte[len];
+        Array.Copy(data, 0, whole, 0, len);
+        outp.Add(whole);
+        return outp;
+    }
+
+    /// Re-encode through the surface SOFAB_ENCODE selects. All three must emit
+    /// identical bytes, and SOFAB_FLUSH must not change them either: it gives the
+    /// OStream an n-byte buffer draining to a sink, so the encoder crosses a buffer
+    /// boundary at every offset.
+    private static byte[] EncodeVia(Probe m)
+    {
+        if (Encode0 == "new") return m.Encode();
+        int cap = Flush > 0 ? Flush : Probe.MaxSize;
+        var acc = new List<byte>();
+        var os = new OStream(new byte[cap], 0,
+            (buf, off, len) => { for (int i = 0; i < len; i++) acc.Add(buf[off + i]); });
+        if (Encode0 == "to")
+        {
+            m.EncodeTo(os);          // Serialize + flush, per the generated doc
+        }
+        else
+        {
+            m.Serialize(os);
+            os.Flush();
+        }
+        return acc.ToArray();
+    }
+
     private static string Canonical(byte[] data)
     {
         // One pass: TryDecode fills `m` and returns the corelib's real §7 outcome
@@ -240,7 +342,27 @@ internal static class Driver
         Probe m;
         try
         {
-            status = Probe.TryDecode(data, out m);
+            if (Chunking)
+            {
+                // Chunked decode via the generated Decoder, taken ONLY when a chunking
+                // variable is set — the default stays the one-shot TryDecode byte for
+                // byte, which is what makes the gate meaningful: it then compares two
+                // genuinely different code paths. Verdict from Status, never Finish().
+                var d = new Probe.Decoder();
+                foreach (var c in ChunksOf(data))
+                {
+                    d.Feed(c);
+                    // Scrub: the chunk is a copy the driver owns, so overwriting it
+                    // after Feed exposes a decoder that borrowed instead of copying.
+                    if (Scrub) Array.Fill(c, (byte)0xA5);
+                }
+                status = d.Status;
+                m = d.Message;
+            }
+            else
+            {
+                status = Probe.TryDecode(data, out m);
+            }
         }
         catch (SofabException e) { return ErrLine(e); }
         catch (Exception) { return "R other"; }
@@ -257,7 +379,7 @@ internal static class Driver
         byte[] enc;
         try
         {
-            enc = m.Encode();
+            enc = EncodeVia(m);
         }
         catch (SofabException e) { return ErrLine(e); }
         catch (Exception) { return "R other"; }
@@ -281,6 +403,7 @@ internal static class Driver
 
     private static void Main()
     {
+        AnnounceCfg();
         Stream stdin = Console.OpenStandardInput();
         var w = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
         w.NewLine = "\n";

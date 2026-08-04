@@ -121,14 +121,28 @@ def main():
             continue
 
         bad = tried = 0
+        flush_ok = flush_na = 0
         for label, env in configs(surfaces):
             tried += 1
             lines, rc, err = run(path, inputs, env)
+            # Exit 3 = "this backend cannot operate at this buffer size" (CONTRACT.md).
+            # corelib-ts's OStream needs n CONTIGUOUS bytes for a single write, so a
+            # caller buffer below the largest write cannot encode at all, while
+            # corelib-cpp streams the same value through a 1-byte buffer. That is a
+            # real difference between backends, not a defect in either, so the size is
+            # reported inapplicable rather than failed — and counted, because a flush
+            # sweep where EVERY size was inapplicable has tested nothing.
+            if rc == 3 and "SOFAB_FLUSH" in env:
+                print(f"  [{name}] {label}: not applicable — {err}", file=sys.stderr)
+                flush_na += 1
+                continue
             if rc != 0 or len(lines) != len(inputs):
                 print(f"  [{name}] {label}: rc={rc}, {len(lines)} lines, expected "
                       f"{len(inputs)}: {err}", file=sys.stderr)
                 bad += 1
                 continue
+            if "SOFAB_FLUSH" in env:
+                flush_ok += 1
             for i, (a, b) in enumerate(zip(base, lines)):
                 if a != b:
                     print(f"  [{name}] {files[i]} under {label}: default={a!r} "
@@ -148,9 +162,19 @@ def main():
                           "mode as passing that never ran", file=sys.stderr)
                     bad += 1
 
+        # A flush sweep in which no size was usable has asserted nothing about the
+        # encoder crossing a buffer boundary — the one property SOFAB_FLUSH exists to
+        # check. Report it as a failure rather than let it read as coverage.
+        if "stream" in surfaces and flush_na and not flush_ok:
+            print(f"  [{name}] every SOFAB_FLUSH size was inapplicable — the buffer-"
+                  "boundary property was never exercised; raise FLUSH_SIZES for this "
+                  "backend", file=sys.stderr)
+            bad += 1
+
         status = "OK" if not bad else "FAIL"
         have = ",".join(s for s in ALL_SURFACES if s in surfaces)
-        print(f"[{name}] {len(inputs)} input(s) x {tried} config(s), surfaces={have} — "
+        na = f", {flush_na} flush size(s) n/a" if flush_na else ""
+        print(f"[{name}] {len(inputs)} input(s) x {tried} config(s), surfaces={have}{na} — "
               f"{bad} mismatch(es)  [{status}]")
         failures += bad
 
