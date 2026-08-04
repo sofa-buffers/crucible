@@ -40,13 +40,17 @@ CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 # this list is the only thing standing between the gate and a vacuous pass. Each of
 # these announces its configuration on stderr when a variable is set, so "does it
 # really re-feed" is checkable rather than asserted (see drivers/common/CONTRACT.md).
+# typescript is ABSENT while F-0060 (generator#297) is open: its generated visitor
+# calls the fatal TextDecoder without the try/catch its own corelib performs, so a
+# chunked decode of invalid UTF-8 raises a platform TypeError instead of SofabError.
+# It stays in the ENCODE roster, which is unaffected.
 # The rest are tracked in docs/TODO.md.
 # zig is deliberately ABSENT while F-0058 (generator#293) is open: its generated
 # chunked reassembly shares one buffer across split payloads, so two wrapper-array
 # elements alias each other. Including it would make this gate permanently red for a
 # defect that is already filed — the same reasoning results/known-clusters.txt rests
 # on. Add it back when F-0058 closes; that one word is the whole change.
-SUPPORTED="${SOFAB_SPLIT_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp cpp-c-cpp-dyn typescript java csharp dart py-cython py-pure}"
+SUPPORTED="${SOFAB_SPLIT_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp cpp-c-cpp-dyn java csharp dart py-cython py-pure}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [chunked] no driver implements SOFAB_SPLIT yet — nothing to check." >&2

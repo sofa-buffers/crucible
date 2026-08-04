@@ -121,6 +121,27 @@ here:
       engine-parity break rather than a corelib-wide one. Both engines are in the **chunked**
       roster and pass it. Adding the name back is the whole change.
 
+- [ ] **Put `typescript` back in `scripts/run-chunked.sh` when F-0060 closes**
+      ([generator#297](https://github.com/sofa-buffers/generator/issues/297)). Its generated
+      visitor calls the fatal `TextDecoder` without the try/catch its own corelib performs, so a
+      chunked decode of invalid UTF-8 raises a platform `TypeError` instead of `SofabError`. It
+      stays in the **encode** roster, which is unaffected.
+
+- [ ] **The split sweep does not scale to a fuzzed corpus, and that is a real gap.**
+      `SOFAB_SPLIT` is swept over every interior `k`, so its cost is O(maxlen) *per driver*: over
+      `corpus/seeds` (maxlen 40) that is 311 runs and unnoticeable; over `corpus/interesting`
+      (maxlen 12 224) it is ~12 000 runs per driver, about 44 hours for the roster. So the
+      fuzzed-corpus pass runs `--modes chunk,scrub` only — and the mode that is *missing* there is
+      precisely the one that says **which boundary** broke. Sampling split points (say 64 per
+      input, drawn per-input rather than globally) would keep the diagnostic and bound the cost;
+      a global sweep is the wrong shape once inputs vary in length by two orders of magnitude.
+
+- [ ] **Wire the fuzzed corpus into the streaming axes routinely.** The 2026-08-04 run was manual
+      and immediately produced F-0060 (12 436 mismatches) plus 19 more instances of the F-0058
+      residual — on a corpus the hand-written suites had declared green. `nightly.yml` already
+      grows `corpus/interesting`; running `--modes chunk,scrub` over it there costs about a minute
+      per driver and is where the yield is.
+
 - [ ] **Put `zig` back in `scripts/run-chunked.sh`** — **still blocked.**
       [generator#293](https://github.com/sofa-buffers/generator/issues/293) was fixed upstream on
       2026-08-04 and the reassembly path is genuinely repaired (the `["ab","cd"]` reproducer is
