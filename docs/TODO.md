@@ -79,6 +79,17 @@ here:
 
 ## Open — engine & oracles
 
+- [x] **Two unspecified streaming contracts — FILED 2026-08-04** as
+      [documentation#37](https://github.com/sofa-buffers/documentation/issues/37) (chunk
+      lifetime) and [documentation#36](https://github.com/sofa-buffers/documentation/issues/36)
+      (minimum caller buffer). Reading the spec at the tip **sharpened** both rather than
+      dissolving them: §9.6 turns out to be a **README template**, so its "valid only during
+      the callback" is guidance on what a port must *document*, not a rule — and corelib-zig
+      borrows further than it, into the decoded message. And §5.1's "far smaller than the
+      message" simply lacks the quantifier its decode twin has twice over ("arbitrarily small
+      chunks", "one byte at a time"), which is why "conformant" spans a 16x range there. What
+      follows is kept as the reasoning.
+
 - [ ] **Two unspecified streaming contracts, both found by wiring the axes (2026-08-04).** Neither
       is a wire question, so the differential oracle is structurally blind to both — they are
       differences in what the *API* promises, and they only became visible once drivers started
@@ -148,7 +159,7 @@ here:
       (`DecodeProbe(data)`, `Probe::try_decode(data)`, …), so honouring the variable means
       reaching the corelib's streaming `feed` plus the generated visitor. **Land one driver at a
       time** — chunk invariance is an intra-driver invariant, so a single driver already earns
-      its keep and none of this needs all 13 to be useful.
+      its keep and none of this needs the whole roster to be useful.
       *Note it would not have caught crucible#130 itself*: generated code calls the correct
       `readBlob()`, never the broken raw overload. It catches that defect's **class**.
       **2026-08-04:** the contract is now written in full (`drivers/common/CONTRACT.md`,
@@ -241,7 +252,7 @@ here:
       Investigated 2026-07-17: the corelibs collapse *all* malformed-wire reasons into one
       `InvalidMessage` (spec §6.3), so a *semantic* taxonomy (truncated / bad-varint / depth /
       …) is **not** available from return codes. The achievable, valuable version is a
-      **two-tier grade**: normalise the class mapping across all 13 drivers, then distinguish
+      **two-tier grade**: normalise the class mapping across the whole roster, then distinguish
       `invalid_msg` (a clean wire-reject) from `usage`/`argument`/`other` (a generated-layer /
       API error). Make the **cross-tier** case hard — an impl whose generated layer errors
       where the family cleanly rejects is a codegen smell (the F-0003/F-0008 class) — and keep
@@ -514,7 +525,7 @@ here:
       *(update 2026-07-23: confirmed `replay.yml`/`nightly.yml` **do** consume
       `ghcr.io/sofa-buffers/crucible-ci:latest`; the remaining task is confirming the image is
       seeded and a live run is green.)*
-- [ ] **Build-reuse in `replay.yml`**: each of the seven gates rebuilds all 13 drivers, so CI
+- [ ] **Build-reuse in `replay.yml`**: each gate rebuilds the whole roster, so CI
       pays the build 7×. Cache/reuse the built drivers across gates.
 - [ ] **Devcontainer image**: verify it builds and every driver builds *inside* it (so far
       spot-verified in the bare workspace + hand-installed clang). *(update 2026-07-23:
