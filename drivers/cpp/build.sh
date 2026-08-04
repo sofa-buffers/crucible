@@ -1,8 +1,25 @@
 #!/usr/bin/env sh
-# Build a Crucible C++ replay driver for one corelib variant.
+# Build a Crucible C++ replay driver for one of the FOUR C++ configurations.
 #
-#   build.sh cpp     -> corelib-cpp    (pure C++20, header-only)
-#   build.sh c-cpp   -> corelib-c-cpp  (C++ wrapper over the C corelib; compiles the C sources)
+#   build.sh cpp        -> corelib-cpp    heap      (std::string / std::vector)
+#   build.sh cpp-fixed  -> corelib-cpp    heap-free (FixedString / FixedBytes / InlineVector)
+#   build.sh c-cpp      -> corelib-c-cpp  heap-free (the C corelib's default)
+#   build.sh c-cpp-dyn  -> corelib-c-cpp  heap
+#
+# Two corelibs x both `allow_dynamic` settings (crucible#129). `allow_dynamic` used to
+# be a c-cpp-only knob; generator#289 extended it to `corelib: cpp`, and corelib-cpp#70
+# made readString/readBlob/StringSeq/BlobSeq storage-agnostic so the heap-free
+# containers work there too. The heap-free path is a DIFFERENT branch inside the
+# corelib's typed reads — it rejects an over-capacity payload against the container's
+# capacity, not only against the declared maxlen, and its destination is address-stable
+# and fixed-size, so truncation and over-long payloads exercise code the growable path
+# never reaches.
+#
+# The wire format is byte-identical across all four, which is what makes them worth
+# running side by side: the same schema and the same input MUST produce the same
+# outcome in every configuration, so a divergence between them is a bug by
+# construction. driver.cpp and materialize_gen.py need no variant handling — both are
+# written against only the member API the storage flavours share.
 #
 # Regenerates probe.hpp from the schema via sofabgen, then compiles driver.cpp
 # against the variant's corelib. Emits the built binary path on stdout.
@@ -25,21 +42,33 @@ CC="${CC:-cc}"
 # check ON so an invalid-UTF-8 `string` is family-uniformly rejected (F-0004). The
 # pure-C++ corelib (cpp) defaults SOFAB_STRICT_UTF8=1 already; only the c-cpp
 # (C-corelib) profile defaults OFF for footprint and must opt in explicitly.
+CCPP_SRC="src/object.c src/istream.c src/ostream.c src/utf8.c"
 case "$VARIANT" in
-    cpp)   CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: {} }";              CSRC=""; HASLIM="-DCRUCIBLE_HAS_LIMIT_EXCEEDED"; STRICT="" ;;
-    c-cpp) CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp } }"; CSRC="$CORELIB/src/object.c $CORELIB/src/istream.c $CORELIB/src/ostream.c $CORELIB/src/utf8.c"; HASLIM=""; STRICT="-DSOFAB_ENABLE_STRICT_UTF8" ;;
-    *) echo "unknown variant '$VARIANT' (want: cpp | c-cpp)" >&2; exit 2 ;;
+    cpp)       CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: {} }";                                     CSRC=""; HASLIM="-DCRUCIBLE_HAS_LIMIT_EXCEEDED"; STRICT="" ;;
+    cpp-fixed) CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: { allow_dynamic: false } }";               CSRC=""; HASLIM="-DCRUCIBLE_HAS_LIMIT_EXCEEDED"; STRICT="" ;;
+    c-cpp)     CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp } }";                     CSRC=""; HASLIM=""; STRICT="-DSOFAB_ENABLE_STRICT_UTF8" ;;
+    c-cpp-dyn) CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp, allow_dynamic: true } }"; CSRC=""; HASLIM=""; STRICT="-DSOFAB_ENABLE_STRICT_UTF8" ;;
+    *) echo "unknown variant '$VARIANT' (want: cpp | cpp-fixed | c-cpp | c-cpp-dyn)" >&2; exit 2 ;;
+esac
+# Both c-cpp configurations compile and link the C corelib's sources; only the
+# generated field storage differs between them.
+case "$VARIANT" in
+    c-cpp|c-cpp-dyn) for _c in $CCPP_SRC; do CSRC="$CSRC $CORELIB/$_c"; done ;;
 esac
 
 [ -x "$SOFABGEN" ] || { echo "missing $SOFABGEN — run scripts/bootstrap.sh" >&2; exit 1; }
 [ -d "$CORELIB" ] || { echo "missing $CORELIB — run scripts/bootstrap.sh" >&2; exit 1; }
 
 # Limit mode (crucible#10 / generator#102): SCHEMA selects the schema; LIMITS bakes
-# identical max_dyn_* caps into the generated code. Only the pure-C++ (cpp) variant
-# supports it — the c-cpp fixed-capacity profile cannot represent an unbounded field.
+# identical max_dyn_* caps into the generated code. Only `cpp` supports it, and it
+# takes BOTH halves to qualify: a heap profile, because a fixed-capacity one cannot
+# represent an unbounded field at all (that rules out cpp-fixed and c-cpp), and a
+# corelib whose Error carries LimitExceeded, so the driver can emit the `L` verdict
+# (that rules out c-cpp-dyn — the C wrapper's Error has no such code even though its
+# storage is growable).
 SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
-if [ -n "${LIMITS:-}" ] && [ "$VARIANT" = "c-cpp" ]; then
-    echo "==> [cpp:c-cpp] LIMITS is unsupported: the fixed-capacity profile has no unbounded fields" >&2
+if [ -n "${LIMITS:-}" ] && [ "$VARIANT" != "cpp" ]; then
+    echo "==> [cpp:$VARIANT] LIMITS is unsupported: needs a heap profile whose corelib reports LIMIT_EXCEEDED (only 'cpp')" >&2
     exit 2
 fi
 

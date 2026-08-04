@@ -19,6 +19,49 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The C++ matrix went from two configurations to four, and found a bug on the first run (2026-08-04).**
+`allow_dynamic` used to be a `corelib: c-cpp` knob; generator#289 extended it to `corelib: cpp`,
+and corelib-cpp#70 made `readString`/`readBlob`/`StringSeq`/`BlobSeq` storage-agnostic so the
+heap-free containers work there too. crucible#129 asked for the resulting matrix to be covered
+once the generator side landed. It had landed — the issue was filed the day before the merge —
+so the four configurations are now `cpp` / `cpp-fixed` / `cpp-c-cpp` / `cpp-c-cpp-dyn`.
+
+*It cost almost nothing to add*, which is worth recording because it was not obvious in advance:
+`driver.cpp` and `materialize_gen.py` needed **no change at all**. Both had been written against
+only the member API the two storage flavours share, a discipline adopted when the c-cpp variant
+was first added, and it paid off exactly here. `build.sh` grew two cases; nothing else differs.
+
+*The point of running them side by side is that the wire format is byte-identical across all
+four*, so a divergence between them is a bug by construction rather than a question of
+interpretation. That is not a theoretical argument: **F-0057** turned up on `cpp-c-cpp-dyn`'s
+first run. Every zero-length array aborts an asserts-enabled build — `IStreamImpl::readArray`
+resizes the growable destination to 0 and then hands `std::span{value}.data()`, which is
+`nullptr` for an empty `std::vector`, to a C core that asserts `var != NULL`. Five bytes
+(`a6 06 03 00 07`), a valid message, accepted by the other fourteen. The sibling that differs in
+exactly one setting is what pinned it: `cpp-c-cpp` uses `InlineVector`, whose `data()` always
+points at inline storage, so it never sees the null. Filed as corelib-c-cpp#131 — corelib, not
+codegen: generated code passed the right count and the right bound, and every link in the chain
+is corelib code.
+
+*Decision: quarantine rather than a red gate, and a mechanism rather than an exception.* A
+crashing driver takes its process down and poisons every subsequent record in the batch, so
+`sweep_empty_frame` would have stayed red until upstream fixed it — and a permanently red gate
+stops meaning "something new broke", which is the same reasoning `results/known-clusters.txt`
+was built on. `drivers/roster` therefore carries a `blocking` tag: a driver without it is still
+built and still runs under `ROSTER_TAG=` (the full roster), but stays out of the gates that
+block. A quarantine entry **must name the finding**, so it is removable the moment that finding
+closes and cannot decay into a silent exclusion.
+
+*A refactor fell out of it that was overdue on its own.* The roster had been copied into five
+places (`run.sh`, `materialize.sh`, `run-limits.sh`, `sweep_run.py`, `chunk_invariance.py`), so
+adding two drivers meant editing six lists — and the streaming-encode oracle would have created
+a seventh. It is now one file, `drivers/roster`, read by `scripts/roster.sh` on the shell side
+and `oracle/roster.py` on the Python side. The limit-mode subset became a tag rather than a
+hand-maintained second list, and reproduces the previous ten drivers exactly. One consequence
+worth noting: `materialize.sh` broke on the first run of the refactor because its C-anchor step
+still referenced a variable the old loop had set. That is the failure mode a five-way copy
+hides — the sixth consumer nobody remembered.
+
 **The generated API was realigned, and the hole that exposed got a contract (2026-08-04).**
 sofabgen `cfe5250b` (generator#290/#291/#292) renamed `marshal`/`unmarshal` out of existence
 and gave nearly every backend a chunked decoder. Rebuilding the whole roster against it cost

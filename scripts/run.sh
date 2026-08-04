@@ -13,48 +13,21 @@ CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 [ -x "$ROOT/tools/sofabgen" ] || "$ROOT/scripts/bootstrap.sh"
 
 echo "==> building drivers" >&2
-C_BIN=$(sh "$ROOT/drivers/c/build.sh")
-GO_BIN=$(sh "$ROOT/drivers/go/build.sh")
-RS_BIN=$(sh "$ROOT/drivers/rust/build.sh" rs)
-NOSTD_BIN=$(sh "$ROOT/drivers/rust/build.sh" rs-no-std)
-CPP_BIN=$(sh "$ROOT/drivers/cpp/build.sh" cpp)
-CCPP_BIN=$(sh "$ROOT/drivers/cpp/build.sh" c-cpp)
-PYC_BIN=$(sh "$ROOT/drivers/python/build.sh" cython)
-PYP_BIN=$(sh "$ROOT/drivers/python/build.sh" pure)
-JAVA_BIN=$(sh "$ROOT/drivers/java/build.sh")
-TS_BIN=$(sh "$ROOT/drivers/ts/build.sh")
-CS_BIN=$(sh "$ROOT/drivers/cs/build.sh")
-ZIG_BIN=$(sh "$ROOT/drivers/zig/build.sh")
-DART_BIN=$(sh "$ROOT/drivers/dart/build.sh")
-echo "==> c:          $C_BIN" >&2
-echo "==> go:         $GO_BIN" >&2
-echo "==> rust-std:   $RS_BIN" >&2
-echo "==> rust-nostd: $NOSTD_BIN" >&2
-echo "==> cpp:        $CPP_BIN" >&2
-echo "==> cpp-c-cpp:  $CCPP_BIN" >&2
-echo "==> py-cython:  $PYC_BIN" >&2
-echo "==> py-pure:    $PYP_BIN" >&2
-echo "==> java:       $JAVA_BIN" >&2
-echo "==> typescript: $TS_BIN" >&2
-echo "==> csharp:     $CS_BIN" >&2
-echo "==> zig:        $ZIG_BIN" >&2
-echo "==> dart:       $DART_BIN" >&2
-
-# The driver roster, shared by the comparator and the clusterer.
-set -- \
-    --driver "c:$C_BIN" \
-    --driver "go:$GO_BIN" \
-    --driver "rust-std:$RS_BIN" \
-    --driver "rust-nostd:$NOSTD_BIN" \
-    --driver "cpp:$CPP_BIN" \
-    --driver "cpp-c-cpp:$CCPP_BIN" \
-    --driver "py-cython:$PYC_BIN" \
-    --driver "py-pure:$PYP_BIN" \
-    --driver "java:$JAVA_BIN" \
-    --driver "typescript:$TS_BIN" \
-    --driver "csharp:$CS_BIN" \
-    --driver "zig:$ZIG_BIN" \
-    --driver "dart:$DART_BIN"
+# The roster — who is in the family — is stated once, in drivers/roster, and read by
+# every consumer through scripts/roster.sh. `build` builds each entry and prints the
+# comparator's `--driver name:path` arguments, one per line.
+#
+# A gate selects the `blocking` tag; `ROSTER_TAG=` (empty) selects the whole roster,
+# quarantine included, which is how a quarantined driver is exercised. `-` not `:-`,
+# so an explicitly empty value means "everything" rather than falling back.
+ROSTER_TAG="${ROSTER_TAG-blocking}"
+DRIVER_ARGS=$("$ROOT/scripts/roster.sh" build "$ROSTER_TAG")
+_oldifs=$IFS
+IFS='
+'
+# shellcheck disable=SC2086
+set -- $DRIVER_ARGS
+IFS=$_oldifs
 
 # Optional per-driver hang budget (seconds); unset → the tools compute
 # max(30, 0.25 x corpus size). A hanging driver is a finding, not a wedged run.

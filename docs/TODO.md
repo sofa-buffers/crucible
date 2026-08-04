@@ -79,6 +79,14 @@ here:
 
 ## Open — engine & oracles
 
+- [ ] **Un-quarantine `cpp-c-cpp-dyn` when F-0057 closes.** It is in `drivers/roster` without
+      the `blocking` tag while [corelib-c-cpp#131](https://github.com/sofa-buffers/corelib-c-cpp/issues/131)
+      is open: every zero-length array aborts an asserts-enabled build, and a crashing driver
+      poisons every subsequent record in its batch, so `sweep_empty_frame` would be permanently
+      red. It is still built and still runs under `ROSTER_TAG=`. **Check it on the next family
+      bump** — a quarantine that outlives its finding is exactly the silent exclusion the
+      mechanism exists to prevent. Removing the tag line is the whole fix.
+
 - [x] **The three untriaged nightly camps — CLOSED 2026-08-03.** Rather than waiting for the next
       nightly, the 2026-08-03 06:09 artifact (still retained) was re-clustered against the
       post-fix family. **17 camps → 11**, and the three resolved as follows:

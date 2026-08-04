@@ -34,33 +34,15 @@ echo "==> building heap roster in limit mode (schema=probe-dyn, caps=$CAP)" >&2
 # Every heap driver's build.sh reads SCHEMA + LIMITS from the environment.
 export SCHEMA="$ROOT/schema/probe-dyn.sofab.yaml"
 export LIMITS="$CAP"
-GO_BIN=$(sh "$ROOT/drivers/go/build.sh")
-RS_BIN=$(sh "$ROOT/drivers/rust/build.sh" rs)
-CPP_BIN=$(sh "$ROOT/drivers/cpp/build.sh" cpp)
-PYC_BIN=$(sh "$ROOT/drivers/python/build.sh" cython)
-PYP_BIN=$(sh "$ROOT/drivers/python/build.sh" pure)
-JAVA_BIN=$(sh "$ROOT/drivers/java/build.sh")
-TS_BIN=$(sh "$ROOT/drivers/ts/build.sh")
-CS_BIN=$(sh "$ROOT/drivers/cs/build.sh")
-ZIG_BIN=$(sh "$ROOT/drivers/zig/build.sh")
-# dart is a heap profile (growable List<...>), so it joins the limit-mode roster;
-# its generated tryDecode bakes the max_dyn_* caps into a DecoderLimits and returns
-# limitExceeded (-> L) when a schema-unbounded field exceeds one.
-DART_BIN=$(sh "$ROOT/drivers/dart/build.sh")
+# The heap subset of drivers/roster — the rows tagged `limits`. Membership takes BOTH
+# halves: a heap profile (a fixed-capacity one cannot represent an unbounded field at
+# all) and a corelib whose Error carries LIMIT_EXCEEDED, so the driver can emit `L`.
+# That is why `cpp` is in and its three sibling C++ configurations are not — cpp-fixed
+# and c-cpp are fixed-capacity, and c-cpp-dyn is growable but the C wrapper's Error has
+# no such code. dart qualifies (growable List<...>, and its generated tryDecode bakes
+# the max_dyn_* caps into a DecoderLimits).
+ALL=$("$ROOT/scripts/roster.sh" build limits | tr '\n' ' ')
 unset SCHEMA LIMITS  # don't leak the limit config into anything downstream
-
-for line in \
-    "go:$GO_BIN" "rust-std:$RS_BIN" "cpp:$CPP_BIN" \
-    "py-cython:$PYC_BIN" "py-pure:$PYP_BIN" "java:$JAVA_BIN" \
-    "typescript:$TS_BIN" "csharp:$CS_BIN" "zig:$ZIG_BIN" "dart:$DART_BIN"; do
-    echo "==> ${line%%:*}: ${line#*:}" >&2
-done
-
-# The full heap roster runs every dimension (arr included — G-0009 fixed @0.16.1).
-ALL="--driver go:$GO_BIN --driver rust-std:$RS_BIN --driver cpp:$CPP_BIN \
-     --driver py-cython:$PYC_BIN --driver py-pure:$PYP_BIN --driver java:$JAVA_BIN \
-     --driver typescript:$TS_BIN --driver csharp:$CS_BIN --driver zig:$ZIG_BIN \
-     --driver dart:$DART_BIN"
 
 # Optional per-driver hang budget (seconds); unset → comparator defaults to
 # max(30, 0.25 x corpus size).
