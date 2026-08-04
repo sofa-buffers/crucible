@@ -107,6 +107,27 @@ here:
       its keep and none of this needs all 13 to be useful.
       *Note it would not have caught crucible#130 itself*: generated code calls the correct
       `readBlob()`, never the broken raw overload. It catches that defect's **class**.
+      **2026-08-04:** the contract is now written in full (`drivers/common/CONTRACT.md`,
+      "The streaming axes") and adds `SOFAB_CHUNK=n` (fixed-size, `n=1` = byte-at-a-time)
+      and `SOFAB_CHUNK_SCRUB=1` (dangling-borrow oracle) beside the two-chunk sweep, with a
+      normative verdict-derivation rule so eleven backends cannot drift. `meta` now declares
+      per backend what exists to drive (`chunked_decode=push|pull|none`): **push in every
+      language but two** — python is pull-shaped (`deserialize(Decoder(reader))`, the driver
+      wraps the chunks in a reader) and **go has none at all** (corelib-go has no resumable
+      push decoder), so go must be declared absent rather than silently skipped.
+
+- [ ] **The streaming-encode axis (`SOFAB_ENCODE`, `SOFAB_FLUSH`)** — the encode-side twin,
+      and the second half of the hole [crucible#132](https://github.com/sofa-buffers/crucible/issues/132)
+      named. Every driver re-encodes with exactly one call today, so of the three encode
+      surfaces the generated API now offers — allocating `encode()`, caller-buffer
+      `encodeTo()`, streaming `serialize(os)` — the round-trip oracle exercises **one**.
+      The family is byte-canonical, so all three of one implementation must emit identical
+      bytes for the same value, and `SOFAB_FLUSH=n` (an `n`-byte `OStream` buffer) must not
+      change them either — it walks the encoder across a buffer boundary at every offset,
+      the encode-side mirror of `SOFAB_CHUNK=1`. Contract written; needs
+      `oracle/encode_invariance.py` + `scripts/run-encode.sh` and the per-driver plumbing.
+      `meta`'s `encode_surfaces` records which backend has which: TypeScript has only
+      `stream`, C has no allocating encode, rust/python/zig have no `encodeTo`.
 
 - [ ] **A fixlen-payload-as-varint axis** (from F-0056). No axis emits a fixlen element payload
       made of **continuation bytes**, because none had a reason to care what the bytes of a

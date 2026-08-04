@@ -2,3 +2,5 @@ lang=csharp
 corelib=corelib-cs
 framework=sharpfuzz
 pacemaker=false
+chunked_decode=push
+encode_surfaces=new,to,stream

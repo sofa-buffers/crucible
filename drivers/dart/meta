@@ -2,3 +2,5 @@ lang=dart
 corelib=corelib-dart
 framework=dart-ffi-libfuzzer
 pacemaker=false
+chunked_decode=push
+encode_surfaces=new,to,stream

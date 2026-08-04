@@ -2,3 +2,5 @@ lang=typescript
 corelib=corelib-ts
 framework=jazzer.js
 pacemaker=false
+chunked_decode=push
+encode_surfaces=stream

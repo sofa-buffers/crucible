@@ -2,3 +2,5 @@ lang=go
 corelib=corelib-go
 framework=go-native-fuzz
 pacemaker=false
+chunked_decode=none
+encode_surfaces=new,to,stream

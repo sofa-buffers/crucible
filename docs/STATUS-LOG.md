@@ -19,6 +19,49 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The generated API was realigned, and the hole that exposed got a contract (2026-08-04).**
+sofabgen `cfe5250b` (generator#290/#291/#292) renamed `marshal`/`unmarshal` out of existence
+and gave nearly every backend a chunked decoder. Rebuilding the whole roster against it cost
+**one line** — `drivers/ts/driver.ts` was the only caller of a name that did not survive; every
+other driver already spelled `encode` / `try_decode` / `tryDecode` / `decode`. All seven gates
+are green on the new generator with no other edit.
+
+*The interesting part is not the rename, it is what the rename made visible.* Each driver makes
+exactly two calls into the generated code — one one-shot decode, one one-shot `encode()`. The
+API now has a streaming surface on **both** sides of that, and the replay protocol can reach
+neither: it hands every record over whole and re-encodes with a single call. So chunked decode
+is untested in every implementation, and of the three encode surfaces (`encode()`,
+`encodeTo()`, `serialize(os)`) the round-trip oracle exercises one. crucible#132 reports three
+TypeScript bugs found while building its chunked decoder — a visitor callback that was simply
+not implemented (an unimplemented optional callback is a **no-op** in TS, so the field silently
+vanished), a Zig decoder that dropped every payload piece after the first *and* borrowed the
+chunk, and 64-bit arrays the chunked visitor could not write. None crashed, none failed to
+compile, and the conformance suite was green through all three.
+
+*Decision: write the contract before writing any driver.* Eleven backends implementing a
+streaming axis from eleven readings of "feed it in pieces" would produce eleven dialects, and
+the resulting divergences would be harness artifacts rather than findings. `CONTRACT.md` now
+specifies all five variables — `SOFAB_SPLIT`, `SOFAB_CHUNK`, `SOFAB_CHUNK_SCRUB` on the decode
+side, `SOFAB_ENCODE`, `SOFAB_FLUSH` on the encode side — with the parts that would otherwise
+drift made normative:
+
+- **The verdict comes from the decoder's `status`, never from `finish()`.** Most backends throw
+  there when the stream ended mid-field; Dart returns null instead. Routing the verdict through
+  `finish()` would bake that difference into the canonical line and read as a family divergence.
+- **Never synthesize an empty chunk** (`k<=0`, `k>=len`, `n>=len` all mean one whole chunk), and
+  a zero-length record is still not fed at all — corelib-c-cpp asserts `datalen>0`.
+- **A driver asked for an encode surface its backend lacks exits non-zero**, rather than falling
+  back to another surface and reporting a mode as passing that never ran.
+
+*Two mechanisms for declaring support, because one cannot cover both cases.* A driver that has
+never heard of a variable emits byte-identical output and would pass vacuously — that is what the
+gate's explicit roster (`SOFAB_SPLIT_DRIVERS`, `SOFAB_ENCODE_DRIVERS`) is for. A driver that knows
+the variable but cannot honour it is a different failure, and hard-fails itself. `meta` records
+the same facts declaratively in two new keys: `chunked_decode=push|pull|none` and
+`encode_surfaces`. The notable entries are **go: none** — corelib-go has no resumable push decoder
+at all, so it must be declared absent rather than silently skipped — and **python: pull**, whose
+`deserialize(Decoder(reader))` needs the driver to wrap its chunks in a reader.
+
 **The tolerance axis reached the union, and a false green was caught on the way (2026-08-03).**
 `sweep_tolerance` gained an `emit_union` and joined the union pass. A union is an ordinary
 sequence on the wire, so §4.9 binds its closing marker exactly as it binds a struct's — but it

@@ -153,7 +153,7 @@ function rejectClass(e: unknown): string {
 
 function canonical(data: Uint8Array): string {
   // decode -> re-encode -> hex (oracle/canonical.md). The generated TS message
-  // has no encode(), so marshal into an in-memory OStream and read its bytes.
+  // has no encode(), so serialize into an in-memory OStream and read its bytes.
   let m: Probe;
   try {
     m = Probe.decode(data);
@@ -181,7 +181,7 @@ function canonical(data: Uint8Array): string {
     return "A " + materialize(m);
   }
   const os = new OStream();
-  m.marshal(os);
+  m.serialize(os);
   const bytes = os.bytes();
   const hex = Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
