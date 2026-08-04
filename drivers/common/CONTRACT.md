@@ -28,38 +28,115 @@ Persistent mode is mandatory: one process handles the whole corpus. Fork+exec
 per input caps throughput ~1000× and is why the generator's `encode`/`decode`
 CLI is *not* reused here.
 
-### Optional: `SOFAB_SPLIT=k` — chunked re-feed (NOT YET IMPLEMENTED BY ANY DRIVER)
+## The streaming axes
 
-When `SOFAB_SPLIT` is set to a positive integer `k`, a driver feeds each record as
-**two chunks into one decoder** — `[0,k)` then `[k,end)` — and emits the canonical line
-of the **final** state. Unset, or `k >= len`, is today's behaviour: one feed.
+The replay protocol above hands every record over **whole** and re-encodes it with a
+single call. The generated API has grown two streaming surfaces on either side of that
+— a chunked decoder (`feed`/`finish`) and a streaming encoder (`serialize(os)`) — and
+neither is reachable through the protocol as written. A defect that lives only there is
+invisible to every gate in this repo.
 
-This exists because the replay protocol hands a record over whole, so a defect that only
-appears at a chunk boundary is invisible to every gate here. CORELIB_PLAN §6.4 (for UTF-8)
-and §7.2 item 4 (for the decoder at large) require that **a chunk boundary must not change
-the outcome**, and `scripts/run-chunked.sh` checks exactly that: for every input and every
-split point, the split line must equal the whole line. Sweeping `k` covers every
-metadata/payload boundary without the harness knowing where they are.
+Five environment variables open those surfaces. All five share one shape:
 
-Two properties follow, and neither is reachable otherwise:
+- **Unset is today's behaviour**, byte-identical. A driver that has not been taught an
+  axis simply keeps working.
+- The **output form does not change** — still exactly one canonical line per record, in
+  order. Only *how the bytes get in* or *which call produces the hex* changes.
+- They **compose**, with each other and with `SOFAB_MATERIALIZE`. Chunked decode plus a
+  materialized dump is a value oracle over the streaming path, and is worth running.
+- Each is an **intra-driver invariant** — a driver against itself, not against the
+  family. That is why a single driver is already worth landing, and it is the only kind
+  of gate here that can catch a defect the *whole* family shares.
+
+### Decode side — the bytes arrive in pieces
+
+| variable | meaning |
+|---|---|
+| `SOFAB_SPLIT=k` | feed each record as **two** chunks, `[0,k)` then `[k,end)`, into one decoder |
+| `SOFAB_CHUNK=n` | feed each record in **fixed-size** chunks of `n` bytes (last one short) |
+| `SOFAB_CHUNK_SCRUB=1` | overwrite each chunk's buffer with `0xA5` after `feed` returns |
+
+`SOFAB_SPLIT` sweeps the boundary: run it for every `k` and every metadata/payload edge
+in the message has been cut, without the harness needing to know where those edges are.
+`SOFAB_CHUNK=1` is the other extreme — every varint, every length word and every payload
+is split, so any parse state a decoder fails to carry across a `feed` shows up. Both are
+worth having: the sweep localizes *which* boundary breaks, byte-at-a-time finds the ones
+a two-way split happens to straddle.
+
+`SOFAB_CHUNK_SCRUB` is a lifetime oracle, not a boundary one: a decoder that borrows from
+a fed chunk rather than copying out of it will read scrubbed bytes. It requires the driver
+to own a mutable copy of each chunk it feeds.
+
+CORELIB_PLAN §6.4 states the rule for UTF-8 and §7.2 item 4 for the decoder at large: **a
+chunk boundary must not change the outcome.** So under any of these the canonical line must
+equal the line the whole record produces. Two properties follow, and neither is reachable
+otherwise:
 
 - **chunk invariance** — the outcome does not depend on how the bytes arrived;
-- **resumability** — an `I` after the first chunk must still reach the right verdict *and
-  value* after the second. corelib-cpp's raw blob read returned `INVALID` and then dropped
-  the buffered tail, so the message never completed even once the rest arrived
+- **resumability** — an `I` after one chunk must still reach the right verdict *and value*
+  after the rest. corelib-cpp's raw blob read returned `INVALID` and then dropped the
+  buffered tail, so the message never completed even once the remaining bytes arrived
   ([crucible#130](https://github.com/sofa-buffers/crucible/issues/130)).
 
-Unlike every other oracle in this repo the check is **not differential** — it compares a
-driver against itself. So it needs no second implementation to be useful, drivers can opt in
-one at a time, and it is the only gate that can catch a defect the whole family shares.
+**Deriving the verdict, identically in every language.** This is the part that would
+otherwise drift eleven ways, so it is normative:
 
-**A driver that ignores the variable emits byte-identical output, which is indistinguishable
-from passing.** Support is therefore declared explicitly to the gate, never inferred: it runs
-only the drivers named in `SOFAB_SPLIT_DRIVERS` and skips loudly when that is empty.
+1. Feed the chunks in order. An `INVALID` from any `feed` (returned or thrown) is
+   **terminal** — emit `R <class>` and feed no more.
+2. After the last chunk, read the decoder's **`status`**, and map it exactly as the
+   one-shot path maps its outcome: `COMPLETE` → `A <hex>`, `INCOMPLETE` → `I`.
+3. **Never derive the verdict from `finish()`.** Most backends throw there when the
+   stream ended mid-field, and one (Dart) returns null instead — routing the verdict
+   through it would encode that difference into the canonical line. Call it only once
+   `status` already says `COMPLETE`, or not at all and read `message`.
+4. A record of length 0 is the valid all-defaults message and is **not fed at all**, as
+   in the one-shot path (corelib-c-cpp asserts `datalen>0`).
+5. Never synthesize an empty chunk: `k<=0`, `k>=len` and `n>=len` all mean one chunk
+   holding the whole record, i.e. today's behaviour.
 
-The obstacle is that every driver today decodes one-shot (`DecodeProbe(data)`,
-`Probe::try_decode(data)`, …); honouring `SOFAB_SPLIT` means reaching the corelib's streaming
-`feed` and the generated visitor, which differs per language. Tracked in `docs/TODO.md`.
+### Encode side — which call produces the `A <hex>`
+
+| variable | meaning |
+|---|---|
+| `SOFAB_ENCODE=new` | re-encode with the allocating `encode()` — the default, today's path |
+| `SOFAB_ENCODE=to` | re-encode with the caller-buffer `encodeTo(dst, cap)` / `EncodeTo(w)` |
+| `SOFAB_ENCODE=stream` | re-encode with the streaming `serialize(os)` into an `OStream` |
+| `SOFAB_FLUSH=n` | give that `OStream` an `n`-byte buffer, so it flushes every `n` bytes |
+
+The family is byte-canonical: one value has exactly one encoding. So all three surfaces
+of one implementation must emit **identical bytes** for the same decoded value, and
+`SOFAB_FLUSH` must not change them either — it is the encode-side mirror of
+`SOFAB_CHUNK=1`, walking the encoder across a buffer boundary at every offset.
+
+Not every backend has all three (TypeScript has no `encode()`, C has no allocating
+encode — see the API table in
+[crucible#132](https://github.com/sofa-buffers/crucible/issues/132)). A driver asked for
+a surface its backend does not have must **exit non-zero with a one-line reason on
+stderr, before emitting any record** — never fall back to another surface, which would
+report a mode as passing that never ran.
+
+### Declaring support — twice, because one mechanism cannot cover both cases
+
+A driver that has **never heard of** a variable emits byte-identical output, which is
+indistinguishable from passing. A driver that **knows** the variable but cannot honour it
+can say so. Those are different failures and need different mechanisms, so the contract
+carries both:
+
+- **The gate's roster.** `scripts/run-chunked.sh` runs only the drivers named in
+  `SOFAB_SPLIT_DRIVERS`, and `scripts/run-encode.sh` only those in
+  `SOFAB_ENCODE_DRIVERS`. Empty → the gate skips **loudly**. This is what stops an
+  untaught driver from passing vacuously.
+- **The driver's own hard-fail**, as in the encode rule above. This is what stops a
+  taught driver from silently degrading.
+
+`meta` records the same facts declaratively, for the reader rather than the gate:
+
+```
+chunked_decode=push|pull|none    push: feed(chunk); pull: the corelib pulls from a
+                                 reader the driver wraps around the chunks (python);
+                                 none: the corelib has no resumable decoder (go)
+encode_surfaces=new,to,stream    which of the three this backend actually has
+```
 
 ## Decode core requirements
 
@@ -86,7 +163,8 @@ The obstacle is that every driver today decodes one-shot (`DecodeProbe(data)`,
 
 ```
 drivers/<lang>/
-  meta          key=value: lang, corelib, framework, pacemaker(true|false)
+  meta          key=value: lang, corelib, framework, pacemaker(true|false),
+                variants, chunked_decode, encode_surfaces (see "Declaring support")
   build.sh      regenerate from schema/ via sofabgen, build the replay driver
                 (sanitizers on where the toolchain supports it), print the binary path
   driver.<ext>  the decode core + replay front-end (+ guarded coverage front-end)

@@ -3,3 +3,5 @@ corelib=corelib-rs,corelib-rs-no-std
 framework=cargo-fuzz
 pacemaker=false
 variants=rs,rs-no-std
+chunked_decode=push
+encode_surfaces=new,stream

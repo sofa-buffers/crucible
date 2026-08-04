@@ -2,3 +2,5 @@ lang=c
 corelib=corelib-c-cpp
 framework=libfuzzer
 pacemaker=true
+chunked_decode=push
+encode_surfaces=to,stream
