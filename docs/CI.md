@@ -7,7 +7,7 @@ as the corelibs churn. See PLAN §10/§12.
 | workflow | trigger | blocking? | what it does |
 |---|---|---|---|
 | [`image.yml`](../.github/workflows/image.yml) | `.devcontainer/Dockerfile` change · manual | — | build the 13-toolchain image (incl. the Dart SDK), push to GHCR |
-| [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | build all drivers, run the seven **green** gates |
+| [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | build all drivers, run the eight **green** gates + the two opt-in streaming gates |
 | [`nightly.yml`](../.github/workflows/nightly.yml) | 03:00 UTC daily · manual | no | fuzz → grow corpus → cluster → upload artifacts |
 
 ## The image (`image.yml`) — the linchpin
@@ -45,7 +45,7 @@ representations were found stale at once — it exists because intending to keep
 sync demonstrably did not.
 
 **`differential`** bootstraps the corelibs (their `main` tips) + sofabgen, builds all 12
-replay drivers, and runs the five **green** oracles in sequence; any divergence fails the
+replay drivers, and runs the **green** oracles in sequence; any divergence fails the
 job:
 
 ```sh
@@ -81,10 +81,13 @@ step). `FUZZ_TIME` (default 1800s) is overridable via manual dispatch.
 
 ## Follow-ups
 
-- **Build reuse:** `replay` currently runs the seven gates (seeds / regression /
+- **Build reuse:** `replay` runs its gates (seeds / regression / conformance /
   structured via `cross-encode.sh` / union / limits / structural sweep / materialized)
-  as separate steps, rebuilding all 13 drivers each time — so the gate pays the build 7×. A build-once →
-  compare-many-corpora mode would cut it to one build.
+  as separate steps, rebuilding the whole roster each time — so the gate pays the build
+  once per step. A build-once → compare-many-corpora mode would cut it to one build.
+  The two streaming gates (`run-chunked.sh`, `run-encode.sh`) do not add to that today:
+  they exit before building while their opt-in roster is empty, and will pay one build
+  each once the first driver lands.
 - **Cross-repo auto-annotation:** have `nightly` open/annotate issues on the owning
   corelib/generator repos (needs a PAT with `issues:write`), instead of only
   uploading artifacts.

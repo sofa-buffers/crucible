@@ -19,6 +19,35 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Both streaming oracles exist before any driver does, and that ordering is the point (2026-08-04).**
+`chunk_invariance.py` gained the two cuts the contract specifies beyond its original two-chunk
+sweep — `SOFAB_CHUNK=n` (fixed size; `n=1` splits every varint, length word and payload, so it
+cannot straddle the boundary that breaks) and `SOFAB_CHUNK_SCRUB=1` (a *lifetime* check, not a
+boundary one: a decoder that borrows from a fed chunk reads back scrubbed bytes). The
+encode-side twin, `encode_invariance.py` + `scripts/run-encode.sh`, is new: the family is
+byte-canonical, so one implementation's three encode surfaces must emit identical bytes for the
+same value, and an `n`-byte `OStream` buffer must not change them either.
+
+*Both are wired into `replay.yml` now, with no driver implementing either.* That looks
+premature and is not: the gates skip **loudly** while their opt-in roster is empty, so landing
+the first driver turns the gate on with no CI edit, and the interval between "oracle exists" and
+"driver exists" cannot be mistaken for coverage. The alternative — wire it when the first driver
+lands — is how a gate ends up quietly never being added.
+
+*Two design decisions worth recording.* The encode oracle's baseline is the driver's **own
+default path**, not `SOFAB_ENCODE=new`: comparing the surfaces only against each other would
+pass a driver that read the variable and wired all three to the same call. And it asserts the
+contract's hard-fail — asking for a surface the backend lacks must exit non-zero — because a
+silent fallback reports a mode as passing that never ran, which is the exact failure the gate
+exists to prevent, so it is checked rather than trusted.
+
+*What running it today proves, and what it does not.* `typescript` fails the hard-fail
+assertion, correctly: its `meta` declares only `stream`, and the untaught driver exits 0 when
+asked for `new`. `cpp` reports **0 mismatches — a vacuous pass**, because it declares all three
+surfaces, ignores the variables, and therefore agrees with itself everywhere. That is the whole
+argument for the opt-in roster in one line: the assertion catches a driver that lacks a surface,
+and nothing but an explicit roster catches one that has them all and drives none.
+
 **The C++ matrix went from two configurations to four, and found a bug on the first run (2026-08-04).**
 `allow_dynamic` used to be a `corelib: c-cpp` knob; generator#289 extended it to `corelib: cpp`,
 and corelib-cpp#70 made `readString`/`readBlob`/`StringSeq`/`BlobSeq` storage-agnostic so the

@@ -103,3 +103,18 @@ jobs:
       # vs the reference). 75×12 → 0 divergences. Rebuilds vs probe, safe after limit mode.
       - name: Materialized-value differential (element-access oracle)
         run: ./scripts/materialize.sh
+
+      # The two STREAMING axes (crucible#132). Both are intra-driver invariants — a
+      # driver against itself — so unlike every gate above they need no second
+      # implementation and drivers opt in one at a time via SOFAB_SPLIT_DRIVERS /
+      # SOFAB_ENCODE_DRIVERS. Both are wired here BEFORE any driver implements them,
+      # deliberately: they skip loudly (exit 0 with a message) while the roster is
+      # empty, so landing the first driver turns the gate on with no CI edit, and the
+      # gate can never pass vacuously in the meantime. A driver that ignored the
+      # variables would emit byte-identical output, which is indistinguishable from
+      # passing — which is exactly why the opt-in roster exists rather than inference.
+      - name: Chunk invariance (streaming decode, opt-in roster)
+        run: ./scripts/run-chunked.sh
+
+      - name: Encode invariance (streaming encode, opt-in roster)
+        run: ./scripts/run-encode.sh

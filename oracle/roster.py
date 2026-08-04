@@ -45,3 +45,28 @@ def gate_tag():
 def drivers(tag=None):
     """name -> absolute binary path, in roster order."""
     return {name: binary for name, _, _, _, binary in rows(tag)}
+
+
+def meta(builder):
+    """`drivers/<builder>/meta` as a dict of its key=value lines.
+
+    Carries the declarative half of the driver contract — `chunked_decode` and
+    `encode_surfaces` say what the *backend* offers, so a gate can tell "this driver
+    was not taught the axis" from "this backend has no such surface".
+    """
+    out = {}
+    path = os.path.join(ROOT, "drivers", builder, "meta")
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            out[k.strip()] = v.strip()
+    return out
+
+
+def encode_surfaces(builder):
+    """The encode surfaces this backend has, as a set: {'new','to','stream'}."""
+    v = meta(builder).get("encode_surfaces", "")
+    return set() if v in ("", "-") else set(v.split(","))
