@@ -79,6 +79,17 @@ here:
 
 ## Open — engine & oracles
 
+- [x] **Two unspecified streaming contracts — FILED 2026-08-04** as
+      [documentation#37](https://github.com/sofa-buffers/documentation/issues/37) (chunk
+      lifetime) and [documentation#36](https://github.com/sofa-buffers/documentation/issues/36)
+      (minimum caller buffer). Reading the spec at the tip **sharpened** both rather than
+      dissolving them: §9.6 turns out to be a **README template**, so its "valid only during
+      the callback" is guidance on what a port must *document*, not a rule — and corelib-zig
+      borrows further than it, into the decoded message. And §5.1's "far smaller than the
+      message" simply lacks the quantifier its decode twin has twice over ("arbitrarily small
+      chunks", "one byte at a time"), which is why "conformant" spans a 16x range there. What
+      follows is kept as the reasoning.
+
 - [ ] **Two unspecified streaming contracts, both found by wiring the axes (2026-08-04).** Neither
       is a wire question, so the differential oracle is structurally blind to both — they are
       differences in what the *API* promises, and they only became visible once drivers started
