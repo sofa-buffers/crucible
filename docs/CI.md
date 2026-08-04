@@ -70,7 +70,7 @@ REGEN=0 ./scripts/cross-encode.sh         # cross-encode / structured    (corpus
 ## The nightly (`nightly.yml`) — continuous discovery, non-blocking
 
 The C pacemaker (libFuzzer + the structure-aware mutator, `engine/mutator/`) grows
-`corpus/interesting`; that grown corpus is replayed through all 13 drivers and
+`corpus/interesting`; that grown corpus is replayed through the whole roster and
 auto-clustered by root cause. Crashes, the interesting corpus, and
 `results/CLUSTERS.md` are uploaded as artifacts. The corpus is `actions/cache`d so
 coverage **compounds** night over night.

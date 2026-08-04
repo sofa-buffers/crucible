@@ -36,7 +36,7 @@ coverage) instead of optimized, which is why it lives in its own repo.
    seed / structured / mutated bytes
                  │
                  ▼   fan out the SAME bytes to every implementation
-   ┌────────┬────────┬────────┬───────┬──────── … 13 drivers
+   ┌────────┬────────┬────────┬───────┬──────── … 15 drivers
    ▼        ▼        ▼        ▼       ▼
  C(san)   Rust      Go      Java   Python   …        each: decode → re-encode
    │        │        │        │       │                    → one canonical line
@@ -104,8 +104,8 @@ everyone else's.
 `run.sh` prints, per driver, its built binary, then the differential result:
 
 ```
-6 inputs × 13 drivers (c, go, rust-std, rust-nostd, cpp, cpp-c-cpp, py-cython,
-  py-pure, java, typescript, csharp, zig, dart): 0 divergence(s) (0 crash, 0 timeout), 0 warning(s)
+6 inputs × 14 drivers (c, go, rust-std, rust-nostd, cpp, cpp-fixed, cpp-c-cpp,
+  py-cython, py-pure, java, typescript, csharp, zig, dart): 0 divergence(s) (0 crash, 0 timeout), 0 warning(s)
 ```
 
 No toolchains in the bare workspace — everything runs inside
@@ -115,8 +115,10 @@ toolchain.
 
 ## Test suites
 
-All suites share the same 13 drivers and the same comparator; they differ in what
-they feed and how they build. Each is one command.
+All suites share the same roster (`drivers/roster` — the one place it is stated) and
+the same comparator; they differ in what they feed and how they build. Each is one
+command. The last two are the odd ones out: they compare a driver **against itself**
+rather than against the family, so they need no second implementation to be useful.
 
 | suite | command | what it hunts |
 |---|---|---|
@@ -127,6 +129,8 @@ they feed and how they build. Each is one command.
 | [Coverage pacemaker (fuzz)](#5-coverage-pacemaker--fuzzing-scriptsfuzzsh) | `./scripts/fuzz.sh` | crashes, hangs, and deep-path divergence via coverage-guided + grammar-aware mutation |
 | [Structural sweeps](#6-structural-sweeps-scriptssweepsh) | `./scripts/sweep.sh` | one normative rule × **every** schema position; adds a spec-**conformance** oracle |
 | [Materialized value](#7-materialized-value--element-access-scriptsmaterializesh) | `./scripts/materialize.sh` | element-access oracle — the decoded value dumped field-by-field, catching a decode the round-trip masks |
+| [Chunk invariance](#9-chunk-invariance-scriptsrun-chunkedsh) | `./scripts/run-chunked.sh` | **streaming decode** — the outcome must not depend on how the bytes arrived |
+| [Encode invariance](#10-encode-invariance-scriptsrun-encodesh) | `./scripts/run-encode.sh` | **streaming encode** — every encode surface of one implementation must emit identical bytes |
 | [Clustering](#8-clustering-cluster1) | `CLUSTER=1 ./scripts/run.sh` | reduce a divergence firehose to root causes |
 
 ### 1. Differential loop (`scripts/run.sh`)
@@ -175,7 +179,7 @@ drivers are schema-agnostic, no driver code changes — they are just rebuilt ag
 the union schema.
 
 ```sh
-./scripts/run-union.sh                 # build all 13 drivers on the union schema, differential over corpus/union
+./scripts/run-union.sh                 # build the roster on the union schema, differential over corpus/union
 ```
 
 It exercises each variant, the tag/​trailer around the union, and the union failure
@@ -208,7 +212,7 @@ crashes land in `corpus/crashes/`.
 ```sh
 ./scripts/fuzz.sh                              # C pacemaker; grow corpus/interesting
 FUZZ_TIME=300 ./scripts/fuzz.sh                # wall-clock budget in seconds (default 120)
-CORPUS=corpus/interesting ./scripts/run.sh     # replay what it found through all 13 drivers
+CORPUS=corpus/interesting ./scripts/run.sh     # replay what it found through the whole roster
 ```
 
 The mutator is a pure, standalone-testable unit; its safety/determinism soak
@@ -232,7 +236,7 @@ touched.
 
 Sweeps run **two oracles**, the second of which the differential cannot provide:
 
-- **agreement** — all 13 drivers emit the same canonical line (the usual oracle);
+- **agreement** — every driver emits the same canonical line (the usual oracle);
 - **conformance** — the agreed behaviour matches what the spec *requires*. A vector
   carries its expected outcome (`reject` / `accept` / …), so a **family-wide wrong**
   answer — all 12 uniformly accepting what the spec says must be rejected — is
@@ -286,6 +290,46 @@ causes collapse to one entry, ranked by size with a minimal representative.
 CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh   # inventory → results/CLUSTERS.md
 ```
 
+### 9. Chunk invariance (`scripts/run-chunked.sh`)
+
+The replay protocol hands each record over **whole**, so a defect that only appears at a
+chunk boundary is invisible to every suite above. The generated API has a chunked
+decoder; this suite drives it and requires that **how the bytes arrived cannot change the
+outcome** (CORELIB_PLAN §6.4 for UTF-8, §7.2 item 4 for the decoder at large).
+
+Three cuts, because they find different things:
+
+- `SOFAB_SPLIT=k` swept over every interior boundary — and when it fails it says *which*
+  boundary, which the others cannot;
+- `SOFAB_CHUNK=n` at 1…16 — `n=1` splits every varint, length word and payload, so unlike
+  a two-way split it **cannot straddle** the boundary that breaks;
+- `SOFAB_CHUNK_SCRUB=1` — not a boundary check but a **lifetime** one: a decoder that
+  borrows from a fed chunk instead of copying reads back the scrub pattern.
+
+```sh
+./scripts/run-chunked.sh               # every input × every cut, per driver
+```
+
+### 10. Encode invariance (`scripts/run-encode.sh`)
+
+The mirror image. The family is byte-canonical — a value has exactly one encoding — and
+the generated API offers up to three ways to produce it, of which the round-trip oracle
+exercises whichever one the driver happens to call. This suite requires all of them to
+emit **identical bytes**, and adds `SOFAB_FLUSH=n`: an `n`-byte `OStream` buffer, so the
+encoder crosses a buffer boundary at every offset.
+
+```sh
+./scripts/run-encode.sh                # encode() vs encodeTo() vs serialize(), every flush size
+```
+
+**Both suites are the odd ones out here: they are not differential.** They compare an
+implementation against *itself*, so they need no second implementation to be useful,
+drivers opt in one at a time — and they are the only gates that can catch a defect the
+**whole family** shares. A driver that ignored the variables would emit byte-identical
+output, indistinguishable from passing, so participation is declared explicitly in each
+script rather than inferred. A backend that genuinely cannot honour a setting exits with a
+distinct code and the gate reports it *inapplicable*, never as a pass.
+
 ## Findings & status
 
 The oracle has caught real disagreements across the family — each minimized,
@@ -313,7 +357,8 @@ catalog and the acceptance test that verifies each fix when it lands.
 | [`docs/TODO.md`](docs/TODO.md) | open work on the suite (a `[ ]` checklist) |
 | [`docs/CI.md`](docs/CI.md) | the CI workflows (image / replay / nightly) |
 | `schema/` | the fuzzed message(s), single source of truth |
-| `drivers/<lang>/` | per-language replay driver + coverage front-end (13 drivers) |
+| `drivers/<lang>/` | per-language replay driver + coverage front-end |
+| `drivers/roster` | **the** driver roster — name, builder, tags, binary; every consumer reads it |
 | `drivers/common/` | the driver contract |
 | `oracle/` | the two canonical forms (round-trip `canonical.md` + materialized/element-access `materialized.md` and its generated `materialized-schema.json`), comparator, clusterer, allowed-divergence policy |
 | `engine/mutator/` | structure-aware TLV/varint grammar mutator (+ standalone soak test) |
