@@ -35,9 +35,13 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 
-# Drivers known to implement SOFAB_SPLIT. Empty until the first one lands —
-# see docs/TODO.md. Add a name here only once it demonstrably re-feeds.
-SUPPORTED="${SOFAB_SPLIT_DRIVERS:-}"
+# Drivers known to implement the chunking variables. Add a name here only once it
+# demonstrably re-feeds — a driver that ignores them emits byte-identical output, so
+# this list is the only thing standing between the gate and a vacuous pass. Each of
+# these announces its configuration on stderr when a variable is set, so "does it
+# really re-feed" is checkable rather than asserted (see drivers/common/CONTRACT.md).
+# The rest are tracked in docs/TODO.md.
+SUPPORTED="${SOFAB_SPLIT_DRIVERS:-cpp cpp-fixed cpp-c-cpp typescript}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [chunked] no driver implements SOFAB_SPLIT yet — nothing to check." >&2

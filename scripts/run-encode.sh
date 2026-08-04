@@ -30,10 +30,11 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CORPUS="${CORPUS:-$ROOT/corpus/structured}"
 
-# Drivers known to implement SOFAB_ENCODE. Empty until the first one lands — see
-# docs/TODO.md. Add a name here only once it demonstrably re-encodes through each
-# surface its meta declares.
-SUPPORTED="${SOFAB_ENCODE_DRIVERS:-}"
+# Drivers known to implement SOFAB_ENCODE. Add a name here only once it demonstrably
+# re-encodes through each surface its meta declares — a driver that ignores the
+# variables emits byte-identical output, so this list is the only thing standing
+# between the gate and a vacuous pass. The rest are tracked in docs/TODO.md.
+SUPPORTED="${SOFAB_ENCODE_DRIVERS:-cpp cpp-fixed cpp-c-cpp typescript}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [encode] no driver implements SOFAB_ENCODE yet — nothing to check." >&2

@@ -17,8 +17,66 @@
 // "R invalid_msg"). COMPLETE returns normally (→ "A <hex>").
 import { readFileSync } from "node:fs";
 
-import { Probe } from "./message";
-import { OStream, SofabError, SofabErrorCode } from "@sofa-buffers/corelib";
+import { Probe, ProbeDecoder } from "./message";
+import { DecodeStatus, OStream, SofabError, SofabErrorCode } from "@sofa-buffers/corelib";
+
+// --- the streaming axes (drivers/common/CONTRACT.md, "The streaming axes") --------
+//
+// The replay protocol hands each record over whole and re-encodes it with one call, so
+// neither streaming surface of the generated API is reachable through it. Five
+// environment variables open them; unset, each is today's behaviour byte for byte.
+//
+// TypeScript is where crucible#132 found three bugs while building the chunked decoder
+// — a visitor callback that was simply not implemented (an unimplemented optional
+// callback is a NO-OP in TS, so the field silently vanished), and two more — none of
+// which crashed, failed to compile, or turned the conformance suite red. That is the
+// class of defect this axis exists for.
+//
+// This backend has ONE encode surface: `serialize(os)`. There is no `encode()` and no
+// `encodeTo()`, so `SOFAB_ENCODE=new|to` must be a hard error rather than a fallback —
+// reporting a mode as passing that never ran is the failure the encode gate exists to
+// prevent (meta: encode_surfaces=stream).
+const _num = (name: string): number => {
+  const v = process.env[name];
+  return v ? parseInt(v, 10) || 0 : 0;
+};
+const _SPLIT = _num("SOFAB_SPLIT");
+const _CHUNK = _num("SOFAB_CHUNK");
+const _FLUSH = _num("SOFAB_FLUSH");
+const _SCRUB = !!process.env.SOFAB_CHUNK_SCRUB && process.env.SOFAB_CHUNK_SCRUB !== "0";
+const _ENCODE = process.env.SOFAB_ENCODE ?? "";
+if (_ENCODE && _ENCODE !== "stream") {
+  process.stderr.write(
+    `crucible-ts: SOFAB_ENCODE=${_ENCODE} — this backend has only 'stream' ` +
+      `(no encode(), no encodeTo())\n`,
+  );
+  process.exit(2);
+}
+// Announce the configuration on stderr (never parsed). Without it a driver that
+// silently ignored the variables would be indistinguishable from one that honours
+// them — identical stdout either way — which is the vacuous pass the gate's opt-in
+// roster guards against. This is the same guard at the driver level.
+if (_SPLIT || _CHUNK || _SCRUB || _FLUSH || _ENCODE) {
+  process.stderr.write(
+    `crucible-ts: streaming cfg split=${_SPLIT} chunk=${_CHUNK} ` +
+      `scrub=${_SCRUB ? 1 : 0} enc=${_ENCODE || "stream"} flush=${_FLUSH}\n`,
+  );
+}
+
+// How the record is cut on its way into the decoder. Never an empty chunk: k<=0,
+// k>=len and n>=len all mean one chunk holding the whole record. A zero-length record
+// yields no chunks and is not fed at all.
+function chunksOf(data: Uint8Array): Uint8Array[] {
+  const len = data.length;
+  if (len === 0) return [];
+  if (_CHUNK > 0) {
+    const out: Uint8Array[] = [];
+    for (let o = 0; o < len; o += _CHUNK) out.push(data.subarray(o, Math.min(o + _CHUNK, len)));
+    return out;
+  }
+  if (_SPLIT > 0 && _SPLIT < len) return [data.subarray(0, _SPLIT), data.subarray(_SPLIT)];
+  return [data];
+}
 
 // --- materialized value dump (oracle/materialized.md), SOFAB_MATERIALIZE=1 -------
 // Instead of "A <hex(re-encode)>", emit "A <dump(decoded value)>": every field and
@@ -151,9 +209,81 @@ function rejectClass(e: unknown): string {
   return e instanceof SofabError ? "invalid_msg" : "other";
 }
 
+// Re-encode through the streaming surface, which is the only one this backend has.
+// SOFAB_FLUSH=n gives the OStream an n-byte buffer draining to a sink, so the message
+// arrives in n-byte pieces and the encoder crosses a buffer boundary at every offset —
+// the encode-side mirror of SOFAB_CHUNK=1. The bytes must not change either way.
+function encodeBytes(m: Probe): Uint8Array {
+  if (_FLUSH > 0) {
+    const parts: Uint8Array[] = [];
+    const os = new OStream(new Uint8Array(_FLUSH), 0, (c) => parts.push(Uint8Array.from(c)));
+    try {
+      m.serialize(os);
+    } catch (e) {
+      // corelib-ts's OStream.ensure(n) needs n CONTIGUOUS bytes and only flushes
+      // before checking, so a caller buffer smaller than the largest single write
+      // (e.g. 4 for an fp32, count*10 for a varint array) cannot encode at all. That
+      // is a property of this backend, not of the message: corelib-cpp streams the
+      // same value through a 1-byte buffer. Exit 3 — distinct from 2, "the backend
+      // has no such surface" — so the gate can report the size as inapplicable
+      // instead of either failing or, worse, silently skipping it.
+      if (e instanceof SofabError && e.code === SofabErrorCode.BufferFull) {
+        process.stderr.write(
+          `crucible-ts: SOFAB_FLUSH=${_FLUSH} is below this backend's contiguous-write ` +
+            `requirement (OStream.ensure needs n contiguous bytes): ${e.message}\n`,
+        );
+        process.exit(3);
+      }
+      throw e;
+    }
+    os.flush();
+    const total = parts.reduce((n, p) => n + p.length, 0);
+    const out = new Uint8Array(total);
+    let o = 0;
+    for (const p of parts) { out.set(p, o); o += p.length; }
+    return out;
+  }
+  const os = new OStream();
+  m.serialize(os);
+  return os.bytes();
+}
+
+// Chunked decode via the generated ProbeDecoder (crucible#132; new in sofabgen
+// cfe5250b). Used ONLY when a chunking variable is set, so the default path stays the
+// one-shot Probe.decode byte for byte — which is also what makes the comparison
+// meaningful: the gate then checks `decode(whole) == feed(a); feed(b); …`, two
+// genuinely different code paths, rather than one path against itself.
+//
+// The verdict comes from `status`, never from `finish()`: finish() throws mid-field
+// here and returns null in Dart, so routing the verdict through it would bake a
+// backend difference into the canonical line (CONTRACT.md).
+function canonicalChunked(data: Uint8Array): string {
+  const d = new ProbeDecoder();
+  try {
+    for (const c of chunksOf(data)) {
+      // Scrub mode needs a buffer the driver owns: feed it, then overwrite. A decoder
+      // that borrowed from the chunk instead of copying out of it reads back 0xA5.
+      const buf = _SCRUB ? Uint8Array.from(c) : c;
+      d.feed(buf);
+      if (_SCRUB) buf.fill(0xa5);
+    }
+  } catch (e) {
+    if (e instanceof SofabError && e.code === SofabErrorCode.Incomplete) return "I";
+    if (e instanceof SofabError && e.code === SofabErrorCode.LimitExceeded) return "L";
+    return "R " + rejectClass(e);
+  }
+  const st = d.status;
+  if (st === DecodeStatus.Invalid) return "R invalid_msg";
+  if (st !== DecodeStatus.Complete) return "I";
+  const m = d.message;
+  if (_MATERIALIZE) return "A " + materialize(m);
+  return "A " + _hex(encodeBytes(m));
+}
+
 function canonical(data: Uint8Array): string {
   // decode -> re-encode -> hex (oracle/canonical.md). The generated TS message
   // has no encode(), so serialize into an in-memory OStream and read its bytes.
+  if (_SPLIT || _CHUNK || _SCRUB) return canonicalChunked(data);
   let m: Probe;
   try {
     m = Probe.decode(data);
@@ -180,13 +310,7 @@ function canonical(data: Uint8Array): string {
   if (_MATERIALIZE) {
     return "A " + materialize(m);
   }
-  const os = new OStream();
-  m.serialize(os);
-  const bytes = os.bytes();
-  const hex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return "A " + hex;
+  return "A " + _hex(encodeBytes(m));
 }
 
 function main(): void {

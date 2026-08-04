@@ -24,6 +24,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+#include <span>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "probe.hpp" // generated; pulls the variant's sofab/sofab.hpp
@@ -51,6 +55,175 @@ static const char *reject_class(sofab::Error e)
     }
 }
 
+// ---- the streaming axes (drivers/common/CONTRACT.md, "The streaming axes") ------
+//
+// The replay protocol hands each record over whole and re-encodes it with one call, so
+// the generated API's streaming surfaces are unreachable through it. Five environment
+// variables open them; unset, every one of them is today's behaviour byte for byte.
+//
+// C++ is the one backend with **no generated `decoder()`** (crucible#132): chunked
+// decode is driven by hand. That is not a workaround here — `try_decode` is itself just
+// an `IStreamInline` bound to `deserialize` plus a single `feed`, so feeding the same
+// stream in pieces is the identical construction with the identical schema handling.
+// Anything else (a bare `IStreamObject`, say) would decode under different rules and
+// report a chunk-invariance failure that was really a try_decode-vs-feed difference.
+struct StreamCfg
+{
+    long split = 0;                            // SOFAB_SPLIT=k  — two chunks at k
+    long chunk = 0;                            // SOFAB_CHUNK=n  — fixed-size chunks
+    bool scrub = false;                        // SOFAB_CHUNK_SCRUB=1
+    enum Enc { EncNew, EncTo, EncStream } enc = EncNew;  // SOFAB_ENCODE
+    long flush = 0;                            // SOFAB_FLUSH=n  — OStream buffer size
+};
+
+static StreamCfg g_cfg;
+
+static long env_long(const char *name)
+{
+    const char *v = std::getenv(name);
+    if (!v || !*v) return 0;
+    return std::strtol(v, nullptr, 10);
+}
+
+// Read once at startup. An unknown SOFAB_ENCODE value is a hard error rather than a
+// fallback: reporting a mode as passing that never ran is the one failure the encode
+// gate exists to prevent, so the driver must never quietly substitute another surface.
+static void read_stream_cfg()
+{
+    g_cfg.split = env_long("SOFAB_SPLIT");
+    g_cfg.chunk = env_long("SOFAB_CHUNK");
+    g_cfg.flush = env_long("SOFAB_FLUSH");
+    const char *s = std::getenv("SOFAB_CHUNK_SCRUB");
+    g_cfg.scrub = s && *s && std::strcmp(s, "0") != 0;
+    const char *e = std::getenv("SOFAB_ENCODE");
+    if (!e || !*e || std::strcmp(e, "new") == 0)       g_cfg.enc = StreamCfg::EncNew;
+    else if (std::strcmp(e, "to") == 0)                g_cfg.enc = StreamCfg::EncTo;
+    else if (std::strcmp(e, "stream") == 0)            g_cfg.enc = StreamCfg::EncStream;
+    else
+    {
+        std::fprintf(stderr, "crucible-cpp: unknown SOFAB_ENCODE=%s "
+                             "(this backend has new, to, stream)\n", e);
+        std::exit(2);
+    }
+
+    // Announce the configuration on stderr (never parsed — CONTRACT.md). Without this
+    // a driver that silently ignored the variables would be indistinguishable from one
+    // that honours them: identical stdout either way. That is the vacuous pass the
+    // opt-in roster guards against at the gate level; this is the same guard at the
+    // driver level, and it is what makes "this driver really re-feeds" checkable
+    // rather than asserted.
+    if (g_cfg.split || g_cfg.chunk || g_cfg.scrub || g_cfg.flush ||
+        g_cfg.enc != StreamCfg::EncNew)
+    {
+        std::fprintf(stderr,
+                     "crucible-cpp: streaming cfg split=%ld chunk=%ld scrub=%d "
+                     "enc=%s flush=%ld\n",
+                     g_cfg.split, g_cfg.chunk, g_cfg.scrub ? 1 : 0,
+                     g_cfg.enc == StreamCfg::EncNew ? "new"
+                         : g_cfg.enc == StreamCfg::EncTo ? "to" : "stream",
+                     g_cfg.flush);
+    }
+}
+
+// How the record is cut on its way into the decoder. Never an empty chunk: k<=0,
+// k>=len and n>=len all mean one chunk holding the whole record, which is exactly
+// today's single feed. A zero-length record yields no chunks at all — the caller
+// treats it as the valid all-defaults message and does not feed it (corelib-c-cpp
+// asserts datalen>0).
+static std::vector<std::pair<std::size_t, std::size_t>> slices(std::size_t len)
+{
+    std::vector<std::pair<std::size_t, std::size_t>> out;
+    if (len == 0) return out;
+    if (g_cfg.chunk > 0)
+    {
+        std::size_t n = static_cast<std::size_t>(g_cfg.chunk);
+        for (std::size_t o = 0; o < len; o += n)
+            out.emplace_back(o, std::min(n, len - o));
+        return out;
+    }
+    if (g_cfg.split > 0 && static_cast<std::size_t>(g_cfg.split) < len)
+    {
+        std::size_t k = static_cast<std::size_t>(g_cfg.split);
+        out.emplace_back(0, k);
+        out.emplace_back(k, len - k);
+        return out;
+    }
+    out.emplace_back(0, len);
+    return out;
+}
+
+// Feed `data` in the configured pieces through ONE stream, exactly as try_decode does
+// with one piece. The verdict is the last feed's Result — C++ has no `finish()`, so
+// this Result *is* the status the contract requires the verdict to come from. An error
+// that is not `incomplete` is terminal and stops the feeding, per the contract.
+//
+// SOFAB_CHUNK_SCRUB copies each piece into a buffer the driver owns, feeds that, and
+// overwrites it with 0xA5 once `feed` returns. A decoder that borrowed from the chunk
+// rather than copying out of it then reads back the scrub pattern.
+static sofab::IStreamImpl::Result decode_streamed(const std::uint8_t *data,
+                                                  std::size_t len,
+                                                  message::Probe &m)
+{
+    m.reset();
+    sofab::IStreamInline *isp = nullptr;
+    sofab::IStreamInline is{[&m, &isp](sofab::id id, std::size_t size, std::size_t count) {
+        m.deserialize(*isp, id, size, count);
+    }};
+    isp = &is;
+
+    std::vector<std::uint8_t> scratch;
+    sofab::IStreamImpl::Result r = is.feed(data, 0);  // placeholder; overwritten below
+    for (auto [off, n] : slices(len))
+    {
+        if (g_cfg.scrub)
+        {
+            scratch.assign(data + off, data + off + n);
+            r = is.feed(scratch.data(), n);
+            std::memset(scratch.data(), 0xA5, n);
+        }
+        else
+        {
+            r = is.feed(data + off, n);
+        }
+        if (!r.ok() && !r.incomplete()) break;   // INVALID is terminal
+    }
+    return r;
+}
+
+// Which generated call produces the `A <hex>` payload. All three must emit identical
+// bytes for one decoded value — the family is byte-canonical — and SOFAB_FLUSH must not
+// change that either: it hands the OStream an n-byte buffer, so the sink receives the
+// message in n-byte pieces and the encoder crosses a buffer boundary at every offset.
+static std::vector<std::uint8_t> encode_via(const message::Probe &m)
+{
+    if (g_cfg.enc == StreamCfg::EncNew)
+    {
+        return m.encode();
+    }
+    if (g_cfg.enc == StreamCfg::EncTo)
+    {
+        std::vector<std::uint8_t> buf(message::Probe::_maxSize);
+        std::size_t used = m.encodeTo(buf.data(), buf.size());
+        buf.resize(used);
+        return buf;
+    }
+    // stream: serialize into an OStream, collecting what it flushes.
+    std::vector<std::uint8_t> out;
+    std::size_t cap = g_cfg.flush > 0 ? static_cast<std::size_t>(g_cfg.flush)
+                                      : message::Probe::_maxSize;
+    if (cap == 0) cap = 1;
+    std::shared_ptr<std::uint8_t[]> buf(new std::uint8_t[cap]);
+    {
+        sofab::OStream os{[&out](std::span<const std::uint8_t> s) {
+                              out.insert(out.end(), s.begin(), s.end());
+                          },
+                          buf, cap};
+        (void)m.serialize(os);
+        os.flush();   // hand over whatever is still buffered
+    }
+    return out;
+}
+
 static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *out)
 {
     message::Probe m; // schema defaults
@@ -67,9 +240,10 @@ static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *o
         sofab::IStreamObject<message::Probe> in;
         auto r = in.feed(data, len);
 #else
-        // Route through the GENERATED try_decode: installs the §5.2 measure schema
-        // (F-0032), fills `m` on ok, returns the same Result as feed.
-        auto r = message::Probe::try_decode(data, len, m);
+        // decode_streamed is try_decode's own construction — an IStreamInline bound to
+        // `deserialize` — fed in the pieces SOFAB_SPLIT / SOFAB_CHUNK ask for. With
+        // none of them set that is a single feed, i.e. try_decode exactly.
+        auto r = decode_streamed(data, len, m);
 #endif
         if (r.incomplete())
         {
@@ -118,8 +292,9 @@ static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *o
         return;
     }
 
-    // Accept: re-encode the decoded value and emit its canonical wire as hex.
-    std::vector<std::uint8_t> enc = m.encode();
+    // Accept: re-encode the decoded value and emit its canonical wire as hex, through
+    // whichever encode surface SOFAB_ENCODE selects (default: the allocating encode()).
+    std::vector<std::uint8_t> enc = encode_via(m);
     std::fputs("A ", out);
     for (std::uint8_t b : enc)
     {
@@ -130,6 +305,7 @@ static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *o
 
 int main()
 {
+    read_stream_cfg();
     std::vector<std::uint8_t> buf;
     for (;;)
     {
