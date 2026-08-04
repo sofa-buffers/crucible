@@ -42,19 +42,19 @@ const matgen = @import("materialize_gen.zig");
 // Zig's generated Decoder exposes status(), so the verdict comes from there rather
 // than from finish() (which returns an error mid-field).
 //
-// SOFAB_CHUNK_SCRUB is NOT APPLICABLE here, and that is documented backend
-// behaviour rather than a defect. The generated Decoder states it outright: "a
-// string or blob that arrives whole inside one chunk is borrowed from that chunk
-// ... so a fed chunk must outlive the message." Scrubbing a chunk after feed
-// therefore violates this backend's contract instead of testing it, and the driver
-// exits 3 (the same "not applicable at this setting" code the encode axis uses for
-// an unusable SOFAB_FLUSH) rather than manufacturing a mismatch. That the
-// chunk-lifetime contract differs across backends at all — corelib-cpp, -rs, -c-cpp
-// and the managed runtimes all copy — is worth a family-level answer; recorded in
-// docs/TODO.md.
+// SOFAB_CHUNK_SCRUB used to be inapplicable here: the generated Decoder borrowed a
+// string/blob that arrived whole inside one chunk, and required a fed chunk to
+// outlive the message, so scrubbing violated the backend's contract instead of
+// testing it. generator#295 removed the borrow from the STREAMING path — the
+// decoder now owns its payloads, and only the contiguous one-shot decode still
+// borrows, from the caller's own buffer where that is safe. So the scrub axis
+// applies here like everywhere else, and the exit-3 carve-out is gone: a carve-out
+// that outlives its reason is exactly the silent exclusion these mechanisms exist
+// to prevent.
 const StreamCfg = struct {
     split: usize = 0,
     chunk: usize = 0,
+    scrub: bool = false,
     enc_stream: bool = false,
     flush: usize = 0,
 };
@@ -70,12 +70,7 @@ fn readStreamCfg(init: std.process.Init) StreamCfg {
     cfg.chunk = envUsize(init, "SOFAB_CHUNK");
     cfg.flush = envUsize(init, "SOFAB_FLUSH");
     if (init.environ_map.get("SOFAB_CHUNK_SCRUB")) |v| {
-        if (v.len != 0 and !std.mem.eql(u8, v, "0")) {
-            std.debug.print("crucible-zig: SOFAB_CHUNK_SCRUB is not applicable — this " ++
-                "backend borrows string/blob payloads that arrive whole in one chunk, " ++
-                "and documents that a fed chunk must outlive the message\n", .{});
-            std.process.exit(3);
-        }
+        cfg.scrub = v.len != 0 and !std.mem.eql(u8, v, "0");
     }
     if (init.environ_map.get("SOFAB_ENCODE")) |e| {
         if (std.mem.eql(u8, e, "stream")) {
@@ -93,10 +88,10 @@ fn readStreamCfg(init: std.process.Init) StreamCfg {
     // Announce on stderr (never parsed). A driver that silently ignored these would
     // be indistinguishable from one that honours them — stdout is identical either
     // way — so this makes "it really re-feeds" checkable rather than asserted.
-    if (cfg.split != 0 or cfg.chunk != 0 or cfg.flush != 0 or cfg.enc_stream) {
-        std.debug.print("crucible-zig: streaming cfg split={d} chunk={d} enc={s} " ++
-            "flush={d}\n", .{
-            cfg.split, cfg.chunk,
+    if (cfg.split != 0 or cfg.chunk != 0 or cfg.scrub or cfg.flush != 0 or cfg.enc_stream) {
+        std.debug.print("crucible-zig: streaming cfg split={d} chunk={d} scrub={d} " ++
+            "enc={s} flush={d}\n", .{
+            cfg.split, cfg.chunk, @intFromBool(cfg.scrub),
             if (cfg.enc_stream) @as([]const u8, "stream") else @as([]const u8, "new"),
             cfg.flush,
         });
@@ -173,8 +168,18 @@ pub fn main(init: std.process.Init) !void {
                 if (cfg.chunk == 0 and cfg.split > 0 and cfg.split < n and off == 0)
                     step = cfg.split;
                 if (off + step > n) step = n - off;
-                _ = d.feed(data[off .. off + step]) catch |e| break :blk @as(
+                // Scrub needs a buffer the driver owns: feed it, then overwrite. A
+                // decoder that borrowed from the chunk instead of copying out of it
+                // reads back 0xA5.
+                const piece = if (cfg.scrub) blk2: {
+                    const copy = a.alloc(u8, step) catch break :blk @as(
+                        message.DecodeError!message.Probe, error.BufferFull);
+                    @memcpy(copy, data[off .. off + step]);
+                    break :blk2 copy;
+                } else data[off .. off + step];
+                _ = d.feed(piece) catch |e| break :blk @as(
                     message.DecodeError!message.Probe, e);
+                if (cfg.scrub) @memset(@constCast(piece), 0xA5);
                 off += step;
             }
             // Verdict from status(), never from finish() (CONTRACT.md).
