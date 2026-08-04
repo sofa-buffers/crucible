@@ -37,14 +37,7 @@ rust-nostd         rust     rs-no-std  blocking          drivers/rust/build/rs-n
 cpp                cpp      cpp        blocking,limits   drivers/cpp/build/cpp/driver
 cpp-fixed          cpp      cpp-fixed  blocking          drivers/cpp/build/cpp-fixed/driver
 cpp-c-cpp          cpp      c-cpp      blocking          drivers/cpp/build/c-cpp/driver
-# QUARANTINED 2026-08-04 — F-0057 (corelib-c-cpp#131): every zero-length array field
-# aborts an asserts-enabled build. IStreamImpl::readArray resizes the growable
-# destination to 0, then hands std::span{value}.data() — nullptr for an empty
-# std::vector — to sofab_istream_read_array, whose `var != NULL` precondition a valid
-# message therefore trips. Its fixed-capacity sibling cpp-c-cpp is unaffected: an
-# InlineVector's data() always points at inline storage. Un-quarantine when F-0057
-# closes; the config found the bug on its first run and is worth keeping.
-cpp-c-cpp-dyn      cpp      c-cpp-dyn  -                 drivers/cpp/build/c-cpp-dyn/driver
+cpp-c-cpp-dyn      cpp      c-cpp-dyn  blocking          drivers/cpp/build/c-cpp-dyn/driver
 py-cython          python   cython     blocking,limits   drivers/python/build/py-cython
 py-pure            python   pure       blocking,limits   drivers/python/build/py-pure
 java               java     -          blocking,limits   drivers/java/build/driver

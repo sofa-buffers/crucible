@@ -46,7 +46,7 @@ CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 # elements alias each other. Including it would make this gate permanently red for a
 # defect that is already filed — the same reasoning results/known-clusters.txt rests
 # on. Add it back when F-0058 closes; that one word is the whole change.
-SUPPORTED="${SOFAB_SPLIT_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp typescript java csharp dart py-cython py-pure}"
+SUPPORTED="${SOFAB_SPLIT_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp cpp-c-cpp-dyn typescript java csharp dart py-cython py-pure}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [chunked] no driver implements SOFAB_SPLIT yet — nothing to check." >&2

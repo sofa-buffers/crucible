@@ -1,7 +1,9 @@
 # F-0059 — corelib-py's pure engine writes into the drained buffer after a flush, so everything past the first flush is lost
 
-**Status:** 🔴 **OPEN** — filed against corelib-py ([`results/FINDINGS.md`](../../results/FINDINGS.md)
-owns this finding's state; this file is the evidence).
+**Status:** ✅ **RESOLVED** — [corelib-py#61](https://github.com/sofa-buffers/corelib-py/issues/61) fixed by
+[corelib-py#62](https://github.com/sofa-buffers/corelib-py/pull/62), merged 2026-08-04: `_put` now re-reads
+`self._fixed` / `self._cap` after `_drain()`. [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this
+finding's state; this file is the evidence.
 
 **Found 2026-08-04**, on the first run of the **streaming-encode axis**
 ([crucible#132](https://github.com/sofa-buffers/crucible/issues/132)). Invisible to every other
@@ -105,8 +107,8 @@ drain: the existing tests appear to cover `over_buffer` only where the message f
 
 ## Effect on the Crucible gates
 
-`py-pure` is in the encode-invariance roster and this makes that gate red, so it is held out of
-`scripts/run-encode.sh`'s opt-in list while the finding is open — the same treatment `zig` has on
-the chunked gate for F-0058, and for the same reason (`results/known-clusters.txt`: a gate that is
-permanently red for an already-filed defect stops meaning "something new broke"). `py-cython` stays
-in, and both stay in the chunked gate, which they pass. Recorded in `docs/TODO.md`.
+`py-pure` was held out of `scripts/run-encode.sh`'s opt-in list while this was open — the same
+treatment `zig` has on the chunked gate for F-0058, and for the same reason
+(`results/known-clusters.txt`: a gate that is permanently red for an already-filed defect stops
+meaning "something new broke"). `py-cython` stayed in, because the split between them *was* the
+finding. **Both are back in both gates as of 2026-08-04**, with the fix merged upstream.
