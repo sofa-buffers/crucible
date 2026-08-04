@@ -85,10 +85,20 @@ otherwise drift eleven ways, so it is normative:
    **terminal** — emit `R <class>` and feed no more.
 2. After the last chunk, read the decoder's **`status`**, and map it exactly as the
    one-shot path maps its outcome: `COMPLETE` → `A <hex>`, `INCOMPLETE` → `I`.
-3. **Never derive the verdict from `finish()`.** Most backends throw there when the
-   stream ended mid-field, and one (Dart) returns null instead — routing the verdict
-   through it would encode that difference into the canonical line. Call it only once
-   `status` already says `COMPLETE`, or not at all and read `message`.
+3. **Derive the verdict the way the one-shot path derives it**, so the two cannot
+   differ for reasons of API shape rather than of decoding.
+   - Where the backend exposes a **`status`**, read that. Do **not** route the verdict
+     through `finish()`: most backends throw there when the stream ended mid-field and
+     one (Dart) returns null instead, so the canonical line would carry that
+     difference.
+   - Where `finish()` is the **only** terminal check, use it — but only because, in
+     those backends, it returns the *same* three-valued outcome the one-shot path
+     returns. Rust is the case in point: its generated `Decoder` has **no `status`**
+     (crucible#132's API table overstates this — verified absent at sofabgen
+     `cfe5250b`), and `finish()` yields `Result<Probe, sofab::Error>`, exactly what
+     `try_decode` yields. Routing through it there introduces nothing.
+   - Mid-stream, an `Incomplete` from a `feed` is **not** terminal — it only says
+     *those bytes* ended mid-field. Only a non-`Incomplete` error stops the feeding.
 4. A record of length 0 is the valid all-defaults message and is **not fed at all**, as
    in the one-shot path (corelib-c-cpp asserts `datalen>0`).
 5. Never synthesize an empty chunk: `k<=0`, `k>=len` and `n>=len` all mean one chunk

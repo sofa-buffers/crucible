@@ -215,6 +215,169 @@ static void md_obj(FILE *o, const sofab_object_descr_t *info, const uint8_t *bas
     fputc('}', o);
 }
 
+/* ---- the streaming axes (drivers/common/CONTRACT.md) -------------------------
+ *
+ * The replay protocol hands each record over whole and re-encodes it with one call,
+ * so neither streaming surface of the generated API is reachable through it. Unset,
+ * every variable below is today's behaviour byte for byte.
+ *
+ * C has no allocating encode -- `message_probe_encode` writes into a caller buffer,
+ * which IS the `to` surface -- so this driver's default path is already `to` and
+ * SOFAB_ENCODE=new is a hard error rather than a fallback (meta:
+ * encode_surfaces=to,stream).
+ *
+ * Like Rust, the generated decoder has no `status`: the doc on
+ * message_probe_decoder_t states the rule directly -- a feed reports only whether
+ * THE BYTES ended on a field boundary (OK) or mid-field (INCOMPLETE), and "the last
+ * verdict says whether it ended half-read". So the last feed's return is the status,
+ * mapped exactly as the one-shot return is. */
+enum enc_surface { ENC_TO, ENC_STREAM };
+
+static struct {
+    long split;
+    long chunk;
+    int scrub;
+    enum enc_surface enc;
+    long flush;
+} g_cfg;
+
+static long env_long(const char *name)
+{
+    const char *v = getenv(name);
+    if (!v || !*v) return 0;
+    return strtol(v, NULL, 10);
+}
+
+static void read_stream_cfg(void)
+{
+    const char *e;
+    g_cfg.split = env_long("SOFAB_SPLIT");
+    g_cfg.chunk = env_long("SOFAB_CHUNK");
+    g_cfg.flush = env_long("SOFAB_FLUSH");
+    e = getenv("SOFAB_CHUNK_SCRUB");
+    g_cfg.scrub = e && *e && strcmp(e, "0") != 0;
+    e = getenv("SOFAB_ENCODE");
+    if (!e || !*e || strcmp(e, "to") == 0)      g_cfg.enc = ENC_TO;
+    else if (strcmp(e, "stream") == 0)          g_cfg.enc = ENC_STREAM;
+    else if (strcmp(e, "new") == 0)
+    {
+        fprintf(stderr, "crucible-c: SOFAB_ENCODE=new — C has no allocating encode "
+                        "(it has to, stream)\n");
+        exit(2);
+    }
+    else
+    {
+        fprintf(stderr, "crucible-c: unknown SOFAB_ENCODE=%s (this backend has to, "
+                        "stream)\n", e);
+        exit(2);
+    }
+    /* Announce on stderr (never parsed). A driver that silently ignored these would
+     * be indistinguishable from one that honours them -- identical stdout either
+     * way -- so this makes "it really re-feeds" checkable rather than asserted. */
+    if (g_cfg.split || g_cfg.chunk || g_cfg.scrub || g_cfg.flush ||
+        g_cfg.enc != ENC_TO)
+    {
+        fprintf(stderr, "crucible-c: streaming cfg split=%ld chunk=%ld scrub=%d "
+                        "enc=%s flush=%ld\n",
+                g_cfg.split, g_cfg.chunk, g_cfg.scrub,
+                g_cfg.enc == ENC_TO ? "to" : "stream", g_cfg.flush);
+    }
+}
+
+/* Feed the record in the configured pieces through ONE decoder. Never an empty
+ * chunk: k<=0, k>=len and n>=len all mean one chunk holding the whole record, which
+ * matters twice over here -- it is today's single feed, and sofab_istream_feed
+ * asserts datalen>0. Returns the last feed's verdict. */
+static sofab_ret_t decode_streamed(message_probe_t *m, const uint8_t *buf, size_t len)
+{
+    message_probe_decoder_t d;
+    sofab_ret_t r = SOFAB_RET_OK;
+    uint8_t scratch[MESSAGE_PROBE_MAX_SIZE];
+    size_t step, off;
+
+    message_probe_decoder_init(&d, m);
+
+    if (g_cfg.chunk > 0)                                   step = (size_t)g_cfg.chunk;
+    else if (g_cfg.split > 0 && (size_t)g_cfg.split < len) step = (size_t)g_cfg.split;
+    else                                                   step = len;
+
+    off = 0;
+    while (off < len)
+    {
+        size_t n = len - off < step ? len - off : step;
+        /* SOFAB_SPLIT is two chunks, not fixed-size: after the first cut, the rest
+         * goes in one piece. */
+        if (g_cfg.chunk <= 0 && off > 0) n = len - off;
+        if (g_cfg.scrub && n <= sizeof(scratch))
+        {
+            /* Scrub needs a buffer the driver owns: feed it, then overwrite. A
+             * decoder that borrowed from the chunk rather than copying out of it
+             * reads back 0xA5. */
+            memcpy(scratch, buf + off, n);
+            r = message_probe_decoder_feed(&d, scratch, n);
+            memset(scratch, 0xA5, n);
+        }
+        else
+        {
+            r = message_probe_decoder_feed(&d, buf + off, n);
+        }
+        /* INCOMPLETE mid-stream only means THOSE bytes ended mid-field; any other
+         * error is terminal. */
+        if (r != SOFAB_RET_OK && r != SOFAB_RET_INCOMPLETE) break;
+        off += n;
+    }
+    return r;
+}
+
+/* Accumulator for the streaming encode's flush callback. */
+struct enc_acc {
+    uint8_t bytes[MESSAGE_PROBE_MAX_SIZE];
+    size_t len;
+};
+
+static void enc_flush_cb(sofab_ostream_t *ctx, const uint8_t *data, size_t len,
+                         void *usrptr)
+{
+    struct enc_acc *a = (struct enc_acc *)usrptr;
+    (void)ctx;
+    if (a->len + len <= sizeof(a->bytes))
+    {
+        memcpy(a->bytes + a->len, data, len);
+        a->len += len;
+    }
+}
+
+/* Which generated call produces the `A <hex>` payload. Both surfaces must emit
+ * identical bytes for one decoded value, and SOFAB_FLUSH must not change that: it
+ * gives the ostream an n-byte buffer with a flush callback, so the encoder crosses a
+ * buffer boundary at every offset -- the encode-side mirror of SOFAB_CHUNK=1. */
+static sofab_ret_t encode_via(const message_probe_t *m, uint8_t *dst, size_t dstlen,
+                              size_t *used)
+{
+    if (g_cfg.enc == ENC_TO)
+    {
+        return message_probe_encode(m, dst, dstlen, used);
+    }
+    {
+        struct enc_acc acc;
+        sofab_ostream_t os;
+        uint8_t small[MESSAGE_PROBE_MAX_SIZE];
+        size_t cap = g_cfg.flush > 0 ? (size_t)g_cfg.flush : sizeof(small);
+        sofab_ret_t r;
+        acc.len = 0;
+        if (cap == 0) cap = 1;
+        if (cap > sizeof(small)) cap = sizeof(small);
+        sofab_ostream_init(&os, small, cap, 0, enc_flush_cb, &acc);
+        r = message_probe_encode_to(&os, m);
+        (void)sofab_ostream_flush(&os);
+        if (r != SOFAB_RET_OK) return r;
+        if (acc.len > dstlen) return SOFAB_RET_E_BUFFER_FULL;
+        memcpy(dst, acc.bytes, acc.len);
+        *used = acc.len;
+        return SOFAB_RET_OK;
+    }
+}
+
 /* Decode one candidate input and write its canonical line to `out`
  * (oracle/canonical.md: decode -> re-encode -> hex). */
 static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
@@ -230,7 +393,13 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
      * false abort. See docs/ARCHITECTURE.md. */
     if (len > 0)
     {
-        sofab_ret_t r = message_probe_decode(&m, buf, len);
+        /* The chunked path is taken ONLY when a chunking variable is set, so the
+         * default stays the one-shot message_probe_decode byte for byte -- which is
+         * also what makes the gate meaningful: it then compares two genuinely
+         * different code paths rather than one against itself. */
+        sofab_ret_t r = (g_cfg.split || g_cfg.chunk || g_cfg.scrub)
+                            ? decode_streamed(&m, buf, len)
+                            : message_probe_decode(&m, buf, len);
         if (r == SOFAB_RET_INCOMPLETE)
         {
             /* Decode ended mid-field or with an open sequence: valid so far but
@@ -260,7 +429,7 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
     /* Accept: re-encode the decoded value and emit its canonical wire as hex. */
     uint8_t enc[MESSAGE_PROBE_MAX_SIZE];
     size_t used = 0;
-    sofab_ret_t er = message_probe_encode(&m, enc, sizeof(enc), &used);
+    sofab_ret_t er = encode_via(&m, enc, sizeof(enc), &used);
     if (er != SOFAB_RET_OK)
     {
         fprintf(out, "R %s\n", reject_class(er));
@@ -319,6 +488,8 @@ int main(void)
 {
     uint8_t *buf = NULL;
     size_t cap = 0;
+
+    read_stream_cfg();
 
     for (;;)
     {

@@ -41,7 +41,7 @@ CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 # these announces its configuration on stderr when a variable is set, so "does it
 # really re-feed" is checkable rather than asserted (see drivers/common/CONTRACT.md).
 # The rest are tracked in docs/TODO.md.
-SUPPORTED="${SOFAB_SPLIT_DRIVERS:-cpp cpp-fixed cpp-c-cpp typescript}"
+SUPPORTED="${SOFAB_SPLIT_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp typescript}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [chunked] no driver implements SOFAB_SPLIT yet — nothing to check." >&2

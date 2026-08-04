@@ -27,6 +27,153 @@
 use sofab::Error;
 use std::io::{Read, Write};
 
+// ---- the streaming axes (drivers/common/CONTRACT.md, "The streaming axes") -------
+//
+// The replay protocol hands each record over whole and re-encodes it with one call, so
+// neither streaming surface of the generated API is reachable through it. Unset, every
+// variable below is today's behaviour byte for byte.
+//
+// Rust's generated `Decoder` has **no `status`** — crucible#132's API table says every
+// chunked decoder exposes one, and at sofabgen cfe5250b this backend does not. So the
+// verdict comes from `finish()`, which is sound here for the reason the contract gives:
+// `finish()` returns `Result<Probe, sofab::Error>`, the *same* three-valued outcome
+// `try_decode` returns, so routing through it introduces no API-shape difference. It is
+// also more than a formality — `finish()` feeds an empty chunk to probe end-of-input,
+// which is exactly what makes a truncated stream an error rather than a half-filled
+// value.
+//
+// This backend has no `encodeTo`, so `SOFAB_ENCODE=to` is a hard error rather than a
+// fallback (meta: encode_surfaces=new,stream).
+#[derive(Clone, Copy, PartialEq)]
+enum EncSurface {
+    New,
+    Stream,
+}
+
+struct StreamCfg {
+    split: usize,
+    chunk: usize,
+    scrub: bool,
+    enc: EncSurface,
+    flush: usize,
+}
+
+fn env_usize(name: &str) -> usize {
+    std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(0)
+}
+
+fn read_stream_cfg() -> StreamCfg {
+    let enc = match std::env::var("SOFAB_ENCODE").as_deref() {
+        Ok("to") => {
+            eprintln!(
+                "crucible-rust: SOFAB_ENCODE=to — this backend has no encodeTo \
+                 (it has new, stream)"
+            );
+            std::process::exit(2);
+        }
+        Ok("stream") => EncSurface::Stream,
+        Ok("new") | Err(_) => EncSurface::New,
+        Ok("") => EncSurface::New,
+        Ok(other) => {
+            eprintln!(
+                "crucible-rust: unknown SOFAB_ENCODE={other} (this backend has new, stream)"
+            );
+            std::process::exit(2);
+        }
+    };
+    let cfg = StreamCfg {
+        split: env_usize("SOFAB_SPLIT"),
+        chunk: env_usize("SOFAB_CHUNK"),
+        scrub: matches!(std::env::var("SOFAB_CHUNK_SCRUB").as_deref(), Ok(v) if !v.is_empty() && v != "0"),
+        enc,
+        flush: env_usize("SOFAB_FLUSH"),
+    };
+    // Announce on stderr (never parsed). A driver that silently ignored these would be
+    // indistinguishable from one that honours them — identical stdout either way — so
+    // this is what makes "it really re-feeds" checkable rather than asserted.
+    if cfg.split != 0 || cfg.chunk != 0 || cfg.scrub || cfg.flush != 0
+        || cfg.enc != EncSurface::New
+    {
+        eprintln!(
+            "crucible-rust: streaming cfg split={} chunk={} scrub={} enc={} flush={}",
+            cfg.split,
+            cfg.chunk,
+            cfg.scrub as u8,
+            if cfg.enc == EncSurface::New { "new" } else { "stream" },
+            cfg.flush
+        );
+    }
+    cfg
+}
+
+// How the record is cut on its way into the decoder. Never an empty chunk: k<=0,
+// k>=len and n>=len all mean one chunk holding the whole record. A zero-length record
+// yields no chunks at all.
+fn slices(cfg: &StreamCfg, len: usize) -> Vec<(usize, usize)> {
+    if len == 0 {
+        return Vec::new();
+    }
+    if cfg.chunk > 0 {
+        return (0..len)
+            .step_by(cfg.chunk)
+            .map(|o| (o, std::cmp::min(cfg.chunk, len - o)))
+            .collect();
+    }
+    if cfg.split > 0 && cfg.split < len {
+        return vec![(0, cfg.split), (cfg.split, len - cfg.split)];
+    }
+    vec![(0, len)]
+}
+
+// Feed the record in the configured pieces through ONE decoder, then take the verdict
+// from `finish()`. An `Incomplete` from a mid-stream `feed` is not terminal — it says
+// only that *those bytes* ended mid-field; any other error is.
+fn decode_streamed(cfg: &StreamCfg, data: &[u8]) -> Result<Probe, Error> {
+    let mut d = Probe::decoder();
+    let mut scratch: Vec<u8> = Vec::new();
+    for (off, n) in slices(cfg, data.len()) {
+        let r = if cfg.scrub {
+            // Scrub needs a buffer the driver owns: feed it, then overwrite. A decoder
+            // that borrowed from the chunk rather than copying out of it reads 0xA5.
+            scratch.clear();
+            scratch.extend_from_slice(&data[off..off + n]);
+            let r = d.feed(&scratch);
+            scratch.fill(0xA5);
+            r
+        } else {
+            d.feed(&data[off..off + n])
+        };
+        match r {
+            Ok(()) => {}
+            Err(Error::Incomplete) => {}      // mid-field between chunks: expected
+            Err(e) => return Err(e),          // terminal
+        }
+    }
+    d.finish()
+}
+
+// Which generated call produces the `A <hex>` payload. Both surfaces must emit
+// identical bytes for one decoded value, and SOFAB_FLUSH must not change that: it hands
+// the OStream an n-byte buffer with a sink, so the encoder crosses a buffer boundary at
+// every offset — the encode-side mirror of SOFAB_CHUNK=1.
+fn encode_via(cfg: &StreamCfg, m: &Probe) -> Vec<u8> {
+    if cfg.enc == EncSurface::New {
+        // `encode()` is Vec<u8> on std and heapless::Vec<u8, MAX_SIZE> on no-std;
+        // iterate rather than convert, so this one line compiles for both.
+        return m.encode().iter().copied().collect();
+    }
+    let cap = if cfg.flush > 0 { cfg.flush } else { Probe::MAX_SIZE };
+    let mut buf = vec![0u8; std::cmp::max(cap, 1)];
+    let mut out: Vec<u8> = Vec::new();
+    {
+        let sink = |data: &[u8]| out.extend_from_slice(data);
+        let mut os = sofab::OStream::with_flush(&mut buf, 0, sink);
+        m.serialize(&mut os);
+        os.flush();
+    }
+    out
+}
+
 fn reject_class(e: Error) -> &'static str {
     match e {
         Error::InvalidMsg => "invalid_msg",
@@ -64,8 +211,16 @@ fn reject_class(e: Error) -> &'static str {
 // the round-trip path does.
 include!("materialize_gen.rs");
 
-fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool) {
-    match Probe::try_decode(data) {
+fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool, cfg: &StreamCfg) {
+    // The chunked path is taken ONLY when a chunking variable is set, so the default
+    // stays the one-shot try_decode byte for byte — which is also what makes the gate
+    // meaningful: it then compares two genuinely different code paths.
+    let decoded = if cfg.split != 0 || cfg.chunk != 0 || cfg.scrub {
+        decode_streamed(cfg, data)
+    } else {
+        Probe::try_decode(data)
+    };
+    match decoded {
         Ok(m) => {
             if materialize_mode {
                 // COMPLETE, materialize mode: dump the decoded value (materialized.md).
@@ -74,8 +229,9 @@ fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool) {
                 let _ = writeln!(out);
                 return;
             }
-            // COMPLETE: re-encode the decoded value -> hex.
-            let bytes = m.encode();
+            // COMPLETE: re-encode the decoded value -> hex, through whichever encode
+            // surface SOFAB_ENCODE selects (default: the allocating encode()).
+            let bytes = encode_via(cfg, &m);
             let _ = write!(out, "A ");
             for b in bytes.iter() {
                 let _ = write!(out, "{:02x}", b);
@@ -106,6 +262,7 @@ fn main() {
     // verdict path is unaffected. The driver binary is std for both corelib variants,
     // so std::env is available under the no_std corelib too.
     let materialize_mode = std::env::var("SOFAB_MATERIALIZE").as_deref() == Ok("1");
+    let cfg = read_stream_cfg();
 
     let stdin = std::io::stdin();
     let mut r = stdin.lock();
@@ -130,7 +287,7 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        canonical(&mut w, &data, materialize_mode);
+        canonical(&mut w, &data, materialize_mode, &cfg);
         w.flush().ok();
     }
 }
