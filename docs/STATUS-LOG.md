@@ -19,6 +19,35 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**All fourteen drivers are wired, and the encode axis found a defect nobody was looking for (2026-08-04).**
+Python was the last, and the only **pull-shaped** backend: there is no push `feed`, so the driver
+expresses chunking by handing the `Decoder` a reader that returns **short reads**. That is faithful
+rather than a workaround — the Decoder's `_need` loop treats a short read as "more to come" and only
+an empty return as end-of-input, which is exactly the distinction the axis is about.
+
+*And the encode side turned up **F-0059** (corelib-py#61), which is a different kind of find from the
+rest.* It is not a divergence between languages: it is a split **inside one corelib**, between its
+two engines. `Encoder._put` caches the buffer view before the loop that may drain; `_drain()` calls
+the sink, the sink calls `buffer_set()` and replaces `self._fixed`, and `_put` keeps writing through
+the stale `mv` — the old, already-drained buffer. Everything past the first flush lands in an
+orphaned buffer and the fresh one is emitted zeroed. The Cython accelerator implements `_put`
+separately and is correct.
+
+*The reproducer is nine lines of corelib-py with no codegen, no generated message and no harness*,
+which is worth noting because the finding arrived through a 108-input differential and left as a
+unit test. `u8 = 1` encodes to `0001` in memory and `0000` over a 1-byte caller buffer.
+
+*What makes this the axis's own catch:* every other gate in this repo re-encodes with one call into
+an unbounded buffer, so no flush ever happens mid-message. corelib-py's own parity tests appear to
+exercise `over_buffer` only where the message fits. `py-pure` is held out of the encode gate while
+it is open, `py-cython` stays in — the split between them is the finding.
+
+**The two unspecified contracts now have counted camps, not estimated ones.** With all fourteen
+wired: **zig alone borrows** a whole-chunk payload (ten copy; python cannot alias at all, so
+`SOFAB_CHUNK_SCRUB` is inapplicable there for the opposite reason — and the driver says which).
+**corelib-ts alone** cannot encode through a buffer below its largest contiguous write; every other
+backend streams the same 108 values through **one byte**. Both are ready to go to `documentation`.
+
 **The chunked axis found its first defect, in the backend crucible#132 predicted (2026-08-04).**
 Twelve of the fourteen drivers are wired for both streaming axes. Eleven are chunk-invariant over
 every cut the oracle applies; **zig is not**, and the mechanism is worth recording because it is

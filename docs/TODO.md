@@ -82,20 +82,30 @@ here:
 - [ ] **Two unspecified streaming contracts, both found by wiring the axes (2026-08-04).** Neither
       is a wire question, so the differential oracle is structurally blind to both — they are
       differences in what the *API* promises, and they only became visible once drivers started
-      driving the streaming surfaces. Both want a `documentation` answer; hold until the last two
-      backends (python) are wired, so the camp sizes are known rather than guessed.
+      driving the streaming surfaces. All fourteen drivers are now wired, so the camps below are
+      **counted, not estimated** — both are ready to become a `documentation` question.
       - **Chunk lifetime.** corelib-zig documents that a `string`/`blob` arriving whole in one
-        chunk is **borrowed** from it and that "a fed chunk must outlive the message". Every other
-        backend copies. So `SOFAB_CHUNK_SCRUB` is inapplicable to zig — the driver exits 3 and the
-        gate reports it as such, rather than manufacturing a mismatch. **Standing at 10-to-1
-        against borrowing.** The question for the spec: may a decoder borrow from a fed chunk, and
-        if so must the caller be told?
+        chunk is **borrowed** from it and that "a fed chunk must outlive the message". Final tally
+        with all fourteen drivers wired: **zig alone borrows**; ten copy; python cannot alias at
+        all (its pull `Decoder` reads immutable `bytes` and copies on arrival), so
+        `SOFAB_CHUNK_SCRUB` is inapplicable there too — for the opposite reason, and the driver
+        says which. Both inapplicable cases exit 3 and are reported as such rather than
+        manufacturing a mismatch. The question for the spec: may a decoder borrow from a fed
+        chunk, and if so must the caller be told?
       - **Minimum caller buffer for a streaming encode.** corelib-ts's `OStream.ensure(n)` needs
         `n` *contiguous* bytes and only flushes before checking, so a caller buffer below the
         largest single write cannot encode at all: `SOFAB_FLUSH` of 1/2/3/5/8 are all
-        inapplicable, 16 works. corelib-cpp, -rs, -c-cpp, -java, -cs, -dart and -zig all stream
-        the same 108 values through a **one-byte** buffer. **Standing at 10-to-1 the other way.**
-        The question: is there a minimum, and is it discoverable?
+        inapplicable, 16 works. **Every other backend streams the same 108 values through a
+        one-byte buffer** — cpp ×4, rs ×2, c, java, cs, dart, zig, py-cython. (py-pure fails at 1
+        too, but that is F-0059, a defect, not a contract.) So corelib-ts is alone. The question:
+        is there a minimum, and is it discoverable?
+
+- [ ] **Put `py-pure` back in `scripts/run-encode.sh` when F-0059 closes**
+      ([corelib-py#61](https://github.com/sofa-buffers/corelib-py/issues/61)). Its pure engine
+      keeps writing into the drained buffer after a flush, so everything past the first flush is
+      lost. `py-cython` is correct and stays in the roster — which is what makes this an
+      engine-parity break rather than a corelib-wide one. Both engines are in the **chunked**
+      roster and pass it. Adding the name back is the whole change.
 
 - [ ] **Put `zig` back in `scripts/run-chunked.sh` when F-0058 closes**
       ([generator#293](https://github.com/sofa-buffers/generator/issues/293)). It is absent from
