@@ -36,13 +36,104 @@ String _hex(Uint8List b) {
   return sb.toString();
 }
 
+// ---- the streaming axes (drivers/common/CONTRACT.md) -------------------------
+//
+// The replay protocol hands each record over whole and re-encodes it with one call,
+// so neither streaming surface of the generated API is reachable through it. Unset,
+// every variable below is today's behaviour byte for byte.
+//
+// Dart is the backend the contract's finish() rule was written for: ProbeDecoder's
+// finish() returns NULL where the others throw, so routing the verdict through it
+// would put a backend difference into the canonical line. It exposes `status`, so
+// the verdict comes from there.
+int _envInt(String name) => int.tryParse(Platform.environment[name] ?? '') ?? 0;
+
+final int _split = _envInt('SOFAB_SPLIT');
+final int _chunk = _envInt('SOFAB_CHUNK');
+final int _flush = _envInt('SOFAB_FLUSH');
+final bool _scrub = (Platform.environment['SOFAB_CHUNK_SCRUB'] ?? '').isNotEmpty &&
+    Platform.environment['SOFAB_CHUNK_SCRUB'] != '0';
+final String _encode = (Platform.environment['SOFAB_ENCODE'] ?? '').isEmpty
+    ? 'new'
+    : Platform.environment['SOFAB_ENCODE']!;
+final bool _chunking = _split != 0 || _chunk != 0 || _scrub;
+
+void _checkCfg() {
+  if (_encode != 'new' && _encode != 'to' && _encode != 'stream') {
+    stderr.writeln('crucible-dart: unknown SOFAB_ENCODE=$_encode '
+        '(this backend has new, to, stream)');
+    exit(2);
+  }
+  // Announce on stderr (never parsed). A driver that silently ignored these would
+  // be indistinguishable from one that honours them — stdout is identical either
+  // way — so this makes "it really re-feeds" checkable rather than asserted.
+  if (_split != 0 || _chunk != 0 || _scrub || _flush != 0 || _encode != 'new') {
+    stderr.writeln('crucible-dart: streaming cfg split=$_split chunk=$_chunk '
+        'scrub=${_scrub ? 1 : 0} enc=$_encode flush=$_flush');
+  }
+}
+
+// How the record is cut on its way in. Never an empty chunk; a 0-byte record
+// yields none at all.
+List<Uint8List> _chunksOf(Uint8List data) {
+  final len = data.length;
+  if (len == 0) return const [];
+  if (_chunk > 0) {
+    final out = <Uint8List>[];
+    for (var o = 0; o < len; o += _chunk) {
+      out.add(Uint8List.fromList(data.sublist(o, o + _chunk > len ? len : o + _chunk)));
+    }
+    return out;
+  }
+  if (_split > 0 && _split < len) {
+    return [
+      Uint8List.fromList(data.sublist(0, _split)),
+      Uint8List.fromList(data.sublist(_split)),
+    ];
+  }
+  return [Uint8List.fromList(data)];
+}
+
+// Re-encode through the surface SOFAB_ENCODE selects. All three must emit identical
+// bytes, and SOFAB_FLUSH must not change them either: it gives the Encoder an
+// n-byte buffer draining to a sink, so the encoder crosses a buffer boundary at
+// every offset.
+Uint8List _encodeVia(Probe m) {
+  if (_encode == 'new') return m.encode();
+  final builder = BytesBuilder(copy: true);
+  final enc = sofab.Encoder(builder.add,
+      bufferSize: _flush > 0 ? _flush : 4096);
+  if (_encode == 'to') {
+    m.encodeTo(enc);
+  } else {
+    m.serialize(enc);
+  }
+  enc.flush();
+  return builder.toBytes();
+}
+
 // canonical produces the one canonical line for a single candidate input
 // (oracle/canonical.md: decode -> re-encode -> hex on COMPLETE).
 String canonical(Uint8List data) {
   final out = Probe();
   final sofab.DecodeStatus st;
   try {
-    st = Probe.tryDecode(data, out);
+    if (_chunking) {
+      // Chunked decode via the generated ProbeDecoder, taken ONLY when a chunking
+      // variable is set — the default stays the one-shot tryDecode byte for byte,
+      // which is what makes the gate meaningful: it then compares two genuinely
+      // different code paths. Verdict from `status`, never from finish().
+      final d = Probe.decoder(out);
+      for (final c in _chunksOf(data)) {
+        d.feed(c);
+        // Scrub: the chunk is a copy the driver owns, so overwriting it after feed
+        // exposes a decoder that borrowed instead of copying.
+        if (_scrub) c.fillRange(0, c.length, 0xA5);
+      }
+      st = d.status;
+    } else {
+      st = Probe.tryDecode(data, out);
+    }
   } catch (_) {
     // The generated tryDecode is not expected to throw on any input; if it does
     // that is itself worth surfacing, mapped to the coarse `other` reject class.
@@ -65,13 +156,14 @@ String canonical(Uint8List data) {
   // lowercase hex (schema-agnostic; folds in the round-trip oracle).
   if (_materialize) return 'A ${materialize(out)}';
   try {
-    return 'A ${_hex(out.encode())}';
+    return 'A ${_hex(_encodeVia(out))}';
   } catch (_) {
     return 'R other';
   }
 }
 
 Future<void> main() async {
+  _checkCfg();
   // Read the whole framed stream (the comparator writes it all, then reads our
   // stdout after we exit — see oracle/comparator.py run_driver). The corpus fits
   // in memory; this mirrors the TypeScript driver.

@@ -34,7 +34,7 @@ CORPUS="${CORPUS:-$ROOT/corpus/structured}"
 # re-encodes through each surface its meta declares — a driver that ignores the
 # variables emits byte-identical output, so this list is the only thing standing
 # between the gate and a vacuous pass. The rest are tracked in docs/TODO.md.
-SUPPORTED="${SOFAB_ENCODE_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp typescript}"
+SUPPORTED="${SOFAB_ENCODE_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp typescript java csharp dart zig}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [encode] no driver implements SOFAB_ENCODE yet — nothing to check." >&2

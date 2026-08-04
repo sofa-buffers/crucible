@@ -79,6 +79,31 @@ here:
 
 ## Open — engine & oracles
 
+- [ ] **Two unspecified streaming contracts, both found by wiring the axes (2026-08-04).** Neither
+      is a wire question, so the differential oracle is structurally blind to both — they are
+      differences in what the *API* promises, and they only became visible once drivers started
+      driving the streaming surfaces. Both want a `documentation` answer; hold until the last two
+      backends (python) are wired, so the camp sizes are known rather than guessed.
+      - **Chunk lifetime.** corelib-zig documents that a `string`/`blob` arriving whole in one
+        chunk is **borrowed** from it and that "a fed chunk must outlive the message". Every other
+        backend copies. So `SOFAB_CHUNK_SCRUB` is inapplicable to zig — the driver exits 3 and the
+        gate reports it as such, rather than manufacturing a mismatch. **Standing at 10-to-1
+        against borrowing.** The question for the spec: may a decoder borrow from a fed chunk, and
+        if so must the caller be told?
+      - **Minimum caller buffer for a streaming encode.** corelib-ts's `OStream.ensure(n)` needs
+        `n` *contiguous* bytes and only flushes before checking, so a caller buffer below the
+        largest single write cannot encode at all: `SOFAB_FLUSH` of 1/2/3/5/8 are all
+        inapplicable, 16 works. corelib-cpp, -rs, -c-cpp, -java, -cs, -dart and -zig all stream
+        the same 108 values through a **one-byte** buffer. **Standing at 10-to-1 the other way.**
+        The question: is there a minimum, and is it discoverable?
+
+- [ ] **Put `zig` back in `scripts/run-chunked.sh` when F-0058 closes**
+      ([generator#293](https://github.com/sofa-buffers/generator/issues/293)). It is absent from
+      that gate's opt-in roster only because its generated chunked reassembly shares one buffer
+      across split payloads, so two wrapper-array elements alias each other — including it would
+      make the gate permanently red for an already-filed defect. It **is** in the encode roster;
+      that axis is unaffected. Adding the word back is the whole change.
+
 - [ ] **Un-quarantine `cpp-c-cpp-dyn` when F-0057 closes.** It is in `drivers/roster` without
       the `blocking` tag while [corelib-c-cpp#131](https://github.com/sofa-buffers/corelib-c-cpp/issues/131)
       is open: every zero-length array aborts an asserts-enabled build, and a crashing driver

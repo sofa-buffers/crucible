@@ -19,6 +19,46 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The chunked axis found its first defect, in the backend crucible#132 predicted (2026-08-04).**
+Twelve of the fourteen drivers are wired for both streaming axes. Eleven are chunk-invariant over
+every cut the oracle applies; **zig is not**, and the mechanism is worth recording because it is
+the exact shape a differential oracle cannot see.
+
+`_reassemble` in the **generated** `message.zig` keeps one `ArrayListUnmanaged(u8)` on the visitor
+and returns `self.acc.items` — a slice into it — which `setElem` stores as the array element.
+Deliberately, because the neighbouring *borrow* branch depends on storing a slice as-is. So the
+next split payload calls `clearRetainingCapacity()`, appends over the same memory, and every
+element stored earlier is looking at the new content. Eleven bytes are enough:
+`string_array = ["ab","cd"]` decodes to `["cd","cd"]` when fed one byte at a time, and
+`blob_array` does the same through the same helper.
+
+*Two things make it worse than a wrong value.* A slice stored when the buffer held 60 bytes keeps
+length 60 after a 2-byte payload replaces it, so reading it walks past the live content — visible
+in the seed corpus as a 5-byte string read out of the 4-byte `five`, with one byte of adjacent
+memory. And a payload larger than any before it **reallocates**, rebasing the earlier slices; under
+an arena the old block stays mapped and the read is merely stale, but under a freeing allocator the
+same pattern is a use-after-free. That last step is reasoned from the code, not observed — the
+driver uses an arena by design.
+
+*The control is what pins it:* a message with a **single** split element decodes correctly. The
+defect needs two or more, which is why byte-at-a-time feeding finds it immediately and a two-way
+split usually does not — and why the oracle implements both cuts rather than only the sweep.
+
+Filed as generator#293 (F-0058 / G-0036), attributed to **generated code**: `_reassemble` and the
+`setElem` call are both emitted, the corelib delivers `(total, offset, chunk)` faithfully, and
+whether an element's destination needs its own copy is a storage question only the generated side
+can answer. `zig` is kept out of `run-chunked.sh`'s opt-in roster meanwhile — same reasoning as the
+F-0057 quarantine, and recorded in TODO.md so it goes back when the finding closes.
+
+**Two unspecified contracts also surfaced, and neither is a wire question.** The differential oracle
+is structurally blind to both, because they are differences in what the *API* promises rather than
+in what the bytes mean. corelib-zig **borrows** a payload that arrives whole in one chunk and
+documents that a fed chunk must outlive the message; the other ten copy. corelib-ts's `OStream`
+cannot encode through a buffer smaller than its largest contiguous write (`SOFAB_FLUSH` 1–8 all
+inapplicable, 16 works); the other ten stream the same 108 values through **one byte**. Both stand
+at 10-to-1, both are recorded in TODO.md, and both wait for the last two backends before becoming
+a `documentation` question — the camp sizes should be counted, not guessed.
+
 **Both streaming oracles exist before any driver does, and that ordering is the point (2026-08-04).**
 `chunk_invariance.py` gained the two cuts the contract specifies beyond its original two-chunk
 sweep — `SOFAB_CHUNK=n` (fixed size; `n=1` splits every varint, length word and payload, so it

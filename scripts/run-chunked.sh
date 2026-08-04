@@ -41,7 +41,12 @@ CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 # these announces its configuration on stderr when a variable is set, so "does it
 # really re-feed" is checkable rather than asserted (see drivers/common/CONTRACT.md).
 # The rest are tracked in docs/TODO.md.
-SUPPORTED="${SOFAB_SPLIT_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp typescript}"
+# zig is deliberately ABSENT while F-0058 (generator#293) is open: its generated
+# chunked reassembly shares one buffer across split payloads, so two wrapper-array
+# elements alias each other. Including it would make this gate permanently red for a
+# defect that is already filed — the same reasoning results/known-clusters.txt rests
+# on. Add it back when F-0058 closes; that one word is the whole change.
+SUPPORTED="${SOFAB_SPLIT_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp typescript java csharp dart}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [chunked] no driver implements SOFAB_SPLIT yet — nothing to check." >&2

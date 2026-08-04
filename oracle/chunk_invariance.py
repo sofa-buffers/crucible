@@ -59,13 +59,14 @@ CHUNK_SIZES = (1, 2, 3, 5, 8, 16)
 
 
 def feed(path, inputs, env=None):
-    """Run a driver over `inputs`, returning one canonical line per input."""
+    """Run a driver over `inputs`; returns (lines, returncode, stderr)."""
     blob = b"".join(struct.pack("<I", len(d)) + d for d in inputs)
     e = dict(os.environ)
     if env:
         e.update(env)
     p = subprocess.run([path], input=blob, capture_output=True, env=e, timeout=120)
-    return p.stdout.decode(errors="replace").splitlines()
+    return (p.stdout.decode(errors="replace").splitlines(), p.returncode,
+            p.stderr.decode(errors="replace").strip())
 
 
 def configs(maxlen, modes):
@@ -118,17 +119,27 @@ def main():
     failures = 0
     for name in names:
         path = DRIVERS[name]
-        whole = feed(path, inputs)
+        whole, _, _ = feed(path, inputs)
         if len(whole) != len(inputs):
             print(f"  [{name}] emitted {len(whole)} lines for {len(inputs)} inputs — "
                   "not contract-conformant, skipping", file=sys.stderr)
             failures += 1
             continue
 
-        bad = tried = 0
+        bad = tried = na = 0
         for label, env, applies in configs(maxlen, modes):
             tried += 1
-            split = feed(path, inputs, env)
+            split, rc, err = feed(path, inputs, env)
+            # Exit 3 = "not applicable at this setting" (CONTRACT.md), the same code
+            # the encode axis uses for an unusable SOFAB_FLUSH. corelib-zig documents
+            # that a string or blob arriving whole in one chunk is BORROWED from it
+            # and that a fed chunk must outlive the message, so scrubbing violates
+            # that backend's contract instead of testing it. Reported, never counted
+            # as a pass.
+            if rc == 3:
+                print(f"  [{name}] {label}: not applicable — {err}", file=sys.stderr)
+                na += 1
+                continue
             if len(split) != len(inputs):
                 print(f"  [{name}] {label}: {len(split)} lines, expected "
                       f"{len(inputs)}", file=sys.stderr)
@@ -140,7 +151,8 @@ def main():
                           f"chunked={b!r}", file=sys.stderr)
                     bad += 1
         status = "OK" if not bad else "FAIL"
-        print(f"[{name}] {len(inputs)} input(s) x {tried} chunking(s) — "
+        na_note = f", {na} n/a" if na else ""
+        print(f"[{name}] {len(inputs)} input(s) x {tried} chunking(s){na_note} — "
               f"{bad} mismatch(es)  [{status}]")
         failures += bad
 
