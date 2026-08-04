@@ -100,9 +100,10 @@ here:
       F-0043 at the declared-width bound, whose partition moved when generator#279 pushed `cpp`
       from the `I` camp into the reject camp. Proven with three controls, not a new class.
 
-- [ ] **Chunked re-feed in the drivers (`SOFAB_SPLIT=k`)** — the oracle and the gate exist
-      (`oracle/chunk_invariance.py`, `scripts/run-chunked.sh`, contract section written); **no
-      driver implements it yet**, so the gate skips loudly rather than passing vacuously.
+- [ ] **Chunked re-feed in the drivers (`SOFAB_SPLIT`, `SOFAB_CHUNK`, `SOFAB_CHUNK_SCRUB`)** —
+      the oracle and the gate exist and now implement **all three cuts** (`oracle/chunk_invariance.py`,
+      `scripts/run-chunked.sh`, wired into `replay.yml`, contract section written); **no
+      driver implements them yet**, so the gate skips loudly rather than passing vacuously.
       Raised by [crucible#130](https://github.com/sofa-buffers/crucible/issues/130), which asked
       for exactly two things: a split strategy that cuts at **metadata/payload boundaries**, and
       an assertion that an `I` actually **resumes**. Sweeping every split point delivers the
@@ -124,7 +125,10 @@ here:
       wraps the chunks in a reader) and **go has none at all** (corelib-go has no resumable
       push decoder), so go must be declared absent rather than silently skipped.
 
-- [ ] **The streaming-encode axis (`SOFAB_ENCODE`, `SOFAB_FLUSH`)** — the encode-side twin,
+- [ ] **The streaming-encode axis (`SOFAB_ENCODE`, `SOFAB_FLUSH`)** — **oracle done 2026-08-04**
+      (`oracle/encode_invariance.py`, `scripts/run-encode.sh`, wired into `replay.yml`, skipping
+      loudly on an empty `SOFAB_ENCODE_DRIVERS`); the per-driver plumbing is what remains. The
+      encode-side twin,
       and the second half of the hole [crucible#132](https://github.com/sofa-buffers/crucible/issues/132)
       named. Every driver re-encodes with exactly one call today, so of the three encode
       surfaces the generated API now offers — allocating `encode()`, caller-buffer
@@ -133,9 +137,10 @@ here:
       bytes for the same value, and `SOFAB_FLUSH=n` (an `n`-byte `OStream` buffer) must not
       change them either — it walks the encoder across a buffer boundary at every offset,
       the encode-side mirror of `SOFAB_CHUNK=1`. Contract written; needs
-      `oracle/encode_invariance.py` + `scripts/run-encode.sh` and the per-driver plumbing.
-      `meta`'s `encode_surfaces` records which backend has which: TypeScript has only
-      `stream`, C has no allocating encode, rust/python/zig have no `encodeTo`.
+      the per-driver plumbing. `meta`'s `encode_surfaces` records which backend has which:
+      TypeScript has only `stream`, C has no allocating encode, rust/python/zig have no
+      `encodeTo` — and the oracle reads that key both to choose what to compare and to assert
+      the contract's hard-fail on a surface the backend lacks.
 
 - [ ] **A fixlen-payload-as-varint axis** (from F-0056). No axis emits a fixlen element payload
       made of **continuation bytes**, because none had a reason to care what the bytes of a
