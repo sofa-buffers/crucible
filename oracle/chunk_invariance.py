@@ -30,24 +30,12 @@ import struct
 import subprocess
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+import roster
 
-# name -> path, mirroring scripts/run.sh.
-DRIVERS = {
-    "c": "drivers/c/build/driver",
-    "go": "drivers/go/build/driver",
-    "rust-std": "drivers/rust/build/rs/target/debug/harness",
-    "rust-nostd": "drivers/rust/build/rs-no-std/target/debug/harness",
-    "cpp": "drivers/cpp/build/cpp/driver",
-    "cpp-c-cpp": "drivers/cpp/build/c-cpp/driver",
-    "py-cython": "drivers/python/build/py-cython",
-    "py-pure": "drivers/python/build/py-pure",
-    "java": "drivers/java/build/driver",
-    "typescript": "drivers/ts/build/driver",
-    "csharp": "drivers/cs/build/driver",
-    "zig": "drivers/zig/build/driver",
-    "dart": "drivers/dart/build/driver",
-}
+ROOT = roster.ROOT
+
+# name -> absolute path, from drivers/roster — the one place the roster is stated.
+DRIVERS = roster.drivers(roster.gate_tag())
 
 
 def feed(path, inputs, env=None):
@@ -82,7 +70,7 @@ def main():
 
     failures = 0
     for name in names:
-        path = os.path.join(ROOT, DRIVERS[name])
+        path = DRIVERS[name]
         whole = feed(path, inputs)
         if len(whole) != len(inputs):
             print(f"  [{name}] emitted {len(whole)} lines for {len(inputs)} inputs — "

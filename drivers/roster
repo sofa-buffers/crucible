@@ -1,0 +1,54 @@
+# The driver roster — the single source of truth for who is in the family.
+#
+# Every consumer reads this file: scripts/run.sh, scripts/materialize.sh,
+# scripts/run-limits.sh, engine/structured/sweep_run.py, oracle/chunk_invariance.py.
+# It used to be copied into each of them, which is exactly the shape CLAUDE.md warns
+# about — a list kept in five places drifts on the first change that touches four.
+#
+# Columns, whitespace-separated; `-` means "none":
+#
+#   name     the driver's name in every report, camp partition and finding write-up
+#   builder  the drivers/<builder>/build.sh that produces it
+#   arg      the argument that build.sh takes (variant selector), or `-`
+#   tags     comma-separated membership tags, or `-`:
+#              blocking  runs in the gates that block CI. A driver WITHOUT this tag is
+#                        quarantined: still built, still run by a manual or nightly
+#                        pass, but kept out of the blocking gates. See below.
+#              limits    in the limit-mode roster (scripts/run-limits.sh) — a heap
+#                        profile whose corelib can report LIMIT_EXCEEDED
+#   binary   path to the built replay driver, relative to the repo root
+#
+# The four C++ rows are one source (drivers/cpp/driver.cpp) against two corelibs at
+# both allow_dynamic settings. The wire format is byte-identical across all four, so
+# any divergence between them is a bug by construction — see crucible#129.
+#
+# QUARANTINE. A gate selects `blocking` by default; `ROSTER_TAG= ./scripts/run.sh`
+# (empty) selects the whole roster, quarantine included, which is how a quarantined
+# driver is exercised. The mechanism exists for the same reason
+# results/known-clusters.txt does: a gate that is permanently red stops meaning
+# "something new broke". A quarantine entry must therefore always name the finding, so
+# it can be un-quarantined the moment that finding closes — never a silent exclusion.
+
+# name             builder  arg        tags              binary
+c                  c        -          blocking          drivers/c/build/driver
+go                 go       -          blocking,limits   drivers/go/build/driver
+rust-std           rust     rs         blocking,limits   drivers/rust/build/rs/target/debug/harness
+rust-nostd         rust     rs-no-std  blocking          drivers/rust/build/rs-no-std/target/debug/harness
+cpp                cpp      cpp        blocking,limits   drivers/cpp/build/cpp/driver
+cpp-fixed          cpp      cpp-fixed  blocking          drivers/cpp/build/cpp-fixed/driver
+cpp-c-cpp          cpp      c-cpp      blocking          drivers/cpp/build/c-cpp/driver
+# QUARANTINED 2026-08-04 — F-0057 (corelib-c-cpp#131): every zero-length array field
+# aborts an asserts-enabled build. IStreamImpl::readArray resizes the growable
+# destination to 0, then hands std::span{value}.data() — nullptr for an empty
+# std::vector — to sofab_istream_read_array, whose `var != NULL` precondition a valid
+# message therefore trips. Its fixed-capacity sibling cpp-c-cpp is unaffected: an
+# InlineVector's data() always points at inline storage. Un-quarantine when F-0057
+# closes; the config found the bug on its first run and is worth keeping.
+cpp-c-cpp-dyn      cpp      c-cpp-dyn  -                 drivers/cpp/build/c-cpp-dyn/driver
+py-cython          python   cython     blocking,limits   drivers/python/build/py-cython
+py-pure            python   pure       blocking,limits   drivers/python/build/py-pure
+java               java     -          blocking,limits   drivers/java/build/driver
+typescript         ts       -          blocking,limits   drivers/ts/build/driver
+csharp             cs       -          blocking,limits   drivers/cs/build/driver
+zig                zig      -          blocking,limits   drivers/zig/build/driver
+dart               dart     -          blocking,limits   drivers/dart/build/driver

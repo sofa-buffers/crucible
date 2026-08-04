@@ -36,35 +36,15 @@ if ! cmp -s "$_tmp" "$ROOT/oracle/materialized-schema.json"; then
 fi
 rm -f "$_tmp"
 
-echo "==> [materialize] building the 13-driver roster" >&2
-C_BIN=$(sh "$ROOT/drivers/c/build.sh")
-GO_BIN=$(sh "$ROOT/drivers/go/build.sh")
-RS_BIN=$(sh "$ROOT/drivers/rust/build.sh" rs)
-NOSTD_BIN=$(sh "$ROOT/drivers/rust/build.sh" rs-no-std)
-CPP_BIN=$(sh "$ROOT/drivers/cpp/build.sh" cpp)
-CCPP_BIN=$(sh "$ROOT/drivers/cpp/build.sh" c-cpp)
-PYC_BIN=$(sh "$ROOT/drivers/python/build.sh" cython)
-PYP_BIN=$(sh "$ROOT/drivers/python/build.sh" pure)
-JAVA_BIN=$(sh "$ROOT/drivers/java/build.sh")
-TS_BIN=$(sh "$ROOT/drivers/ts/build.sh")
-CS_BIN=$(sh "$ROOT/drivers/cs/build.sh")
-ZIG_BIN=$(sh "$ROOT/drivers/zig/build.sh")
-DART_BIN=$(sh "$ROOT/drivers/dart/build.sh")
-
-set -- \
-    --driver "c:$C_BIN" \
-    --driver "go:$GO_BIN" \
-    --driver "rust-std:$RS_BIN" \
-    --driver "rust-nostd:$NOSTD_BIN" \
-    --driver "cpp:$CPP_BIN" \
-    --driver "cpp-c-cpp:$CCPP_BIN" \
-    --driver "py-cython:$PYC_BIN" \
-    --driver "py-pure:$PYP_BIN" \
-    --driver "java:$JAVA_BIN" \
-    --driver "typescript:$TS_BIN" \
-    --driver "csharp:$CS_BIN" \
-    --driver "zig:$ZIG_BIN" \
-    --driver "dart:$DART_BIN"
+echo "==> [materialize] building the roster (drivers/roster)" >&2
+ROSTER_TAG="${ROSTER_TAG-blocking}"
+DRIVER_ARGS=$("$ROOT/scripts/roster.sh" build "$ROSTER_TAG")
+_oldifs=$IFS
+IFS='
+'
+# shellcheck disable=SC2086
+set -- $DRIVER_ARGS
+IFS=$_oldifs
 
 TIMEOUT_ARG=""
 [ -n "${TIMEOUT:-}" ] && TIMEOUT_ARG="--timeout $TIMEOUT"
@@ -78,9 +58,10 @@ SOFAB_MATERIALIZE=1 SOFAB_MATERIALIZE_SCHEMA="$ROOT/oracle/materialized-schema.j
     python3 "$ROOT/oracle/comparator.py" \
     --corpus "$CORPUS" --policy "$ROOT/oracle/policy.yaml" $TIMEOUT_ARG "$@"
 
-# Conformance: the differential only proves the 13 AGREE — a family-wide-wrong dump is
-# agreement-green. Anchor it by checking the schema-agnostic C driver against the
+# Conformance: the differential only proves the roster AGREES — a family-wide-wrong dump
+# is agreement-green. Anchor it by checking the schema-agnostic C driver against the
 # reference over corpus/structured (the value space the reference is defined on):
 # C == reference AND all == C  ⟹  all == reference. Fails (set -e) on any mismatch.
+C_BIN=$("$ROOT/scripts/roster.sh" list | awk '$1 == "c" { print $5 }')
 echo "==> [materialize] conformance: C anchor vs the reference (engine/structured/materialize.py)" >&2
-python3 "$ROOT/engine/structured/materialize.py" --driver "$C_BIN"
+python3 "$ROOT/engine/structured/materialize.py" --driver "$ROOT/$C_BIN"

@@ -4,11 +4,11 @@
 A sweep vector carries an **expected behaviour**, so the runner checks *two*
 independent things the plain differential cannot:
 
-  1. **Agreement** — do all 13 drivers produce the same canonical line? A
+  1. **Agreement** — do all drivers in the roster produce the same canonical line? A
      disagreement is a divergence (the classic oracle; a finding).
   2. **Conformance** — does the agreed behaviour match what the spec requires for
      that vector? `expect=reject` means every driver MUST emit `R`; `expect=accept`
-     MUST be `A`. A *family-wide* wrong answer (all 13 uniformly accept an
+     MUST be `A`. A *family-wide* wrong answer (the whole roster uniformly accepts an
      over-bound value) is **agreement-green but conformance-red** — invisible to a
      differential-only oracle, and exactly the gap a "must reject" sweep exists to
      catch.
@@ -33,6 +33,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "..", ".."))  # repo root for oracle.comparator
 
 from oracle.comparator import run_driver, parse  # noqa: E402
+from oracle import roster  # noqa: E402
 
 AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserved_subtype",
         "sweep_truncation", "sweep_malform_truncate", "sweep_varint", "sweep_empty_frame", "sweep_tolerance"]
@@ -55,23 +56,10 @@ UNION_AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound",
               "sweep_reserved_subtype", "sweep_truncation", "sweep_empty_frame",
               "sweep_tolerance"]
 
-# The 13-driver roster, mirroring scripts/run.sh. Built by ./scripts/run.sh already.
+# The driver roster, read from drivers/roster — the one place it is stated. Built by
+# ./scripts/run.sh already.
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
-DRIVERS = [
-    ("c",          f"{ROOT}/drivers/c/build/driver"),
-    ("go",         f"{ROOT}/drivers/go/build/driver"),
-    ("rust-std",   f"{ROOT}/drivers/rust/build/rs/target/debug/harness"),
-    ("rust-nostd", f"{ROOT}/drivers/rust/build/rs-no-std/target/debug/harness"),
-    ("cpp",        f"{ROOT}/drivers/cpp/build/cpp/driver"),
-    ("cpp-c-cpp",  f"{ROOT}/drivers/cpp/build/c-cpp/driver"),
-    ("py-cython",  f"{ROOT}/drivers/python/build/py-cython"),
-    ("py-pure",    f"{ROOT}/drivers/python/build/py-pure"),
-    ("java",       f"{ROOT}/drivers/java/build/driver"),
-    ("typescript", f"{ROOT}/drivers/ts/build/driver"),
-    ("csharp",     f"{ROOT}/drivers/cs/build/driver"),
-    ("zig",        f"{ROOT}/drivers/zig/build/driver"),
-    ("dart",       f"{ROOT}/drivers/dart/build/driver"),
-]
+DRIVERS = list(roster.drivers(roster.gate_tag()).items())
 
 
 def run_axis(name, emitter="emit"):
@@ -111,12 +99,12 @@ def run_axis(name, emitter="emit"):
         # agreed on the hard axes — now check conformance
         exp = expect[fn]
         if exp == "reject" and v != "R":
-            conformance.append((fn, f"expected R, all 13 emit {v}"))
+            conformance.append((fn, f"expected R, all {len(DRIVERS)} emit {v}"))
         elif exp == "accept" and v != "A":
-            conformance.append((fn, f"expected A, all 13 emit {v}"))
+            conformance.append((fn, f"expected A, all {len(DRIVERS)} emit {v}"))
         # merge/replace/lastwins -> treated as accept
         elif exp in ("merge", "replace", "lastwins", "skip") and v != "A":
-            conformance.append((fn, f"expected A ({exp}), all 13 emit {v}"))
+            conformance.append((fn, f"expected A ({exp}), all {len(DRIVERS)} emit {v}"))
         # a prefix of a valid message is A (complete) or I (incomplete), never R
         elif exp == "not_reject" and v == "R":
             conformance.append((fn, "prefix of a valid message emitted R (INVALID)"))
@@ -131,7 +119,7 @@ def run_axis(name, emitter="emit"):
             if j is None:
                 conformance.append((fn, f"twin {twin} is not in this axis"))
             elif v != "A":
-                conformance.append((fn, f"expected A (normalizes to {twin}), all 13 emit {v}"))
+                conformance.append((fn, f"expected A (normalizes to {twin}), all {len(DRIVERS)} emit {v}"))
             else:
                 tw_v = {parse(outs[dn][j] or "")[0] for dn, _ in DRIVERS}
                 tw_p = {parse(outs[dn][j] or "")[1] for dn, _ in DRIVERS}
