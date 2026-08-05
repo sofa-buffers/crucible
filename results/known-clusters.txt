@@ -9,15 +9,24 @@
 # The signature is the (driver-set, verdict) partition ONLY — not the representative
 # and not the accepted bytes — so it survives the corpus changing under it.
 #
+# IT DOES NOT SURVIVE THE ROSTER CHANGING. Every signature names every driver, so
+# adding cpp-fixed and cpp-c-cpp-dyn (crucible#129) invalidated all ten entries at
+# once and the 2026-08-05 nightly reported "9 NEW CAMPS" — six of which were these
+# same rows with the two new names inside them. A mechanism that cries wolf on a
+# roster change trains people to stop reading it, which is the exact failure it was
+# built to prevent. Rebased here; making it survive a roster change is in docs/TODO.md.
+#
+# Rebased 2026-08-05 against the 15-driver roster, on the nightly's own 8798-input
+# corpus (run 30978596082): 3562 agree, 5236 diverge → 9 camps, all explained.
+#
 # Format: <signature>  # <label>
 
-I:c,cpp,cpp-c-cpp,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescript,zig | I:java  # benign — java emits an incomplete_value payload on I; the verdict is unanimous (policy incomplete_value: soft)
-I:cpp,dart,go,py-cython,py-pure,typescript | reject:c,cpp-c-cpp,csharp,java,rust-nostd,rust-std,zig  # F-0043 — declared-width bound, truncated (addendum 2026-08-03, generator#267)
-I:csharp,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,dart,go,typescript  # F-0043 — over_len_blob at the word (generator#267)
-I:csharp,dart,go,rust-nostd,rust-std,typescript,zig | I:java | reject:c,cpp,cpp-c-cpp,py-cython,py-pure  # F-0043 — string_array element, maxlen 64 (generator#267)
-I:py-cython,py-pure | reject:c,cpp,cpp-c-cpp,csharp,dart,go,java,rust-nostd,rust-std,typescript,zig  # F-0043 — the py-cython/py-pure deferral row (generator#267)
-I:c,cpp,cpp-c-cpp,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescript | I:java | reject:zig  # legal — CORELIB_PLAN 6.4 mid-payload MAY; zig takes it (documentation#33)
-I:csharp,dart,go,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,py-cython,py-pure,typescript  # F-0043 — string_array over-index element (generator#267)
-I:csharp,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,dart,go,py-cython,py-pure,typescript  # F-0043 — over_len_string, further offset (generator#267)
-I:dart,go,typescript | reject:c,cpp,cpp-c-cpp,csharp,java,py-cython,py-pure,rust-nostd,rust-std,zig  # F-0043 — over_len_string at the word (generator#267)
-I:c,cpp,cpp-c-cpp,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:typescript  # F-0043, finer offset — over-index element truncated INSIDE the fixlen word; only typescript decides at the earliest decidable point
+I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescript,zig | I:java  # benign — java emits an incomplete_value payload on I; the verdict is unanimous (policy incomplete_value: soft)
+I:dart,go,py-cython,py-pure,typescript | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,java,rust-nostd,rust-std,zig  # F-0043 — declared-width bound, truncated (generator#267). cpp moved I→reject with generator#279 (STATUS-LOG 2026-08-03); the signature is that move, not a new cause
+I:csharp,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,dart,go,typescript  # F-0043 — over_len_blob at the word (generator#267)
+I:py-cython,py-pure,zig | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,java,rust-nostd,rust-std,typescript  # F-0043 — the py-cython/py-pure deferral row (generator#267). zig moved reject→I once its eager mid-payload UTF-8 path went away (documentation#33's 12-vs-1 split is now 15-vs-0)
+I:csharp,dart,go,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,py-cython,py-pure,typescript  # F-0043 — string_array over-index element (generator#267)
+I:csharp,dart,go,rust-nostd,rust-std,typescript,zig | I:java | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,py-cython,py-pure  # F-0043 — string_array element, maxlen 64 (generator#267)
+I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:typescript  # F-0043, finer offset — over-index element truncated INSIDE the fixlen word; only typescript decides at the earliest decidable point
+I:csharp,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,dart,go,py-cython,py-pure,typescript  # F-0043 — over_len_string, further offset (generator#267)
+I:dart,go,typescript,zig | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,java,py-cython,py-pure,rust-nostd,rust-std  # legal — CORELIB_PLAN §6.4 mid-payload MAY, now unexercised: zig moved reject→I with the other fourteen (documentation#33 / PR #40)
