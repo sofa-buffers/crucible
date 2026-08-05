@@ -121,11 +121,17 @@ here:
       engine-parity break rather than a corelib-wide one. Both engines are in the **chunked**
       roster and pass it. Adding the name back is the whole change.
 
-- [ ] **Put `typescript` back in `scripts/run-chunked.sh` when F-0060 closes**
-      ([generator#297](https://github.com/sofa-buffers/generator/issues/297)). Its generated
-      visitor calls the fatal `TextDecoder` without the try/catch its own corelib performs, so a
-      chunked decode of invalid UTF-8 raises a platform `TypeError` instead of `SofabError`. It
-      stays in the **encode** roster, which is unaffected.
+- [ ] **Put `typescript` back in `scripts/run-chunked.sh` when F-0061 closes**
+      ([generator#300](https://github.com/sofa-buffers/generator/issues/300)). It was held out for
+      F-0060 (a platform `TypeError` escaping instead of `SofabError`); that is **fixed**
+      (generator#298) and the axis went **12 436 → 716**. The reason changed rather than went away:
+      the residual is a *verdict* flip — the same bytes are `INCOMPLETE` fed whole and `INVALID`
+      fed in pieces, in both directions. It stays in the **encode** roster, which is unaffected.
+
+      **This is the second fix in two days that closed its issue, genuinely repaired the reported
+      path, and left the axis red** (after generator#293 → #295 for zig). Both were caught by
+      re-running the measurement rather than reading the ticket. Treat a closed upstream issue as a
+      reason to re-measure, never as a substitute for it.
 
 - [ ] **The split sweep does not scale to a fuzzed corpus, and that is a real gap.**
       `SOFAB_SPLIT` is swept over every interior `k`, so its cost is O(maxlen) *per driver*: over

@@ -1,7 +1,13 @@
 # F-0060 — the generated TypeScript chunked decoder lets a raw `TypeError` escape where the one-shot path throws `SofabError`
 
-**Status:** 🔴 **OPEN** — filed against the generator ([`results/FINDINGS.md`](../../results/FINDINGS.md)
-owns this finding's state; this file is the evidence). Also logged as codegen defect **G-0037**.
+**Status:** ✅ **RESOLVED** — [generator#297](https://github.com/sofa-buffers/generator/issues/297) fixed by
+generator#298: the emitted code now has a `_str()` helper that converts the fatal `TextDecoder`'s
+`TypeError` into `SofabError(InvalidMsg)`, as `Cursor.readString` does. Verified 2026-08-05 — the six-byte
+reproducer is chunk-invariant, and the fuzzed corpus went **12 436 → 716**. *The residual 716 is a
+different and more serious class* — a **verdict** flip rather than an exception type — filed separately as
+**F-0061** / [generator#300](https://github.com/sofa-buffers/generator/issues/300).
+[`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's state; this file is the evidence.
+Also logged as codegen defect **G-0037**.
 
 **Found 2026-08-04**, on the **first run of the chunked axis over a fuzzed corpus**
 (`corpus/interesting`, 9038 inputs). It is the reason that run was worth doing: TypeScript is
