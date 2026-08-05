@@ -79,6 +79,21 @@ here:
 
 ## Open — engine & oracles
 
+- [ ] **The cluster baseline does not survive a roster change, and fails loudly in the wrong
+      direction.** Every signature in `results/known-clusters.txt` names every driver, so adding
+      `cpp-fixed` and `cpp-c-cpp-dyn` invalidated all ten entries at once: the 2026-08-05 nightly
+      analysis reported **"9 NEW CAMPS, 0/9 accounted for"** when six were literally the old rows
+      with the two new names inside them, and the other three were a single driver changing camp
+      for reasons already on record. Zero new root causes, maximum alarm.
+      That is the dangerous direction for a cry-wolf mechanism: this baseline exists *because*
+      nine unexplained camps once accumulated unread, and a false "everything is new" is the
+      fastest way to teach people to skip it again. Rebased for now.
+      *Options, none implemented:* compare modulo drivers absent from the baseline (a new driver
+      joining an existing camp would then not invalidate it, and only a driver **moving** camps
+      would); or stamp the baseline with the roster it was taken against and say "roster changed,
+      rebase required" instead of "NEW". The second is easier and honest; the first is what makes
+      the nightly useful on the day a driver is added.
+
 - [x] **Two unspecified streaming contracts — FILED 2026-08-04** as
       [documentation#37](https://github.com/sofa-buffers/documentation/issues/37) (chunk
       lifetime) and [documentation#36](https://github.com/sofa-buffers/documentation/issues/36)
