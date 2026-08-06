@@ -118,6 +118,15 @@ of one implementation must emit **identical bytes** for the same decoded value, 
 `SOFAB_FLUSH` must not change them either — it is the encode-side mirror of
 `SOFAB_CHUNK=1`, walking the encoder across a buffer boundary at every offset.
 
+**A flush size may not be refused.** CORELIB_PLAN §5.1 puts a normative floor on the
+output buffer: it may be "arbitrarily smaller than the message — down to a single byte",
+and an encoder **MUST** be able to split a single write across a flush rather than
+require any write to land contiguously. So a driver that exits 3 (*"cannot operate at
+this configuration"*) for a `SOFAB_FLUSH=n` is reported as a **conformance failure**, not
+as an inapplicable configuration. Exit 3 remains the right answer for a **surface** the
+backend does not have — that is a real difference between backends; a buffer size is not,
+since documentation#39 (2026-08-05) removed the latitude it used to rest on.
+
 Not every backend has all three (TypeScript has no `encode()`, C has no allocating
 encode — see the API table in
 [crucible#132](https://github.com/sofa-buffers/crucible/issues/132)). A driver asked for

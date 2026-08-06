@@ -10,7 +10,88 @@ complete, and what is left is a *different and more serious* class than what it 
 F-0060 was about the **type of the exception** (a platform `TypeError` escaping instead of
 `SofabError`); both paths still rejected. This is about the **verdict itself**.
 
-## The clean reproducer
+## Re-measured 2026-08-06 — still red, and `r3` lost its clean baseline
+
+Against sofabgen `0.0.0-20260806101130-dec1e42049cd`, corpus grown to 9502:
+
+| | 2026-08-05 | now |
+|---|---|---|
+| whole `I` → chunked `R invalid_msg` | 300 | **174** |
+| whole `R invalid_msg` → chunked `I` | 5 | **5** |
+| total / distinct inputs | 305 / 52 | **179 / 30** |
+
+Direction A keeps shrinking with each generator build; **direction B has not moved at all** — the
+same five mismatches, all of them `r3`. That asymmetry is the finding's most useful signal now: the
+two halves are not being fixed by the same work, which supports the two-mechanism reading below.
+
+**`r3`'s whole-message baseline moved, and the write-up above must be read with that in mind.**
+When it was promoted it was unanimous `R invalid_msg` across all 15. Today the family says `I` and
+**typescript alone says `R`** — it is now the whole-message camp of F-0043's finer-offset row
+(`overindex_trunc_in_fixlen_word`), where typescript is the *correct* one. So `r3` is entangled
+after all, the way `r1` was with documentation#33 — not because it changed, but because the family
+moved around it.
+
+It still demonstrates this finding: chunk invariance is an intra-driver property, and typescript
+saying `R` whole and `I` chunked is a break whatever the others do. What it no longer carries on
+its own is the "nothing here is spec latitude" argument, since the whole-feed verdict is now itself
+contested. **generator#300 was updated on 2026-08-05 with the unanimity claim, which is stale as of
+this build** — worth a correction there.
+
+## Re-measured 2026-08-05 (late) — the fix is partial; the axis stays red
+
+[generator#300](https://github.com/sofa-buffers/generator/issues/300) was closed 15:28 UTC and the
+sofabgen CI build installed for this run (`0.0.0-20260805161231-f5457b755f53`, 16:12 UTC) carries
+it. Re-measured rather than believed — which is this finding's own rule, and it was right again:
+
+| | before (2026-08-05, filing) | now |
+|---|---|---|
+| `r0_unanimous_I_flips_to_R` | typescript `R`, family `I` | **passes** — 0 mismatches |
+| `r1_entangled_with_doc33` | flips under chunking | **passes** — 0 mismatches |
+| whole `I` → chunked `R invalid_msg` | 427 | **300** |
+| whole `R invalid_msg` → chunked `I` | 182 | **5** |
+| total, `corpus/interesting` × 6 chunk sizes | 609 | **305**, over **52** distinct inputs |
+
+So both filed reproducers are genuinely repaired and direction B all but collapsed — and the class
+survives at half its size. The 52 inputs fail at **every** chunk size that cuts them (52 at `n`=1,
+2, 3; 51 at 5, 8; 47 at 16), so what is left is a property of the *input*, not of where the
+boundary happens to fall.
+
+**This is the third fix in three days to close its issue, repair its reproducer, and leave the axis
+red** — after generator#293→#295 (zig) and generator#297→#298 (this finding's own predecessor,
+F-0060). The pattern is now the finding, not the incident.
+
+[generator#300](https://github.com/sofa-buffers/generator/issues/300) was **reopened 2026-08-05**
+with these counts and `r3` rather than filed as a successor issue: the reported path is repaired,
+but the defect the issue names — the verdict flipping with the chunk boundary — is the same one
+still standing.
+
+### `r3` — a clean direction-B reproducer, which this finding did not have
+
+`c6 0c 02 0a 41 07 c6 0c 8a 0a c2` (11 B) — `r3_wrapper_reopen_overindex_trunc.bin`:
+
+- `c6 0c` — `string_array` wrapper at field 200, opened;
+- `02 0a 41` — element 0, fixlen subtype String, length 1, payload `A`;
+- `07` — sequence end, closing the wrapper;
+- `c6 0c` — the **same wrapper re-opened** (§7.4);
+- `8a 0a` — an element header with id **161**, past the schema `count` — §7.1 `INVALID`;
+- `c2` — the fixlen word starts and the message ends inside it.
+
+| | verdict |
+|---|---|
+| whole (one feed) | **all 15 drivers: `R invalid_msg`** |
+| `SOFAB_CHUNK` = 1, 2, 3, 5, 8 | 14 drivers `R invalid_msg`, **typescript `I`** |
+
+The baseline is unanimous, so unlike `r1` this input carries the argument on its own: no spec
+latitude, no [documentation#33](https://github.com/sofa-buffers/documentation/issues/33)
+entanglement. It is also the **whole** of direction B in the corpus — its five mismatches are the
+five counted above — which makes it the isolate for that half rather than merely an example of it.
+
+Note it is a *lost* `INVALID`, not a spurious one: the over-index violation is fully on the wire
+before the truncation, §5.2 makes `INVALID` dominate, and every other implementation says so under
+the same cuts. Whatever the accumulator does across a boundary, it drops a verdict that was already
+decided.
+
+## The clean reproducer (as filed — **now passes**, see the re-measurement above)
 
 `a6 06 56 08 05 0c 7f` — seven bytes:
 
@@ -23,7 +104,7 @@ The baseline is *unanimous*, so nothing here is spec latitude: the same bytes ar
 fed whole and INVALID when fed in pieces, in one implementation. CORELIB_PLAN §6.4 and §7.2 item 4
 state the rule directly — **a chunk boundary MUST NOT affect the outcome.**
 
-## Both directions occur
+## Both directions occur (counts as filed — re-measured above)
 
 Over `corpus/interesting` (9038 fuzzed inputs), chunk modes only:
 

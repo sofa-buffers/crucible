@@ -121,28 +121,30 @@ def main():
             continue
 
         bad = tried = 0
-        flush_ok = flush_na = 0
         for label, env in configs(surfaces):
             tried += 1
             lines, rc, err = run(path, inputs, env)
-            # Exit 3 = "this backend cannot operate at this buffer size" (CONTRACT.md).
-            # corelib-ts's OStream needs n CONTIGUOUS bytes for a single write, so a
-            # caller buffer below the largest write cannot encode at all, while
-            # corelib-cpp streams the same value through a 1-byte buffer. That is a
-            # real difference between backends, not a defect in either, so the size is
-            # reported inapplicable rather than failed — and counted, because a flush
-            # sweep where EVERY size was inapplicable has tested nothing.
+            # Exit 3 = "this backend cannot operate at this configuration"
+            # (CONTRACT.md). For a missing *surface* that is still a legitimate answer,
+            # asserted separately below. For a buffer *size* it no longer is:
+            # CORELIB_PLAN §5.1 sets a normative floor of ONE BYTE — the output buffer
+            # may be "arbitrarily smaller than the message", and an encoder "MUST be
+            # able to split a single write across a flush; it may not require any write
+            # to land contiguously in the buffer". Until documentation#39 (2026-08-05)
+            # this was implementation latitude and the size was reported inapplicable,
+            # which is how corelib-ts#94 sat behind a green gate: five of six sizes were
+            # skipped and only the largest ever ran. It is a conformance defect now.
             if rc == 3 and "SOFAB_FLUSH" in env:
-                print(f"  [{name}] {label}: not applicable — {err}", file=sys.stderr)
-                flush_na += 1
+                print(f"  [{name}] {label}: backend refuses this buffer size — §5.1 "
+                      f"puts the floor at one byte, so this is a conformance failure "
+                      f"rather than a skip: {err}", file=sys.stderr)
+                bad += 1
                 continue
             if rc != 0 or len(lines) != len(inputs):
                 print(f"  [{name}] {label}: rc={rc}, {len(lines)} lines, expected "
                       f"{len(inputs)}: {err}", file=sys.stderr)
                 bad += 1
                 continue
-            if "SOFAB_FLUSH" in env:
-                flush_ok += 1
             for i, (a, b) in enumerate(zip(base, lines)):
                 if a != b:
                     print(f"  [{name}] {files[i]} under {label}: default={a!r} "
@@ -162,19 +164,13 @@ def main():
                           "mode as passing that never ran", file=sys.stderr)
                     bad += 1
 
-        # A flush sweep in which no size was usable has asserted nothing about the
-        # encoder crossing a buffer boundary — the one property SOFAB_FLUSH exists to
-        # check. Report it as a failure rather than let it read as coverage.
-        if "stream" in surfaces and flush_na and not flush_ok:
-            print(f"  [{name}] every SOFAB_FLUSH size was inapplicable — the buffer-"
-                  "boundary property was never exercised; raise FLUSH_SIZES for this "
-                  "backend", file=sys.stderr)
-            bad += 1
+        # The "every flush size was inapplicable" guard that used to sit here is gone
+        # with the escape hatch it guarded: a refused size is now counted as a failure
+        # above, so a sweep can no longer read as coverage without having run.
 
         status = "OK" if not bad else "FAIL"
         have = ",".join(s for s in ALL_SURFACES if s in surfaces)
-        na = f", {flush_na} flush size(s) n/a" if flush_na else ""
-        print(f"[{name}] {len(inputs)} input(s) x {tried} config(s), surfaces={have}{na} — "
+        print(f"[{name}] {len(inputs)} input(s) x {tried} config(s), surfaces={have} — "
               f"{bad} mismatch(es)  [{status}]")
         failures += bad
 

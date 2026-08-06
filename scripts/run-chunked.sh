@@ -40,9 +40,10 @@ CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 # this list is the only thing standing between the gate and a vacuous pass. Each of
 # these announces its configuration on stderr when a variable is set, so "does it
 # really re-feed" is checkable rather than asserted (see drivers/common/CONTRACT.md).
-# typescript is ABSENT while F-0060 (generator#297) is open: its generated visitor
-# calls the fatal TextDecoder without the try/catch its own corelib performs, so a
-# chunked decode of invalid UTF-8 raises a platform TypeError instead of SofabError.
+# typescript is ABSENT while F-0061 (generator#300) is open: its generated chunked
+# decode flips the VERDICT between INCOMPLETE and INVALID, in both directions — the
+# same bytes decide differently depending on where the boundary falls. (It was held
+# out for F-0060 first, which is fixed; the reason changed, not the exclusion.)
 # It stays in the ENCODE roster, which is unaffected.
 # The rest are tracked in docs/TODO.md.
 # zig is deliberately ABSENT while F-0058 (generator#293) is open: its generated

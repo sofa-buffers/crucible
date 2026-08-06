@@ -2,8 +2,20 @@
 
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-> **✅ RESOLVED 2026-08-03 — specified (`main@acd27a4`, Option B) and fixed in all three repos
-> the same day.** The attribution moved twice before landing here, so the slug is deliberately
+> **✅ RESOLVED AGAIN 2026-08-06, after regressing twice in two days.** Specified 2026-08-03
+> (`main@acd27a4`, Option B) and fixed in go/py/ts the same day; then the abandoned **Option A**
+> was merged into **corelib-zig** on 08-05 and into **corelib-java** on 08-06, each time making
+> that one driver the lone accepter. Both are reverted — corelib-zig at `c139250`, corelib-java
+> by [#67](https://github.com/sofa-buffers/corelib-java/pull/67) at `9befe46` — and the five
+> `F0054_*` regression vectors are unanimous again (15 drivers, 0 divergences), with the
+> `sweep.sh` tolerance axis green at all seven positions.
+>
+> **The two regression sections below stay.** They are not history for its own sake: the cause
+> was the same in both cases — Option-A branches from 2026-08-03 that outlived the rule and still
+> read as current — and until those branches are gone this can return a third time. Whoever sees
+> `F0054_*` diverge again should read them before re-deriving anything.
+>
+> The attribution moved twice before landing here, so the slug is deliberately
 > neutral; the divergence, the isolate and the controls never changed — only which camp was
 > conformant. See [History](#history) for what was filed against whom, since two earlier
 > positions were communicated upstream.
@@ -37,6 +49,107 @@ is reported as NEW rather than matched as known.
 
 **Re-measured 2026-08-03** against every corelib's current `main`: verdicts unchanged,
 **4 accept / 9 reject**, all three controls unanimous.
+
+## Regression 2026-08-06 — corelib-java, the same stale branch one repo over
+
+zig's revert landed 2026-08-05 22:50 (its ceiling check sits before the wire-type dispatch again,
+`istream.zig:290`). The next morning **corelib-java** merged [#66](https://github.com/sofa-buffers/corelib-java/pull/66)
+(`1eb6f12`, 06:05) and took its place as the lone accepter — same two regression vectors, same
+seven tolerance positions, same controls untouched.
+
+| gate | camps |
+|---|---|
+| `CORPUS=corpus/regression ./scripts/run.sh` | `R invalid_msg` ×14 · **`A` java** |
+| `./scripts/sweep.sh` — tolerance axis | all 7 `*_end_id_over_ID_MAX` vectors, `R` ×14 · **`A` java** |
+
+**The difference from zig's, and the reason this keeps happening.** zig's change rode inside a PR
+described as "README only, no code". java's does the opposite — it argues from the spec and quotes
+§4.9 and §6.2 at length. But the quoted wording is `f52e51e` (documentation#34, Option A), removed
+the same day by `872d479` and documentation#35 (`acd27a4`). The commit is authored 2026-08-03
+15:37, *before* Option B merged, and #66 states the provenance itself: *"restores a commit that
+never got a PR and whose branch was pruned from origin. It is not obsolete — it is what the current
+spec requires, and `main` today violates it."* Every clause of that is true against the revision it
+was written for, and false against the tip. `1eb6f12` also cites "Closes #60", which was closed
+`not planned` on 2026-08-03 for exactly this reason.
+
+So the mechanism is **not** carelessness in either repo: the Option-A branches from that day are
+still reachable and still read as internally consistent. Filed as
+[corelib-java#68](https://github.com/sofa-buffers/corelib-java/issues/68), which asks for the
+branch deletion alongside the revert and the removal of `SequenceEndIdToleranceTest` (292 lines
+pinning Option A). A sweep of all eleven corelibs found no other such branch and no open PR
+touching it.
+
+## Regression 2026-08-05 — corelib-zig implemented the abandoned Option A
+
+Caught by the regression gate on a full-box re-run against freshly pulled corelib tips. This is
+exactly what `corpus/regression/` exists for: **a divergence there means a resolved bug came
+back** (`docs/CI.md`).
+
+`zig` is now the lone accepter — the mirror image of the camp this finding was resolved on:
+
+| gate | vectors that diverge | camps |
+|---|---|---|
+| `CORPUS=corpus/regression ./scripts/run.sh` (188 inputs) | `F0054_r1_seqend_id_huge`, `F0054_r2_seqend_id_over_IDMAX` | `R invalid_msg` ×14 · **`A` zig** |
+| `./scripts/sweep.sh` — tolerance axis (§7.2 class 5b), 49 vectors | all 7 `*_end_id_over_ID_MAX` vectors, at every schema position (`root_id10/100/200/201/202`, `100_id10`, `202_id0`) | `R invalid_msg` ×14 · **`A` zig** |
+
+The three controls (`F0054_ctl_seqend_canonical`, `_id_small`, `_id_at_IDMAX`) still agree
+unanimously on `A`. That is the Option-A signature precisely: the ceiling is not applied to wire
+type 7 at all, so only the over-ceiling id moves and nothing below it does. Both blocking gates
+are red on this one cause and nothing else.
+
+### The cause — a withdrawn instruction, merged anyway
+
+`vendor/corelib-zig/src/istream.zig:276-289` (at `26bab0c`) now short-circuits wire type 7
+**before** the ceiling check:
+
+```zig
+// §4.9/§6.2: the `ID_MAX` ceiling binds only *value-bearing*
+// headers. A sequence-end (wire 7) discards its id, so it is
+// exempt — accept any id, close the sequence, [...] (F-0054).
+if (wire == types.T_SEQUENCE_END) { ... continue; }
+
+if (id_raw > types.ID_MAX) return Error.InvalidMessage;
+```
+
+That is Option A, verbatim — the position [History](#history) step 2 records as *reverted before
+merging*. The commit message says "Fixes #33. Crucible finding F-0054", but
+[corelib-zig#33](https://github.com/sofa-buffers/corelib-zig/issues/33) was **closed
+`not planned` on 2026-08-03** together with its draft PR, precisely because #35 reverts the rule
+it asks for (History step 5). The instruction it implements was withdrawn two days before it
+landed.
+
+**How it slipped in:** it rode along inside
+[corelib-zig#36](https://github.com/sofa-buffers/corelib-zig/pull/36), a README PR whose body
+states *"## Changes (README only, no code)"* — while its first commit changes `src/istream.zig`
+by 61 lines, including a test that **pins** the wrong behaviour
+(`test "over-ID_MAX id on a sequence-end is accepted and discarded (F-0054)"`, `istream.zig:662`).
+So the code change was never reviewed against the PR's own description.
+
+### The spec is unambiguous at the tip
+
+`vendor/documentation/CORELIB_PLAN.md:388-395` at `bec1fa8`, re-read for this run rather than
+quoted from the finding:
+
+> **Discarded is not unvalidated.** The header is an ordinary field header, and its id is bounded
+> by `ID_MAX` exactly as every other header's is (§6.2): an id above the ceiling is `INVALID`
+> (§5.2), on a sequence end as anywhere else. […] There is deliberately **no exception** for wire
+> type 7.
+
+The zig comment's own citation (§4.9/§6.2 "exempt the end marker") is what that sentence exists to
+deny.
+
+### Attribution — corelib-zig
+
+The decode path, the ceiling and the wire-type dispatch are all corelib code
+(`src/istream.zig`); no schema fact participates, and the other 14 drivers — including
+`rust-nostd`, the closest architectural sibling — get it right with the same generated code. File
+against **corelib-zig**: revert the wire-7 short-circuit (a deletion, restoring the single
+unconditional `if (id_raw > types.ID_MAX)`) and delete the test that pins Option A.
+
+**Filed 2026-08-05** as [corelib-zig#38](https://github.com/sofa-buffers/corelib-zig/issues/38),
+carrying the camp tables, both §4.9 and §6.2 quoted at the tip (the two sections the offending
+comment cites, both of which state the opposite), the withdrawal history of #33, and the three
+boundary test points that separate Option B from A and C.
 
 ## The isolate
 
