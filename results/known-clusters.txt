@@ -14,19 +14,45 @@
 # once and the 2026-08-05 nightly reported "9 NEW CAMPS" — six of which were these
 # same rows with the two new names inside them. A mechanism that cries wolf on a
 # roster change trains people to stop reading it, which is the exact failure it was
-# built to prevent. Rebased here; making it survive a roster change is in docs/TODO.md.
+# built to prevent. Rebased then; making it survive a roster change is in docs/TODO.md.
 #
-# Rebased 2026-08-05 against the 15-driver roster, on the nightly's own 8798-input
-# corpus (run 30978596082): 3562 agree, 5236 diverge → 9 camps, all explained.
+# A FIXED CAMP IS DELETED, NOT KEPT. A row whose cause has been repaired would match
+# that camp again if it ever came back, reporting a regression as "known" — which is
+# how F-0054's row was handled when it closed, and why its return was caught twice.
+# So this file shrinks when the family improves.
+#
+# Rebased 2026-08-06 against sofabgen 0.0.0-20260806101130-dec1e42049cd and every
+# corelib at its main tip, over the 9502-input corpus: 3884 agree, 5618 diverge ->
+# **4 camps, all explained**. Nine rows were deleted in that pass, listed at the
+# bottom for the record.
 #
 # Format: <signature>  # <label>
 
 I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescript,zig | I:java  # benign — java emits an incomplete_value payload on I; the verdict is unanimous (policy incomplete_value: soft)
-I:dart,go,py-cython,py-pure,typescript | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,java,rust-nostd,rust-std,zig  # F-0043 — declared-width bound, truncated (generator#267). cpp moved I→reject with generator#279 (STATUS-LOG 2026-08-03); the signature is that move, not a new cause
-I:csharp,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,dart,go,typescript  # F-0043 — over_len_blob at the word (generator#267)
-I:py-cython,py-pure,zig | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,java,rust-nostd,rust-std,typescript  # F-0043 — the py-cython/py-pure deferral row (generator#267). zig moved reject→I once its eager mid-payload UTF-8 path went away (documentation#33's 12-vs-1 split is now 15-vs-0)
-I:csharp,dart,go,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,py-cython,py-pure,typescript  # F-0043 — string_array over-index element (generator#267)
-I:csharp,dart,go,rust-nostd,rust-std,typescript,zig | I:java | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,py-cython,py-pure  # F-0043 — string_array element, maxlen 64 (generator#267)
-I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:typescript  # F-0043, finer offset — over-index element truncated INSIDE the fixlen word; only typescript decides at the earliest decidable point
-I:csharp,rust-nostd,rust-std,zig | I:java | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,dart,go,py-cython,py-pure,typescript  # F-0043 — over_len_string, further offset (generator#267)
-I:dart,go,typescript,zig | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,java,py-cython,py-pure,rust-nostd,rust-std  # legal — CORELIB_PLAN §6.4 mid-payload MAY, now unexercised: zig moved reject→I with the other fourteen (documentation#33 / PR #40)
+I:dart,go,py-cython,py-pure,typescript | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,java,rust-nostd,rust-std,zig  # F-0043 — declared-width bound, truncated (generator#267), the surviving half of that finding
+I:dart,go,py-cython,py-pure | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,java,rust-nostd,rust-std,typescript,zig  # F-0043 — the same declared-width bound with typescript in the correct camp; both partitions occur in the corpus
+I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:typescript  # F-0043, finer offset — over-index element truncated INSIDE the fixlen word; only typescript decides at the earliest decidable point. Also the whole-message camp of F-0061's r3 reproducer
+
+# --- deleted 2026-08-06, cause repaired -------------------------------------------
+# The fixlen header hook landed in all five push/visitor corelibs (corelib-cs#53,
+# -java#62, -rs#47, -rs-no-std#68, -zig#37) and the backends now consume it, so the
+# maxlen / element-id half of F-0043 converged: its five catalogued vectors all agree.
+# These rows are gone rather than kept, per the rule above — if any comes back it must
+# read as NEW:
+#
+#   I:csharp,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:...  (over_len_blob at the word)
+#   I:py-cython,py-pure,zig | reject:...                                      (the py deferral row)
+#   I:zig | reject:...                                                        (its payload-completion residue)
+#   I:csharp,dart,go,rust-nostd,rust-std,zig | I:java | reject:...            (string_array over-index)
+#   I:csharp,dart,go,rust-nostd,rust-std,typescript,zig | I:java | reject:... (string_array, maxlen 64)
+#   I:csharp,rust-nostd,rust-std,zig | I:java | reject:...                    (over_len_string, further offset)
+#   I:csharp,rust-nostd,rust-std,typescript,zig | I:java | reject:...         (the same with typescript late)
+#
+# Also deleted, a different cause:
+#
+#   I:dart,go,typescript,zig | reject:...   legal — the CORELIB_PLAN §6.4 mid-payload MAY.
+#       documentation#40 turned that MAY into a MUST NOT on 2026-08-05, so the camp is
+#       not merely unexercised, it would now be a conformance bug. It must read as NEW.
+#
+# The two unattributed camps from nightly 31074707585 (I:java alone; I:typescript,zig)
+# are also gone — they were never baselined, and they no longer occur.

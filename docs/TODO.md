@@ -79,6 +79,62 @@ here:
 
 ## Open — engine & oracles
 
+- [x] **The encode oracle's flush carve-out lost its spec basis — DONE 2026-08-06.** Landed once
+      corelib-ts#94 closed and the flush sweep came back clean: a refused `SOFAB_FLUSH` size is now
+      a conformance failure, the `flush_na`/`flush_ok` counters and the "every size was
+      inapplicable" guard are gone with the hatch they guarded, and `drivers/common/CONTRACT.md`
+      states the one-byte floor. Gate re-run green, 14 drivers × 9 configs, **0 `n/a`**. Original
+      note below.
+      ~~`oracle/encode_invariance.py:128-137` treats~~
+      exit 3 on a `SOFAB_FLUSH=n` config as *not applicable*, on the stated reasoning that
+      "corelib-ts's OStream needs `n` contiguous bytes for a single write […] a real difference
+      between backends, not a defect in either". **documentation#39 (`1c5f8e7`) removed that
+      latitude:** §5.1 now sets a normative floor — the output buffer may be "arbitrarily smaller
+      than the message — down to a single byte", and an encoder "**MUST** be able to split a single
+      write across a flush; it may not require any write to land contiguously". §7.2 item 4 asks
+      for the matching 1-byte encode test by name.
+      Today's gate printed the evidence and passed anyway:
+      `[typescript] … surfaces=stream, 5 flush size(s) n/a — 0 mismatch(es)  [OK]` — five of the six
+      `FLUSH_SIZES` were skipped, so only `n=16` ever ran. The existing guard only fires when *every*
+      size is inapplicable, which is why one usable size hid the rest.
+      **The change:** an inapplicable flush size is a conformance failure, at minimum at `n=1`;
+      keep the exit-3 escape hatch for a missing *surface* only, and say so in
+      `drivers/common/CONTRACT.md` (which owns the contract prose). This turns the encode gate red
+      on `typescript` until [corelib-ts#94](https://github.com/sofa-buffers/corelib-ts/issues/94)
+      closes, so it needs the quarantine decision first — either hold it out of
+      `SOFAB_ENCODE_DRIVERS` naming that issue, as `run-chunked.sh` does for F-0061, or accept the
+      red. **Do not land the tightening without that call.**
+
+- [ ] **Two unattributed cluster camps from nightly 31074707585 (2026-08-06).** The run produced
+      five new camps over the merged 9502-input corpus; three were existing baseline rows with one
+      driver moved (measured the same day on the F-0043 vectors) and are now in
+      `results/known-clusters.txt`. These two are **not explained and deliberately not baselined**,
+      so the gate keeps failing on them:
+      - `I:java | reject:<the other 14>` — 4 inputs, rep `ee44aadf12f6` (56 B,
+        `09 01 76 76 05 05 20 ff ff …`). java emits an incomplete_value payload `0901`. Distinct
+        from the benign java incomplete_value row, where the *verdict* is unanimous — here java is
+        alone in reporting `I` at all.
+      - `I:typescript,zig | reject:<the other 13>` — 2 inputs, rep `e59d05a8b2a6` (22 B,
+        `c6 0c 0a 02 0a 02 … 02 92 06 07`) — a `string_array` wrapper of one-byte string elements
+        followed by an element declaring a 98-byte string that never arrives.
+      Both smell like the F-0043 axis (verdict timing) but neither matches a catalogued row, and
+      all five push corelibs gained the fixlen header hook the night before, so the camps on that
+      axis are in motion. Minimize each representative and attribute before baselining.
+
+- [ ] **typescript moved in BOTH directions on the F-0043 axis in one night (2026-08-06).** It left
+      the late camp on the declared-width row (an improvement) and joined it on the
+      over_len_string-further-offset row (a regression). generator#267's title names
+      `rust, rust-no-std, java, csharp, zig` — typescript joining the late camp **widens that
+      issue to a sixth backend** and is worth a comment there once the two camps above are
+      attributed, since they may share a cause.
+
+- [ ] **Re-read F-0061's `r1` now that documentation#33 is closed.** `eb2311a`
+      (documentation#40) turned §6.4's mid-payload UTF-8 `MAY` into a `MUST NOT` — a decoder may not
+      report `INVALID` before the declared length is reached. `r1_entangled_with_doc33.bin` was set
+      aside as unusable because the family split 8-vs-7 on it under that latitude; the split is now
+      a conformance question. Worth measuring the whole-feed camps on it again and deciding whether
+      the losing camp is a finding of its own. (Noted on generator#300.)
+
 - [ ] **The cluster baseline does not survive a roster change, and fails loudly in the wrong
       direction.** Every signature in `results/known-clusters.txt` names every driver, so adding
       `cpp-fixed` and `cpp-c-cpp-dyn` invalidated all ten entries at once: the 2026-08-05 nightly
@@ -142,6 +198,9 @@ here:
       (generator#298) and the axis went **12 436 → 716**. The reason changed rather than went away:
       the residual is a *verdict* flip — the same bytes are `INCOMPLETE` fed whole and `INVALID`
       fed in pieces, in both directions. It stays in the **encode** roster, which is unaffected.
+      **Re-measured 2026-08-05** after generator#300 was closed: both filed reproducers now pass
+      and the chunk-mode count halved (609 → **305**, 52 inputs), so the fix is partial and the
+      exclusion stands. A clean direction-B isolate (`r3`, 11 B) was promoted into the finding.
 
       **This is the second fix in two days that closed its issue, genuinely repaired the reported
       path, and left the axis red** (after generator#293 → #295 for zig). Both were caught by

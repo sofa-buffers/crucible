@@ -19,6 +19,136 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Full box against the fixed family: eleven gates green, F-0054 closed again, F-0043 down to its two addenda (2026-08-06, later).**
+Run against sofabgen `0.0.0-20260806101130-dec1e42049cd` (a main CI build, no release) with every
+corelib at its main tip and the spec at `bec1fa8`. Sixteen steps — the eleven replay gates, the
+three open findings re-measured, and the cluster pass. **All eleven gates green**, including
+`regression` and `sweep`, which had been red on F-0054 in two consecutive runs.
+
+*F-0054 is resolved again* — corelib-java#67 (`9befe46`) reverts the Option A merge that
+corelib-java#68 asked for, matching corelib-zig's revert the night before. Five `F0054_*` vectors
+unanimous, tolerance axis green at all seven positions. Its two regression sections are kept in the
+write-up deliberately: the cause was the same both times — 2026-08-03 Option-A branches that
+outlived the rule — so the third occurrence, if it comes, should be recognised rather than
+re-derived.
+
+*F-0043 lost its whole body.* The fixlen header hook landed in all five push/visitor corelibs and
+the backends now consume it, so **all five catalogued vectors are unanimous** and the finding's
+corpus went 30 → 6 divergences. What remains is exactly the two addenda posted to generator#267 on
+08-05, and they have **disjoint camps**: the declared-integer-width bound (dart, go, py×2,
+typescript late) and the one-byte-finer offset (typescript alone correct). Neither is touched by
+the hook — the width bound is not a fixlen length, and the finer offset is about reading a subtype
+out of the first byte of an unfinished varint. The F-0042 shape held exactly as the 08-02
+attribution addendum predicted.
+
+*F-0061 is still red, and its two halves are now visibly different problems.* 305 → **179**
+mismatches over 30 inputs; direction A fell 300 → 174 while **direction B did not move at all** —
+still exactly `r3`'s five. Successive generator builds are eating one half and not the other.
+Also worth recording: **`r3` lost the unanimous whole-message baseline it was promoted for.** The
+family moved around it (it is now the whole-message camp of F-0043's finer-offset row, where
+typescript is the correct one), so the "no spec latitude" argument posted to generator#300 on
+08-05 is stale. The reproducer still demonstrates the intra-driver break; it no longer carries the
+argument alone. Correction owed upstream.
+
+*Baseline pruned rather than grown.* The cluster pass over 9502 inputs found **4 camps, all
+accounted**, down from 9. Nine rows were **deleted** from `results/known-clusters.txt` — seven
+F-0043 rows whose cause is repaired, the §6.4 mid-payload row (documentation#40 turned that `MAY`
+into a `MUST NOT`, so its return would be a conformance bug rather than latitude), and the two
+unattributed camps from nightly 31074707585, which no longer occur. **Decision: a fixed camp is
+deleted, not kept**, and the file now says so at the top — a retained row would match a returning
+regression and report it as "known", which is precisely how F-0054's return was caught twice
+(its row had been removed when it closed). The baseline shrinks when the family improves.
+
+**F-0054 regressed a second time, in a second repo — and the encode carve-out was retired (2026-08-06).**
+Eight corelib issues closed overnight, so the box was re-run against the new tips (cs, java, rs,
+rs-no-std, ts, zig all moved). `regression` and `sweep` are red again on the **same rule as
+yesterday, one repo over**: corelib-java merged #66 (`1eb6f12`, "stop applying ID_MAX to a
+sequence-end header") at 06:05, and java is now the lone accepter across the two regression
+vectors and all seven tolerance positions. corelib-zig's revert landed correctly the night before,
+so this is not a spread — it is the same stale branch resurfacing.
+
+*What makes this one different from zig's, and worth recording as a mechanism.* zig's arrived
+inside a PR whose body said "README only, no code". java's argues explicitly from the spec and
+quotes §4.9 and §6.2 — but the quoted wording is `f52e51e` (documentation#34, Option A), removed
+the same day it landed by `872d479`/`acd27a4`. The commit is authored 2026-08-03 15:37, before
+Option B merged, and the PR says so itself: *"restores a commit that never got a PR and whose
+branch was pruned from origin."* So the failure mode is not carelessness in either case — it is
+that **the Option-A branches from 2026-08-03 are still reachable and still read as current**,
+because the argument they carry is internally consistent against the spec revision they were
+written for. Filed as corelib-java#68, which asks for the branch deletion alongside the revert;
+a sweep of all eleven corelibs found no other such branch and no open PR touching it.
+
+*The encode-oracle tightening landed*, the blocker having cleared: corelib-ts#94 closed, and the
+flush sweep came back with **zero** inapplicable sizes across all 14 encode drivers, so making a
+refused size a failure reddens nothing. `oracle/encode_invariance.py` no longer carries the exit-3
+escape hatch for `SOFAB_FLUSH` (it keeps it for a missing *surface*, which is a genuine
+backend difference), the two counters and their guard are deleted, and
+`drivers/common/CONTRACT.md` states the §5.1 one-byte floor. **Decision: the hatch went rather
+than being narrowed to `n=1`** — a per-size exception would have re-created the thing that hid
+corelib-ts#94, namely a green line that had skipped most of its sweep.
+
+*F-0043 is unmoved* — the fixlen header hook is now in all five push corelibs, but the camps are
+byte-identical to 2026-08-05 and the count is still 30/17. The corelib blocker is gone; the
+backends do not consume the hook yet, so generator#267 stays open on the codegen side alone.
+
+**Full-box re-run on fresh tips: a resolved finding came back, and a closed one was not closed (2026-08-05).**
+All eleven gates run against freshly bootstrapped corelibs (three tips moved: go `08f196e`, ts
+`792af26`, zig `26bab0c`; spec pulled separately to `bec1fa8`, since `bootstrap.sh` does not fetch
+it) and sofabgen CI build `0.0.0-20260805161231-f5457b755f53`. Nine green; **`regression` and
+`sweep` both red on one cause**, and the two open findings re-measured.
+
+*The regression gate did exactly the job it was built for.* `F0054_r1`/`_r2` diverged, and the
+sweep's tolerance axis lit up all seven `*_end_id_over_ID_MAX` positions — `zig` alone accepting.
+corelib-zig had merged the **abandoned Option A** of F-0054, two days after the family settled on
+Option B and after the issue asking for A was closed `not planned`. Evidence in the finding.
+
+**Decision: F-0054 is reopened, not renumbered.** The precedent for a fix-induced regression in this
+log is F-0011, which took a new number — but that was a *different* defect introduced alongside a
+fix. This is the same rule, the same isolate, the same controls and literally the same `F0054_*`
+vectors, with one implementation moving between the camps the finding already documents. Splitting
+it would put one rule in two write-ups, which is the shape `CLAUDE.md` forbids and the reason the
+catalog was restructured on 2026-08-03. The write-up carries a dated regression section; the
+resolution trail for go/py/ts is left standing, because it is still true.
+
+*Worth naming separately from the finding:* the change arrived inside a PR whose body reads
+"Changes (README only, no code)" while its first commit rewrites 61 lines of `src/istream.zig` and
+adds a test pinning the wrong behaviour. No review of that repo's diff would have been prompted to
+look. That is an upstream process observation, not a Crucible one — but it is why the gate, not a
+human, caught it.
+
+*F-0061 re-measured, and the measurement axis was swapped mid-run.* The first attempt used
+`run-chunked.sh`'s default `split` mode, which sweeps every byte offset — after 63 minutes it had
+covered 3511 of 9038 inputs and was projecting ~100 more, on an axis the finding's numbers do not
+come from. Killed and re-run with `--modes chunk` (the six fixed chunk sizes the write-up used),
+which finished in minutes and is directly comparable: **609 → 305 mismatches**. Both filed
+reproducers now pass and direction B collapsed 182 → 5, so the fix is real; the class is not gone.
+A new 11-byte isolate (`r3`) was promoted from the fuzz corpus — unanimous `R invalid_msg` whole,
+`I` under every chunking, and it accounts for all five remaining direction-B cases, so the half
+that previously had only an entangled reproducer now has a clean one. F-0061 stays 🔴.
+
+*F-0043's verdict count is unchanged* — 30 divergences over its 17 vectors — but its **camps
+converged**: py-cython/py-pure were fixed on the blob rows, go/dart on the wrapper rows, and all
+four fixlen/wrapper rows now show the same five push/visitor implementations. That discharges the
+scope note left open on 2026-08-02, which had asked whether the element-id half needed its own
+analysis: it does not. Both held-back addenda (the declared-integer-width bound, and the
+one-byte-finer truncation offset where only typescript is correct) were posted to generator#267,
+the review having settled.
+
+**Upstream filed the same day:** corelib-zig#38 (the F-0054 regression), generator#300 **reopened**
+rather than succeeded by a new issue — the reported path is repaired but the defect the issue names
+still stands — and the two addenda onto generator#267.
+
+*One measurement lesson, worth more than the numbers.* Comparing zig's blob-row behaviour across
+tips meant `git checkout` inside `vendor/corelib-zig`, and the run immediately after reported
+java, rust-std and rust-nostd — whose corelibs had not moved — in the *correct* camp where the
+clean run has them late. Chasing that as a possible corpus-composition dependency (a driver
+contract violation, and the kind of thing that would invalidate every camp table in the catalog)
+cost most of an hour before three identical runs settled and reproduced the baseline exactly. The
+cause is prosaic: a vendor checkout perturbs the mtimes the per-driver incremental builds key on,
+so the **first** run after one is not trustworthy. Run any vendor-checkout comparison twice and
+read the second. Recorded here because the false alarm was indistinguishable from a real and much
+worse finding right up to the moment it wasn't.
+
 **All fourteen drivers are wired, and the encode axis found a defect nobody was looking for (2026-08-04).**
 Python was the last, and the only **pull-shaped** backend: there is no push `feed`, so the driver
 expresses chunking by handing the `Decoder` a reader that returns **short reads**. That is faithful

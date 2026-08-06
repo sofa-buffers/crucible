@@ -171,9 +171,11 @@ leaves `readArray`'s element-width bound unarmed — split out as
 [F-0052](../F-0052-cpp-array-element-width-bound-never-armed/NOTES.md). Counting it here would
 overstate this finding's camp by one.
 
-*Not yet added to generator#267*, which is under review: the issue's own camps are unchanged
-(re-verified 2026-08-03, all four clusters byte-for-byte as catalogued), and this is a new axis
-rather than a correction. Worth appending once the review settles.
+**Added to generator#267 on 2026-08-05** (with Addendum (b) below), once the review had settled.
+Camps re-measured that day: `cpp` has left the late camp here, because F-0052 — the unarmed C++
+`readArray` element-width bound, which is why it was never an instance of *this* finding — closed.
+The five deferrers are now dart, go, py-cython, py-pure, typescript, all of which reject the
+complete form.
 
 ---
 
@@ -220,8 +222,80 @@ join the late camp, and only typescript decides at the earliest point the wire p
 finding's reach is therefore wider than its rows suggest — the "correct" side of the
 `string_array_over_id` row is a matter of degree, not of conformance.
 
-*Not appended to generator#267 while it is under review* — same reasoning as the width addendum:
-the issue's own camps are unchanged, and this refines rather than corrects them.
+**Added to generator#267 on 2026-08-05**, together with the width addendum.
+
+---
+
+## Re-measurement 2026-08-06 — the `maxlen` / element-id half is FIXED; two addenda survive
+
+Against sofabgen `0.0.0-20260806101130-dec1e42049cd` and every corelib at its main tip, with the
+fixlen header hook landed in all five push/visitor corelibs (corelib-cs#53, -java#62, -rs#47,
+-rs-no-std#68, -zig#37) **and the backends now consuming it**. The finding's corpus went from
+**30 divergences to 6**, and every one of the five catalogued rows is gone:
+
+| vector | before | now |
+|---|---|---|
+| `over_len_string_trunc_004` | 5 late | **unanimous** |
+| `over_len_blob_trunc_003` | 5 late | **unanimous** |
+| `over_len_blob_trunc_004…007` | zig late | **unanimous** |
+| `string_array_over_id_trunc_004` | 5 late | **unanimous** |
+| `blob_array_over_id_trunc_004` | 5 late | **unanimous** |
+
+That is the whole of "The split" table at the top of this file, and the whole of the 2026-08-02
+attribution addendum's argument: the callback now fires at the word, and generated code latches
+there. The F-0042 shape held — corelib hook plus backends consuming it.
+
+**What is left is exactly the two addenda**, neither of which the hook addresses:
+
+| vector | bytes | camp |
+|---|---|---|
+| `width_elem_trunc` | `a6 06 0c 05 b0 51` | `I`: dart, go, py-cython, py-pure, typescript (5) · `R` the other 10 |
+| `overindex_trunc_in_fixlen_word` | `c6 0c 2a c2` | `R`: **typescript only** · `I` the other 14 |
+
+So the finding narrows to two distinct residues with **disjoint camps**: the declared-integer-width
+bound (documentation#32), where five backends decide only once the array closes; and the
+one-byte-finer offset, where only typescript decides at the earliest point the wire permits. Both
+were posted to generator#267 on 2026-08-05 and neither is addressed by the header hook — the width
+bound is not a fixlen length at all, and the finer offset is about reading the subtype out of the
+first byte of an unfinished varint.
+
+Clustering agrees: over the 9502-input corpus these are the only F-0043 camps left, and the
+declared-width one appears in **both** partitions (with and without typescript late).
+
+## Re-measurement 2026-08-05 — the camps converged onto the five push/visitor corelibs
+
+Full-box re-run on current tips. The catalogued rows have **improved**, and in a way that settles
+the scope note the 2026-08-02 attribution addendum left open:
+
+| vector | late today | vs. filing |
+|---|---|---|
+| `over_len_string_trunc_004` | rust-std, rust-nostd, java, csharp, zig | unchanged |
+| `over_len_blob_trunc_003` | rust-std, rust-nostd, java, csharp, zig | py-cython, py-pure fixed |
+| `over_len_blob_trunc_004…007` | zig | py-cython, py-pure fixed; zig late here |
+| `string_array_over_id_trunc_004` | rust-std, rust-nostd, java, csharp, zig | go, dart fixed |
+| `blob_array_over_id_trunc_004` | rust-std, rust-nostd, java, csharp, zig | go, dart fixed |
+
+All eight controls stay unanimous `R invalid_msg`.
+
+**The wrapper-element rows no longer have a camp of their own.** The scope note — that go and dart
+join the wrong side there, so the element-id half may need separate analysis — is discharged: after
+their fixes all four fixlen/wrapper rows show the *same* five implementations, which are exactly
+the five whose visitor callback is gated on payload bytes being in hand. The `maxlen` half and the
+element-id half want one fix, not two. The corelib half for zig is
+[corelib-zig#37](https://github.com/sofa-buffers/corelib-zig/issues/37).
+
+`zig` on `over_len_blob_trunc_004…007` is the **payload-completion** form (late at every offset
+4–7), previously seen only in python. Stated as measured: it is present at the preceding tip
+`29ca282` as well, so it is *not* caused by the sequence-end regression of F-0054
+(corelib-zig#38). Which change moved it is unpinned.
+
+*Measurement note.* The first attempt at that comparison was made immediately after a
+`git checkout` inside `vendor/corelib-zig`, and three drivers whose corelibs had not changed
+(java, rust-std, rust-nostd) reported the *correct* verdict where the clean run has them late —
+stale incremental build artifacts, since the checkout perturbs mtimes the per-driver builds key
+on. A second run after any vendor checkout re-settles and reproduces the baseline byte-for-byte.
+Nothing here rests on the polluted runs; every camp above was re-verified against the clean
+full-box state.
 
 ## Resolution
 
