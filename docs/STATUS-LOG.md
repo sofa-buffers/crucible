@@ -65,6 +65,39 @@ inapplicable, zero mismatches.
 through. The rule that keeps paying off is the one in `verify-clauses-at-tip-before-filing`:
 re-read the clause at the documentation tip before acting on it, never from a write-up.
 
+**Second pass the same day, against sofabgen `0.0.0-20260811163628-a5ae20c7756a`** (CI run
+31513295408; corelibs unchanged, `corelib-ts` still `699f01e`). Eleven gates green again. The
+build carries generator#329, a breaking "the caller owns the encode buffer" change for
+go/python/typescript/dart — it did not break the drivers, since they reach encode through the
+generated API rather than constructing the buffer themselves.
+
+*generator#300 was closed at 16:37 UTC and reopened here with the corpus measurement.* The
+closing note asked for exactly that check ("a Crucible re-run is the authoritative confirmation
+… reopen without hesitation if the corpus disagrees"), and it does: 5 mismatches over
+`corpus/interesting`, all `r3`, against the build made one minute before the close. The
+divergence from their result is explained rather than contested — they measured a different
+direction-B vector (`c6 0c 2a c2`) and ran corelib-ts directly with an empty visitor, not
+generated code.
+
+**Decision: F-0061's direction-B mechanism is the reverse of what this log and the write-up
+said this morning.** documentation#43 → #44 make `INCOMPLETE` correct, so TypeScript's *chunked*
+path is right and its *whole-message* path invents an `INVALID` — the chunk-invariance flip is
+the symptom, not the defect. Pinned with a control: `r3` splits 14-vs-1, and `r3` plus one byte
+completing the `fixlen_word` is unanimous `R invalid_msg` across all fifteen, so the bound check
+is correct everywhere and only its timing is wrong. Attribution is **both** — corelib-ts
+`cursor.ts:490` `peekFixSub` reads a subtype out of an incomplete varint (wire mechanics, and the
+likely root fix), while the generated `count` bound fires before the length word completes
+(schema-only, so this repo's half). CORELIB_PLAN §4.1 names the case outright.
+
+*Method note, twice earned today.* Two measurements had to be thrown away before this one held.
+The vendored corelibs are **depth-1 clones**, so `git log OLD..HEAD` in `vendor/` reports one
+commit per repo regardless of the real delta — the "mostly benchmark work" characterisation
+earlier in this entry came from that and is not evidence; use the GitHub compare API instead. And
+a control run against a driver binary snapshotted while `run-limits`/`sweep` were rebuilding
+reported `I` where the same input had just given `R invalid_msg`. Neither was a behaviour change.
+Both are the standing footgun: **rebuild through `run.sh` and re-measure before believing a
+number**, which is the same rule that caught F-0054's two regressions.
+
 *F-0061 / generator#300 stays open, on one input.* Re-measured over `corpus/interesting` (9502,
 unchanged since 08-06, so the counts compare directly): **179 mismatches over 30 inputs → 5 over
 1**. Direction A is at 0; direction B is at 5 and is exactly `r3`, confirmed by content against
