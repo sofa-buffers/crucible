@@ -192,15 +192,14 @@ here:
       engine-parity break rather than a corelib-wide one. Both engines are in the **chunked**
       roster and pass it. Adding the name back is the whole change.
 
-- [ ] **Put `typescript` back in `scripts/run-chunked.sh` when F-0061 closes**
-      ([generator#300](https://github.com/sofa-buffers/generator/issues/300)). It was held out for
-      F-0060 (a platform `TypeError` escaping instead of `SofabError`); that is **fixed**
-      (generator#298) and the axis went **12 436 → 716**. The reason changed rather than went away:
-      the residual is a *verdict* flip — the same bytes are `INCOMPLETE` fed whole and `INVALID`
-      fed in pieces, in both directions. It stays in the **encode** roster, which is unaffected.
-      **Re-measured 2026-08-05** after generator#300 was closed: both filed reproducers now pass
-      and the chunk-mode count halved (609 → **305**, 52 inputs), so the fix is partial and the
-      exclusion stands. A clean direction-B isolate (`r3`, 11 B) was promoted into the finding.
+- [x] **Put `typescript` back in `scripts/run-chunked.sh`** — **done 2026-08-11.** F-0061
+      ([generator#300](https://github.com/sofa-buffers/generator/issues/300)) closed with
+      corelib-ts#141, which stopped the cursor reading a fixlen subtype out of an incomplete
+      varint. Verified before re-adding, not on the ticket: 0 mismatches over
+      `corpus/interesting` (9502 inputs x 6 chunk sizes), where it had been 5, and the chunked
+      gate is green with all fourteen drivers. Two reasons had stacked on one exclusion — F-0060
+      first, then F-0061 — and both are now gone. The stale comment claiming `zig` was still held
+      out for F-0058 (closed) was corrected in the same change; nobody is held out of that gate.
 
       **This is the second fix in two days that closed its issue, genuinely repaired the reported
       path, and left the axis red** (after generator#293 → #295 for zig). Both were caught by

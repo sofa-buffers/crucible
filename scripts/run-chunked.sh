@@ -40,18 +40,18 @@ CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 # this list is the only thing standing between the gate and a vacuous pass. Each of
 # these announces its configuration on stderr when a variable is set, so "does it
 # really re-feed" is checkable rather than asserted (see drivers/common/CONTRACT.md).
-# typescript is ABSENT while F-0061 (generator#300) is open: its generated chunked
-# decode flips the VERDICT between INCOMPLETE and INVALID, in both directions — the
-# same bytes decide differently depending on where the boundary falls. (It was held
-# out for F-0060 first, which is fixed; the reason changed, not the exclusion.)
-# It stays in the ENCODE roster, which is unaffected.
+# typescript is BACK since 2026-08-11: F-0061 (generator#300) closed with corelib-ts#141,
+# which stopped the cursor reading a fixlen subtype out of an incomplete varint. It had
+# been held out for F-0060 first and then for F-0061 — two reasons, one exclusion, both
+# now gone. Verified before re-adding rather than on the ticket: 0 mismatches over
+# corpus/interesting (9502 inputs x 6 chunk sizes), where it had been 5.
 # The rest are tracked in docs/TODO.md.
-# zig is deliberately ABSENT while F-0058 (generator#293) is open: its generated
-# chunked reassembly shares one buffer across split payloads, so two wrapper-array
-# elements alias each other. Including it would make this gate permanently red for a
-# defect that is already filed — the same reasoning results/known-clusters.txt rests
-# on. Add it back when F-0058 closes; that one word is the whole change.
-SUPPORTED="${SOFAB_SPLIT_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp cpp-c-cpp-dyn java csharp dart zig py-cython py-pure}"
+# zig was held out for F-0058 (generator#293/#295) — its generated chunked reassembly
+# shared one buffer across split payloads, so two wrapper-array elements aliased each
+# other. That closed and zig is back; the comment saying otherwise outlived the
+# exclusion it described and is corrected here.
+# Nobody is held out of this gate any more.
+SUPPORTED="${SOFAB_SPLIT_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp cpp-c-cpp-dyn typescript java csharp dart zig py-cython py-pure}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [chunked] no driver implements SOFAB_SPLIT yet — nothing to check." >&2

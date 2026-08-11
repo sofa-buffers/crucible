@@ -1,7 +1,43 @@
 # F-0061 — the generated TypeScript chunked decoder flips the *verdict* between INCOMPLETE and INVALID
 
-**Status:** 🔴 **OPEN** — filed against the generator ([`results/FINDINGS.md`](../../results/FINDINGS.md)
+**Status:** ✅ **RESOLVED** 2026-08-11 by **corelib-ts#141** ([`results/FINDINGS.md`](../../results/FINDINGS.md)
 owns this finding's state; this file is the evidence). Also logged as codegen defect **G-0038**.
+
+## Resolution — corelib-ts#141, verified on the corpus
+
+*"a fixlen subtype needs a complete word, not its first byte"* — `peekFixSub` now returns
+`subOfCompleteWord(...)`, and `-1` while the word is not wholly present (including the
+`ArrayFixlen` path, where a truncated count word leaves nothing to step over). That is the
+first of the two locations named below.
+
+Measured against `corelib-ts@57515ad`, sofabgen `0.0.0-20260811165755-e1655b562522`,
+drivers rebuilt from clean:
+
+| | before | after |
+|---|---|---|
+| `r3` isolate | 5 mismatches | **0** |
+| `r0` + `r1` | 0 | **0** |
+| `corpus/interesting`, 9502 × 6 chunk sizes | 5 / 1 input | **0** |
+
+| input | all 15 drivers |
+|---|---|
+| `r3` (ends inside the `fixlen_word`) | `I` whole **and** chunked |
+| `r3` + one byte completing the word | `R invalid_msg` whole **and** chunked |
+
+**The control is what makes this a fix rather than a relaxation.** With the word
+complete, the over-`count` element id is still unanimously `INVALID` — §7.1 still bites,
+at the point §4.1 permits. A fix that had simply dropped the bound would also have shown
+`r3` green.
+
+**The generated half was not changed and did not need to be.** With `peekFixSub`
+returning `-1`, the generated cursor loop takes its `c.skip(c.wire)` branch and reaches
+`INCOMPLETE` correctly. The `count`-bound ordering in `message.ts` remains latent
+fragility rather than a live defect, so nothing further was filed — noted here because
+the next person to touch that loop should know the ordering is load-bearing.
+
+Full box green (eleven gates + warm-up). `typescript` is back in
+`scripts/run-chunked.sh`'s roster, verified before re-adding rather than on the ticket;
+nobody is held out of that gate any more.
 
 **Found 2026-08-05**, by re-measuring after the F-0060 fix (generator#297 → #298) rather than
 taking the closed issue as proof. The fix is real and large — **12 436 mismatches → 716** — but not

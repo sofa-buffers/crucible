@@ -65,6 +65,29 @@ inapplicable, zero mismatches.
 through. The rule that keeps paying off is the one in `verify-clauses-at-tip-before-filing`:
 re-read the clause at the documentation tip before acting on it, never from a write-up.
 
+**Third pass: F-0061 resolved and generator#300 closed for real (2026-08-11, evening).**
+`corelib-ts@57515ad` (#141, *"a fixlen subtype needs a complete word, not its first byte"*) with
+sofabgen `0.0.0-20260811165755-e1655b562522`. The fix lands exactly on the `peekFixSub` half of
+the attribution posted on the reopen, and the generated `count`-bound ordering was not touched —
+with `peekFixSub` returning `-1` on an incomplete word the generated cursor takes its `c.skip`
+branch and reaches `INCOMPLETE` correctly. Eleven gates green plus warm-up.
+
+`corpus/interesting` goes **5 mismatches over 1 input → 0**, all three reproducers pass, and the
+control holds: `r3` plus one byte completing the `fixlen_word` is still unanimously
+`R invalid_msg`. That control is the reason this close is trustworthy where three previous ones
+were not — a fix that had merely dropped the §7.1 bound would also have shown `r3` green, and
+nothing in the axis alone distinguishes the two.
+
+`typescript` returns to `scripts/run-chunked.sh`, verified before re-adding rather than on the
+ticket; the gate is green with all fourteen. Its neighbouring comment still claimed `zig` was
+held out for F-0058, which closed some time ago — corrected in the same change. **Nobody is held
+out of the chunked gate any more**, the first time that has been true.
+
+*The pattern this finding was really about is worth keeping.* Four closes, three of them
+premature, each with a repaired reproducer and a red axis behind it. What broke the run was not
+more scrutiny of the fixes but a cheap standing habit: re-measure on the corpus, and carry a
+control that would fail if the fix were a relaxation rather than a repair.
+
 **Second pass the same day, against sofabgen `0.0.0-20260811163628-a5ae20c7756a`** (CI run
 31513295408; corelibs unchanged, `corelib-ts` still `699f01e`). Eleven gates green again. The
 build carries generator#329, a breaking "the caller owns the encode buffer" change for
