@@ -4,3 +4,4 @@ framework=libfuzzer
 pacemaker=true
 chunked_decode=push
 encode_surfaces=to,stream
+min_output_buffer=1

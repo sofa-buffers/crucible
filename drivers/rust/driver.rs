@@ -167,7 +167,25 @@ fn encode_via(cfg: &StreamCfg, m: &Probe) -> Vec<u8> {
     let mut out: Vec<u8> = Vec::new();
     {
         let sink = |data: &[u8]| out.extend_from_slice(data);
-        let mut os = sofab::OStream::with_flush(&mut buf, 0, sink);
+        // `with_flush` is fallible since corelib-rs#86 (it always was on
+        // corelib-rs-no-std): it enforces the CORELIB_PLAN §5.1 streaming minimum,
+        // `buflen - offset >= MIN_OUTPUT_BUFFER`, and refuses a smaller buffer at the
+        // installation. Report that refusal as exit 3 — "this backend cannot operate at
+        // this configuration" — rather than unwrapping, so the oracle sees the buffer
+        // size the port declined instead of a panic.
+        let mut os = match sofab::OStream::with_flush(&mut buf, 0, sink) {
+            Ok(os) => os,
+            Err(e) => {
+                eprintln!(
+                    "crucible-rust: OStream::with_flush refused a {}-byte buffer \
+                     (MIN_OUTPUT_BUFFER={}): {:?}",
+                    buf.len(),
+                    sofab::MIN_OUTPUT_BUFFER,
+                    e
+                );
+                std::process::exit(3);
+            }
+        };
         m.serialize(&mut os);
         os.flush();
     }

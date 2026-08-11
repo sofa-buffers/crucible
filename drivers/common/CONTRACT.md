@@ -118,14 +118,32 @@ of one implementation must emit **identical bytes** for the same decoded value, 
 `SOFAB_FLUSH` must not change them either — it is the encode-side mirror of
 `SOFAB_CHUNK=1`, walking the encoder across a buffer boundary at every offset.
 
-**A flush size may not be refused.** CORELIB_PLAN §5.1 puts a normative floor on the
-output buffer: it may be "arbitrarily smaller than the message — down to a single byte",
-and an encoder **MUST** be able to split a single write across a flush rather than
-require any write to land contiguously. So a driver that exits 3 (*"cannot operate at
-this configuration"*) for a `SOFAB_FLUSH=n` is reported as a **conformance failure**, not
-as an inapplicable configuration. Exit 3 remains the right answer for a **surface** the
-backend does not have — that is a real difference between backends; a buffer size is not,
-since documentation#39 (2026-08-05) removed the latitude it used to rest on.
+**Which flush sizes must work is the port's own declaration.** CORELIB_PLAN §5.1 no
+longer fixes the floor at one byte for every port. A corelib **MUST** expose a documented
+`MIN_OUTPUT_BUFFER` — the smallest buffer it accepts *for streaming*: `1` if it splits
+atomic units across a flush, otherwise the largest run it reserves as one piece, and a
+declaration **MUST NOT** exceed `20`. Each driver restates that value in its `meta` as
+`min_output_buffer=<n>`, which is what sizes the flush sweep.
+
+Both halves of the clause are gated:
+
+* a size **at or above** the declaration **MUST** work and produce bytes identical to the
+  one-shot path — the sweep always includes the declaration itself, so a port is walked
+  across a buffer boundary at its own floor and the sweep is never empty;
+* a size **below** it **MUST** be refused where the buffer is handed over — the driver
+  exits 3 there. A port declaring `1` has no such case, since `SOFAB_FLUSH=0` is how the
+  drivers spell "unset".
+
+So exit 3 for a `SOFAB_FLUSH=n` is a **conformance failure** when `n >= min_output_buffer`
+and the **required** answer when `n < min_output_buffer`. Exit 3 also remains the right
+answer for a **surface** the backend does not have.
+
+The declaration is not an escape hatch: a port that raises it to avoid the hard sizes is
+then held to refusing everything below it, and §5.1 caps it at 20 precisely so a port
+cannot demand more than a whole message can occupy. (Until documentation#46/#48 —
+2026-08-11 — the floor was one byte for everyone and no declaration existed; the earlier
+latitude that let corelib-ts#94 sit behind a green gate is not restored by this, because
+a sweep that runs no size at all is now impossible by construction.)
 
 Not every backend has all three (TypeScript has no `encode()`, C has no allocating
 encode — see the API table in

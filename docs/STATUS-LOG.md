@@ -19,6 +19,117 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Full box against the 08-11 family: eleven gates green, two drivers repaired for upstream API breaks, the encode gate re-based on the rewritten §5.1, F-0061 down to one input (2026-08-11).**
+Run against sofabgen `0.0.0-20260811122938-1a44ef44d5fe` (a main CI build, no release) with every
+corelib at its main tip and the spec at `dd2866b`. **All eleven gates green**, warm-up pass green
+too — so the second reading is not masking a stale-build artifact after the vendor reset.
+
+*Most of the upstream movement was benchmarks, not wire code.* Eight of the eleven corelibs
+advanced by a single BENCH_SPEC commit. Only three touched behaviour: corelib-rs made the
+`OStream` installation precondition a status rather than a panic (#86), corelib-zig raised a
+varint comptime branch quota (#64), corelib-c-cpp added a lazy-seq CMake option (#137). sofabgen
+carried two fixes — array element declared-width latching for go/dart/python (#321, the #267
+follow-through) and the matching Rust fallible-`OStream` install (#328).
+
+*Two drivers did not build, and that is Crucible's own maintenance, not a finding.*
+`drivers/rust/driver.rs` called `OStream::with_flush` as infallible and `drivers/dart/driver.dart`
+passed the removed `bufferSize:` instead of a caller-supplied `buffer:`. Both now report a refused
+buffer as exit 3 per CONTRACT.md rather than panicking. Worth recording as a pattern: the whole box
+was red for a reason that was not a divergence at all, and the seed gate cannot distinguish "the
+family disagrees" from "our driver no longer compiles" — the build log can.
+
+**Decision: the encode gate now reads each port's declared `MIN_OUTPUT_BUFFER` instead of assuming
+one byte.** documentation#45/#46/#48 rewrote CORELIB_PLAN §5.1 between 08-06 and 08-11: the
+universal one-byte floor is gone, replaced by a per-port constant a corelib MUST expose — `1` if it
+splits atomic units across a flush, otherwise the largest run it reserves as one piece, and never
+above `20`. A port MAY now require atomic units to land contiguously, which is precisely what the
+old rule forbade.
+
+That left `oracle/encode_invariance.py` and `drivers/common/CONTRACT.md` enforcing a clause that no
+longer existed — both written five days earlier, in the 08-06 entry below, and both quoting "down
+to a single byte". The gate was still green only because every port in the encode roster declares
+`1`; `corelib-go` declares `2 × maxVarintLen` = **20**, legally and documented against the new
+text, and is not in that roster. So this was latent rather than red — and would have surfaced as a
+false conformance failure the day go was added.
+
+The rework gates **both** halves of the new clause, rather than simply relaxing the old one: sizes
+at or above the declaration must work (the sweep is `{declaration} ∪ {1,2,3,5,8,16 above it}`, so
+it always contains the declaration and can never be empty), and a size one byte below it must be
+refused. That second half is what stops the declaration from being an escape hatch — a port cannot
+declare 20 to dodge the hard sizes and still accept 1. `min_output_buffer` joins `meta` as the
+third declarative key, and is required: defaulting it to 1 would reinstate the assumption being
+removed. Coverage is unchanged for all fourteen encode drivers — 108 inputs × 9 configs, zero
+inapplicable, zero mismatches.
+
+*Note this is the fourth position §5.1 has occupied in a week*, after the three F-0054 went
+through. The rule that keeps paying off is the one in `verify-clauses-at-tip-before-filing`:
+re-read the clause at the documentation tip before acting on it, never from a write-up.
+
+**Third pass: F-0061 resolved and generator#300 closed for real (2026-08-11, evening).**
+`corelib-ts@57515ad` (#141, *"a fixlen subtype needs a complete word, not its first byte"*) with
+sofabgen `0.0.0-20260811165755-e1655b562522`. The fix lands exactly on the `peekFixSub` half of
+the attribution posted on the reopen, and the generated `count`-bound ordering was not touched —
+with `peekFixSub` returning `-1` on an incomplete word the generated cursor takes its `c.skip`
+branch and reaches `INCOMPLETE` correctly. Eleven gates green plus warm-up.
+
+`corpus/interesting` goes **5 mismatches over 1 input → 0**, all three reproducers pass, and the
+control holds: `r3` plus one byte completing the `fixlen_word` is still unanimously
+`R invalid_msg`. That control is the reason this close is trustworthy where three previous ones
+were not — a fix that had merely dropped the §7.1 bound would also have shown `r3` green, and
+nothing in the axis alone distinguishes the two.
+
+`typescript` returns to `scripts/run-chunked.sh`, verified before re-adding rather than on the
+ticket; the gate is green with all fourteen. Its neighbouring comment still claimed `zig` was
+held out for F-0058, which closed some time ago — corrected in the same change. **Nobody is held
+out of the chunked gate any more**, the first time that has been true.
+
+*The pattern this finding was really about is worth keeping.* Four closes, three of them
+premature, each with a repaired reproducer and a red axis behind it. What broke the run was not
+more scrutiny of the fixes but a cheap standing habit: re-measure on the corpus, and carry a
+control that would fail if the fix were a relaxation rather than a repair.
+
+**Second pass the same day, against sofabgen `0.0.0-20260811163628-a5ae20c7756a`** (CI run
+31513295408; corelibs unchanged, `corelib-ts` still `699f01e`). Eleven gates green again. The
+build carries generator#329, a breaking "the caller owns the encode buffer" change for
+go/python/typescript/dart — it did not break the drivers, since they reach encode through the
+generated API rather than constructing the buffer themselves.
+
+*generator#300 was closed at 16:37 UTC and reopened here with the corpus measurement.* The
+closing note asked for exactly that check ("a Crucible re-run is the authoritative confirmation
+… reopen without hesitation if the corpus disagrees"), and it does: 5 mismatches over
+`corpus/interesting`, all `r3`, against the build made one minute before the close. The
+divergence from their result is explained rather than contested — they measured a different
+direction-B vector (`c6 0c 2a c2`) and ran corelib-ts directly with an empty visitor, not
+generated code.
+
+**Decision: F-0061's direction-B mechanism is the reverse of what this log and the write-up
+said this morning.** documentation#43 → #44 make `INCOMPLETE` correct, so TypeScript's *chunked*
+path is right and its *whole-message* path invents an `INVALID` — the chunk-invariance flip is
+the symptom, not the defect. Pinned with a control: `r3` splits 14-vs-1, and `r3` plus one byte
+completing the `fixlen_word` is unanimous `R invalid_msg` across all fifteen, so the bound check
+is correct everywhere and only its timing is wrong. Attribution is **both** — corelib-ts
+`cursor.ts:490` `peekFixSub` reads a subtype out of an incomplete varint (wire mechanics, and the
+likely root fix), while the generated `count` bound fires before the length word completes
+(schema-only, so this repo's half). CORELIB_PLAN §4.1 names the case outright.
+
+*Method note, twice earned today.* Two measurements had to be thrown away before this one held.
+The vendored corelibs are **depth-1 clones**, so `git log OLD..HEAD` in `vendor/` reports one
+commit per repo regardless of the real delta — the "mostly benchmark work" characterisation
+earlier in this entry came from that and is not evidence; use the GitHub compare API instead. And
+a control run against a driver binary snapshotted while `run-limits`/`sweep` were rebuilding
+reported `I` where the same input had just given `R invalid_msg`. Neither was a behaviour change.
+Both are the standing footgun: **rebuild through `run.sh` and re-measure before believing a
+number**, which is the same rule that caught F-0054's two regressions.
+
+*F-0061 / generator#300 stays open, on one input.* Re-measured over `corpus/interesting` (9502,
+unchanged since 08-06, so the counts compare directly): **179 mismatches over 30 inputs → 5 over
+1**. Direction A is at 0; direction B is at 5 and is exactly `r3`, confirmed by content against
+`corpus/interesting/647f8d0d…` rather than by name. Direction A's disappearance is *not* news from
+this build — the generator's TypeScript backend was last touched by `dec1e42` itself, the commit
+the 08-06 table was measured against, and generator#300's own 08-07 comment already reported A
+closed. The NOTES table was simply stale; it is corrected now, and the G-0038 row no longer names
+the refuted `_str` hypothesis. The issue cannot be closed: direction B is bit-for-bit where it was.
+
 **Full box against the fixed family: eleven gates green, F-0054 closed again, F-0043 down to its two addenda (2026-08-06, later).**
 Run against sofabgen `0.0.0-20260806101130-dec1e42049cd` (a main CI build, no release) with every
 corelib at its main tip and the spec at `bec1fa8`. Sixteen steps — the eleven replay gates, the

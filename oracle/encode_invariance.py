@@ -30,9 +30,10 @@ Two things are checked per driver:
    is the failure this whole file exists to prevent, so it is asserted rather than
    assumed.
 
-`meta`'s `encode_surfaces` says which surfaces a backend has. A driver that ignores the
-variables emits byte-identical output, indistinguishable from passing, so the drivers to
-run are named explicitly by the caller and never inferred.
+`meta`'s `encode_surfaces` says which surfaces a backend has, and its `min_output_buffer`
+says the smallest streaming buffer the port accepts (CORELIB_PLAN §5.1). A driver that
+ignores the variables emits byte-identical output, indistinguishable from passing, so the
+drivers to run are named explicitly by the caller and never inferred.
 """
 
 import argparse
@@ -47,12 +48,35 @@ ROOT = roster.ROOT
 DRIVERS = roster.drivers(roster.gate_tag())
 BUILDERS = {name: builder for name, builder, _, _, _ in roster.rows(roster.gate_tag())}
 
-# OStream buffer sizes for the streaming surface. 1 is the strong one — the sink sees
-# the message one byte at a time, so every internal buffer boundary is crossed. The rest
-# are cheap and land the boundary at different offsets inside varints and payloads.
+# OStream buffer sizes for the streaming surface. The smallest a port accepts is the
+# strong one — the sink sees the message in the least it will take, so every internal
+# buffer boundary is crossed. The rest are cheap and land the boundary at different
+# offsets inside varints and payloads. Sizes below a port's declared minimum are not in
+# its sweep at all (see flush_sizes).
 FLUSH_SIZES = (1, 2, 3, 5, 8, 16)
 
 ALL_SURFACES = ("new", "to", "stream")
+
+
+def flush_sizes(minbuf):
+    """The flush sizes to sweep for a port declaring `minbuf` (CORELIB_PLAN §5.1).
+
+    §5.1 no longer fixes the floor at one byte for everyone. A port declares the
+    smallest streaming buffer it accepts — 1 if it splits atomic units, otherwise the
+    largest run it reserves as one piece, capped at 20 — and the two halves of the
+    clause are what this sweep asserts:
+
+    * **at or above the declaration**, every size MUST work and MUST produce output
+      byte-identical to the one-shot path, so those sizes are swept;
+    * **below it**, a buffer MUST be refused where it is handed over.
+
+    The declaration itself is always included, even when it is not one of the standard
+    sizes. That is what keeps the sweep honest for a port with a high floor: it is
+    walked across a buffer boundary at its own minimum, so the sweep can never be empty
+    and "every size was inapplicable" — the shape that let corelib-ts#94 sit behind a
+    green gate — cannot recur by construction.
+    """
+    return tuple(sorted({minbuf} | {n for n in FLUSH_SIZES if n > minbuf}))
 
 
 def run(path, inputs, env=None):
@@ -66,14 +90,14 @@ def run(path, inputs, env=None):
             p.stderr.decode(errors="replace").strip())
 
 
-def configs(surfaces):
+def configs(surfaces, minbuf):
     """(label, env) for every encode surface this backend has, flush sizes included."""
     for s in ALL_SURFACES:
         if s not in surfaces:
             continue
         yield f"SOFAB_ENCODE={s}", {"SOFAB_ENCODE": s}
         if s == "stream":
-            for n in FLUSH_SIZES:
+            for n in flush_sizes(minbuf):
                 yield f"SOFAB_ENCODE=stream SOFAB_FLUSH={n}", {
                     "SOFAB_ENCODE": "stream", "SOFAB_FLUSH": str(n)}
 
@@ -110,6 +134,21 @@ def main():
             failures += 1
             continue
 
+        # §5.1 requires the port to expose this; the gate requires the driver to
+        # declare it. Defaulting to 1 here would reinstate the assumption this replaced.
+        minbuf = roster.min_output_buffer(BUILDERS[name])
+        if minbuf is None:
+            print(f"  [{name}] meta declares no min_output_buffer — CORELIB_PLAN §5.1 "
+                  "makes it normative, and the flush sweep cannot be sized without it",
+                  file=sys.stderr)
+            failures += 1
+            continue
+        if not 1 <= minbuf <= 20:
+            print(f"  [{name}] min_output_buffer={minbuf} is outside §5.1's range "
+                  "(1..20)", file=sys.stderr)
+            failures += 1
+            continue
+
         # The baseline is the driver's own default path, unchanged: whatever it calls
         # today with none of these variables set. Every surface must reproduce it, so a
         # driver that reads the variable but wires it to the wrong call is caught too.
@@ -121,23 +160,21 @@ def main():
             continue
 
         bad = tried = 0
-        for label, env in configs(surfaces):
+        for label, env in configs(surfaces, minbuf):
             tried += 1
             lines, rc, err = run(path, inputs, env)
             # Exit 3 = "this backend cannot operate at this configuration"
-            # (CONTRACT.md). For a missing *surface* that is still a legitimate answer,
-            # asserted separately below. For a buffer *size* it no longer is:
-            # CORELIB_PLAN §5.1 sets a normative floor of ONE BYTE — the output buffer
-            # may be "arbitrarily smaller than the message", and an encoder "MUST be
-            # able to split a single write across a flush; it may not require any write
-            # to land contiguously in the buffer". Until documentation#39 (2026-08-05)
-            # this was implementation latitude and the size was reported inapplicable,
-            # which is how corelib-ts#94 sat behind a green gate: five of six sizes were
-            # skipped and only the largest ever ran. It is a conformance defect now.
+            # (CONTRACT.md). For a missing *surface* that is a legitimate answer,
+            # asserted separately below. For a buffer *size* it is a conformance
+            # failure — but only because every size swept here is one §5.1 says MUST
+            # work: `flush_sizes` never offers a size below the port's declaration.
+            # Sizes below it are not skipped, they are asserted to be refused, further
+            # down. (Until documentation#46/#48, 2026-08-11, §5.1 fixed the floor at one
+            # byte for every port and this test needed no declaration at all.)
             if rc == 3 and "SOFAB_FLUSH" in env:
-                print(f"  [{name}] {label}: backend refuses this buffer size — §5.1 "
-                      f"puts the floor at one byte, so this is a conformance failure "
-                      f"rather than a skip: {err}", file=sys.stderr)
+                print(f"  [{name}] {label}: backend refuses a buffer size at or above "
+                      f"its own declared MIN_OUTPUT_BUFFER={minbuf} — §5.1 says any "
+                      f"such buffer MUST work: {err}", file=sys.stderr)
                 bad += 1
                 continue
             if rc != 0 or len(lines) != len(inputs):
@@ -164,14 +201,31 @@ def main():
                           "mode as passing that never ran", file=sys.stderr)
                     bad += 1
 
-        # The "every flush size was inapplicable" guard that used to sit here is gone
-        # with the escape hatch it guarded: a refused size is now counted as a failure
-        # above, so a sweep can no longer read as coverage without having run.
+        # The other half of §5.1: a streaming buffer *below* the declaration MUST be
+        # refused where it is handed over, never accepted and worked around. Without
+        # this a port could declare 20 to opt out of the hard sizes and still accept 1,
+        # which is the declaration doing no work at all.
+        #
+        # Only testable for a port declaring more than 1: one short of 1 is a zero-byte
+        # buffer, and SOFAB_FLUSH=0 is how the drivers spell "unset". A port declaring 1
+        # therefore has no below-minimum case to check, which is correct — it accepts
+        # every size the sweep can express.
+        if "stream" in surfaces and minbuf > 1:
+            tried += 1
+            n = minbuf - 1
+            _, rc, err = run(path, inputs, {"SOFAB_ENCODE": "stream",
+                                            "SOFAB_FLUSH": str(n)})
+            if rc != 3:
+                print(f"  [{name}] SOFAB_ENCODE=stream SOFAB_FLUSH={n}: one byte below "
+                      f"the declared MIN_OUTPUT_BUFFER={minbuf}, so §5.1 requires it to "
+                      f"be refused at the handover — the driver exited {rc}: {err}",
+                      file=sys.stderr)
+                bad += 1
 
         status = "OK" if not bad else "FAIL"
         have = ",".join(s for s in ALL_SURFACES if s in surfaces)
-        print(f"[{name}] {len(inputs)} input(s) x {tried} config(s), surfaces={have} — "
-              f"{bad} mismatch(es)  [{status}]")
+        print(f"[{name}] {len(inputs)} input(s) x {tried} config(s), surfaces={have}, "
+              f"min_output_buffer={minbuf} — {bad} mismatch(es)  [{status}]")
         failures += bad
 
     print(f"\nTOTAL: {failures} encode-invariance mismatch(es)")
