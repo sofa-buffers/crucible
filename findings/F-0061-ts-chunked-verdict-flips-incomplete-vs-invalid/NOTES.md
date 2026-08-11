@@ -38,10 +38,48 @@ table below was simply never updated to match. This measurement agrees with the 
 not with the stale table.
 
 **Consequence for the issue: it stays open.** Direction B is what generator#300 has been
-open on since 08-07, and it is bit-for-bit where it was. §5.2 makes `INVALID` terminal,
-so a chunked run reaching `INCOMPLETE` where the whole run reached `INVALID` means the
-chunked path never *detected* the malformity — a different mechanism from direction A's,
-which is why closing A did not close it.
+open on since 08-07, and it is bit-for-bit where it was.
+
+### The direction-B mechanism, pinned 2026-08-11 — and the earlier reading was backwards
+
+The paragraph this section replaced argued from §5.2 that "the chunked path never
+*detected* the malformity". **That is the wrong way round**, and the spec settled it in
+the other direction: documentation#43 → #44 make `INCOMPLETE` correct here, so the 14
+drivers and TypeScript's *chunked* path are right, and it is TypeScript's *whole-message*
+path that invents an `INVALID` the spec does not allow. The chunk-invariance flip is the
+symptom; the defect is one-shot over-strictness.
+
+Measured on a clean probe build (sofabgen `0.0.0-20260811163628-a5ae20c7756a`,
+corelib-ts `699f01e`), with the control that pins it:
+
+| input | verdict |
+|---|---|
+| `r3` (message ends inside the `fixlen_word`, at `c2`) | 14 drivers `I`/`I`; **typescript `R invalid_msg` whole, `I` chunked** |
+| `r3` + one byte completing the word (`c2 00`) | **all 15 unanimous `R invalid_msg`**, whole and chunked |
+
+One byte turns a 14-vs-1 split into unanimity, so the bound check itself is correct
+everywhere; only its *timing* is wrong. Two locations, both implicated:
+
+* **corelib-ts `src/decode/cursor.ts:490`, `peekFixSub()`** (reached from `readHeader()`
+  at `:176`) returns `buf[p] & 7` for a `Fixlen` header — the low 3 bits of the *first*
+  byte of the `fixlen_word`. On `r3` that byte is `c2`, continuation set, so the varint
+  is incomplete and `c2 & 7 = 2 = String` is a subtype §4.1 says does not exist yet.
+* **generated `message.ts` (probe field 200)** passes the subtype test on that peeked
+  value and then applies `if (c.id >= 5) throw InvalidMsg` *before* `readString(64)`
+  consumes the length word. The visitor path in the same file gets it right because
+  `fixlenBegin(id, sub, total)` cannot run until the complete word is parsed.
+
+CORELIB_PLAN §4.1 (documentation@`dd2866b`) names this case outright — a message ending
+inside a `fixlen_word` is `INCOMPLETE` "even when the field's id would violate a schema
+bound (MESSAGE_SPEC §7.1)" — and its rationale describes the symptom exactly: "a push
+surface reporting the completed word and a pull surface reading its first byte reach
+different verdicts for the same bytes".
+
+**Attribution is genuinely both**, the case CLAUDE.md warns about. `peekFixSub` is wire
+mechanics with no schema fact in it and looks like the root fix (returning `-1` while the
+varint is incomplete sends the generated loop down `c.skip`, which reaches `INCOMPLETE`);
+the `count` bound is schema-only and therefore this repo's half. Reported as both on
+generator#300 rather than redirected, with an offer to file the corelib-ts side there.
 
 ## Re-measured 2026-08-06 — still red, and `r3` lost its clean baseline
 
