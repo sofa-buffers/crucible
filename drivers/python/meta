@@ -5,3 +5,4 @@ pacemaker=false
 variants=cython,pure
 chunked_decode=pull
 encode_surfaces=new,stream
+min_output_buffer=1

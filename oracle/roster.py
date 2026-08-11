@@ -70,3 +70,21 @@ def encode_surfaces(builder):
     """The encode surfaces this backend has, as a set: {'new','to','stream'}."""
     v = meta(builder).get("encode_surfaces", "")
     return set() if v in ("", "-") else set(v.split(","))
+
+
+def min_output_buffer(builder):
+    """This port's declared `MIN_OUTPUT_BUFFER` (CORELIB_PLAN §5.1).
+
+    The smallest buffer the corelib accepts **for streaming**. A port that splits
+    atomic units declares 1; one that requires them to land contiguously declares the
+    largest run it reserves as one piece, and the spec caps any declaration at 20.
+
+    It is declared here rather than read out of the corelib because the constant's
+    spelling differs per language (`MIN_OUTPUT_BUFFER`, `MinOutputBuffer`,
+    `minOutputBuffer`, `SOFAB_MIN_OUTPUT_BUFFER`) and a gate that grepped for it would
+    silently fall back to a wrong default the day a port renamed it. A missing
+    declaration is an error at the point of use, never an assumed 1 — assuming the old
+    universal floor is exactly the bug this replaced.
+    """
+    v = meta(builder).get("min_output_buffer", "")
+    return None if v == "" else int(v)

@@ -4,3 +4,4 @@ framework=jazzer
 pacemaker=false
 chunked_decode=push
 encode_surfaces=new,to,stream
+min_output_buffer=1
