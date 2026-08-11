@@ -101,8 +101,20 @@ List<Uint8List> _chunksOf(Uint8List data) {
 Uint8List _encodeVia(Probe m) {
   if (_encode == 'new') return m.encode();
   final builder = BytesBuilder(copy: true);
-  final enc = sofab.Encoder(builder.add,
-      bufferSize: _flush > 0 ? _flush : 4096);
+  // corelib-dart#62 dropped `bufferSize:`: per CORELIB_PLAN §5.1 the corelib
+  // allocates no output buffer, so the caller supplies one. A buffer below
+  // `minOutputBuffer` is refused at the handover with `invalidArgument` — report
+  // that as exit 3 ("cannot operate at this configuration") rather than letting
+  // the exception escape, so the oracle sees the size the port declined.
+  final cap = _flush > 0 ? _flush : 4096;
+  final sofab.Encoder enc;
+  try {
+    enc = sofab.Encoder(builder.add, buffer: Uint8List(cap));
+  } on sofab.SofabException catch (e) {
+    stderr.writeln('crucible-dart: Encoder refused a $cap-byte buffer '
+        '(MIN_OUTPUT_BUFFER=${sofab.minOutputBuffer}): $e');
+    exit(3);
+  }
   if (_encode == 'to') {
     m.encodeTo(enc);
   } else {
