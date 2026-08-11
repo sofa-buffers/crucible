@@ -10,6 +10,39 @@ complete, and what is left is a *different and more serious* class than what it 
 F-0060 was about the **type of the exception** (a platform `TypeError` escaping instead of
 `SofabError`); both paths still rejected. This is about the **verdict itself**.
 
+## Re-measured 2026-08-11 — direction A is gone, direction B is untouched
+
+Against sofabgen `0.0.0-20260811122938-1a44ef44d5fe` and the corelib tips of the same
+day, `corpus/interesting` at 9502 (unchanged since the 08-06 measurement, so the counts
+compare directly), `--modes chunk`:
+
+| | 2026-08-05 | 2026-08-06 | now |
+|---|---|---|---|
+| whole `I` → chunked `R invalid_msg` (A) | 300 | 174 | **0** |
+| whole `R invalid_msg` → chunked `I` (B) | 5 | 5 | **5** |
+| total / distinct inputs | 305 / 52 | 179 / 30 | **5 / 1** |
+
+The surviving five are **exactly `r3`** — confirmed by content, not by name: the isolate
+run over `r3` alone reports the same five, and `r3`'s bytes are in the corpus as
+`corpus/interesting/647f8d0dde4e0a72c1aaeb6f054f017071d00fe9`. So direction B is not
+merely the same size, it is the same single input, failing at every chunk size that cuts
+it. `r0` and `r1` both still pass.
+
+**Direction A closing is a documentation lag, not news from this build.** The
+generator's TypeScript backend was last touched by `dec1e42` itself (2026-08-06 10:11,
+"a wrapper element's maxlen goes into the reader", generator#320) — the very commit the
+08-06 table below was measured against — and corelib-ts has since had exactly one
+commit, a benchmark change. Nothing in TypeScript's path moved between the two
+measurements. generator#300's own 08-07 comment already reported direction A closed; the
+table below was simply never updated to match. This measurement agrees with the issue,
+not with the stale table.
+
+**Consequence for the issue: it stays open.** Direction B is what generator#300 has been
+open on since 08-07, and it is bit-for-bit where it was. §5.2 makes `INVALID` terminal,
+so a chunked run reaching `INCOMPLETE` where the whole run reached `INVALID` means the
+chunked path never *detected* the malformity — a different mechanism from direction A's,
+which is why closing A did not close it.
+
 ## Re-measured 2026-08-06 — still red, and `r3` lost its clean baseline
 
 Against sofabgen `0.0.0-20260806101130-dec1e42049cd`, corpus grown to 9502:
