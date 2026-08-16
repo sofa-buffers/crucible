@@ -16,11 +16,11 @@ The rule under test (MESSAGE_SPEC §7.3): a field whose header wire type — for
 decodes. So for every (position, construct):
 
   * construct == the position's declared type  -> a **control**: the field decodes,
-    the message round-trips, all 13 drivers agree;
+    the message round-trips, all drivers agree;
   * otherwise                                   -> a **mismatch**: the field is
-    skipped, the message decodes as all-default, all 13 drivers agree.
+    skipped, the message decodes as all-default, all drivers agree.
 
-Either way the oracle requires **all 13 to agree**.
+Either way the oracle requires **all drivers to agree**.
 
 Positions come from the shared `sweep_positions.POSITIONS` (WP-11: this axis used to
 carry its own parallel list; it now consumes the one model via `CAT_TO_CONSTRUCT`, so

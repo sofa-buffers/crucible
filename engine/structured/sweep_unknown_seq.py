@@ -29,7 +29,7 @@ Per sequence scope it emits, at an unknown id inside that scope:
                         "clobbered a value", which is what F-0044's two symptoms are.
 
 Every vector is a *valid* message — the unknown id is legal (§5.2 requires forward
-compatibility), so all 13 must ACCEPT and agree. A divergence is a finding.
+compatibility), so all drivers must ACCEPT and agree. A divergence is a finding.
 
 Usage: python3 engine/structured/sweep_unknown_seq.py [out_dir]
        (default corpus/unknown-seq-sweep)

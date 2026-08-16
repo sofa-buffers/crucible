@@ -104,7 +104,7 @@ everyone else's.
 `run.sh` prints, per driver, its built binary, then the differential result:
 
 ```
-6 inputs × 14 drivers (c, go, rust-std, rust-nostd, cpp, cpp-fixed, cpp-c-cpp,
+6 inputs × 15 drivers (c, go, rust-std, rust-nostd, cpp, cpp-fixed, cpp-c-cpp, cpp-c-cpp-dyn,
   py-cython, py-pure, java, typescript, csharp, zig, dart): 0 divergence(s) (0 crash, 0 timeout), 0 warning(s)
 ```
 
@@ -239,7 +239,7 @@ Sweeps run **two oracles**, the second of which the differential cannot provide:
 - **agreement** — every driver emits the same canonical line (the usual oracle);
 - **conformance** — the agreed behaviour matches what the spec *requires*. A vector
   carries its expected outcome (`reject` / `accept` / …), so a **family-wide wrong**
-  answer — all 12 uniformly accepting what the spec says must be rejected — is
+  answer — all drivers uniformly accepting what the spec says must be rejected — is
   agreement-green but conformance-red, invisible to a disagreement-only oracle.
 
 ```sh
@@ -271,7 +271,7 @@ or not the re-encoding would hide it.
 ./scripts/materialize.sh               # 12-way materialized differential over corpus/structured
 ```
 
-It checks **both** axes: agreement (all 12 emit the same dump) and conformance (the
+It checks **both** axes: agreement (all drivers emit the same dump) and conformance (the
 schema-agnostic C anchor vs the `engine/structured/materialize.py` reference, so a
 family-wide-wrong dump is caught). The schema-type table a value walk needs is
 *generated* from the schema (`engine/structured/schema.py` → `oracle/materialized-schema.json`),

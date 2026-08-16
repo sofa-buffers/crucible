@@ -9,6 +9,31 @@ CLUSTER=1 CORPUS=corpus/interesting ./scripts/run.sh
 # or directly: python3 oracle/cluster.py --corpus <dir> --driver name:path …
 ```
 
+## Snapshot — 2026-08-16 (the **72h pacemaker corpus**, 17870 inputs — one camp left)
+
+The corpus grown by the 2026-08-11 → 08-14 72h run (`corpus/interesting`, 9502 → 17870 inputs),
+clustered against locally built drivers at the `main` family: **17870 inputs: 8353 agree, 9519
+diverge → 1 root-cause camp.**
+
+```
+CLUSTER 1  (9517 input(s))  rep 3cdf2936da2f (1 B)
+    I    c, cpp, cpp-c-cpp, cpp-c-cpp-dyn, cpp-fixed, csharp, dart, go,
+         py-cython, py-pure, rust-nostd, rust-std, typescript, zig
+    I    java
+```
+
+That is the benign row: the **verdict is unanimous** (`I` everywhere) and java differs only in
+emitting an `incomplete_value` payload, which `oracle/policy.yaml` declares soft. It is the single
+remaining entry in `results/known-clusters.txt`; the three F-0043 rows were deleted when that
+finding closed (they no longer occur in this corpus), and `baseline: 1/1 camp(s) accounted for`.
+
+*Read the timeout before reading the camps.* At `TIMEOUT=5` this same corpus reports **one to three
+extra `TIMEOUT` camps per run, on different inputs every time** — sporadic multi-second scheduling
+stalls, not hangs: the accused inputs replay in under a second in isolation, three consecutive
+passes accused three disjoint sets, and at `TIMEOUT=30` they vanish entirely. The nightly's
+clustering step was moved to `TIMEOUT=30` for that reason. A `TIMEOUT` camp measured at a tight
+budget is a statement about the machine, not about a driver.
+
 ## Snapshot — 2026-08-03 (**the nightly's own corpus**, 8512 inputs — first time anyone looked)
 
 Not a fuzz round: this is CI's accumulated corpus, downloaded from the nightly artifact and

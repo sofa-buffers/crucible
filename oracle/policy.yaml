@@ -40,6 +40,14 @@ comparison:
   # max_dyn_* caps, so they must agree on L vs A/I/R. See oracle/canonical.md.
   limit_class: soft
 
+# ⚠ NOT ENFORCED — DOCUMENTATION ONLY (verified 2026-08-16).
+# `oracle/comparator.py:load_policy` reads the `comparison:` axes above and NOTHING else;
+# no consumer in this repo reads `allow:` or `notes:` (grepped repo-wide). An entry here
+# therefore does not make a divergence pass — it records the reasoning for one, and the
+# input it names must stay out of the gate corpora or the gate goes red despite the
+# entry. That is exactly why F-0018's reproducer is not in `corpus/regression`.
+# Either teach the comparator to honour this block or drop it — tracked in docs/TODO.md.
+#
 # Specific inputs where divergence is explicitly tolerated, each with a reason
 # and (eventually) a spec citation.
 #

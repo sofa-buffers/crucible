@@ -79,6 +79,38 @@ here:
 
 ## Open — engine & oracles
 
+- [ ] **`oracle/policy.yaml`'s `allow:` block is not enforced — decide: implement or drop.**
+      `oracle/comparator.py:load_policy` reads the `comparison:` axes and nothing else; no consumer
+      in the repo reads `allow:` or `notes:` (verified repo-wide 2026-08-16). So the two entries —
+      `bounded-lazy-seq-depth-noncanonical-frames` (dormant by design, `applies_to: []`) and
+      `c-embedded-nul-string-projection` (F-0018) — document a tolerated divergence without granting
+      it. The consequence is silent: the input an entry names must be kept *out* of every gate
+      corpus, or the gate goes red despite the entry, which is precisely why F-0018's reproducer is
+      the one resolved finding deliberately absent from `corpus/regression`. Two honest ways out —
+      teach the comparator to match `applies_to` (by content hash, not path, so a promoted copy still
+      matches), or delete the block and let the finding write-ups carry the reasoning. Both beat the
+      present state, where the file reads as policy and behaves as a comment.
+
+- [ ] **19 resolved findings have no standing regression guard.** Their reproducers live in
+      `findings/<id>/` and are fed to the *fuzzer* as seeds, but no gate replays them:
+      F-0008, F-0012, F-0018, F-0027..F-0032, F-0035..F-0037, F-0043, F-0049, F-0057..F-0061
+      (42 of 61 F-findings are in `corpus/regression`; these 19 are not). Some are covered
+      indirectly — the chunked findings by `run-chunked.sh` over a corpus, several by a sweep axis
+      that now owns the rule — but that is an argument per finding, and nobody has made it per
+      finding. Two of them are newly closed today (F-0043) or were closed with their vectors never
+      promoted. **Work:** for each, either promote the vectors into `corpus/regression` or record in
+      its `NOTES.md` which gate owns the rule now; F-0018 is the one case that cannot be promoted
+      until the `allow:` item above is settled.
+
+- [ ] **`engine/structured/audit_canonical.py` is wired to nothing.** A static canonicality audit of
+      the committed corpora, independent of `gen.py` (it re-derives the properties from the bytes, so
+      it can catch a reference encoder that is itself wrong) — exactly the check that would notice a
+      corpus drifting away from §2/§3. Nothing calls it, no CI job runs it, and it is absent from
+      `ARCHITECTURE.md`'s component table. Run by hand 2026-08-16: `corpus/structured` 108 files and
+      `corpus/structured-union` 16 files are **clean**; the hits in `seeds`/`conformance`/`regression`
+      are the deliberately non-canonical inputs those corpora exist to carry. **Work:** gate it on the
+      canonical corpora only (`structured`, `structured-union`), where a hit is unambiguous.
+
 - [ ] **`oracle/minimize.py` silently changes target on a TIMEOUT camp.** The contract
       (`run.sh:37`) is "shrink one input while its camp partition holds". It does not hold when the
       camp is defined by a `TIMEOUT`: a stall is not a property of the bytes, so the timeout stops
@@ -118,7 +150,13 @@ here:
       `SOFAB_ENCODE_DRIVERS` naming that issue, as `run-chunked.sh` does for F-0061, or accept the
       red. **Do not land the tightening without that call.**
 
-- [ ] **Two unattributed cluster camps from nightly 31074707585 (2026-08-06).** The run produced
+- [x] **RESOLVED 2026-08-16 — both camps converged; nothing to attribute.** Both representatives
+      are still in `corpus/interesting` (`ee44aadf12f6…`, `e59d05a8b2a6…`) and were re-measured directly:
+      **0 divergences across all fifteen drivers**, and neither forms a camp in the 243-input pass over
+      every finding reproducer. The `known-clusters.txt` header already recorded them as gone; this is the
+      measurement behind that claim. The cause is the fixlen-header hook that closed F-0043 (generator#267)
+      — both camps were the verdict-timing shape that item predicted. Original note below.
+      ~~Two unattributed cluster camps from nightly 31074707585 (2026-08-06).~~ The run produced
       five new camps over the merged 9502-input corpus; three were existing baseline rows with one
       driver moved (measured the same day on the F-0043 vectors) and are now in
       `results/known-clusters.txt`. These two are **not explained and deliberately not baselined**,
@@ -134,14 +172,21 @@ here:
       all five push corelibs gained the fixlen header hook the night before, so the camps on that
       axis are in motion. Minimize each representative and attribute before baselining.
 
-- [ ] **typescript moved in BOTH directions on the F-0043 axis in one night (2026-08-06).** It left
+- [x] **MOOT 2026-08-16 — F-0043 is closed and the axis is green.** With the carve-out removed,
+      `sweep_malform_truncate` runs 96 vectors with 0 divergences, so typescript is in no late camp on
+      any row; the widening comment for generator#267 is no longer needed (the issue closed 2026-08-11).
+      ~~typescript moved in BOTH directions on the F-0043 axis in one night (2026-08-06).~~ It left
       the late camp on the declared-width row (an improvement) and joined it on the
       over_len_string-further-offset row (a regression). generator#267's title names
       `rust, rust-no-std, java, csharp, zig` — typescript joining the late camp **widens that
       issue to a sixth backend** and is worth a comment there once the two camps above are
       attributed, since they may share a cause.
 
-- [ ] **Re-read F-0061's `r1` now that documentation#33 is closed.** `eb2311a`
+- [x] **DONE 2026-08-16 — measured, and there is no finding in it.** `r1_entangled_with_doc33.bin`
+      run through the current family: **0 divergences across all fifteen drivers**. The 8-vs-7 split that
+      made it unusable is gone, so there is no losing camp to promote into a finding of its own. The file
+      stays in `findings/F-0061/` as the record of why it was set aside. Original note below.
+      ~~Re-read F-0061's `r1` now that documentation#33 is closed.~~ `eb2311a`
       (documentation#40) turned §6.4's mid-payload UTF-8 `MAY` into a `MUST NOT` — a decoder may not
       report `INVALID` before the declared length is reached. `r1_entangled_with_doc33.bin` was set
       aside as unusable because the family split 8-vs-7 on it under that latitude; the split is now
@@ -198,7 +243,9 @@ here:
 - [x] **Put `py-pure` back in `scripts/run-encode.sh` — DONE 2026-08-04**, same day F-0059 closed
       ([corelib-py#62](https://github.com/sofa-buffers/corelib-py/pull/62)).
 
-- [ ] ~~Put `py-pure` back in `scripts/run-encode.sh` when F-0059 closes~~
+- [x] **DONE — `py-pure` is back in `scripts/run-encode.sh`** (F-0059 closed via corelib-py#62;
+      verified 2026-08-16: the gate's `SOFAB_ENCODE_DRIVERS` default lists both python engines).
+      ~~Put `py-pure` back in `scripts/run-encode.sh` when F-0059 closes~~
       ([corelib-py#61](https://github.com/sofa-buffers/corelib-py/issues/61)). Its pure engine
       keeps writing into the drained buffer after a flush, so everything past the first flush is
       lost. `py-cython` is correct and stays in the roster — which is what makes this an
@@ -246,7 +293,10 @@ here:
       runs rather than reporting n/a. A carve-out that outlives its reason is exactly the silent
       exclusion these mechanisms exist to prevent.
 
-- [ ] ~~Un-quarantine `cpp-c-cpp-dyn` when F-0057 closes.~~ It is in `drivers/roster` without
+- [x] **DONE — `cpp-c-cpp-dyn` is un-quarantined** (F-0057 closed via corelib-c-cpp#132; verified
+      2026-08-16: all fifteen roster rows carry `blocking`, and `docs/ARCHITECTURE.md` was corrected
+      in the same pass — it had gone on claiming the quarantine for days).
+      ~~Un-quarantine `cpp-c-cpp-dyn` when F-0057 closes.~~ It *was* in `drivers/roster` without
       the `blocking` tag while [corelib-c-cpp#131](https://github.com/sofa-buffers/corelib-c-cpp/issues/131)
       is open: every zero-length array aborts an asserts-enabled build, and a crashing driver
       poisons every subsequent record in its batch, so `sweep_empty_frame` would be permanently
@@ -649,6 +699,37 @@ here:
       *(update 2026-07-23: confirmed `replay.yml`/`nightly.yml` **do** consume
       `ghcr.io/sofa-buffers/crucible-ci:latest`; the remaining task is confirming the image is
       seeded and a live run is green.)*
+- [ ] **A port with a high `MIN_OUTPUT_BUFFER` gets a one-size flush sweep.** `flush_sizes()`
+      (`oracle/encode_invariance.py:79`) returns the declaration plus every standard size *above*
+      it — for `go`, which declares 20 (the only port not on 1), that set is exactly `{20}`. So the
+      Go encoder is walked across a buffer boundary at a single window size, while every other port
+      gets six. Legal per §5.1 and not a defect, but the thinnest coverage on this axis belongs to
+      the port whose floor is highest, which is backwards. **Work:** add a couple of sizes above the
+      declaration (floor+1, 2x floor, and one odd size) so the boundary lands at different offsets
+      within the message; costs one run each and needs no spec change.
+
+- [ ] **The two streaming gates keep their own driver list, by hand.** `run-chunked.sh` and
+      `run-encode.sh` each hard-code a 14-name `SUPPORTED` default beside `drivers/roster`'s fifteen
+      rows — the copied-list shape CLAUDE.md warns about, and it already misleads: the chunked gate's
+      comment claimed nobody was held out while `go` was (legitimately — corelib-go has no resumable
+      decoder, `chunked_decode=none` in `drivers/go/meta`). Corrected in the comment 2026-08-16, but
+      the list is still a copy. **Work:** derive both from the per-driver `meta` (`chunked_decode`,
+      `encode_surfaces`) plus the roster, so adding a driver cannot silently skip a gate. Note the
+      mapping is not 1:1 — the four `cpp` roster rows share one `drivers/cpp/meta`.
+
+- [x] **DONE 2026-08-16 — `go` is in the encode gate; the `meta` was right all along.**
+      The backend had all three surfaces (`Encode`, `EncodeTo(w)`, `Serialize` into a
+      `NewEncoderSink`) and corelib-go even exports `MinOutputBuffer` (= 20, which
+      `drivers/go/meta` restates) — only `drivers/go/driver.go` never read the variable and
+      called `m.Encode()` unconditionally. Plumbed per CONTRACT.md: surface dispatch, the
+      §5.1 floor refused with exit 3, stderr announcement. **No corelib change was needed.**
+      First run green: 108 inputs x 5 configs, 0 mismatches. Original note below.
+      ~~`go` is the last driver outside the encode gate, and its `meta` overstates it.~~
+      `drivers/go/meta` declares `encode_surfaces=new,to,stream`, but `drivers/go/driver.go` never
+      reads `SOFAB_ENCODE`, so the driver is (correctly) absent from `run-encode.sh` — every other
+      roster entry is in. Unlike the chunked axis this is **not** a corelib capability gap: the Go
+      backend has all three surfaces. Either plumb it or make the `meta` tell the truth.
+
 - [ ] **Build-reuse in `replay.yml`**: each gate rebuilds the whole roster, so CI
       pays the build 7×. Cache/reuse the built drivers across gates.
 - [ ] **Devcontainer image**: verify it builds and every driver builds *inside* it (so far

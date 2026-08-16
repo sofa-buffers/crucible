@@ -12,7 +12,7 @@ For each position it emits the repeated-id form and states the expected agreemen
 
   * scalar position         -> the scalar twice with two values; last wins (uniform).
   * struct sequence         -> reopened with a DIFFERENT child each time; the two
-                               children must MERGE (both present on all 13).
+                               children must MERGE (both present on all drivers).
   * wrapper sequence        -> reopened with a different element each time; the
                                array is REPLACED (only the second element survives).
   * struct child within one opening -> a child id twice with two values; last wins.
@@ -94,7 +94,7 @@ def emit(out_dir):
             # sized-blob's companion length on the §7.4 replace-init, so the C object API
             # kept a stale (zeroed) element where the family dropped it. Fixed in
             # corelib-c-cpp `2416a2b`; both the string_array (elem="str") and blob_array
-            # (elem="blob") wrapper reopens now agree across all 13 — no carve-out.
+            # (elem="blob") wrapper reopens now agree across all drivers — no carve-out.
             # reopen the wrapper, a different element index each time -> REPLACE
             occ0 = open_seq(p.fid, valid_field(p.elem, 0, 0))   # element id 0
             occ1 = open_seq(p.fid, valid_field(p.elem, 1, 1))   # element id 1
