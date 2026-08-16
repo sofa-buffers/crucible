@@ -14,12 +14,75 @@ Exit status: 0 = all implementations agree (modulo soft axes); 1 = a hard
 divergence (a finding); 2 = harness error.
 """
 import argparse
+import hashlib
 import os
 import re
 import struct
 import subprocess
 import sys
 import tempfile
+
+
+def load_allowances(path):
+    """The `allow:` block of policy.yaml — the divergences that are legal by design.
+
+    Each entry names an input and the axis on which that input may differ. The classic
+    case is F-0018: a text may contain a zero byte, and every language that stores a
+    text with its length gives it back whole — but C ends a text AT the zero byte, so C
+    returns the first part only. That is what a C string IS, not a defect.
+
+    Matching is by the input's CONTENT, never by its path. An allowance tied to a path
+    would evaporate the moment the file is copied into a test collection, which is
+    exactly what one wants to do with it once the divergence is known to be legal.
+
+    Read without a YAML dependency, deliberately (this module has none): only the three
+    flat fields are parsed — `id`, `axis`, and a one-line `applies_to: [...]`. The
+    `reason` and `spec` blocks are prose for the reader and are skipped.
+    """
+    entries = []
+    if not path or not os.path.exists(path):
+        return entries
+    cur = None
+    in_allow = False
+    for line in open(path):
+        if re.match(r"^allow:", line):
+            in_allow = True
+            continue
+        if in_allow and re.match(r"^\S", line):      # dedent -> left the block
+            break
+        if not in_allow:
+            continue
+        m = re.match(r"^\s*-\s*id:\s*(\S+)", line)
+        if m:
+            cur = {"id": m.group(1), "axis": None, "sha": set(), "missing": []}
+            entries.append(cur)
+            continue
+        if cur is None:
+            continue
+        m = re.match(r"^\s*axis:\s*(\S+)", line)
+        if m:
+            cur["axis"] = m.group(1)
+            continue
+        if "applies_to:" in line and "[" in line:
+            inner = line[line.index("[") + 1:line.rindex("]")].strip()
+            for ref in [x.strip() for x in inner.split(",") if x.strip()]:
+                full = os.path.join(os.path.dirname(os.path.dirname(
+                    os.path.abspath(path))), ref)
+                if os.path.exists(full):
+                    with open(full, "rb") as fh:
+                        cur["sha"].add(hashlib.sha1(fh.read()).hexdigest())
+                else:
+                    cur["missing"].append(ref)
+    return entries
+
+
+def allowance_for(entries, data, axis):
+    """The id of the entry that legalises this divergence, or None."""
+    digest = hashlib.sha1(data).hexdigest()
+    for e in entries:
+        if e["axis"] == axis and digest in e["sha"]:
+            return e["id"]
+    return None
 
 
 def load_policy(path):
@@ -149,6 +212,12 @@ def main():
     args = ap.parse_args()
 
     axes = load_policy(args.policy)
+    allows = load_allowances(args.policy)
+    for e in allows:
+        if e["missing"]:
+            sys.stderr.write(f"[harness] allowance {e['id']} names input(s) that do not "
+                             f"exist: {', '.join(e['missing'])} — a stale allowance "
+                             "legalises nothing and hides that it was meant to\n")
     corpus = read_corpus(args.corpus)
     if not corpus:
         sys.stderr.write(f"[harness] empty corpus: {args.corpus}\n")
@@ -179,6 +248,7 @@ def main():
                 print("        " + stderr_tail.replace("\n", "\n        "))
 
     soft = 0
+    allowed = 0
     # Reference = first driver that did NOT crash/hang on a given input.
     for i, (seed, _) in enumerate(corpus):
         present = [(nm, ln[i]) for nm, ln in drivers
@@ -202,6 +272,15 @@ def main():
                 axis, reason = "limit_class", f"{ref_name}={rp} {name}={p}"
             if axis:
                 sev = axes.get(axis, "hard")
+                # A divergence this input is ALLOWED to have (policy.yaml `allow:`),
+                # matched on the input's bytes rather than its path so the allowance
+                # survives the file being promoted into a test collection. Reported —
+                # never silent — but it does not fail the run.
+                legal = allowance_for(allows, corpus[i][1], axis)
+                if legal:
+                    print(f"[allowed] {seed}  ({axis})  {legal}\n        {reason}")
+                    allowed += 1
+                    continue
                 tag = "DIVERGENCE" if sev == "hard" else "warning"
                 print(f"[{tag}] {seed}  ({axis})\n        {reason}")
                 if sev == "hard":
@@ -214,7 +293,8 @@ def main():
     names = ", ".join(name for name, _ in drivers)
     print(f"\n{n} inputs × {d} drivers ({names}): "
           f"{hard} divergence(s) ({crashed} crash, {timed} timeout), "
-          f"{soft} warning(s)")
+          f"{soft} warning(s)"
+          + (f", {allowed} allowed" if allowed else ""))
     return 1 if hard else 0
 
 

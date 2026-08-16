@@ -79,7 +79,17 @@ here:
 
 ## Open — engine & oracles
 
-- [ ] **`oracle/policy.yaml`'s `allow:` block is not enforced — decide: implement or drop.**
+- [x] **DONE 2026-08-16 — enforced, and the input it names is now in a gate.** Decision: keep
+      the block and teach `comparator.py` to read it, rather than delete it. A difference on the
+      named axis for the named input now prints `[allowed] … <id>` and does not fail the run.
+      **Matching is by bytes, not by path** — a path-bound allowance would have stopped applying
+      the moment the file was promoted into a corpus, which is precisely what one wants to do
+      with it; a path that no longer resolves is reported on stderr instead of silently
+      legalising nothing. F-0018's reproducer is now in `corpus/regression`, so the by-design
+      difference is **exercised** on every push instead of only described, and its Guard says so.
+      The dormant lazy-depth entry stays where it is, still matching nothing by design.
+      Original note below.
+      ~~`oracle/policy.yaml`'s `allow:` block is not enforced — decide: implement or drop.~~
       `oracle/comparator.py:load_policy` reads the `comparison:` axes and nothing else; no consumer
       in the repo reads `allow:` or `notes:` (verified repo-wide 2026-08-16). So the two entries —
       `bounded-lazy-seq-depth-noncanonical-frames` (dormant by design, `applies_to: []`) and

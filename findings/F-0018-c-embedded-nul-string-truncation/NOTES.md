@@ -1,7 +1,7 @@
 # F-0018 — embedded U+0000 in a `string`: the C object API projects to first-NUL (by design)
 
 **Status:** ⚪ **by-design / allowed divergence** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-**Guard:** none — by design (⚪). Its divergence is legal (a NUL-terminated C string cannot carry an embedded U+0000), so promoting the vector would turn a gate red. `oracle/policy.yaml` records the allowance but nothing enforces it — until that is settled (docs/TODO.md), this finding cannot be guarded by a corpus, and saying so is better than an empty slot.
+**Guard:** corpus/regression — promoted 2026-08-16, once `oracle/comparator.py` started enforcing `policy.yaml`'s `allow:` block. The gate feeds this input and reports the C projection as `[allowed] … c-embedded-nul-string-projection` rather than a divergence, so the by-design difference is now *exercised* instead of merely written down — and a change that broke the projection in some other way would still fail the gate.
 
 ## The observation
 

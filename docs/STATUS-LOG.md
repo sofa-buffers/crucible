@@ -19,6 +19,35 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The allow list is enforced, and the divergence it describes is now exercised instead of avoided
+(2026-08-16, last).**
+`oracle/policy.yaml` has always had two halves: five axes saying which kinds of difference fail a
+run, and a list of specific inputs allowed to differ for a documented reason. Only the first half
+was read. The second was a note.
+
+*What that cost, concretely.* The list's one active entry covers F-0018: a text may contain a zero
+byte, and every language that stores a length gives it back whole, while C ends a text **at** the
+zero byte and returns the first part. That is what a C string is. But because nothing read the
+entry, the input had to be kept out of every gate corpus — feeding it would have turned a gate red
+next to a file explaining that the difference is legal. So the one finding whose behaviour is
+understood best was the only one nobody could guard.
+
+**Decision: keep the list and enforce it, rather than delete it.** A difference on the named axis
+for the named input now prints `[allowed] <input> (<axis>) <id>` and does not fail the run.
+Everything else about that input is still compared, so an entry legalises one known difference, not
+the input.
+
+*Matching is by the input's bytes, never by the path in `applies_to`.* A path-bound allowance would
+stop applying the moment the file is promoted into a corpus — which is exactly what one wants to do
+with a divergence known to be legal, and the file gets renamed on the way. The same mistake was
+made and caught twice today, in the `Guard:` check an hour earlier. A path that no longer resolves
+is now reported on stderr: a stale allowance legalises nothing and hides that it was meant to.
+
+F-0018's reproducer is in `corpus/regression` (239 inputs, gate green: 0 divergences, 12 allowed),
+and its `Guard:` line changed from `none` to the corpus. The dormant second entry stays as it is,
+matching nothing on purpose — it exists so the first person to hit that case recognises it as legal
+instead of hunting a bug that is not there.
+
 **Every closed finding now declares what re-checks it, and 13 that declared nothing got a guard
 (2026-08-16, last).**
 The audit found 19 resolved findings whose reproducers were never promoted out of `findings/<id>/`,
