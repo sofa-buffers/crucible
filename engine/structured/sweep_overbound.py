@@ -21,7 +21,6 @@ reject** (`R`), plus an at-bound control that all 13 must **accept**:
                               exercises the _BlobSeq heap path F-0013 left untested.
   * numeric array element   -> a value outside the declared element WIDTH, at both ends
                               for signed types, plus at-bound controls  expect R / A
-                              (currently carved out — see _F0052_CARVEOUT below)
 
 **The width is a bound too** (added 2026-08-03). documentation#32 made a scalar's declared
 width a normative validity bound — §1: "not merely a storage hint" — and that binds an
@@ -57,17 +56,14 @@ from gen import (  # noqa: E402
 )
 from sweep_positions import POSITIONS, INT_RANGE, place  # noqa: E402
 
-# --- CARVE-OUT: the element-width vectors, while generator#279 is open ------------
-# The width vectors below are written and ready; they are held back because this axis is
-# BLOCKING and `cpp` fails all nine of them (F-0052 / generator#279 — the C++ backend
-# never arms `readArray`'s `ElemBound`, so an over-width array element is masked and
-# kept). Every other implementation rejects correctly, and the at-bound controls pass on
-# all 13, so the moment #279 lands this is a one-line deletion.
-#
-# Same shape as the F-0026 carve-out this file's siblings used: hold the one red cell,
-# not the whole axis, and name the condition for removing it. Verified 2026-08-03:
-# 67 vectors, 9 divergences, all cpp-only, 0 conformance failures.
-_F0052_CARVEOUT = True
+# The element-width vectors below were carved out from 2026-08-03 while generator#279 was
+# open: this axis is BLOCKING and `cpp` failed all nine of them (F-0052 — the C++ backend
+# never armed `readArray`'s `ElemBound`, so an over-width array element was masked and
+# kept). #279 landed as generator PR #281 and the carve-out was removed 2026-08-16; the
+# axis goes 49 -> 67 vectors, 0 divergences and 0 conformance failures across all 15
+# drivers. The reason is kept because it still constrains the axis: the width bound is
+# swept at array ELEMENT positions, not only at scalar ones, and exactly that gap is what
+# let F-0052 survive F-0033's closure and cost a 4-hour fuzz round to surface.
 
 # A "large but harness-safe" over-bound (WP-07): big enough to catch a decoder that
 # allocates per the DECLARED length/count/index (the F-0013 amplification class), small
@@ -107,7 +103,7 @@ def emit(out_dir):
             # 4-hour fuzz round to surface (generator#279). The bound comes from the
             # schema via `p.itype`, not a literal.
             rng = INT_RANGE.get(p.itype)
-            if rng and not _F0052_CARVEOUT:
+            if rng:
                 lo, hi = rng
                 enc = arr_u if p.cat == "arr_u" else arr_s
                 # first element over the top of the range, the rest well inside
