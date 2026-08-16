@@ -12,7 +12,7 @@
 #   ./scripts/materialize.sh                 # over corpus/structured (the value-rich gate)
 #   CORPUS=path ./scripts/materialize.sh     # a different corpus
 #
-# The full 13-driver roster emits the SOFAB_MATERIALIZE dump. C is the schema-agnostic
+# The full driver roster emits the SOFAB_MATERIALIZE dump. C is the schema-agnostic
 # anchor (object-descriptor walk); the others carry a schema-type table until a generated
 # one lands. engine/structured/materialize.py is the conformance ground truth (a
 # family-wide-wrong dump is agreement-green but reference-red).

@@ -7,7 +7,7 @@ partition has changed the finding, not minimized it. A 300-byte reproducer gets 
 closed; an 11-byte one with three controls gets it fixed the same day.
 
 **Batched, and that is the whole design.** A check costs almost pure process startup, not
-computation — measured over this repo's 13 drivers:
+computation — measured over this repo's drivers:
 
     1 input    -> 1507 ms per input   (java alone 441 ms of JVM boot; py/cs/ts ~200 ms each)
     100 inputs ->   10 ms per input

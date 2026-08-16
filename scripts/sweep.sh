@@ -3,7 +3,7 @@
 #
 # A sweep enumerates one normative rule across EVERY field position in the schema
 # and checks two oracles (engine/structured/sweep_run.py):
-#   * agreement   — all 13 drivers emit the same canonical line;
+#   * agreement   — all drivers emit the same canonical line;
 #   * conformance — accept-vs-reject matches what the spec requires (a family-wide
 #                   wrong answer is agreement-green but conformance-red).
 #
@@ -26,7 +26,7 @@
 # on 2026-07-22 — the elem=="blob" skip in sweep_repeated_id.py was dropped and its isolates
 # promoted into corpus/regression/).
 #
-# Rebuilds the 13 drivers against schema/probe.sofab.yaml first (a seed run.sh), so
+# Rebuilds the drivers against schema/probe.sofab.yaml first (a seed run.sh), so
 # this is safe to run even after scripts/run-limits.sh, which leaves probe-dyn
 # binaries in drivers/*/build — the recurring footgun the finding NOTES warn about.
 set -eu
@@ -34,7 +34,7 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SWEEP="$ROOT/engine/structured/sweep_run.py"
 
-echo "==> [sweep] building the 13 drivers against probe (seed differential)" >&2
+echo "==> [sweep] building the drivers against probe (seed differential)" >&2
 CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
 
 echo "==> [sweep] blocking axes: repeated-id (§7.4) + over-bound (§7.1) + reserved-subtype (§4.6) + truncation (§7) + malform×truncate (§5.2) + wiretype (§7.3) + varint (§2 canonicality) + empty-frame (§2 omission) + framing/ceilings (§5.2/§6.2) + unknown-sequence (§5.2/§4.9) + repeated-element-id (§7.4×§5.1) + tolerance (§7.2 class 5b)" >&2
@@ -54,7 +54,7 @@ python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_
 
 # --- union pass (WP-01, REPORT-ONLY) ----------------------------------------
 # The union feature lives in a separate schema (the full-scale probe has no union),
-# so it is invisible to the axes above. This pass rebuilds the 13 drivers against
+# so it is invisible to the axes above. This pass rebuilds the drivers against
 # schema/probe-union.sofab.yaml, runs the union axes (wiretype §7.3, repeated-id §7.4,
 # over-bound §7.1, reserved-subtype §4.6, truncation §7, empty-frame §2, tolerance
 # §7.2/5b), then rebuilds back to probe
@@ -63,11 +63,11 @@ python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_
 # blocking until it is green or every divergence it surfaces is a catalogued finding);
 # promotion to blocking + replay.yml is a follow-up. A non-zero union result therefore
 # does NOT fail this gate — the divergences it prints are candidate findings.
-echo "==> [sweep] union pass (report-only): rebuilding 13 drivers against probe-union" >&2
+echo "==> [sweep] union pass (report-only): rebuilding drivers against probe-union" >&2
 SCHEMA="$ROOT/schema/probe-union.sofab.yaml" CORPUS="$ROOT/corpus/union" "$ROOT/scripts/run.sh" >/dev/null
 echo "==> [sweep] union axes (report-only): wiretype §7.3 + repeated-id §7.4 + over-bound §7.1 + reserved-subtype §4.6 + truncation §7" >&2
 python3 "$SWEEP" --union \
   || echo "==> [sweep] union pass is REPORT-ONLY — divergences/nonconformance above are candidate findings, not a gate failure" >&2
-echo "==> [sweep] rebuilding 13 drivers back to probe (restore the default binary state)" >&2
+echo "==> [sweep] rebuilding drivers back to probe (restore the default binary state)" >&2
 CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
 echo "==> [sweep] done (probe axes blocking; union pass report-only)" >&2

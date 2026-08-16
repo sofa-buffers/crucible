@@ -48,7 +48,7 @@ normalize**. Accept-vs-reject alone cannot see this half — a family that accep
 input and echoed the non-canonical form straight back would agree with itself and pass
 every other check in the suite.
 
-History: this axis exists because F-0054 split the family 4-vs-9 by accident. Had all 13
+History: this axis exists because F-0054 split the family 4-vs-9 by accident. Had every driver
 applied `ID_MAX` to wire type 7 — which nine of them did — no divergence would have
 appeared, and the spec's own tolerance rule would have been violated family-wide and
 silently. Two of the three positions taken on that clause in one day would have been

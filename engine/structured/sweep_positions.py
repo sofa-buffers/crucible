@@ -2,7 +2,7 @@
 """Shared schema-position model for the structured *sweep* family.
 
 A sweep enumerates one normative rule across **every field position** in the
-schema and expects all 13 drivers to agree; a divergence is a finding. The wire-type
+schema and expects all drivers to agree; a divergence is a finding. The wire-type
 sweep (`wiretype_sweep.py`, §7.3) proved the method — it found F-0022 and F-0023,
 two positions the piecemeal §7.3 guard had missed. The bugs live wherever a rule is
 enforced at *some* positions but not all, so **position completeness is the whole

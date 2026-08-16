@@ -23,7 +23,7 @@ floats as bit patterns"), resurrected as an *added* oracle — not a replacement
 round-trip form stays the default, and remains the schema-agnostic path).
 
 **Converged (2026-07-29).** The gate is green on the first family that carries the merged
-sparse-array rewrite (corelibs 0.9.0 @ main, sofabgen 0.21.0): all 13 drivers agree with
+sparse-array rewrite (corelibs 0.9.0 @ main, sofabgen 0.21.0): all drivers agree with
 each other *and* with the reference. The reference was already on the new rule while the
 family was not — the disagreement that state produced was the point of the gate, and it
 resolved on the family's side, not the reference's.

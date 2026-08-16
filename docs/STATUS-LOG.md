@@ -19,6 +19,55 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Full-repo cleanup pass: every closed finding re-verified, three dead exceptions removed, five real
+gaps filed (2026-08-16, later).**
+A sweep of *everything that can hide work*: the catalog's upstream tickets, every special case in the
+test code (active or not), the counts restated across the docs, and all eleven gates.
+
+*The catalog is sound.* All **106** upstream tickets cited by `results/FINDINGS.md` are closed, and
+every cited **PR is actually merged** (checked one by one via the API, not by reading states off the
+rows); no issue was closed as `not_planned`. Then the stronger check: all **243 reproducers from
+every finding folder**, fed through all fifteen drivers — **212 agree, 31 diverge, 2 camps**. One is
+the benign baselined java `incomplete_value` row (verdict unanimous). The other is a single input:
+**F-0018**, the C NUL-terminated-string projection, which is the one divergence in the whole catalog
+that is by design. So no resolved finding regressed, and the 17 `G-*` folders without a `.bin` are
+codegen defects whose reproducer is generated source, not a wire input — not a gap.
+
+*Three questions that had been open for ten days answered by measuring them.* The two unattributed
+cluster camps from nightly 31074707585 and F-0061's set-aside `r1` are all **0 divergences across
+fifteen drivers** today; the camps were the verdict-timing shape F-0043 owned, and F-0043 closed
+this morning. All three items are checked off in [`TODO.md`](TODO.md) with the measurement, not with
+an argument.
+
+*The dead exceptions.* `oracle/policy.yaml`'s entire `allow:` block **is not read by anything** —
+`comparator.py:load_policy` parses the `comparison:` axes and stops. So the two documented tolerated
+divergences grant nothing, and the input an entry names must be kept out of every gate corpus or the
+gate goes red *despite* the entry — which is exactly why F-0018's reproducer is the one resolved
+finding deliberately absent from `corpus/regression`. The block is now marked NOT ENFORCED at the
+top, with the decision (teach the comparator to match by content hash, or delete it) in `TODO.md`.
+Two stale `[ ]` items whose bodies asserted things that were no longer true (the `cpp-c-cpp-dyn`
+quarantine, `py-pure`'s absence from the encode gate) are closed.
+
+*The counts had drifted everywhere.* "all 13" / "13 drivers" appeared in **36 places** across the
+as-built docs and the sweep sources while the roster carried fifteen — README said 14 in one place,
+`CI.md` said 12. Rewritten to roster-neutral wording ("all drivers", "every driver") rather than to
+`15`, because the number belongs to `drivers/roster` and any restatement of it drifts again on the
+next roster change. The one place a literal count is right — the sample `run.sh` output in the
+README — now shows the real fifteen, `cpp-c-cpp-dyn` included.
+
+*Newly filed, because they are real gaps rather than untidiness:* the unenforced `allow:` block;
+**19 resolved findings with no standing regression guard** (their reproducers are fuzzer seeds, but
+no gate replays them); `engine/structured/audit_canonical.py` wired to nothing (run by hand here —
+`corpus/structured` and `corpus/structured-union` are clean, the other corpora light it up by
+design, which is why it can only gate the canonical ones); the two streaming gates keeping hand-written
+driver lists beside the roster; and `go` being the last driver outside the encode gate while its
+`meta` advertises three encode surfaces its driver never reads.
+
+*All eleven gates green on this state* — seeds, regression, conformance via the sweep family, twelve
+blocking sweep axes (`wiretype_sweep` 363 vectors, `truncation` 179, `repeated_id` 159, …), the
+report-only union pass, cross-encode, limit mode, materialize, encode invariance. `CLUSTERS.md` got
+the 72h corpus snapshot it was missing (it still led with 2026-08-03: 8512 inputs, 17 camps).
+
 **F-0043 closed — the catalog has no open finding left (2026-08-16).**
 [generator#267](https://github.com/sofa-buffers/generator/issues/267) closed upstream on 2026-08-11
 with the fixlen-header hook F-0043's attribution addendum asked for: the five push/visitor corelibs

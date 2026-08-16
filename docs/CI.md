@@ -44,17 +44,22 @@ that index and folders cover the same set. Added 2026-08-03 after all three non-
 representations were found stale at once — it exists because intending to keep them in
 sync demonstrably did not.
 
-**`differential`** bootstraps the corelibs (their `main` tips) + sofabgen, builds all 12
-replay drivers, and runs the **green** oracles in sequence; any divergence fails the
-job:
+**`differential`** bootstraps the corelibs (their `main` tips) + sofabgen, builds every
+replay driver, and runs the **green** oracles in sequence; any divergence fails the
+job. All ten, in the order the workflow runs them:
 
 ```sh
 ./scripts/bootstrap.sh   # always: latest sofabgen CI build (checksum-verified) + corelibs, both @ FAMILY_BRANCH
-./scripts/run.sh                          # seed differential            (corpus/seeds)
-CORPUS=corpus/regression ./scripts/run.sh # resolved-findings gate       (corpus/regression)
-REGEN=0 ./scripts/cross-encode.sh         # cross-encode / structured    (corpus/structured)
-./scripts/run-union.sh                    # union suite                  (corpus/union)
-./scripts/run-limits.sh                   # limit mode                   (corpus/limits)
+./scripts/run.sh                            # seed differential            (corpus/seeds)
+CORPUS=corpus/regression ./scripts/run.sh   # resolved-findings gate       (corpus/regression)
+CORPUS=corpus/conformance ./scripts/run.sh  # §2/§3 canonicality seeds     (corpus/conformance)
+REGEN=0 ./scripts/cross-encode.sh           # cross-encode / structured    (corpus/structured)
+./scripts/run-union.sh                      # union suite                  (corpus/union)
+./scripts/run-limits.sh                     # limit mode                   (corpus/limits)
+./scripts/sweep.sh                          # structural sweep, 12 blocking axes
+./scripts/materialize.sh                    # materialized-value oracle    (corpus/structured)
+./scripts/run-chunked.sh                    # chunk invariance   (opt-in roster; skips loudly)
+./scripts/run-encode.sh                     # encode invariance  (opt-in roster; skips loudly)
 ```
 
 - **Corelibs pinned to `main`** on purpose: Crucible is a *conformance* fuzzer, so a

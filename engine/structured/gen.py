@@ -11,7 +11,7 @@ wire-mutation almost never reaches.
 Because the family is byte-canonical (every corelib's encoder emits identical wire
 for a value — the arena reference-wire invariant), the cross-encode invariant
 "encode in A, decode in B, compare" is realized by feeding these messages through
-the existing round-trip + decode-agreement oracle (`scripts/run.sh`): all 13 drivers
+the existing round-trip + decode-agreement oracle (`scripts/run.sh`): all drivers
 must emit the same `A <hex>`. A divergence is a real encoder/decoder asymmetry.
 
 This is a *reference* encoder for the full-scale `schema/probe.sofab.yaml`. It is
@@ -221,7 +221,7 @@ def vectors():
     # held out while F-0049 was open — dart's generated raw-bits companion was library-private,
     # so no consumer could read it. Fixed in generator#275 ("the fp32 raw-bits companion must be
     # consumer-visible"); the walker reads it since 2026-08-02, and materialize.sh is green on
-    # all 13. Back in the gate, where a regression now fails CI.
+    # all drivers. Back in the gate, where a regression now fails CI.
     out.append(("f32_snan",         {"f32": f32b(0x7F800001)}))          # signaling NaN
     out.append(("f32_qnan_payload", {"f32": f32b(0x7FC00001)}))          # quiet NaN, nonzero payload
     out.append(("f32_nan_neg",      {"f32": f32b(0xFFC00000)}))          # negative NaN
@@ -371,7 +371,7 @@ def encode_union(msg: dict) -> bytes:
 
 def union_vectors():
     """Value-rich union vectors: each member at boundary values, the default_id
-    (empty) case, and tag+member+trailer combos. All valid → all 13 must agree on the
+    (empty) case, and tag+member+trailer combos. All valid → all drivers must agree on the
     re-encoded hex (the cross-encode invariant)."""
     out = []
     out.append(("00_default", {}))                        # default union → omitted (§2), 0 bytes

@@ -8,7 +8,7 @@ wire also admits **non-minimal** forms: extra `0x80` continuation bytes that add
 zero high bits, e.g. value 5 = `05` (minimal) = `85 00` (one redundant byte) = `85 80
 00` (two) — all decode to 5. `gen.varint` only ever emits minimal encodings, so no
 existing corpus contains a non-minimal-but-in-range varint. F-0016 covered only the
-**>64-bit overflow** case (`corpus/regression/F0016_*`); whether all 13 decoders agree
+**>64-bit overflow** case (`corpus/regression/F0016_*`); whether every decoder agrees
 on a non-minimal varint that still fits 64 bits — accept-and-normalize, or reject — is
 untested, and it is exactly the class where streaming decoders silently differ.
 
@@ -28,7 +28,7 @@ accept-and-normalize on decode"). CORELIB_PLAN §4.1 now states it normatively:
 
 So the vectors that used to be agreement-only (`expect="agree"`, ground rule 6) now
 carry `expect="accept"` and the runner asserts accept-vs-reject conformance on them:
-all 13 agreeing on *reject* would have been green before and is a finding now.
+all drivers agreeing on *reject* would have been green before and is a finding now.
 
 The round-trip oracle pins the *normalization* on top of that for free: an accepted
 non-minimal input must re-encode to the single canonical form (MESSAGE_SPEC §2), so a

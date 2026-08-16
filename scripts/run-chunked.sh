@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Chunk-invariance gate (CORELIB_PLAN §7.2 item 4; crucible#130).
 #
-# Every other oracle here is *differential*: it asks whether the 13 drivers agree.
+# Every other oracle here is *differential*: it asks whether the drivers agree.
 # This one is not, and that is the point — **chunk invariance is an invariant of a
 # single implementation against itself**, so it needs no second driver to be useful
 # and each driver can be landed independently. A defect that every implementation
@@ -50,7 +50,12 @@ CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 # shared one buffer across split payloads, so two wrapper-array elements aliased each
 # other. That closed and zig is back; the comment saying otherwise outlived the
 # exclusion it described and is corrected here.
-# Nobody is held out of this gate any more.
+# No driver is held out of this gate for a FINDING any more. `go` is absent for a
+# capability reason, not a defect: corelib-go has no resumable decoder, so the Go driver
+# declares `chunked_decode=none` in `drivers/go/meta` and has nothing to feed in chunks
+# (docs/ARCHITECTURE.md's streaming table; tracked in docs/TODO.md). Every other roster
+# entry is listed below — keep this list and `drivers/roster` in step by hand until the
+# list is derived from the per-driver `meta` (docs/TODO.md).
 SUPPORTED="${SOFAB_SPLIT_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp cpp-c-cpp-dyn typescript java csharp dart zig py-cython py-pure}"
 
 if [ -z "$SUPPORTED" ]; then
