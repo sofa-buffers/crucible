@@ -1,7 +1,7 @@
 # F-0043 — a schema-bound violation is not INVALID until payload bytes arrive
 
 
-**Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Found 2026-08-01** by re-enabling the F-0032 carve-out in
 `engine/structured/sweep_malform_truncate.py` against corelibs **0.10.0** + sofabgen
 **0.22.0**. The axis grew 43 → 96 vectors and 8 of the new ones diverge. F-0032 itself
@@ -301,4 +301,24 @@ full-box state.
 
 **Impls:** generated code — `maxlen`/`count`/element id are schema facts (§7: *"detected — and reported — by generated code"*); per-backend, since the camps differ per row rather than sharing one helper · **Axis:** verdict
 
-🔴 **OPEN — found 2026-08-01**, by re-enabling the F-0032 carve-out in `engine/structured/sweep_malform_truncate.py` on corelibs **0.10.0** + sofabgen **0.22.0** (F-0032 itself is genuinely resolved — this is the **boundary offset** its carve-out hid). The axis grew 43 -> 96 vectors; 8 diverge. The carve-out stays, now citing this finding instead of F-0032, and is a two-line deletion when this closes. **Filed 2026-08-01 against `generator`** as [generator#267](https://github.com/sofa-buffers/generator/issues/267) — codegen defect **G-0027**. **Attribution addendum 2026-08-02 (for the generator#267 review): the generator cannot fix the `maxlen` half alone.** Generated code already carries the right check (`if total > 32 { inv = true }`); the callback that *supplies* `total` never fires when the message ends at the word. Verified in source for all five impls of the wrong camp — corelib-rs, -rs-no-std, -zig, -java, -cs each gate the visitor call on having payload bytes (`State::FixlenRaw` / `S_FIXLEN_RAW` / `&buf[pos..pos+len]`), and their zero-payload `string(id, 0, 0, …)` call fires only for a *declared length of 0*, so it is not a header hook. The camp split is **push/visitor vs pull/descriptor**, not carelessness: ts uses the cursor API and c/cpp-c-cpp the object descriptor, both of which expose the length before the payload. Fix needs a header-level hook in the five push corelibs plus backends consuming it — **the F-0042 shape**, where the array-header hook was widened across seven corelibs and consumed in generator#259. *Scope:* the wrapper-element rows have a different camp (go and dart join the wrong side) and may need their own analysis. Detail in the finding's NOTES
+**Found 2026-08-01**, by re-enabling the F-0032 carve-out in `engine/structured/sweep_malform_truncate.py` on corelibs **0.10.0** + sofabgen **0.22.0** (F-0032 itself is genuinely resolved — this is the **boundary offset** its carve-out hid). The axis grew 43 -> 96 vectors; 8 diverge. The carve-out stays, now citing this finding instead of F-0032, and is a two-line deletion when this closes. **Filed 2026-08-01 against `generator`** as [generator#267](https://github.com/sofa-buffers/generator/issues/267) — codegen defect **G-0027**. **Attribution addendum 2026-08-02 (for the generator#267 review): the generator cannot fix the `maxlen` half alone.** Generated code already carries the right check (`if total > 32 { inv = true }`); the callback that *supplies* `total` never fires when the message ends at the word. Verified in source for all five impls of the wrong camp — corelib-rs, -rs-no-std, -zig, -java, -cs each gate the visitor call on having payload bytes (`State::FixlenRaw` / `S_FIXLEN_RAW` / `&buf[pos..pos+len]`), and their zero-payload `string(id, 0, 0, …)` call fires only for a *declared length of 0*, so it is not a header hook. The camp split is **push/visitor vs pull/descriptor**, not carelessness: ts uses the cursor API and c/cpp-c-cpp the object descriptor, both of which expose the length before the payload. Fix needs a header-level hook in the five push corelibs plus backends consuming it — **the F-0042 shape**, where the array-header hook was widened across seven corelibs and consumed in generator#259. *Scope:* the wrapper-element rows have a different camp (go and dart join the wrong side) and may need their own analysis. Detail in the finding's NOTES
+
+✅ **RESOLVED — verified 2026-08-16.** [generator#267](https://github.com/sofa-buffers/generator/issues/267)
+closed 2026-08-11 with the fixlen-header hook the addendum above asked for: the five push/visitor
+corelibs expose the length at the *word*, and the backends consume it, so the schema-bound check no
+longer waits for payload bytes. Verified here against sofabgen `0.0.0-20260811165755` (a main CI
+build, made after the fix) with every corelib at its main tip, by **deleting the carve-out in
+`engine/structured/sweep_malform_truncate.py`** rather than by re-reading the diff: the axis grows
+**43 -> 96 vectors** — the same growth that surfaced this finding — and is now
+`0 divergence(s), 0 conformance failure(s)` across all 15 drivers, with one soft hit on
+`incomplete_value`/`reject_class` (both soft per `oracle/policy.yaml`).
+
+*The scope caveat in the addendum is discharged, not waived.* The wrapper-element rows — the ones
+whose camp differed, with go and dart on the wrong side — are vectors of this same axis and are
+green in that run, so they needed no separate analysis after all.
+
+*Independent corroboration:* the three F-0043 camps in `results/known-clusters.txt` did not occur in
+any of four full clustering passes over the 17870-input corpus grown by the 2026-08-11 72h fuzz run;
+only the benign java camp remained. Those three rows are **deleted** from the baseline per that
+file's own rule — a repaired camp must read as NEW if it ever returns, and this one has been caught
+returning twice before (F-0054).

@@ -569,11 +569,14 @@ here:
       accident — so a suite testing only it would have proved nothing), and `struct_array`
       (id 202) passes throughout, confining F-0048 to the leaf-element wrappers.
 
-- [ ] **Re-enable `sweep_malform_truncate`'s broadened truncation when F-0043 closes.** The axis
-      currently applies the full offset sweep only to the STRUCTURAL malformations; the
+- [x] **Re-enable `sweep_malform_truncate`'s broadened truncation — DONE 2026-08-16.** generator#267
+      closed on 2026-08-11 (the fixlen-header hook), so the carve-out that restricted the full
+      offset sweep to the STRUCTURAL malformations is gone: the axis is back at **43 → 96 vectors**
+      and green on all 15 drivers, which is what closed F-0043 / G-0027. Original note below.
+      ~~The axis currently applies the full offset sweep only to the STRUCTURAL malformations; the
       schema-bound half is a two-line deletion in `engine/structured/sweep_malform_truncate.py`
       (43 → 96 vectors). The carve-out previously cited F-0032, which is resolved — it is F-0043
-      that keeps it, and the boundary offset is precisely what it hides.
+      that keeps it, and the boundary offset is precisely what it hides.~~
 
 - [x] **Re-enable the *scalar* `f32_snan` in `engine/structured/gen.py` — DONE 2026-08-02.**
       generator#275 closed the same day it was filed; the generated dart field is now the public

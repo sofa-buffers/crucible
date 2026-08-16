@@ -29,9 +29,6 @@
 # Format: <signature>  # <label>
 
 I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescript,zig | I:java  # benign — java emits an incomplete_value payload on I; the verdict is unanimous (policy incomplete_value: soft)
-I:dart,go,py-cython,py-pure,typescript | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,java,rust-nostd,rust-std,zig  # F-0043 — declared-width bound, truncated (generator#267), the surviving half of that finding
-I:dart,go,py-cython,py-pure | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,java,rust-nostd,rust-std,typescript,zig  # F-0043 — the same declared-width bound with typescript in the correct camp; both partitions occur in the corpus
-I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:typescript  # F-0043, finer offset — over-index element truncated INSIDE the fixlen word; only typescript decides at the earliest decidable point. Also the whole-message camp of F-0061's r3 reproducer
 
 # --- deleted 2026-08-06, cause repaired -------------------------------------------
 # The fixlen header hook landed in all five push/visitor corelibs (corelib-cs#53,
@@ -56,3 +53,14 @@ I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-
 #
 # The two unattributed camps from nightly 31074707585 (I:java alone; I:typescript,zig)
 # are also gone — they were never baselined, and they no longer occur.
+
+# --- deleted 2026-08-16, cause repaired -------------------------------------------
+# generator#267 closed 2026-08-11 (the fixlen-header hook): the schema-bound verdict now
+# lands at the length/element word, so F-0043's three camps no longer occur. Verified by
+# removing the sweep_malform_truncate carve-out (43 -> 96 vectors, all green) and by four
+# clustering passes over the 17870-input corpus in which none of them appeared. Deleted
+# rather than kept, per the rule above — if any returns it must read as NEW:
+#
+#   I:dart,go,py-cython,py-pure,typescript | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,java,rust-nostd,rust-std,zig  # F-0043 — declared-width bound, truncated (generator#267), the surviving half of that finding
+#   I:dart,go,py-cython,py-pure | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,java,rust-nostd,rust-std,typescript,zig  # F-0043 — the same declared-width bound with typescript in the correct camp; both partitions occur in the corpus
+#   I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,zig | I:java | reject:typescript  # F-0043, finer offset — over-index element truncated INSIDE the fixlen word; only typescript decides at the earliest decidable point. Also the whole-message camp of F-0061's r3 reproducer
