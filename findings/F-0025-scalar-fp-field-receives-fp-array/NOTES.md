@@ -1,6 +1,7 @@
 # F-0025 — a scalar fp field receiving an fp (fixlen) array wire type
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## The residual after the §7.3 fixes landed
 

@@ -91,7 +91,27 @@ here:
       matches), or delete the block and let the finding write-ups carry the reasoning. Both beat the
       present state, where the file reads as policy and behaves as a comment.
 
-- [ ] **19 resolved findings have no standing regression guard.** Their reproducers live in
+- [ ] **The chunked gate does not replay `corpus/regression`.** F-0058, F-0060 and F-0061 were
+      promoted there on 2026-08-16, which holds their *one-shot* verdict — but all three are
+      chunk-boundary findings, and `scripts/run-chunked.sh` runs `corpus/seeds` by default. So the
+      half that matters is unguarded, and both the write-ups and `corpus/regression/README.md` say
+      so rather than implying a guard they do not have. **Work:** add a CI step running the chunked
+      gate over `corpus/regression` in `--modes chunk` (the split sweep over 238 inputs would not
+      fit the budget), or move those vectors into a corpus that gate already replays.
+
+- [x] **DONE 2026-08-16 — every closed finding now declares what re-checks it.** Was: 19 resolved
+      findings with no standing regression guard. Fixed in three parts. (1) `check-catalog.py` gained
+      the `**Guard:**` assertion, so the state is no longer reachable: a finding cannot be closed
+      without naming a gate corpus, a sweep axis, or `none — <reason>`, and the declaration is
+      verified rather than believed. (2) Five were already guarded under descriptive filenames and
+      only looked unguarded (F-0027, F-0030, F-0049, F-0057, F-0059) — which is why the check
+      matches **bytes or finding-named vector**, since a name test alone would have called them
+      unguarded and a content test alone would have failed F-0003's cleaner isolate. (3) 50 vectors
+      from 13 findings promoted into `corpus/regression` (188 → 238 inputs, gate green: 0
+      divergences across all fifteen drivers). F-0018 stays out with a written reason — its
+      divergence is by design and would turn the gate red while `policy.yaml`'s `allow:` block is
+      unenforced. Original note below.
+      ~~19 resolved findings have no standing regression guard.~~ Their reproducers live in
       `findings/<id>/` and are fed to the *fuzzer* as seeds, but no gate replays them:
       F-0008, F-0012, F-0018, F-0027..F-0032, F-0035..F-0037, F-0043, F-0049, F-0057..F-0061
       (42 of 61 F-findings are in `corpus/regression`; these 19 are not). Some are covered
@@ -708,7 +728,13 @@ here:
       declaration (floor+1, 2x floor, and one odd size) so the boundary lands at different offsets
       within the message; costs one run each and needs no spec change.
 
-- [ ] **The two streaming gates keep their own driver list, by hand.** `run-chunked.sh` and
+- [x] **DONE 2026-08-16 — both gates derive their list from the roster + `meta`.**
+      `scripts/roster.sh caps {encode|chunked}` reports the entries whose backend declares the
+      capability; `run-encode.sh` and `run-chunked.sh` call it instead of carrying a list. The
+      derived lists matched the hand-written ones exactly (encode 15, chunked 14 — `go` absent by
+      its declared `chunked_decode=none`), so this changed the mechanism without changing who
+      runs. `SOFAB_*_DRIVERS` still overrides for isolating one driver. Original note below.
+      ~~The two streaming gates keep their own driver list, by hand.~~ `run-chunked.sh` and
       `run-encode.sh` each hard-code a 14-name `SUPPORTED` default beside `drivers/roster`'s fifteen
       rows — the copied-list shape CLAUDE.md warns about, and it already misleads: the chunked gate's
       comment claimed nobody was held out while `go` was (legitimately — corelib-go has no resumable

@@ -58,8 +58,47 @@ case "$cmd" in
         done
         IFS=$_oldifs
         ;;
+    caps)
+        # `caps <encode|chunked> [tag]` — the roster names whose backend declares the
+        # capability in `drivers/<builder>/meta`.
+        #
+        # This is what the two streaming gates use instead of a hand-written driver
+        # list. The lists were the bug: `go` sat outside the encode gate for eleven
+        # days because a name was missing from a script, and a missing name looks
+        # exactly like a declared exception. Derived this way, participation follows
+        # from the roster, and staying out of a gate requires a capability the `meta`
+        # denies — a statement someone had to write down, in the file that owns it.
+        #
+        # Note the mapping is not one-to-one: the four `cpp` roster rows share
+        # `drivers/cpp/meta`, and the two `python` rows share `drivers/python/meta`.
+        # That is correct — the surfaces are a property of the backend, not of the
+        # build variant.
+        cap="${2:-}"
+        want="${3:-}"
+        case "$cap" in
+            encode|chunked) ;;
+            *) echo "usage: roster.sh caps {encode|chunked} [tag]" >&2; exit 2 ;;
+        esac
+        rows | while read -r name builder _arg _tags _binary; do
+            meta="$ROOT/drivers/$builder/meta"
+            [ -f "$meta" ] || continue
+            case "$cap" in
+                encode)
+                    # A backend with no declared surface has nothing to compare.
+                    v=$(sed -n 's/^encode_surfaces=//p' "$meta")
+                    [ -n "$v" ] && printf '%s\n' "$name"
+                    ;;
+                chunked)
+                    # `none` is the declared absence (corelib-go has no resumable
+                    # decoder); push and pull both participate.
+                    v=$(sed -n 's/^chunked_decode=//p' "$meta")
+                    [ -n "$v" ] && [ "$v" != "none" ] && printf '%s\n' "$name"
+                    ;;
+            esac
+        done
+        ;;
     *)
-        echo "usage: roster.sh {list|build} [tag]" >&2
+        echo "usage: roster.sh {list|build|caps} [tag]" >&2
         exit 2
         ;;
 esac

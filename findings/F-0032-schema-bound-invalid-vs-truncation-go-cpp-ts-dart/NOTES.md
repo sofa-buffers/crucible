@@ -1,6 +1,7 @@
 # F-0032 — a schema-bound INVALID that is also truncated is reported INCOMPLETE (§5.2 precedence), varying by bound & backend
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## Resolution — the codegen splits fixed upstream; the cpp residual was in THIS driver
 

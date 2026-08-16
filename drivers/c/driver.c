@@ -238,6 +238,7 @@ static struct {
     long chunk;
     int scrub;
     enum enc_surface enc;
+    int enc_set;              /* SOFAB_ENCODE was present -- see the announcement */
     long flush;
 } g_cfg;
 
@@ -257,6 +258,13 @@ static void read_stream_cfg(void)
     e = getenv("SOFAB_CHUNK_SCRUB");
     g_cfg.scrub = e && *e && strcmp(e, "0") != 0;
     e = getenv("SOFAB_ENCODE");
+    /* Whether the variable was PRESENT, not merely which surface it named. `to` is
+     * this backend's default (there is no allocating encode), so without this flag
+     * the announcement below stays silent on SOFAB_ENCODE=to and the gate cannot
+     * tell an honoured request from an ignored one -- the exact hole the
+     * announcement exists to close. Caught by the encode gate on 2026-08-16, when
+     * it started asserting the announcement instead of discarding it. */
+    g_cfg.enc_set = e && *e;
     if (!e || !*e || strcmp(e, "to") == 0)      g_cfg.enc = ENC_TO;
     else if (strcmp(e, "stream") == 0)          g_cfg.enc = ENC_STREAM;
     else if (strcmp(e, "new") == 0)
@@ -275,7 +283,7 @@ static void read_stream_cfg(void)
      * be indistinguishable from one that honours them -- identical stdout either
      * way -- so this makes "it really re-feeds" checkable rather than asserted. */
     if (g_cfg.split || g_cfg.chunk || g_cfg.scrub || g_cfg.flush ||
-        g_cfg.enc != ENC_TO)
+        g_cfg.enc_set || g_cfg.enc != ENC_TO)
     {
         fprintf(stderr, "crucible-c: streaming cfg split=%ld chunk=%ld scrub=%d "
                         "enc=%s flush=%ld\n",

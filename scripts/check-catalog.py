@@ -20,6 +20,7 @@ compared: it has one owner.
 Run: `python3 scripts/check-catalog.py`   (exit 1 on any mismatch)
 """
 
+import hashlib
 import os
 import re
 import sys
@@ -41,6 +42,87 @@ def token(text):
     if "⚪" in head:
         return BYDESIGN
     return None
+
+
+def _sha1(path):
+    with open(path, "rb") as fh:
+        return hashlib.sha1(fh.read()).hexdigest()
+
+
+GUARD_RE = re.compile(r"^\*\*Guard:\*\*(.*)$", re.M)
+
+
+def check_guard(fid, folder, text, errors):
+    """A closed finding with reproducers must declare what RE-CHECKS it.
+
+    Flipping a finding to ✅ and leaving its reproducers in `findings/<id>/` is the
+    quiet failure this catches: nothing replays them, so the bug is closed but not
+    guarded. It went unnoticed 18 times because the step happens weeks after the
+    find, usually while several findings go green at once, and because it produces
+    no visible result — adding a converged vector to a green gate leaves it green.
+
+    Three declarations are legitimate, and the difference matters:
+
+        **Guard:** corpus/regression       the vectors live in a gate corpus
+        **Guard:** sweep_malform_truncate  a sweep axis owns the rule now, at every
+                                           position — stronger than a frozen vector
+        **Guard:** none — <reason>         not guardable, and why (F-0018's by-design
+                                           divergence would turn a gate red)
+
+    The reproducer-less `G-00NN` folders are exempt: a codegen defect's reproducer is
+    generated source, not a wire input.
+    """
+    d = os.path.join(FINDINGS_DIR, folder)
+    bins = [f for f in os.listdir(d) if f.endswith(".bin")]
+    if not bins:
+        return
+    m = GUARD_RE.search(text)
+    if not m:
+        errors.append(
+            f"{fid}: closed with {len(bins)} reproducer(s) but no `**Guard:**` line — "
+            "declare what re-checks it: a gate corpus, a sweep axis, or `none — <reason>`")
+        return
+    decl = m.group(1).strip().strip("`").strip()
+    if decl.startswith("corpus/"):
+        corpus = os.path.join(ROOT, decl.split()[0])
+        if not os.path.isdir(corpus):
+            errors.append(f"{fid}: Guard names {decl}, which is not a directory")
+            return
+        # Match by CONTENT, not by filename. Several reproducers were promoted under
+        # a name that says what they test rather than which finding produced them
+        # (F-0027, F-0030, F-0049, F-0057, F-0059), and a name check would have called
+        # those unguarded while the bytes were being replayed all along. The bytes are
+        # what the gate feeds; the filename is a label.
+        want = {_sha1(os.path.join(d, f)) for f in bins}
+        have = {_sha1(os.path.join(corpus, f)) for f in os.listdir(corpus)
+                if os.path.isfile(os.path.join(corpus, f)) and not f.endswith(".md")}
+        # ...or a vector NAMED for this finding. Both patterns are legitimate and
+        # neither test alone covers them: F-0027's bytes were promoted under a
+        # descriptive name (content matches, name does not), while F-0003's guard is a
+        # cleaner isolate built for the gate rather than the original reproducer (name
+        # matches, content does not — engine/structured/isolates.py exists for exactly
+        # that). What must never pass is neither.
+        stem = fid.replace("-", "")
+        named = any(f.startswith(stem) for f in os.listdir(corpus))
+        if not (want & have) and not named:
+            errors.append(
+                f"{fid}: Guard says {decl}, but neither its {len(bins)} reproducer(s) nor "
+                f"a {stem}_* vector is in there — the declaration is the promise, the "
+                "corpus is the guard")
+    elif decl.lower().startswith("none"):
+        reason = decl.split("—", 1)[-1].strip() if "—" in decl else ""
+        if not reason:
+            errors.append(
+                f"{fid}: Guard says none with no reason — an unguarded finding needs "
+                "the why written down, or it reads as an oversight")
+    else:
+        name = decl.split()[0]
+        if not (os.path.exists(os.path.join(ROOT, "engine", "structured", name + ".py"))
+                or os.path.exists(os.path.join(ROOT, "scripts", name + ".sh"))
+                or os.path.exists(os.path.join(ROOT, "oracle", name + ".py"))):
+            errors.append(
+                f"{fid}: Guard names `{name}`, which is neither a sweep axis "
+                "(engine/structured/<name>.py), an oracle, nor a gate (scripts/<name>.sh)")
 
 
 def cells(line):
@@ -103,6 +185,9 @@ def main():
             errors.append(
                 f"{fid}: catalog says {catalog[fid]}, NOTES.md says {state}"
             )
+        # A finding that is no longer open must say what re-checks it.
+        if state in (RESOLVED, BYDESIGN):
+            check_guard(fid, dirs[fid], open(notes, encoding="utf-8").read(), errors)
 
     # --- codegen rows: standalone ones own a folder, paired ones borrow the F one -
     for gid, cells, line in rows("G"):

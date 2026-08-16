@@ -2,6 +2,7 @@
 
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 **Found 2026-07-27** by the 60-minute pacemaker round (105.6 M execs) on the
 `poc/omit-all-default-sequences` family; it was clusters 6 and 13 of the post-fuzz
 triage — two shapes, one root cause.

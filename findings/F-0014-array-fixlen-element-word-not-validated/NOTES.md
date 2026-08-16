@@ -1,6 +1,7 @@
 # F-0014 — the ARRAY_FIXLEN element word is not (fully) validated at the header → INCOMPLETE instead of INVALID
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## The class
 

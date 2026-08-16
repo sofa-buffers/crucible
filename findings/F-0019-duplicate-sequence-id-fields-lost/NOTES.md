@@ -1,6 +1,7 @@
 # F-0019 — a repeated sequence (struct) field id: 11 profiles merge, TypeScript replaces
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## The observation
 

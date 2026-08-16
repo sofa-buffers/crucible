@@ -15,6 +15,7 @@
 > the attribution was one layer too shallow. Codegen-weakness log: **G-0011**.
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## Reproduce
 

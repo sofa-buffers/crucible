@@ -9,6 +9,7 @@
 > see [F-0007](../F-0007-invalid-vs-incomplete-precedence/NOTES.md). The rest of this file is the original analysis.
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## The divergence (11 vs 1)
 

@@ -7,7 +7,7 @@ as the corelibs churn. See PLAN §10/§12.
 | workflow | trigger | blocking? | what it does |
 |---|---|---|---|
 | [`image.yml`](../.github/workflows/image.yml) | `.devcontainer/Dockerfile` change · manual | — | build the 13-toolchain image (incl. the Dart SDK), push to GHCR |
-| [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | build all drivers, run the eight **green** gates + the two opt-in streaming gates |
+| [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | the catalog + participation checks, then build all drivers and run the eight **green** gates + the two streaming gates |
 | [`nightly.yml`](../.github/workflows/nightly.yml) | 03:00 UTC daily · manual | no | fuzz → grow corpus → cluster → upload artifacts |
 
 ## The image (`image.yml`) — the linchpin
@@ -31,7 +31,7 @@ changes (or on manual dispatch), with layer caching via `type=gha`.
 
 ## The replay gate (`replay.yml`) — blocking
 
-Two jobs. **`catalog`** runs first and needs no drivers at all — it asserts that
+Two jobs. **`catalog`** runs first and needs no drivers at all. It carries two checks: `scripts/driver-audit.sh`, the per-driver participation ledger (every roster entry must declare what the gates need to place it), and `check-catalog.py`, which asserts that
 `results/FINDINGS.md` and its write-ups declare the same state:
 
 ```sh
@@ -58,8 +58,8 @@ REGEN=0 ./scripts/cross-encode.sh           # cross-encode / structured    (corp
 ./scripts/run-limits.sh                     # limit mode                   (corpus/limits)
 ./scripts/sweep.sh                          # structural sweep, 12 blocking axes
 ./scripts/materialize.sh                    # materialized-value oracle    (corpus/structured)
-./scripts/run-chunked.sh                    # chunk invariance   (opt-in roster; skips loudly)
-./scripts/run-encode.sh                     # encode invariance  (opt-in roster; skips loudly)
+./scripts/run-chunked.sh                    # chunk invariance   (roster derived from meta)
+./scripts/run-encode.sh                     # encode invariance  (roster derived from meta)
 ```
 
 - **Corelibs pinned to `main`** on purpose: Crucible is a *conformance* fuzzer, so a
@@ -90,9 +90,9 @@ step). `FUZZ_TIME` (default 1800s) is overridable via manual dispatch.
   structured via `cross-encode.sh` / union / limits / structural sweep / materialized)
   as separate steps, rebuilding the whole roster each time — so the gate pays the build
   once per step. A build-once → compare-many-corpora mode would cut it to one build.
-  The two streaming gates (`run-chunked.sh`, `run-encode.sh`) do not add to that today:
-  they exit before building while their opt-in roster is empty, and will pay one build
-  each once the first driver lands.
+  The two streaming gates (`run-chunked.sh`, `run-encode.sh`) each pay a build too: since
+  2026-08-16 they derive their participants from the roster + `meta` (`roster.sh caps`),
+  and both run a full roster — fourteen and fifteen drivers.
 - **Cross-repo auto-annotation:** have `nightly` open/annotate issues on the owning
   corelib/generator repos (needs a PAT with `issues:write`), instead of only
   uploading artifacts.

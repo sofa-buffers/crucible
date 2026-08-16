@@ -30,13 +30,14 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CORPUS="${CORPUS:-$ROOT/corpus/structured}"
 
-# Drivers known to implement SOFAB_ENCODE. Add a name here only once it demonstrably
-# re-encodes through each surface its meta declares — a driver that ignores the
-# variables emits byte-identical output, so this list is the only thing standing
-# between the gate and a vacuous pass. Since 2026-08-16 that is the WHOLE roster:
-# `go` was the last one missing — its backend had all three surfaces and its meta
-# declared them, only the driver never read the variable. Nobody is out of this gate.
-SUPPORTED="${SOFAB_ENCODE_DRIVERS:-c go rust-std rust-nostd cpp cpp-fixed cpp-c-cpp cpp-c-cpp-dyn typescript java csharp dart zig py-cython py-pure}"
+# WHO PARTICIPATES IS DERIVED, NOT TYPED. `roster.sh caps encode` lists the roster
+# names whose `drivers/<builder>/meta` declares any `encode_surfaces`, so a new driver
+# is in this gate by construction. The hand-written list this replaces is what let `go`
+# sit outside the gate for eleven days: its backend had all three surfaces and its meta
+# said so, but a name was missing from a script — and a missing name is indistinguishable
+# from a declared exception. Staying out now requires a `meta` that declares no surface.
+# SOFAB_ENCODE_DRIVERS still overrides, for isolating one driver by hand.
+SUPPORTED="${SOFAB_ENCODE_DRIVERS:-$("$ROOT/scripts/roster.sh" caps encode | tr '\n' ' ')}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [encode] no driver implements SOFAB_ENCODE yet — nothing to check." >&2

@@ -1,6 +1,7 @@
 # F-0001 — a truncated trailing varint: Go rejects, C/Rust accept
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 > **Note on the one residual difference:** `java` additionally emits an
 > `incomplete_value` payload on `I` (`I 5607a606…`) where the other 11 emit a bare `I`.

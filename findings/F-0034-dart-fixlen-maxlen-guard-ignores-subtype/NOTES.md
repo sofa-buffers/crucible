@@ -1,6 +1,7 @@
 # F-0034 — dart falsely rejects a §7.3-skippable fixlen field because the generated `maxlen` guard ignores the wire subtype
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## Divergence
 

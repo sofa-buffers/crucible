@@ -1,6 +1,7 @@
 # F-0016 — an overlong (>64-bit) varint is accepted and silently truncated instead of rejected
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## The divergence — 8 accept, 4 reject; the value is silently corrupted
 

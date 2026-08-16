@@ -2,6 +2,7 @@
 
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 **✅ RESOLVED 2026-08-03** — [generator#283](https://github.com/sofa-buffers/generator/issues/283)
 fixed by `bd67d2b`, *"stack only live scopes, so a deep skip can't lose"*.
 

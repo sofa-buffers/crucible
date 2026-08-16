@@ -1,6 +1,7 @@
 # F-0023 — a mis-typed array-wrapper element is not skipped: the §7.3 guard is missing on the wrapper-element loop
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## Not a spec hole — §5.1 + §7.3 already compose
 

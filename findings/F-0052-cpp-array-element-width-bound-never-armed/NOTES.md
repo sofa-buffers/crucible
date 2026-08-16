@@ -2,6 +2,7 @@
 
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 **✅ RESOLVED 2026-08-03** — [generator#279](https://github.com/sofa-buffers/generator/issues/279)
 closed; verified on sofabgen `0.0.0-20260803154628-1e4359a8a1c0`.
 

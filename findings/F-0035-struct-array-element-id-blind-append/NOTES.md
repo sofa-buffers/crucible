@@ -2,6 +2,7 @@
 
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 **Filed:** [generator#247](https://github.com/sofa-buffers/generator/issues/247)
 
 **Family:** `poc/omit-all-default-sequences` (found 2026-07-27, the day WP-05 folded

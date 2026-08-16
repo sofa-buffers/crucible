@@ -1,6 +1,7 @@
 # F-0012 — corelib-ts skip path: INCOMPLETE instead of INVALID for a malformed fixlen word in an unknown field
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## The divergence (clean 11-vs-1)
 

@@ -182,6 +182,26 @@ def main():
                       f"{len(inputs)}: {err}", file=sys.stderr)
                 bad += 1
                 continue
+            # The announcement is the ONLY evidence that the driver honoured the
+            # variable rather than ignored it — when the surfaces are correct their
+            # stdout is byte-identical, so agreement proves nothing on its own.
+            # CONTRACT.md has required it since the axis was written; until
+            # 2026-08-16 it was captured here and thrown away, which made the whole
+            # mechanism decorative. `new` is exempt: it is the default path, where
+            # "honoured" and "ignored" are the same run by construction, and the
+            # drivers deliberately stay quiet.
+            missing = [tok for tok in
+                       ([f"enc={env['SOFAB_ENCODE']}"] if env["SOFAB_ENCODE"] != "new" else [])
+                       + ([f"flush={env['SOFAB_FLUSH']}"] if "SOFAB_FLUSH" in env else [])
+                       if tok not in err]
+            if missing:
+                print(f"  [{name}] {label}: stderr does not announce "
+                      f"{', '.join(missing)} — CONTRACT.md requires the driver to say "
+                      "which configuration it ran, because stdout cannot distinguish "
+                      f"honouring the variable from ignoring it. stderr was: {err!r}",
+                      file=sys.stderr)
+                bad += 1
+                continue
             for i, (a, b) in enumerate(zip(base, lines)):
                 if a != b:
                     print(f"  [{name}] {files[i]} under {label}: default={a!r} "

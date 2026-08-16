@@ -1,6 +1,7 @@
 # F-0061 — the generated TypeScript chunked decoder flips the *verdict* between INCOMPLETE and INVALID
 
 **Status:** ✅ **RESOLVED** 2026-08-11 by **corelib-ts#141** ([`results/FINDINGS.md`](../../results/FINDINGS.md)
+**Guard:** corpus/regression — vectors promoted 2026-08-16. **Half a guard, stated plainly:** the gate replays them whole, so it holds the one-shot verdict. The chunk-boundary behaviour this finding was actually about is owned by `scripts/run-chunked.sh`, which does not replay this corpus — wiring it to is in docs/TODO.md.
 owns this finding's state; this file is the evidence). Also logged as codegen defect **G-0038**.
 
 ## Resolution — corelib-ts#141, verified on the corpus
