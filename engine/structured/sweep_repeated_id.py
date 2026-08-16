@@ -77,12 +77,12 @@ def emit(out_dir):
     for p in SEQ_POSITIONS:
         scope = p.path + (p.fid,)
         if p.cat == "seq_struct":
-            # F-0035 carve-out (G-0020): reopening a struct_array ELEMENT id merges
-            # in c/cpp/dart (§7.4 struct-merge at the element position) but APPENDS
-            # a second element in the 10 id-blind backends. One cell, not the axis —
-            # re-enable when the generator places elements by id.
-            if p.path == (202,):
-                continue
+            # The struct_array ELEMENT position (path (202,)) was carved out for F-0035
+            # (G-0020): reopening the element id merged in c/cpp/dart (§7.4 struct-merge)
+            # but APPENDED a second element in the 10 id-blind backends. Resolved in
+            # sofabgen 0.21.0 (generator#247) — the same fix sweep_empty_frame.py names —
+            # so the position rejoined the axis 2026-08-16: 158 -> 159 vectors, all 15
+            # drivers agree on the merge case.
             # reopen the struct twice, a different child each time -> MERGE
             occ0 = open_seq(p.fid, struct_children(scope, 0))
             occ1 = open_seq(p.fid, struct_children(scope, 1))

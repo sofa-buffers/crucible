@@ -19,6 +19,33 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Two sweep carve-outs outlived the findings that justified them; both lifted, both axes green
+(2026-08-16).**
+An inventory of every exception in the suite — `policy.yaml`'s soft axes and `allow` entries,
+`known-clusters.txt`, the roster's quarantine tag, the per-cell carve-outs in the sweeps, and the
+non-blocking CI steps — turned up three entries that no longer had a basis.
+
+*Two were live carve-outs suppressing vectors on BLOCKING axes.* `sweep_overbound.py` still held
+back the element-width vectors for F-0052 (generator#279), and `sweep_repeated_id.py` still skipped
+the `struct_array` element position `(202,)` for F-0035 (G-0020) — both findings closed (generator
+PR #281, sofabgen 0.21.0), and in the F-0035 case the sibling axis `sweep_empty_frame.py` had
+already rejoined the same position while this one did not. **Decision: both removed.** Verified by
+running each axis against the pre-change state as a control, because a green run proves nothing on
+its own — it is equally consistent with a flag that no longer gates anything. The counts show the
+vectors were really suppressed: `sweep_overbound` **49 → 67** vectors, `sweep_repeated_id`
+**158 → 159** (`merge=3 → merge=4`), and both report 0 divergences and 0 conformance failures
+across all 15 drivers.
+
+*The third was documentation drift.* `ARCHITECTURE.md` claimed in two places that `cpp-c-cpp-dyn`
+was quarantined for F-0057; the quarantine was lifted when corelib-c-cpp#132 closed it and
+`drivers/roster` has carried `blocking` on all fifteen rows since. Corrected — an as-built document
+that describes a gate roster it no longer has is worse than none.
+
+*The pattern worth keeping:* a carve-out names the condition for its own removal, but nothing
+re-reads that condition when the upstream issue closes. Both of these were removable for days. The
+cheap check is to walk the carve-outs whenever a finding flips to ✅, not to wait for someone to
+audit the suite.
+
 **A 72h fuzz run doubled the corpus and found nothing — but the clustering step's own timeout
 manufactured two phantom camps per run (2026-08-16).**
 The C pacemaker ran 2026-08-11 20:27 → 08-14 20:27 UTC (`FUZZ_TIME=259200 FUZZ_JOBS=3`, 3 parallel
