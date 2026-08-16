@@ -79,10 +79,17 @@ jobs:
       # uploaded since it was written; nobody read the artifact, and nine unexplained
       # camps accumulated unnoticed until 2026-08-03. continue-on-error keeps it
       # non-blocking, as before — the change is that silence now means something.
+      # TIMEOUT=30, not 5: at 5s this step reported one to three phantom TIMEOUT camps
+      # per run over a ~18k-input corpus, on different inputs every time — sporadic
+      # scheduling stalls, not hangs (the same inputs replay in under a second, and the
+      # camps vanish entirely at 30s). 30 is the floor the tools themselves document
+      # (scripts/run.sh: max(30, 0.25 x corpus size)); undercutting it 6x made this step
+      # red for no reason, which is exactly what known-clusters.txt exists to prevent.
+      # A real hang still fails it — 30s per input is a hang by any measure.
       - name: Cluster new divergences (non-blocking; red on an unexplained camp)
         continue-on-error: true
         run: |
-          CLUSTER=1 TIMEOUT=5 CORPUS=corpus/interesting BASELINE=results/known-clusters.txt \
+          CLUSTER=1 TIMEOUT=30 CORPUS=corpus/interesting BASELINE=results/known-clusters.txt \
             ./scripts/run.sh
 
       - name: Upload findings artifacts

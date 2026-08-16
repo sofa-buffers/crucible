@@ -79,6 +79,19 @@ here:
 
 ## Open — engine & oracles
 
+- [ ] **`oracle/minimize.py` silently changes target on a TIMEOUT camp.** The contract
+      (`run.sh:37`) is "shrink one input while its camp partition holds". It does not hold when the
+      camp is defined by a `TIMEOUT`: a stall is not a property of the bytes, so the timeout stops
+      reproducing after the first deletion, and the minimizer keeps shrinking against whatever camp
+      the residue still lands in. Observed 2026-08-15 — both reproducers of two `TIMEOUT` camps
+      (2534 B and 8461 B) minimized to the *same* 1-byte input `06`, which is the representative of
+      the long-known java camp; a minimized artifact that names a different bug than the one you
+      started from is worse than none. **The change:** pin the *target* camp partition at the start
+      and require the exact partition to hold for a deletion to be kept, and if the very first
+      candidate loses it, fail loudly rather than drift. A `TIMEOUT`-defined camp should additionally
+      be re-confirmed (N replays) before minimizing at all — see the nightly `TIMEOUT` note in the
+      dated 2026-08-16 STATUS-LOG entry.
+
 - [x] **The encode oracle's flush carve-out lost its spec basis — DONE 2026-08-06.** Landed once
       corelib-ts#94 closed and the flush sweep came back clean: a refused `SOFAB_FLUSH` size is now
       a conformance failure, the `flush_na`/`flush_ok` counters and the "every size was
