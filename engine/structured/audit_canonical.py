@@ -1,22 +1,75 @@
 #!/usr/bin/env python3
-"""Static canonicality audit of Crucible's committed corpora against the POC spec
-(documentation PR #29, incl. #30 and #31). Independent of gen.py: it re-derives the
-properties from the bytes, so it can catch a reference encoder that is itself wrong.
+"""Static canonicality audit of Crucible's committed corpora — a HAND-RUN tool.
 
-Properties checked on every input that is meant to be CANONICAL:
-  P1  no all-default (childless) sequence at a struct/union FIELD position
-      -> §2: such a field is omitted; a conformant encoder never emits the frame
-  P2  no empty union frame at all (49b710b: the degenerate union is omitted)
-  P3  no empty wrapper frame unless the field's declared default is non-empty
-      (probe declares none, so: no empty wrapper at all)
-  P4  no all-default element in a wrapper's INTERIOR -> #31: the interior is sparse,
-      such an element must be an id gap. (At the LAST index it is required instead —
-      it carries the length — so P4 deliberately exempts the highest id.)
+WHAT IT IS FOR
+    Every other check here asks whether the implementations agree with each other. That
+    question has a blind spot: the test files are produced by our own encoder (gen.py),
+    and if that encoder writes a file in a form the spec forbids, every implementation
+    reads it, they all agree, and the gate is green — while the rule the file was meant
+    to exercise went untested.
 
-Not checked here, because it needs the value and not just the bytes: that the last
-element is *present*. A wrapper's last element is present by construction — the
-highest id on the wire is the last index — so it can only be wrong relative to the
-intended value, which the byte stream does not carry.
+    This audit re-derives the properties FROM THE BYTES, without asking gen.py. That is
+    the only way to catch a reference encoder that is itself wrong. It was written on
+    2026-07-28 during the documentation#31 array-rule change, and it found the
+    contradiction that change exposed in the committed corpora.
+
+    The value reference (materialize.py) already covers every encoder mistake that
+    changes the VALUE. What is left, and what this checks, is the class "right value,
+    wrong bytes" — a file that carries the intended value in a form that should never
+    have been written.
+
+WHAT IT CHECKS — 4 rules, all from the omission family
+    P1  no all-default (childless) sequence at a struct/union FIELD position
+        -> MESSAGE_SPEC §2: such a field is omitted; a conformant encoder never emits
+           the frame
+    P2  no empty union frame at all (49b710b: the degenerate union is omitted)
+    P3  no empty wrapper frame unless the field's declared default is non-empty
+        (probe declares none, so: no empty wrapper at all)
+    P4  no all-default element in a wrapper's INTERIOR -> documentation#31: the interior
+        is sparse, such an element must be an id gap. (At the LAST index it is required
+        instead — it carries the length — so P4 deliberately exempts the highest id.)
+
+WHAT IT DOES NOT CHECK — the other 6 statically checkable rules
+    the array length against the bytes actually present; over-`maxlen` strings/blobs;
+    values over their declared width; UTF-8 validity; minimal (non-overlong) varints;
+    ascending field ids.
+
+    So it covers 4 of the 10 rules that a finished file can be checked against — call it
+    40%. The six above are the same kind of local byte property and would each cost
+    under an hour, but nobody has written them.
+
+    One further rule is NOT statically checkable at all: that a wrapper's LAST element
+    is present. The highest id on the wire is the last index by construction, so it can
+    only be wrong relative to the intended value, which the byte stream does not carry.
+
+WHY IT IS NOT A CI GATE (decided 2026-08-16)
+    Two reasons, and the second is the stronger one.
+
+    1. At 40% coverage a gate would read as "the test files are verified" while
+       verifying the omission family only. An over-promising check is worse than none.
+
+    2. IT HAS NO EXECUTABLE SELF-TEST. Its negative controls are files in
+       corpus/conformance — two deliberately malformed (which it must report) and six
+       correct (which it must not) — and that it reports exactly those two was checked
+       once, by a human, in July. A gate over the canonical corpora would never touch
+       those files, so a version of this script that silently stopped reporting anything
+       would stay green forever. That is precisely the failure mode the audit exists to
+       prevent, reproduced one level up.
+
+    Its place is therefore where it earned it: run by hand when the spec moves, which is
+    the situation it was built for. Before it could ever be gated it needs the self-test
+    above, and preferably the six missing rules.
+
+    Also note it carries its own hand-written copy of the probe field layout below,
+    while `oracle/materialized-schema.json` holds the same thing machine-generated and
+    freshness-checked. A gate would have to read that instead; a hand-run tool can live
+    with the copy as long as the reader knows it is one.
+
+INTERPRETING THE OUTPUT
+    Only `corpus/structured` and `corpus/structured-union` are meant to be canonical
+    throughout — a hit there is unambiguous. `corpus/seeds`, `corpus/conformance` and
+    `corpus/regression` deliberately carry malformed, truncated and non-canonical inputs,
+    so they light up by design and a hit there means nothing on its own.
 
 Usage: python3 engine/structured/audit_canonical.py    (from the repo root)
 """
