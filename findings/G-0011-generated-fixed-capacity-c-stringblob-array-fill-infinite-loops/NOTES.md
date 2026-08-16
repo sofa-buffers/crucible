@@ -1,6 +1,8 @@
 # G-0011 — generated fixed-capacity C++ string/blob-array fill infinite-loops (DoS)
 
 **Status:** ✅ **fixed in sofabgen 0.17.1** (commit `483c281`, bounded fill loop) —
+**Issue:** [generator#126](https://github.com/sofa-buffers/generator/issues/126)
+
 [generator#126](https://github.com/sofa-buffers/generator/issues/126) closed
 2026-07-15. Re-verified 2026-07-16: `c6 0c c6 07` → `I`, no hang. Fix: bound the fill
 by `N` and drop an over-capacity index, as the C and Zig backends already did.

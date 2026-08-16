@@ -1,5 +1,9 @@
 # F-0005 — corelib-cpp accepts malformed messages the whole family rejects
 
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [corelib-cpp#22](https://github.com/sofa-buffers/corelib-cpp/issues/22)
+
 > **Re-verified ✅ resolved 2026-07-15 (sofabgen 0.16.1 + corelib-cpp@main):** cpp
 > now rejects the reproducer `56 0a 59` in step with the family. **New, unrelated:**
 > on that same input corelib-py now returns `I` (INCOMPLETE) where the family
@@ -7,8 +11,6 @@
 > (filed corelib-py#38), part of the broader [F-0007](../F-0007-invalid-vs-incomplete-precedence/NOTES.md)
 > precedence family. Not a regression of F-0005.
 
-**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## What
 

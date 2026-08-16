@@ -1,8 +1,10 @@
 # F-0043 — a schema-bound violation is not INVALID until payload bytes arrive
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#267](https://github.com/sofa-buffers/generator/issues/267)
+**Codegen:** G-0027 | [generator#267](https://github.com/sofa-buffers/generator/issues/267) | the generator side of F-0043 — **a schema-bound violation is not `INVALID` until payload bytes arrive** — the `maxlen` / element-id check fires once the *first payload…
+
 **Found 2026-08-01** by re-enabling the F-0032 carve-out in
 `engine/structured/sweep_malform_truncate.py` against corelibs **0.10.0** + sofabgen
 **0.22.0**. The axis grew 43 → 96 vectors and 8 of the new ones diverge. F-0032 itself

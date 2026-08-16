@@ -2,6 +2,7 @@
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#142](https://github.com/sofa-buffers/generator/issues/142), [generator#149](https://github.com/sofa-buffers/generator/issues/149)
 
 *(Historical status —)* open — **half fixed.** [generator#142](https://github.com/sofa-buffers/generator/issues/142)
 **closed & rightly so** (sofabgen **0.17.4**, PR #143): the **DoS is gone** (cpp **226 MB → 10 MB**

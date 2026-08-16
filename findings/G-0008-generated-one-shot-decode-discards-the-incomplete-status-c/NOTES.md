@@ -1,6 +1,8 @@
 # G-0008 — generated one-shot decode discards the INCOMPLETE status (C#, Java)
 
 **Status:** ✅ **fixed** in sofabgen 0.15.3 — PR
+**Issue:** [generator#105](https://github.com/sofa-buffers/generator/issues/105)
+
 [generator#106](https://github.com/sofa-buffers/generator/pull/106) added the
 status-surfacing `TryDecode`/`tryDecode`; part of the §7 epic
 [generator#86](https://github.com/sofa-buffers/generator/issues/86).

@@ -1,6 +1,7 @@
 # G-0015 — ~~generated C object descriptor stores a `string` as NUL-terminated~~ (WITHDRAWN)
 
 **Status:** ⚪ **WITHDRAWN 2026-07-18 — not a codegen defect.** Reclassified as a **by-design
+
 allowed divergence**, not a bug (`oracle/policy.yaml`; finding
 [`F-0018`](../findings/F-0018-c-embedded-nul-string-truncation/NOTES.md)).
 

@@ -1,8 +1,8 @@
 # F-0050 — `corelib-c-cpp` permits nesting depth **256**, one past `MAX_DEPTH` (255)
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+
 **Found 2026-08-02** by the **Go steering engine** on its first run — one of two divergence
 classes the C pacemaker never produced across ~370 M execs over the same schema (see
 `results/CLUSTERS.md`, the Go-steered snapshot).

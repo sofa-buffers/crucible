@@ -1,8 +1,10 @@
 # F-0052 — the cpp backend never arms `readArray`'s element-width bound, so `cpp` masks an over-width array element
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#279](https://github.com/sofa-buffers/generator/issues/279)
+**Codegen:** G-0034 | [generator#279](https://github.com/sofa-buffers/generator/issues/279), [generator#281](https://github.com/sofa-buffers/generator/pull/281) | the generator side of F-0052 — **the cpp backend never arms `readArray`'s element-width bound, so `cpp` masks an over-width array element** — `arrays.u8` with an elemen…
+
 **✅ RESOLVED 2026-08-03** — [generator#279](https://github.com/sofa-buffers/generator/issues/279)
 closed; verified on sofabgen `0.0.0-20260803154628-1e4359a8a1c0`.
 

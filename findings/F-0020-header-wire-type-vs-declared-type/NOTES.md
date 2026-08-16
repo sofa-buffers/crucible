@@ -2,6 +2,7 @@
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [documentation#23](https://github.com/sofa-buffers/documentation/pull/23), [generator#161](https://github.com/sofa-buffers/generator/pull/161)
 
 **corelib-c-cpp fix recipe (historical — migrated from the retired `spec-proposals.md`; the fix actually
 landed via corelib-c-cpp#100 `fd5086a`):** `istream.c:493` presets `ctx->target_opt` to the *actual* wire

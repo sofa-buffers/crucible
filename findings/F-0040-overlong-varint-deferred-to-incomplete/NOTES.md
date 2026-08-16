@@ -1,8 +1,9 @@
 # F-0040 — corelib-c-cpp reports `INCOMPLETE` for a varint that is already overlong
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [corelib-c-cpp#118](https://github.com/sofa-buffers/corelib-c-cpp/pull/118), [corelib-c-cpp#116](https://github.com/sofa-buffers/corelib-c-cpp/issues/116)
+
 **Found 2026-07-29** in the post-bootstrap cluster triage of `corpus/interesting`
 (1121 inputs) on corelibs **0.9.0 @ main** / sofabgen **0.21.0** — cluster 6, 4 inputs.
 

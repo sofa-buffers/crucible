@@ -1,6 +1,8 @@
 # G-0017 — sofabgen provisions the rust-nostd corelib features from the schema's *used* wire types, so the decoder can't §7.3-skip an array / fp64 field
 
 **Status:** ✅ **RESOLVED (sofabgen bump 2026-07-23)** — [generator#215](https://github.com/sofa-buffers/generator/issues/215)
+**Issue:** [generator#215](https://github.com/sofa-buffers/generator/issues/215)
+
 **closed 2026-07-23**; sofabgen now emits the full wire-type decoder feature set regardless of the schema's
 used wire types. **Re-verified on CI build `0.0.0-20260723154129-241dc8f44efb`:** the wiretype (§7.3) union
 sweep (drivers built against `probe-union`) is green — 77 vectors, 0 divergences — so the no-std decoder

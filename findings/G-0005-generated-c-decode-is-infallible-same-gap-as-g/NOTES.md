@@ -1,6 +1,8 @@
 # G-0005 — generated C++ `decode` is infallible (same gap as G-0001)
 
 **Status:** ✅ **fixed** in sofabgen 0.15.1 (PR
+**Issue:** [generator#83](https://github.com/sofa-buffers/generator/issues/83)
+
 [#89](https://github.com/sofa-buffers/generator/pull/89), fixes #83) · **Lang:**
 cpp (both corelibs) · **Where:** `generator/generators/cpp/backend.go`
 

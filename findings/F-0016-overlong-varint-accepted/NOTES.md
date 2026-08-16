@@ -2,6 +2,7 @@
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [corelib-cpp#39](https://github.com/sofa-buffers/corelib-cpp/issues/39), [corelib-go#48](https://github.com/sofa-buffers/corelib-go/issues/48), [corelib-rs-no-std#45](https://github.com/sofa-buffers/corelib-rs-no-std/issues/45)
 
 ## The divergence — 8 accept, 4 reject; the value is silently corrupted
 

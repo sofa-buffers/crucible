@@ -1,8 +1,10 @@
 # F-0049 — the dart backend keeps a scalar `fp32`'s raw wire bits **private**, so no consumer can read a signaling NaN bit-exactly
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/structured — an fp32 raw-bits case: only the materialized oracle can see it, and that gate runs this corpus.
+**Issue:** [generator#275](https://github.com/sofa-buffers/generator/issues/275)
+**Codegen:** G-0033 | [generator#275](https://github.com/sofa-buffers/generator/issues/275) | the generator side of F-0049 — **the dart backend keeps a scalar `fp32`'s raw wire bits private, so no consumer can read a signaling NaN bit-exactly** — generated `mess…
+
 **Found 2026-08-02** while re-checking F-0031 against the corelibs. It is the residual of
 F-0031 — and the only part of it that is *not* a Crucible-side defect.
 

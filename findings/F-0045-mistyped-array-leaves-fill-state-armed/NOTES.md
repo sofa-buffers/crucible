@@ -1,8 +1,9 @@
 # F-0045 — a §7.3-skipped array leaves the fill state armed, so the *next* scalar is absorbed into an array
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Codegen:** G-0029 | [generator#270](https://github.com/sofa-buffers/generator/issues/270) | the generator side of F-0045 — **a §7.3-skipped array leaves the fill state armed, so the *next* scalar is absorbed into an array** — `a6 06 0b 01 04 00 00 07` (8 B): a…
+
 **Found 2026-08-01** by delta-minimizing cluster 15 of the 3-hour pacemaker round
 (corelibs **0.10.0** + sofabgen **0.22.0**): **468 bytes → 8 bytes**.
 

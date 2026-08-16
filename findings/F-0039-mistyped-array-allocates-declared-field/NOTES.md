@@ -1,8 +1,10 @@
 # F-0039 — a §7.3-mistyped **array** is allocated into the declared field (java, csharp)
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#254](https://github.com/sofa-buffers/generator/issues/254), [generator#259](https://github.com/sofa-buffers/generator/issues/259)
+**Codegen:** G-0023 | [generator#254](https://github.com/sofa-buffers/generator/issues/254), [generator#259](https://github.com/sofa-buffers/generator/issues/259) | the generator side of F-0039 — **a §7.3-mistyped array is allocated into the declared field** — an `ARRAY_SIGNED` header at the `array of u8` slot (`a6 06 04 01 06 07`)…
+
 **Found 2026-07-29** by the `wiretype_sweep` axis (§7.3) on the first run of the
 family that carries the sparse-array rewrite — corelibs **0.9.0 @ main**, sofabgen
 **0.21.0**. 30 of the sweep's 332 vectors split; every one of them is an array

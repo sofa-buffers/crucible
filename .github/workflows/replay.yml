@@ -32,10 +32,12 @@ permissions:
 
 jobs:
   catalog:
-    # Fast, dependency-free gate: assert the findings catalog and its write-ups agree.
-    # results/FINDINGS.md owns a finding's status; NOTES.md and the G-00NN table/sections
-    # must carry the same state token. Runs before the heavy differential job because a
-    # doc mismatch needs no drivers to detect — and because being careful is not a fix.
+    # Fast, dependency-free gate. Since 2026-08-16 results/FINDINGS.md is GENERATED from
+    # the write-ups (scripts/gen-findings.py), so the two can no longer disagree about a
+    # state, a pairing or a ticket — only be out of date. The check regenerates and
+    # compares, asserts every write-up declares a state, and asserts every closed finding
+    # names the gate that re-checks it. Runs before the heavy differential job because
+    # none of it needs a driver — and because being careful is not a fix.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

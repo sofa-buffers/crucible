@@ -1,8 +1,11 @@
 # F-0038 — six corelibs UTF-8-validate a **skipped** string, which CORELIB_PLAN §6.4 forbids
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#257](https://github.com/sofa-buffers/generator/issues/257), [corelib-go#57](https://github.com/sofa-buffers/corelib-go/issues/57), [corelib-dart#22](https://github.com/sofa-buffers/corelib-dart/issues/22)
+**Codegen:** G-0024 | [generator#257](https://github.com/sofa-buffers/generator/issues/257), [generator#269](https://github.com/sofa-buffers/generator/pull/269), [generator#263](https://github.com/sofa-buffers/generator/pull/263) | the generator side of F-0038 — **six corelibs UTF-8-validate a string field they are *skipping*** — a 3-byte isolate (`4a 0a 8a`: unknown id 9, fixlen subtype string, p…
+**Codegen:** G-0025 | [generator#265](https://github.com/sofa-buffers/generator/issues/265), [generator#269](https://github.com/sofa-buffers/generator/pull/269), [generator#258](https://github.com/sofa-buffers/generator/pull/258) | the generator side of F-0038 — **six corelibs UTF-8-validate a string field they are *skipping*** — a 3-byte isolate (`4a 0a 8a`: unknown id 9, fixlen subtype string, p…
+
 **Found 2026-07-27** by the 60-minute pacemaker round (105.6 M execs) on the
 `poc/omit-all-default-sequences` family; it was clusters 6 and 13 of the post-fuzz
 triage — two shapes, one root cause.

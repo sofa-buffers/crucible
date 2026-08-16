@@ -1,6 +1,8 @@
 # G-0009 — generated C++ emits a schema-*unbounded* array as `std::array<T, 0>`
 
 **Status:** ✅ **fixed in sofabgen 0.16.1** (commit `7899c4b`, the count-less array
+**Issue:** [generator#112](https://github.com/sofa-buffers/generator/issues/112)
+
 now generates `std::vector<T>`) — [generator#112](https://github.com/sofa-buffers/generator/issues/112).
 Sibling of the C-backend [generator#104](https://github.com/sofa-buffers/generator/issues/104).
 Surfaced adopting the limit-mode probe (`schema/probe-dyn.sofab.yaml`, crucible#10 /

@@ -2,6 +2,7 @@
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [corelib-cpp#47](https://github.com/sofa-buffers/corelib-cpp/issues/47), [corelib-dart#14](https://github.com/sofa-buffers/corelib-dart/issues/14)
 
 **Axis:** framing/ceilings (§6.2), verdict split. **Impls:** `cpp`, `dart` (2) accept vs the other **11**
 reject. **Corelib, not codegen** (the id ceiling is a format constant, not a schema fact; the check

@@ -2,6 +2,9 @@
 
 **Status:** ✅ **RESOLVED** — [generator#297](https://github.com/sofa-buffers/generator/issues/297) fixed by
 **Guard:** corpus/regression — vectors promoted 2026-08-16. **Half a guard, stated plainly:** the gate replays them whole, so it holds the one-shot verdict. The chunk-boundary behaviour this finding was actually about is owned by `scripts/run-chunked.sh`, which does not replay this corpus — wiring it to is in docs/TODO.md.
+**Issue:** [generator#297](https://github.com/sofa-buffers/generator/issues/297), [generator#298](https://github.com/sofa-buffers/generator/pull/298)
+**Codegen:** G-0037 | [generator#297](https://github.com/sofa-buffers/generator/issues/297), [generator#298](https://github.com/sofa-buffers/generator/pull/298) | the generator side of F-0060 — the TypeScript visitor calls the fatal TextDecoder without the conversion its own corelib performs
+
 generator#298: the emitted code now has a `_str()` helper that converts the fatal `TextDecoder`'s
 `TypeError` into `SofabError(InvalidMsg)`, as `Cursor.readString` does. Verified 2026-08-05 — the six-byte
 reproducer is chunk-invariant, and the fuzzed corpus went **12 436 → 716**. *The residual 716 is a

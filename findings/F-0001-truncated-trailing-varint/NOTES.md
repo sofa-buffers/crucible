@@ -2,6 +2,7 @@
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#86](https://github.com/sofa-buffers/generator/issues/86), [crucible#8](https://github.com/sofa-buffers/crucible/issues/8)
 
 > **Note on the one residual difference:** `java` additionally emits an
 > `incomplete_value` payload on `I` (`I 5607a606…`) where the other 11 emit a bare `I`.

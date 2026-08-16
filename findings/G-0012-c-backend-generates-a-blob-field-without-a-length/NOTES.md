@@ -1,6 +1,8 @@
 # G-0012 — C backend generates a blob field without a length (round-trip data loss)
 
 **Status:** ✅ **fixed in sofabgen 0.17.1** (commit `25d5853`, sized blob descriptor) —
+**Issue:** [generator#128](https://github.com/sofa-buffers/generator/issues/128)
+
 [generator#128](https://github.com/sofa-buffers/generator/issues/128) closed
 2026-07-15. Re-verified 2026-07-16: short blobs round-trip in `c`. Fix: emit
 `{ uintX field_len; uint8_t field[N]; }` + `SOFAB_OBJECT_FIELD_BLOB_SIZED` — the corelib

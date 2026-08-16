@@ -1,10 +1,12 @@
 # F-0024 — generated Rust `try_decode` returns INCOMPLETE where INVALID must win (§5.2 precedence)
 
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#190](https://github.com/sofa-buffers/generator/issues/190)
+
 **Impls:** rust-std, rust-nostd (lone `I`; the other 10 emit `R`)
 **Axis:** verdict (INVALID-vs-INCOMPLETE precedence)
 **Attribution:** **generator (sofabgen Rust backend)** — codegen defect **G-0016**. Generator-only; no corelib change.
-**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## The divergence
 

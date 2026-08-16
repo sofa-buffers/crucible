@@ -1,6 +1,8 @@
 # G-0010 — generated zig `message.zig` discards the new finish-less decode `Status`
 
 **Status:** ✅ **fixed in sofabgen 0.16.2** (generator [#120](https://github.com/sofa-buffers/generator/issues/120),
+**Issue:** [generator#120](https://github.com/sofa-buffers/generator/issues/120)
+
 commit `26f1f4c` / PR #121) + a Crucible `drivers/zig/driver.zig` update. Surfaced
 2026-07-15 pulling corelib-zig `main` (`0f861e4`, "decode: replace finish() with
 feed(chunk)→status", plan §5/§6.1); fixed the same day. **Lang:** zig · **Where:**

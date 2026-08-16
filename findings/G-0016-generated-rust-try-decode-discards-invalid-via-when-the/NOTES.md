@@ -1,6 +1,8 @@
 # G-0016 — generated Rust `try_decode` discards INVALID via `?` when the message is also truncated
 
 **Status:** ✅ **fixed in sofabgen 0.19.4** ([generator#190](https://github.com/sofa-buffers/generator/issues/190), 2026-07-21). Finding
+**Issue:** [generator#190](https://github.com/sofa-buffers/generator/issues/190)
+
 [`F-0024`](../findings/F-0024-rust-trydecode-incomplete-over-invalid/NOTES.md). Generator-only
 (sofabgen **Rust backend**); no corelib change. **Re-verified:** the generated `try_decode` now emits
 the ordered form below (`message.rs:235/242/246`); the 4 isolates → 0 divergences across all 12, and

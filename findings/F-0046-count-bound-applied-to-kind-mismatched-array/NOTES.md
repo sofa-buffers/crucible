@@ -1,8 +1,9 @@
 # F-0046 — the schema `count` bound is applied to an array whose wire **kind** §7.3 says to skip
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Codegen:** G-0030 | [generator#271](https://github.com/sofa-buffers/generator/issues/271) | the generator side of F-0046 — **the schema `count` bound is applied to an array whose wire *kind* §7.3 says to skip** — `a6 06 0d 7f 20` (5 B): an `ARRAY_FIXLEN` at th…
+
 **Found 2026-08-01** by delta-minimizing cluster 6 of the 3-hour pacemaker round
 (corelibs **0.10.0** + sofabgen **0.22.0**): **70 bytes → 5 bytes**.
 

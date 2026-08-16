@@ -1,6 +1,8 @@
 # G-0001 — generated Rust `decode` is infallible (discards the decode error)
 
 **Status:** ✅ **fixed** in sofabgen 0.15.1 (PR
+**Issue:** [generator#79](https://github.com/sofa-buffers/generator/issues/79)
+
 [#88](https://github.com/sofa-buffers/generator/pull/88), fixes #79) · **Lang:**
 rust (both corelibs) · **Where:** `generator/generators/rust/visitor.go`
 

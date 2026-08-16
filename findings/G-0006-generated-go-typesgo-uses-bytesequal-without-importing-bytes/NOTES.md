@@ -1,6 +1,8 @@
 # G-0006 — generated Go `types.go` uses `bytes.Equal` without importing `bytes`
 
 **Status:** ✅ **fixed** in sofabgen 0.15.1 (PR
+**Issue:** [generator#84](https://github.com/sofa-buffers/generator/issues/84)
+
 [#90](https://github.com/sofa-buffers/generator/pull/90), fixes #84 — merged 2026-07-08
 20:22 UTC, and v0.15.1 was cut 21:43 the same day, so 0.15.1 already carries it) · **Lang:**
 go · **Where:** `generator/generators/golang/` (per-file import collection for

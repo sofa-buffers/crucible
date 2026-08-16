@@ -1,5 +1,9 @@
 # F-0008 — generated C++ fixed-capacity string/blob-array fill hangs (infinite loop / DoS) on an element index ≥ capacity
 
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#126](https://github.com/sofa-buffers/generator/issues/126), [crucible#16](https://github.com/sofa-buffers/crucible/issues/16)
+
 > **✅ RESOLVED 2026-07-16 (sofabgen 0.17.1).** [generator#126](https://github.com/sofa-buffers/generator/issues/126)
 > fixed (commit `483c281`, "bound fixed-capacity string/blob-seq fill loop"). Re-verified:
 > `c6 0c c6 07` → `I` (terminates cleanly, no hang) on the rebuilt `cpp-c-cpp` driver.
@@ -14,8 +18,6 @@
 > (see Root cause). The differential *symptom* (only `cpp-c-cpp` hangs) was real;
 > the attribution was one layer too shallow. Codegen-weakness log: **G-0011**.
 
-**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-**Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## Reproduce
 

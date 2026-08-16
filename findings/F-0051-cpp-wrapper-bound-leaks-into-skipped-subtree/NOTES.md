@@ -1,8 +1,8 @@
 # F-0051 — `corelib-cpp` keeps a wrapper's element-index bound armed **inside a skipped subtree**
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+
 **Filed 2026-08-02 as [corelib-cpp#65](https://github.com/sofa-buffers/corelib-cpp/issues/65).**
 
 **Found 2026-08-02** while resolving whether `cpp` belonged on F-0047's impl list. It does not:

@@ -1,32 +1,35 @@
 #!/usr/bin/env python3
-"""Catalog consistency gate — asserts the findings catalog and its write-ups agree.
+"""Catalog gate — the write-ups are the data, and this asserts what generation cannot.
 
-`results/FINDINGS.md` is the single source of truth for a finding's **status**. But the
-same status is legible in three other places, and each of them has drifted at least once:
+`results/FINDINGS.md` is **generated** from `findings/*/NOTES.md` by
+`scripts/gen-findings.py`. That removes a whole class of check rather than automating it:
+the index can no longer disagree with a write-up about a state, a pairing or a ticket,
+because it no longer holds those facts — it derives them. What used to be 46 drifted
+declarations (2026-08-03) is unreachable now.
 
-`findings/<id>/NOTES.md` is the single owner of everything about a finding. `results/
-FINDINGS.md` is a pure index: one row per entry, carrying the link, the upstream ticket and
-the state — nothing that can drift out of step with the write-up.
+What is left to assert, and why each still needs asserting:
 
-That structure exists because the previous one rotted on three strands in a single day: a
-tracking table whose rows read "open" against closed issues, detail sections that disagreed
-with their own rows, and 46 write-ups that either contradicted the index or declared nothing
-at all. Being careful is not a fix — a check is.
+  * **the index is current.** Generation only helps if the committed file is what the
+    write-ups produce today. Same shape as `materialize.sh`'s check on the generated
+    schema table: regenerate, compare, fail with the command that fixes it.
+  * **every write-up declares a state.** The generator cannot invent one, and a missing
+    `**Status:**` would otherwise fail deep inside rendering.
+  * **every closed finding declares what re-checks it** — the `**Guard:**` line. This is
+    the one fact with no other home: promotion into a gate corpus happens weeks after the
+    find and produces no visible change (a converged vector in a green gate leaves it
+    green), so it was skipped 13 times before this check existed.
 
-This asserts the **state token** (✅ / 🔴 / ⚪) in the index matches the one in the write-up,
-and that the index and `findings/` cover exactly the same set of entries. Prose is never
-compared: it has one owner.
-
-Run: `python3 scripts/check-catalog.py`   (exit 1 on any mismatch)
+Run: `python3 scripts/check-catalog.py`   (exit 1 on any failure)
 """
 
 import hashlib
 import os
 import re
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CATALOG = os.path.join(ROOT, "results", "FINDINGS.md")
+GENERATOR = os.path.join(ROOT, "scripts", "gen-findings.py")
 FINDINGS_DIR = os.path.join(ROOT, "findings")
 
 RESOLVED, OPEN, BYDESIGN = "resolved", "open", "by-design"
@@ -125,115 +128,47 @@ def check_guard(fid, folder, text, errors):
                 "(engine/structured/<name>.py), an oracle, nor a gate (scripts/<name>.sh)")
 
 
-def cells(line):
-    """Split a table row on unescaped pipes — `\\|` inside a cell is content, not a border."""
-    return [c.strip() for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
-
-
-def rows(prefix):
-    """(id, cells) for every table row whose first cell starts with `prefix`."""
-    out = []
-    for line in open(CATALOG, encoding="utf-8"):
-        if not line.startswith("| "):
-            continue
-        c = cells(line)
-        m = re.match(rf"[\*\[\s]*({prefix}-\d+)", c[0])
-        if m:
-            out.append((m.group(1), c, line))
-    return out
-
-
 def main():
     errors = []
-    text = open(CATALOG, encoding="utf-8").read()
 
-    # --- every row: the write-up it points at must declare the same state --------
-    catalog = {}
-    for fid, cells, _ in rows("F"):
-        state = token(cells[-1])
-        if state is None:
-            errors.append(
-                f"{fid}: catalog row declares no state — it must open with ✅, 🔴/🟡 or ⚪"
-            )
-        catalog[fid] = state
+    # --- the index is a view: it must be what the write-ups produce right now --------
+    gen = subprocess.run([sys.executable, GENERATOR, "--check"],
+                         capture_output=True, text=True)
+    sys.stdout.write(gen.stdout)
+    if gen.returncode != 0:
+        sys.stderr.write(gen.stderr)
+        errors.append("results/FINDINGS.md is stale — regenerate it "
+                      "(python3 scripts/gen-findings.py)")
 
-    dirs = {}
-    for name in sorted(os.listdir(FINDINGS_DIR)):
-        m = re.match(r"([FG]-\d+)", name)
-        if m and os.path.isdir(os.path.join(FINDINGS_DIR, name)):
-            dirs[m.group(1)] = name
-
-    for fid in sorted(set(catalog) | {d for d in dirs if d.startswith("F-")}):
-        if fid not in dirs:
-            errors.append(f"{fid}: in the catalog but has no findings/ directory")
-            continue
-        if fid not in catalog:
-            errors.append(f"{fid}: has findings/{dirs[fid]}/ but no catalog row")
-            continue
-        notes = os.path.join(FINDINGS_DIR, dirs[fid], "NOTES.md")
+    # --- per write-up: a declared state, and a declared guard where one is owed ------
+    n = 0
+    for folder in sorted(os.listdir(FINDINGS_DIR)):
+        notes = os.path.join(FINDINGS_DIR, folder, "NOTES.md")
         if not os.path.exists(notes):
-            errors.append(f"{fid}: findings/{dirs[fid]}/NOTES.md is missing")
             continue
-        m = re.search(r"^\*\*Status:\*\*(.*)$", open(notes, encoding="utf-8").read(), re.M)
+        n += 1
+        fid = folder[:6]
+        text = open(notes, encoding="utf-8").read()
+        m = re.search(r"^\*\*Status:\*\*(.*)$", text, re.M)
         if not m:
             errors.append(f"{fid}: NOTES.md has no `**Status:**` line")
             continue
         state = token(m.group(1))
         if state is None:
             errors.append(f"{fid}: NOTES.md `**Status:**` declares no state (✅, 🔴 or ⚪)")
-        elif catalog[fid] is not None and state != catalog[fid]:
-            errors.append(
-                f"{fid}: catalog says {catalog[fid]}, NOTES.md says {state}"
-            )
-        # A finding that is no longer open must say what re-checks it.
+            continue
         if state in (RESOLVED, BYDESIGN):
-            check_guard(fid, dirs[fid], open(notes, encoding="utf-8").read(), errors)
-
-    # --- codegen rows: standalone ones own a folder, paired ones borrow the F one -
-    for gid, cells, line in rows("G"):
-        state = token(cells[-1])
-        paired = re.search(r"=\s*(F-\d+)", cells[0])
-        if state is None:
-            errors.append(f"{gid}: index row declares no state — ✅, 🔴/🟡 or ⚪")
-            continue
-        if paired:
-            fid = paired.group(1)
-            if fid not in catalog:
-                errors.append(f"{gid}: paired with {fid}, which has no row")
-            elif catalog[fid] is not None and state != catalog[fid]:
-                errors.append(
-                    f"{gid}: says {state}, but {fid} — the same defect — says {catalog[fid]}"
-                )
-            continue
-        if gid not in dirs:
-            errors.append(f"{gid}: standalone codegen entry with no findings/ directory")
-            continue
-        notes = os.path.join(FINDINGS_DIR, dirs[gid], "NOTES.md")
-        m = re.search(r"^\*\*Status:\*\*(.*)$", open(notes, encoding="utf-8").read(), re.M)
-        if not m:
-            errors.append(f"{gid}: NOTES.md has no `**Status:**` line")
-            continue
-        sec = token(m.group(1))
-        if sec is None:
-            errors.append(f"{gid}: NOTES.md `**Status:**` declares no state")
-        elif sec != state:
-            errors.append(f"{gid}: index says {state}, NOTES.md says {sec}")
+            check_guard(fid, folder, text, errors)
 
     if errors:
-        print(f"catalog check: {len(errors)} mismatch(es)\n", file=sys.stderr)
+        print(f"catalog check: {len(errors)} failure(s)\n", file=sys.stderr)
         for e in errors:
             print(f"  {e}", file=sys.stderr)
-        print(
-            "\nresults/FINDINGS.md owns a finding's status. Fix the non-owner, "
-            "or the catalog if the catalog is what is wrong.",
-            file=sys.stderr,
-        )
+        print("\nThe write-ups own the facts; results/FINDINGS.md is generated from them.",
+              file=sys.stderr)
         return 1
-
-    print(
-        f"catalog check: OK — {len(catalog)} findings, {len(rows('G'))} codegen entries, "
-        f"{len(dirs)} folders; every state token agrees"
-    )
+    print(f"catalog check: OK — {n} write-up(s), index current, every closed finding "
+          "declares its guard")
     return 0
 
 

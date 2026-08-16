@@ -1,6 +1,8 @@
 # G-0004 — no-std silently drops an over-capacity string
 
 **Status:** ✅ **fixed** in sofabgen 0.15.1 (PR
+**Issue:** [generator#82](https://github.com/sofa-buffers/generator/issues/82)
+
 [#93](https://github.com/sofa-buffers/generator/pull/93), fixes #82) · **Lang:**
 rust (no-std) · **Where:** `generator/generators/rust/visitor.go`
 

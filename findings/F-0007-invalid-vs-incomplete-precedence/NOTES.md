@@ -1,5 +1,9 @@
 # F-0007 — INVALID-vs-INCOMPLETE precedence on inputs that are *both* malformed and truncated
 
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [corelib-c-cpp#82](https://github.com/sofa-buffers/corelib-c-cpp/issues/82)
+
 > **✅ RESOLVED 2026-07-15.** The last outlier (the C corelib) is fixed — corelib-c-cpp
 > `635966d` "reject wrong-width fixlen fp32/fp64 as INVALID (#82)(#83)",
 > [corelib-c-cpp#82](https://github.com/sofa-buffers/corelib-c-cpp/issues/82) **closed**.
@@ -13,8 +17,6 @@
 > `fp32`/`fp64` → explicit INVALID), and the §6.3 `InvalidMessage` row. (Provenance migrated from the
 > retired `spec-proposals.md`.) The rest of this file is the original analysis.
 
-**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 > **Update 2026-07-15 — family narrowed to the C corelib.** With F-0006 fixed
 > (corelib-py#38 closed), corelib-py now returns `R` on `56 0a 59` / `56 0a 09`, so

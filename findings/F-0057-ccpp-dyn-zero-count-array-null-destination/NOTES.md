@@ -2,6 +2,8 @@
 
 **Status:** ✅ **RESOLVED** — [corelib-c-cpp#131](https://github.com/sofa-buffers/corelib-c-cpp/issues/131) fixed by [corelib-c-cpp#132](https://github.com/sofa-buffers/corelib-c-cpp/pull/132), merged 2026-08-04 (`assert(var != NULL || element_count == 0)` — the precondition was simply too strong; a zero-element array has no payload to write and so no destination to require).
 **Guard:** corpus/regression — promoted under a descriptive name; matched by content.
+**Issue:** [corelib-c-cpp#131](https://github.com/sofa-buffers/corelib-c-cpp/issues/131), [corelib-c-cpp#132](https://github.com/sofa-buffers/corelib-c-cpp/pull/132)
+
 [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's state; this file is the evidence.
 
 **Found 2026-08-04**, on the **first run** of a configuration that did not exist in Crucible

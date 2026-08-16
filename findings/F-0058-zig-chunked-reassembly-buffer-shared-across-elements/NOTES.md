@@ -2,6 +2,9 @@
 
 **Status:** ✅ **RESOLVED** — [generator#293](https://github.com/sofa-buffers/generator/issues/293) fixed by
 **Guard:** corpus/regression — vectors promoted 2026-08-16. **Half a guard, stated plainly:** the gate replays them whole, so it holds the one-shot verdict. The chunk-boundary behaviour this finding was actually about is owned by `scripts/run-chunked.sh`, which does not replay this corpus — wiring it to is in docs/TODO.md.
+**Issue:** [generator#293](https://github.com/sofa-buffers/generator/issues/293), [generator#295](https://github.com/sofa-buffers/generator/issues/295)
+**Codegen:** G-0036 | [generator#293](https://github.com/sofa-buffers/generator/issues/293), [generator#295](https://github.com/sofa-buffers/generator/issues/295) | the generator side of F-0058 — the Zig backend's chunked reassembly buffer is shared across split payloads, so wrapper-array elements alias each other
+
 generator#294 (`alloc.dupe` out of the shared `acc`), which turned out to be **incomplete**: re-measuring took
 the axis from 25 mismatches to 14, not to 0. The residual was filed as
 [generator#295](https://github.com/sofa-buffers/generator/issues/295) and fixed by generator#296 — *the
