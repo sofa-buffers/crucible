@@ -1,6 +1,8 @@
 # G-0018 — schema-bound INVALID + truncation reported INCOMPLETE (§5.2; the F-0024 class, still open across backends)
 
 **Status:** ✅ **RESOLVED (re-verified 2026-07-25)** — [generator#216](https://github.com/sofa-buffers/generator/issues/216). Finding
+**Issue:** [generator#216](https://github.com/sofa-buffers/generator/issues/216)
+
 [`F-0032`](../findings/F-0032-schema-bound-invalid-vs-truncation-go-cpp-ts-dart/NOTES.md). The F-0024/G-0016
 ordering class: the go/ts/dart/zig/rust codegen splits closed in the generator (#222/#223/#224); the **cpp**
 residual was the Crucible driver bypassing the generated `try_decode` (fixed in crucible#107), and the cpp

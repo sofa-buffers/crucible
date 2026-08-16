@@ -2,6 +2,7 @@
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — its vectors were promoted under names that say what they test rather than which finding produced them; matched by content.
+**Issue:** [generator#215](https://github.com/sofa-buffers/generator/issues/215)
 
 **Axis:** wiretype (§7.3), union pass — verdict split. **Impls:** `rust-nostd` alone (1) vs the other
 **12** (incl. `rust-std`, which shares the *same generated code*). Report-only; the union pass is **not**

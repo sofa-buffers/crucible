@@ -19,6 +19,36 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**`results/FINDINGS.md` is generated from the write-ups now, and the checker that policed it shrank
+by a quarter (2026-08-16, last).**
+The index was maintained by hand beside the write-ups and carried **no fact of its own**: the id is
+the folder name, the title the write-up's heading, the state its `**Status:**` line. Two copies of
+the same facts drift, and on 2026-08-03 they had drifted 46 times. The answer then was a checker —
+241 lines of Python parsing a markdown table to police a copy. Asked plainly whether a tool that
+validates a markdown file is a sensible thing to own, the honest answer is no: it is a symptom of
+keeping structured data in prose.
+
+**Decision: remove the copy instead of automating its supervision.** `scripts/gen-findings.py`
+renders the index from `findings/*/NOTES.md`. Two fields moved into the write-ups to make that
+possible — `**Issue:**` (the upstream ticket, previously only in the index) and `**Codegen:**` (a
+`G-00NN` that is the generator side of this finding). The codegen entry is *stored*, not derived:
+11 of the 21 paired rows carry a ticket different from their finding's and 6 phrase their title
+independently, so a derivation rule would have been a rule plus six exceptions.
+
+*The migration was verified as a round-trip, not by reading the result.* Same **99** ids, same
+pairings, same states, same ticket cells before and after. Only the title text changed, by
+intention: the index now shows each write-up's heading instead of a separately maintained summary
+that had been truncated by hand at anywhere between 219 and 229 characters.
+
+**What this deletes rather than automates.** The index can no longer disagree with a write-up about
+a state, a pairing or a ticket, because it no longer holds those facts. The tally line — wrong by
+eight entries this morning, and the one number a reader sees first — is counted, not typed, so the
+open item asking for it to be checked is closed by construction. `check-catalog.py` is down from 241
+to 176 lines and asserts only what generation cannot: that the committed index is current
+(regenerate-and-compare, the shape `materialize.sh` already uses for the schema table), that every
+write-up declares a state, and the `**Guard:**` rule. Both failure paths were exercised on purpose —
+edit a heading and the index reads stale; delete a `Guard:` line and that finding fails.
+
 **The allow list is enforced, and the divergence it describes is now exercised instead of avoided
 (2026-08-16, last).**
 `oracle/policy.yaml` has always had two halves: five axes saying which kinds of difference fail a

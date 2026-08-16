@@ -2,6 +2,7 @@
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [corelib-ts#65](https://github.com/sofa-buffers/corelib-ts/issues/65), [documentation#17](https://github.com/sofa-buffers/documentation/pull/17)
 
 **Axis:** framing/ceilings (§4.9/§6.2), verdict split. **Impls:** `typescript` (1) reports `I` vs the
 other **12** reject (`R`). **Corelib, not codegen**; the fix location is pinned to one of corelib-ts's

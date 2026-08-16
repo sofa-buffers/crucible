@@ -2,6 +2,7 @@
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#162](https://github.com/sofa-buffers/generator/pull/162)
 
 ## The true split (clean isolate)
 

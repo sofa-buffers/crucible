@@ -1,6 +1,8 @@
 # G-0003 — std vs no-std Rust diverge on a chunked (multi-feed) string
 
 **Status:** ✅ **fixed** in sofabgen 0.15.1 (PR
+**Issue:** [generator#81](https://github.com/sofa-buffers/generator/issues/81)
+
 [#92](https://github.com/sofa-buffers/generator/pull/92), fixes #81) · **Lang:**
 rust · **Where:** `generator/generators/rust/visitor.go`
 

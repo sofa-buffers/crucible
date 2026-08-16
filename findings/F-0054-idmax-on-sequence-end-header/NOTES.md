@@ -1,8 +1,9 @@
 # F-0054 — the `ID_MAX` ceiling and a **sequence-end** header's id
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [documentation#35](https://github.com/sofa-buffers/documentation/pull/35), [corelib-go#70](https://github.com/sofa-buffers/corelib-go/pull/70), [corelib-py#60](https://github.com/sofa-buffers/corelib-py/pull/60), [corelib-zig#38](https://github.com/sofa-buffers/corelib-zig/issues/38), [corelib-java#68](https://github.com/sofa-buffers/corelib-java/issues/68)
+
 > **✅ RESOLVED AGAIN 2026-08-06, after regressing twice in two days.** Specified 2026-08-03
 > (`main@acd27a4`, Option B) and fixed in go/py/ts the same day; then the abandoned **Option A**
 > was merged into **corelib-zig** on 08-05 and into **corelib-java** on 08-06, each time making

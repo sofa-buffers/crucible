@@ -1,5 +1,10 @@
 # F-0003 — Rust decoder panics (index out of bounds) on an over-long array
 
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#87](https://github.com/sofa-buffers/generator/pull/87), [generator#78](https://github.com/sofa-buffers/generator/issues/78), [generator#100](https://github.com/sofa-buffers/generator/issues/100)
+**Codegen:** G-0007 | [generator#78](https://github.com/sofa-buffers/generator/issues/78) | generated Rust array fill has no bounds check (crashes)
+
 > **✅ FULLY RESOLVED 2026-07-15 (sofabgen 0.16.1).** The residual over-count
 > *accept* divergence (generator#100) is fixed by commit `ca0fda7` ("reject
 > over-count scalar arrays in every backend"). Re-verified with a clean
@@ -9,8 +14,6 @@
 > reproducer is contaminated (over-count *and* truncated), so rust/zig report `I`
 > there; the clean isolate above is the correct test.
 
-**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## What
 

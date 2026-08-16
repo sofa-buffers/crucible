@@ -1,8 +1,10 @@
 # F-0036 — **direction inverted 2026-07-28**: a trailing all-default element must be KEPT, and `c` is the only implementation that drops it
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#248](https://github.com/sofa-buffers/generator/issues/248), [documentation#31](https://github.com/sofa-buffers/documentation/pull/31)
+**Codegen:** G-0021 | [generator#248](https://github.com/sofa-buffers/generator/issues/248) | the generator side of F-0036 — **`c` drops a trailing all-default element, shortening the array** — `seq[202
+
 **Filed:** [generator#248](https://github.com/sofa-buffers/generator/issues/248) — **filed
 against the wrong side and being corrected**; see the banner below.
 

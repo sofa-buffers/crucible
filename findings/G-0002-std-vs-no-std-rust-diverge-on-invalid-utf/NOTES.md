@@ -1,6 +1,8 @@
 # G-0002 — std vs no-std Rust diverge on invalid UTF-8 in a string
 
 **Status:** ✅ **fixed** in sofabgen 0.15.1 (PR
+**Issue:** [generator#80](https://github.com/sofa-buffers/generator/issues/80)
+
 [#91](https://github.com/sofa-buffers/generator/pull/91), fixes #80) · **Lang:**
 rust · **Where:** `generator/generators/rust/visitor.go`
 

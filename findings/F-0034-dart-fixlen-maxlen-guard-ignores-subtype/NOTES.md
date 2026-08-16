@@ -2,6 +2,8 @@
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#224](https://github.com/sofa-buffers/generator/issues/224)
+**Codegen:** G-0019 | [generator#224](https://github.com/sofa-buffers/generator/issues/224) | generated dart `onFixlenHeader` enforces a field's `maxlen` without gating on the wire subtype (rejects a §7.3-skippable field)
 
 ## Divergence
 

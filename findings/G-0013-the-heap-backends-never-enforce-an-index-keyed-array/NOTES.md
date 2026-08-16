@@ -1,6 +1,8 @@
 # G-0013 — the heap backends never enforce an index-keyed array's schema `count`
 
 **Status:** ✅ **fully fixed 2026-07-17**, in two steps —
+**Issue:** [generator#142](https://github.com/sofa-buffers/generator/issues/142), [generator#149](https://github.com/sofa-buffers/generator/issues/149)
+
 [generator#142](https://github.com/sofa-buffers/generator/issues/142) (sofabgen 0.17.4:
 the DoS is gone, cpp 226 MB → 10 MB, and the 9 heap backends reject) then
 [generator#149](https://github.com/sofa-buffers/generator/issues/149) → #151/#150

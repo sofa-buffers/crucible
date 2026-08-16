@@ -2,6 +2,7 @@
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/structured — the trailing-default struct element is a value case, replayed by the cross-encode and materialize gates.
+**Issue:** [corelib-c-cpp#109](https://github.com/sofa-buffers/corelib-c-cpp/issues/109)
 
 **Axis:** accept_value (round-trip). **Impls:** `c` (1) vs the other **12** (incl. `cpp-c-cpp`, the C++
 object layer over the *same* corelib-c-cpp istream/ostream). **Corelib, not codegen** — the trailing-run

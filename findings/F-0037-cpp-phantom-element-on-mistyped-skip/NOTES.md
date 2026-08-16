@@ -1,8 +1,10 @@
 # F-0037 — the C++ generated decode materializes a phantom element when it skips a mistyped child inside `struct_array` (cpp + cpp-c-cpp)
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [generator#249](https://github.com/sofa-buffers/generator/issues/249)
+**Codegen:** G-0022 | [generator#249](https://github.com/sofa-buffers/generator/issues/249) | the generator side of F-0037 — **the generated C++ decode materializes a phantom element when it skips a mistyped child inside `struct_array`** — a scalar at the elemen…
+
 **Filed:** [generator#249](https://github.com/sofa-buffers/generator/issues/249)
 
 **Family:** `poc/omit-all-default-sequences` (found 2026-07-27 by the §7.3 wiretype

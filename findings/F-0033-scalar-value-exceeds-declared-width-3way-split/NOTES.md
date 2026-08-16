@@ -2,6 +2,7 @@
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Codegen:** G-0026 | [generator#266](https://github.com/sofa-buffers/generator/issues/266) | the generator side of F-0033 — **a scalar wire value exceeding its declared width (u8 > 255, u16 > 65535) splits the family 3 ways** — reject (c, cpp-c-cpp) / mask-to-w…
 
 **Axis:** accept_value (round-trip) + verdict — a **3-way** split. **Family-wide / spec**, not one impl's
 bug: the spec explicitly leaves scalar value-range outside the wire-validity clauses, so no single impl is

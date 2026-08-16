@@ -1,8 +1,9 @@
 # F-0041 — the over-index reject is applied before the §7.3 skip (c, cpp)
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [corelib-c-cpp#119](https://github.com/sofa-buffers/corelib-c-cpp/pull/119), [corelib-cpp#59](https://github.com/sofa-buffers/corelib-cpp/pull/59), [corelib-c-cpp#117](https://github.com/sofa-buffers/corelib-c-cpp/issues/117)
+
 **Found 2026-07-29** in the post-bootstrap cluster triage of `corpus/interesting`
 (1121 inputs) on corelibs **0.9.0 @ main** / sofabgen **0.21.0** — cluster 3, 11 inputs.
 

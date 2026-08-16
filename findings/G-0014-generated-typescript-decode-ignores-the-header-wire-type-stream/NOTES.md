@@ -1,6 +1,8 @@
 # G-0014 — generated TypeScript decode ignores the header wire type (stream mis-framing)
 
 **Status:** ✅ **fixed in sofabgen 0.18.0** — [generator#160](https://github.com/sofa-buffers/generator/issues/160),
+**Issue:** [generator#160](https://github.com/sofa-buffers/generator/issues/160)
+
 PR [#161](https://github.com/sofa-buffers/generator/pull/161) ("frame each decoded field by
 header wire type"). **Re-verified 2026-07-18:** isolate `05 00 01` → **all 12 `R invalid_msg`**
 (ts was `I`); `F0017_ts_wiretype_iso.bin` promoted into the regression gate. Found 2026-07-17

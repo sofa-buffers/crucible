@@ -35,12 +35,15 @@ Two jobs. **`catalog`** runs first and needs no drivers at all. It carries two c
 `results/FINDINGS.md` and its write-ups declare the same state:
 
 ```sh
-python3 scripts/check-catalog.py   # catalog row <-> findings/<id>/NOTES.md, and the G-00NN table <-> its sections
+python3 scripts/check-catalog.py   # index is current + every closed finding declares its guard
+python3 scripts/gen-findings.py     # ... and this is what regenerates it
 ```
 
-`findings/<id>/NOTES.md` **owns** everything about a finding; `results/FINDINGS.md` is a
-pure index. The check asserts the state token (✅ / 🔴 / ⚪) matches between the two and
-that index and folders cover the same set. Added 2026-08-03 after all three non-owning
+`findings/<id>/NOTES.md` **owns** everything about a finding, and since 2026-08-16
+`results/FINDINGS.md` is **generated** from those write-ups — so the index cannot disagree
+with them about a state, a pairing or a ticket, only be stale. The check regenerates and
+compares, and additionally asserts that every closed finding declares the gate that
+re-checks it. Added 2026-08-03 after all three non-owning
 representations were found stale at once — it exists because intending to keep them in
 sync demonstrably did not.
 

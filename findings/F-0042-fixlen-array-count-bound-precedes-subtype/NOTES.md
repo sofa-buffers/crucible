@@ -1,8 +1,9 @@
 # F-0042 — the schema `count` bound is applied before the fixlen subtype decides the field is skippable
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [go#58](https://github.com/sofa-buffers/corelib-go/issues/58), [java#53](https://github.com/sofa-buffers/corelib-java/issues/53), [cs#45](https://github.com/sofa-buffers/corelib-cs/issues/45)
+
 **Assigned 2026-07-29.** This finding did not previously exist in Crucible's catalog: the
 divergence was tracked from 2026-07-25 in
 [generator#232](https://github.com/sofa-buffers/generator/issues/232) only, first as an open

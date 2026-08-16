@@ -1,5 +1,9 @@
 # F-0006 — corelib-py: truncated wrong-length fixlen fp32/fp64 → INCOMPLETE (`I`) instead of INVALID (`R`)
 
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [corelib-py#38](https://github.com/sofa-buffers/corelib-py/issues/38)
+
 > **✅ RESOLVED 2026-07-15.** Fixed on corelib-py `main` — the decoder now validates
 > the fp32/fp64 fixed width (4/8) at the FIXLEN header (decoder.py L338-341), before
 > the payload read, exactly as proposed. [corelib-py#38](https://github.com/sofa-buffers/corelib-py/issues/38)
@@ -8,8 +12,6 @@
 > [documentation#17](https://github.com/sofa-buffers/documentation/pull/17) (`1018e0c`, CORELIB_PLAN §4.6/§5.2/§6.3);
 > see [F-0007](../F-0007-invalid-vs-incomplete-precedence/NOTES.md). The rest of this file is the original analysis.
 
-**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## The divergence (11 vs 1)
 

@@ -1,8 +1,9 @@
 # F-0053 — an array count larger than the remaining bytes short-circuits to `INCOMPLETE` before the element varint is validated
 
-
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [corelib-go#66](https://github.com/sofa-buffers/corelib-go/issues/66), [corelib-ts#82](https://github.com/sofa-buffers/corelib-ts/issues/82)
+
 **✅ RESOLVED 2026-08-03** — [corelib-go#66](https://github.com/sofa-buffers/corelib-go/issues/66)
 and [corelib-ts#82](https://github.com/sofa-buffers/corelib-ts/issues/82) both closed and fixed
 (corelib-go#68, corelib-ts#84).

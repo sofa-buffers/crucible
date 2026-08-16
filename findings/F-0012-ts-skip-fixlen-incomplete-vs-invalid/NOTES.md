@@ -2,6 +2,7 @@
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
+**Issue:** [corelib-ts#49](https://github.com/sofa-buffers/corelib-ts/issues/49)
 
 ## The divergence (clean 11-vs-1)
 
