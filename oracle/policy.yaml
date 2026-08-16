@@ -40,13 +40,20 @@ comparison:
   # max_dyn_* caps, so they must agree on L vs A/I/R. See oracle/canonical.md.
   limit_class: soft
 
-# ⚠ NOT ENFORCED — DOCUMENTATION ONLY (verified 2026-08-16).
-# `oracle/comparator.py:load_policy` reads the `comparison:` axes above and NOTHING else;
-# no consumer in this repo reads `allow:` or `notes:` (grepped repo-wide). An entry here
-# therefore does not make a divergence pass — it records the reasoning for one, and the
-# input it names must stay out of the gate corpora or the gate goes red despite the
-# entry. That is exactly why F-0018's reproducer is not in `corpus/regression`.
-# Either teach the comparator to honour this block or drop it — tracked in docs/TODO.md.
+# ENFORCED since 2026-08-16 — `oracle/comparator.py` reads this block.
+#
+# An entry names an input and the one axis on which that input may differ. When the
+# comparator sees a difference on that axis for that input, it prints
+# `[allowed] <input> (<axis>) <id>` and does NOT fail the run. Everything else about the
+# input is still compared as usual, so an entry legalises one known difference, not the
+# input.
+#
+# MATCHING IS BY THE INPUT'S BYTES, never by the path written in `applies_to`. The path
+# is how a reader finds it; the content is what is matched. That matters because the
+# natural thing to do with a legal divergence is to put it into a gate corpus — which
+# renames it — and a path-bound allowance would silently stop applying at exactly that
+# moment. A path that no longer exists is reported on stderr rather than ignored: a
+# stale allowance legalises nothing and hides that it was meant to.
 #
 # Specific inputs where divergence is explicitly tolerated, each with a reason
 # and (eventually) a spec citation.
