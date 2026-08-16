@@ -1,6 +1,7 @@
 # F-0059 — corelib-py's pure engine writes into the drained buffer after a flush, so everything past the first flush is lost
 
 **Status:** ✅ **RESOLVED** — [corelib-py#61](https://github.com/sofa-buffers/corelib-py/issues/61) fixed by
+**Guard:** corpus/structured — the over-buffer case lives with the structured values the encode and materialize gates replay.
 [corelib-py#62](https://github.com/sofa-buffers/corelib-py/pull/62), merged 2026-08-04: `_put` now re-reads
 `self._fixed` / `self._cap` after `_drain()`. [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this
 finding's state; this file is the evidence.

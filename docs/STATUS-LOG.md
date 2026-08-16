@@ -19,6 +19,46 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Every closed finding now declares what re-checks it, and 13 that declared nothing got a guard
+(2026-08-16, last).**
+The audit found 19 resolved findings whose reproducers were never promoted out of `findings/<id>/`,
+so nothing replayed them. Closed, but unguarded.
+
+*Why that step is the one that fails.* It is the third of three, and the only one without a
+mechanism: minimizing happens at the find, filing happens the same day, and **promotion happens
+weeks later, usually while several findings go green at once in a family bump** — precisely when
+per-finding follow-through drops. Worse, it produces no visible result: adding a converged vector to
+a green gate leaves it green, so doing it and forgetting it look identical afterwards. The
+promotion step has been written in `corpus/regression/README.md` from the start and was skipped
+anyway, 13 times. *I did it myself this morning* — F-0043 closed with every claim verified, its 17
+reproducers left where they were.
+
+**The repo had already learned this exact lesson once.** On 2026-08-03, 46 write-ups were found
+contradicting the index, and the entry recording it is titled "the point at which intent was
+replaced by a check". That produced `check-catalog.py`. The same disease, on a different artifact,
+went unchecked for two more weeks.
+
+**Decision: the guard is declared, and the declaration is verified.** Every finding that is not open
+and carries reproducers now needs a `**Guard:**` line naming a gate corpus, a sweep axis or an
+oracle — or `none — <reason>`. `check-catalog.py` asserts it, in the same driver-free blocking job.
+A named corpus must hold **either those bytes or a vector named for the finding**: both promotion
+styles are legitimate and neither test alone covers both — F-0027's bytes were promoted under a
+descriptive name (content matches, name does not), while F-0003's guard is a cleaner isolate built
+for the gate (name matches, content does not). What must never pass is neither.
+
+*What the check found the moment it existed:* five findings that only looked unguarded (F-0027,
+F-0030, F-0049, F-0057, F-0059 — already replayed, under names that say what they test), and 13
+genuinely unguarded. **50 vectors promoted, `corpus/regression` 188 → 238 inputs, gate green** — 0
+divergences across all fifteen drivers, which the 243-reproducer pass earlier the same day had
+already predicted.
+
+*Two honest limits, written into the artifacts rather than left implied.* F-0018 stays unguarded on
+purpose: its divergence is by design, so promoting it would turn a gate red while `policy.yaml`'s
+`allow:` block is unenforced — its `Guard:` line says exactly that. And F-0058/F-0060/F-0061 are
+chunk-boundary findings whose vectors now sit in a corpus the **chunked** gate does not replay: the
+promotion holds their one-shot verdict and no more. Both the write-ups and the corpus README label
+that half a guard, and the follow-up is in `TODO.md`.
+
 **Participation is now derived, the announcement is now checked, and every roster entry gets a
 ledger (2026-08-16, last).**
 Three changes aimed at one failure mode: the one that let `go` sit outside the encode gate for

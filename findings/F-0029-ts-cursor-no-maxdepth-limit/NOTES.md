@@ -1,6 +1,7 @@
 # F-0029 — corelib-ts (cursor decoder) reports INCOMPLETE for nesting past MAX_DEPTH
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 **Axis:** framing/ceilings (§4.9/§6.2), verdict split. **Impls:** `typescript` (1) reports `I` vs the
 other **12** reject (`R`). **Corelib, not codegen**; the fix location is pinned to one of corelib-ts's

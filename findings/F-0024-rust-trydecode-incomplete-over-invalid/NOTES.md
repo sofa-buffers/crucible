@@ -4,6 +4,7 @@
 **Axis:** verdict (INVALID-vs-INCOMPLETE precedence)
 **Attribution:** **generator (sofabgen Rust backend)** — codegen defect **G-0016**. Generator-only; no corelib change.
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## The divergence
 

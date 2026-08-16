@@ -1,6 +1,7 @@
 # F-0015 — a `string`/`blob` over its schema `maxlen`: 9 accept, 2 reject `invalid_msg`, 1 rejects `buffer_full`
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 *The whole arc closed in one day:* hole found while preparing the regression → clause filed
 (documentation#19) → spec PR authored & merged (#20) → codegen implemented (0.17.5) → verified

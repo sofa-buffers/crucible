@@ -2,6 +2,7 @@
 
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 **Found 2026-07-29** in the post-bootstrap cluster triage of `corpus/interesting`
 (1121 inputs) on corelibs **0.9.0 @ main** / sofabgen **0.21.0** — cluster 3, 11 inputs.
 

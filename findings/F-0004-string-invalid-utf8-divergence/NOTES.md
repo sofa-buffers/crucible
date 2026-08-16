@@ -1,6 +1,7 @@
 # F-0004 — invalid UTF-8 in a string: four behaviors, driven by the string type
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## The true split (clean isolate)
 

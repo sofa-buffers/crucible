@@ -1,7 +1,7 @@
 # `corpus/regression/` — the resolved-findings green gate
 
 Every input here is a **reproducer for a finding that is now fixed**, and every input must
-produce **0 divergences across all 13 drivers**. A divergence here means a resolved bug
+produce **0 divergences across every driver in the roster**. A divergence here means a resolved bug
 came back — that is the whole point of the directory.
 
 ```sh
@@ -16,7 +16,7 @@ Until this existed, the resolved findings were verified only by ad-hoc replay of
 `docs/STATUS-LOG.md`. That caught the 0.17.2 go regression (F-0011) only because someone was
 looking. This corpus makes it automatic.
 
-## Contents (181 inputs)
+## Contents (238 inputs)
 
 | file | finding | fixed by | the gate asserts |
 |---|---|---|---|
@@ -79,6 +79,24 @@ One input — `F0024_control_valid_then_trunc.bin` — raises a policy-`soft` `i
 warning: on an `I` verdict, `c` emits no partial value where `java` emits the default
 skeleton (`c60c0212414207`). That axis is `soft` in `oracle/policy.yaml`, so the gate still
 exits 0. Divergences — not warnings — are the signal.
+| `F0008_*.bin` (2) | F-0008 | generator#126 | the generated fixed-capacity string/blob-array fill **terminates** on an element index past the capacity, instead of looping forever |
+| `F0012_*.bin` (3) | F-0012 | corelib-ts#49 | a truncated fixlen on the skip path is `R invalid_msg`, not `I` — §5.2 precedence on the branch the one-shot path does not take |
+| `F0028_*.bin` (2) | F-0028 | corelib-cpp#47 + corelib-dart#14 | a field id above `ID_MAX` is rejected on decode, not accepted and echoed back |
+| `F0029_*.bin` (2) | F-0029 | corelib-ts#65 + documentation#17 | the TypeScript cursor enforces `MAX_DEPTH`; a deeper nest is `R`, not a stack walk |
+| `F0031_*.bin` (3) | F-0031 | (no upstream issue — Crucible's own measurement) | an fp32 **signalling** NaN keeps its payload bits through decode+re-encode. A value assertion: the round-trip hex hides it, which is why the materialize gate exists |
+| `F0032_*.bin` (4) | F-0032 | generator#216 | a schema-bound violation truncated into its payload is `R invalid_msg` on all — INVALID dominates the truncation |
+| `F0035_*.bin` (3) | F-0035 | generator#247 (`sofabgen 0.21.0`) | reopening a `struct_array` element id **merges** into that element instead of appending a second one |
+| `F0036_*.bin` (3) | F-0036 | generator#248 + documentation#31 | a trailing all-default struct element is still written as an empty frame, per the amended §3/§5.1 last-element rule |
+| `F0037_*.bin` (2) | F-0037 | generator#249 | a mistyped element that must be skipped leaves **no phantom element** behind in the container |
+| `F0043_*.bin` (17) | F-0043 | generator#267 | a schema-bound violation is `INVALID` **at the word that carries the number**, not once payload bytes arrive. The 17 vectors sweep the offsets the finding lived at; the axis that owns the rule family-wide is `sweep_malform_truncate` |
+| `F0058_*.bin` (4) | F-0058 | generator#293 + #295 | *(whole-message half only — see the note below)* the zig reassembly buffer is not shared across wrapper-array elements |
+| `F0060_*.bin` (2) | F-0060 | generator#297 + #298 | *(whole-message half only)* a chunked UTF-8 boundary does not escape as a TypeError |
+| `F0061_*.bin` (3) | F-0061 | generator#300 + corelib-ts#141 | *(whole-message half only)* the cursor does not read a fixlen subtype out of an incomplete varint |
+
+The last three rows are **half a guard, and the README says so**: this gate replays every
+input whole, so it holds their one-shot verdict but not the chunk-boundary behaviour those
+findings were actually about. `scripts/run-chunked.sh` owns that and does not replay this
+corpus — wiring it to is in [`docs/TODO.md`](../../docs/TODO.md).
 
 ## What is deliberately NOT here
 
@@ -118,9 +136,15 @@ python3 engine/structured/isolates.py .    # idempotent; the committed bytes are
 
 When a finding's fix lands (see [`docs/TODO.md`](../../docs/TODO.md)):
 
-1. Re-run the reproducer through all 13 drivers and confirm **0 divergences**.
+1. Re-run the reproducer through every driver and confirm **0 divergences**.
 2. If it is green **for the reason the finding is about**, copy it here as
    `F<nnnn>_<name>.bin` and add a row above. If it is green only incidentally, or still
    splits on an unrelated open axis, write a **clean isolate** in `isolates.py` instead —
    do not weaken the gate to accommodate a contaminated input.
 3. Flip the status in `results/FINDINGS.md` and note the promotion in `docs/STATUS-LOG.md`.
+4. Declare it in the write-up: `**Guard:** corpus/regression — …`. **`scripts/check-catalog.py`
+   enforces this**, so a finding cannot be closed without saying what re-checks it. Step 2 was
+   written here from the start and was skipped 13 times anyway — it happens weeks after the
+   find, usually while several findings go green at once, and it produces no visible result:
+   adding a converged vector to a green gate leaves it green. A checklist could not fix that;
+   a check can.

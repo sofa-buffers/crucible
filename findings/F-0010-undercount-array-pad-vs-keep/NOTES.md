@@ -1,6 +1,7 @@
 # F-0010 — under-count fixed array round-trips to different values (pad-to-capacity vs keep-count)
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 **Re-verified 2026-07-16 (sofabgen 0.17.2):** the R1/R2 reproducers (`u32_count3`,
 `i16_count1`) now round-trip to the **canonical count 3 / count 1 on all 12 drivers** —

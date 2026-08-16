@@ -2,6 +2,7 @@
 
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 > **✅ RESOLVED AGAIN 2026-08-06, after regressing twice in two days.** Specified 2026-08-03
 > (`main@acd27a4`, Option B) and fixed in go/py/ts the same day; then the abandoned **Option A**
 > was merged into **corelib-zig** on 08-05 and into **corelib-java** on 08-06, each time making

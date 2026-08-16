@@ -1,6 +1,7 @@
 # F-0020 — a header wire type ≠ the field's declared type: four incompatible behaviors
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 **corelib-c-cpp fix recipe (historical — migrated from the retired `spec-proposals.md`; the fix actually
 landed via corelib-c-cpp#100 `fd5086a`):** `istream.c:493` presets `ctx->target_opt` to the *actual* wire

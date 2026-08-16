@@ -1,6 +1,7 @@
 # F-0033 — a scalar wire value exceeding its declared width splits the family 3 ways (reject / mask / keep) — spec hole
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 **Axis:** accept_value (round-trip) + verdict — a **3-way** split. **Family-wide / spec**, not one impl's
 bug: the spec explicitly leaves scalar value-range outside the wire-validity clauses, so no single impl is

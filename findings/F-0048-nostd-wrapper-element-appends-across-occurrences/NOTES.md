@@ -2,6 +2,7 @@
 
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 **Found 2026-08-02** by triaging **cluster 4** of the 2026-08-02 re-cluster (= cluster 5 of
 the 2026-08-01 snapshot), the last untriaged cluster of that round: **305 bytes → 11 bytes**.
 

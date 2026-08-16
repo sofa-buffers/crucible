@@ -1,6 +1,7 @@
 # F-0031 — an fp32 *signaling* NaN is quieted (0x7F800001 → 0x7FC00001) by py-cython / typescript / dart
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — vectors promoted 2026-08-16, replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 **Axis:** accept_value (round-trip **and** materialized/raw-bits). **Impls:** `py-cython`, `typescript`,
 `dart` (3) vs the other **10** (incl. `py-pure`). **Corelib, not codegen** — fp32 storage/materialization

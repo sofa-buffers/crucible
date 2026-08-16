@@ -14,6 +14,7 @@
 > retired `spec-proposals.md`.) The rest of this file is the original analysis.
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 > **Update 2026-07-15 — family narrowed to the C corelib.** With F-0006 fixed
 > (corelib-py#38 closed), corelib-py now returns `R` on `56 0a 59` / `56 0a 09`, so

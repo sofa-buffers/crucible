@@ -1,6 +1,7 @@
 # F-0013 — a string_array element at an index ≥ the schema count: dropped (fixed-capacity) vs kept (heap), plus an unbounded-allocation DoS
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 *(Historical status —)* open — **half fixed.** [generator#142](https://github.com/sofa-buffers/generator/issues/142)
 **closed & rightly so** (sofabgen **0.17.4**, PR #143): the **DoS is gone** (cpp **226 MB → 10 MB**

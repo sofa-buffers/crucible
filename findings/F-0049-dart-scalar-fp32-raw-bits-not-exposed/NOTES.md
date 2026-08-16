@@ -2,6 +2,7 @@
 
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/structured — an fp32 raw-bits case: only the materialized oracle can see it, and that gate runs this corpus.
 **Found 2026-08-02** while re-checking F-0031 against the corelibs. It is the residual of
 F-0031 — and the only part of it that is *not* a Crucible-side defect.
 

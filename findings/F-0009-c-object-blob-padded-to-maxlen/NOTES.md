@@ -6,6 +6,7 @@
 > and match the family; the sub-`maxlen` vectors rejoined the green `corpus/structured/` gate.
 
 **Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back.
 
 ## The divergence
 
