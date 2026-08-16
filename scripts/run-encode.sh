@@ -33,8 +33,10 @@ CORPUS="${CORPUS:-$ROOT/corpus/structured}"
 # Drivers known to implement SOFAB_ENCODE. Add a name here only once it demonstrably
 # re-encodes through each surface its meta declares — a driver that ignores the
 # variables emits byte-identical output, so this list is the only thing standing
-# between the gate and a vacuous pass. The rest are tracked in docs/TODO.md.
-SUPPORTED="${SOFAB_ENCODE_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp cpp-c-cpp-dyn typescript java csharp dart zig py-cython py-pure}"
+# between the gate and a vacuous pass. Since 2026-08-16 that is the WHOLE roster:
+# `go` was the last one missing — its backend had all three surfaces and its meta
+# declared them, only the driver never read the variable. Nobody is out of this gate.
+SUPPORTED="${SOFAB_ENCODE_DRIVERS:-c go rust-std rust-nostd cpp cpp-fixed cpp-c-cpp cpp-c-cpp-dyn typescript java csharp dart zig py-cython py-pure}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [encode] no driver implements SOFAB_ENCODE yet — nothing to check." >&2

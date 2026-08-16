@@ -19,6 +19,28 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**`go` joins the encode gate — the whole roster is now on that axis, and no corelib change was
+needed (2026-08-16, later still).**
+`drivers/go/driver.go` called `m.Encode()` unconditionally and never read `SOFAB_ENCODE`, so the Go
+driver sat outside `run-encode.sh` — the last roster entry missing from either streaming gate. The
+expectation going in was a capability gap like the chunked one; it was not. corelib-go has all three
+surfaces (`Encode`, `EncodeTo(w)`, and `Serialize` into a `NewEncoderSink`), exports
+`MinOutputBuffer` (`2 × maxVarintLen` = 20), and `drivers/go/meta` already restated that as
+`min_output_buffer=20`. **Everything was in place except the forty lines that read the variable** —
+the backend had been prepared for this axis and then never wired to it.
+
+Plumbed per `CONTRACT.md`: surface dispatch (`new` → allocating `Encode`, `to` → `EncodeTo(w)` where
+the caller owns the destination, `stream` → `Serialize` into an encoder built with the `SOFAB_FLUSH`
+window), the §5.1 floor **refused with exit 3** below the declaration, and the stderr announcement
+without which honouring the variable is indistinguishable from ignoring it. Green on the first run:
+**108 inputs × 5 configs, 0 mismatches**, and the gate now covers all fifteen drivers. Seeds and the
+regression corpus re-run clean afterwards (188 inputs × 15 drivers, 0 divergences).
+
+*One thing the run made visible, filed rather than fixed:* `flush_sizes()` offers the declaration
+plus every standard size **above** it, so a port declaring 20 gets a sweep of exactly `{20}` while
+every port declaring 1 gets six sizes. The thinnest coverage on the axis lands on the port with the
+highest floor, which is backwards.
+
 **Full-repo cleanup pass: every closed finding re-verified, three dead exceptions removed, five real
 gaps filed (2026-08-16, later).**
 A sweep of *everything that can hide work*: the catalog's upstream tickets, every special case in the

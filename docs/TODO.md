@@ -699,6 +699,15 @@ here:
       *(update 2026-07-23: confirmed `replay.yml`/`nightly.yml` **do** consume
       `ghcr.io/sofa-buffers/crucible-ci:latest`; the remaining task is confirming the image is
       seeded and a live run is green.)*
+- [ ] **A port with a high `MIN_OUTPUT_BUFFER` gets a one-size flush sweep.** `flush_sizes()`
+      (`oracle/encode_invariance.py:79`) returns the declaration plus every standard size *above*
+      it — for `go`, which declares 20 (the only port not on 1), that set is exactly `{20}`. So the
+      Go encoder is walked across a buffer boundary at a single window size, while every other port
+      gets six. Legal per §5.1 and not a defect, but the thinnest coverage on this axis belongs to
+      the port whose floor is highest, which is backwards. **Work:** add a couple of sizes above the
+      declaration (floor+1, 2x floor, and one odd size) so the boundary lands at different offsets
+      within the message; costs one run each and needs no spec change.
+
 - [ ] **The two streaming gates keep their own driver list, by hand.** `run-chunked.sh` and
       `run-encode.sh` each hard-code a 14-name `SUPPORTED` default beside `drivers/roster`'s fifteen
       rows — the copied-list shape CLAUDE.md warns about, and it already misleads: the chunked gate's
@@ -708,7 +717,14 @@ here:
       `encode_surfaces`) plus the roster, so adding a driver cannot silently skip a gate. Note the
       mapping is not 1:1 — the four `cpp` roster rows share one `drivers/cpp/meta`.
 
-- [ ] **`go` is the last driver outside the encode gate, and its `meta` overstates it.**
+- [x] **DONE 2026-08-16 — `go` is in the encode gate; the `meta` was right all along.**
+      The backend had all three surfaces (`Encode`, `EncodeTo(w)`, `Serialize` into a
+      `NewEncoderSink`) and corelib-go even exports `MinOutputBuffer` (= 20, which
+      `drivers/go/meta` restates) — only `drivers/go/driver.go` never read the variable and
+      called `m.Encode()` unconditionally. Plumbed per CONTRACT.md: surface dispatch, the
+      §5.1 floor refused with exit 3, stderr announcement. **No corelib change was needed.**
+      First run green: 108 inputs x 5 configs, 0 mismatches. Original note below.
+      ~~`go` is the last driver outside the encode gate, and its `meta` overstates it.~~
       `drivers/go/meta` declares `encode_surfaces=new,to,stream`, but `drivers/go/driver.go` never
       reads `SOFAB_ENCODE`, so the driver is (correctly) absent from `run-encode.sh` — every other
       roster entry is in. Unlike the chunked axis this is **not** a corelib capability gap: the Go

@@ -9,6 +9,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -18,6 +19,7 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 
 	sofab "github.com/sofa-buffers/corelib-go"
@@ -37,6 +39,105 @@ import (
 // each descriptor node's schema name against the field's `json:"<schema-name>"` tag.
 // Only the per-kind LEAF formatting below is schema-specific.
 var materialized = os.Getenv("SOFAB_MATERIALIZE") == "1"
+
+// The streaming-ENCODE axis (drivers/common/CONTRACT.md "Encode side"): which call
+// produces the `A <hex>`. The family is byte-canonical — one value has exactly one
+// encoding — so all three surfaces must emit identical bytes, and SOFAB_FLUSH must
+// not change them either. Only the decode side is absent here: corelib-go has no
+// resumable decoder, so `meta` declares chunked_decode=none and the chunked gate
+// leaves this driver out (docs/ARCHITECTURE.md's streaming table).
+var (
+	encSurface = "new" // new | to | stream
+	flushSize  = 0     // 0 = unset; only meaningful for `stream`
+)
+
+// parseEncodeCfg resolves the axis before any record is written, because both
+// failures the contract names must land *before* output: an unknown surface, and a
+// buffer below this port's declared floor.
+func parseEncodeCfg() {
+	if s := os.Getenv("SOFAB_ENCODE"); s != "" {
+		switch s {
+		case "new", "to", "stream":
+			encSurface = s
+		default:
+			fmt.Fprintf(os.Stderr, "crucible-go: unknown SOFAB_ENCODE=%s "+
+				"(this backend has new, to, stream)\n", s)
+			os.Exit(2)
+		}
+	}
+	if s := os.Getenv("SOFAB_FLUSH"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n < 0 {
+			fmt.Fprintf(os.Stderr, "crucible-go: bad SOFAB_FLUSH=%s\n", s)
+			os.Exit(2)
+		}
+		flushSize = n
+	}
+	// CORELIB_PLAN §5.1: a size at or above the declared MIN_OUTPUT_BUFFER MUST work;
+	// one below it MUST be refused where the buffer is handed over — exit 3. Refusing
+	// is the *required* answer there, not a failure: it is what stops a port from
+	// declaring a high floor to dodge the hard sizes and then quietly accepting them.
+	// corelib-go exports the constant (2 x maxVarintLen = 20); drivers/go/meta restates
+	// it as min_output_buffer, which is what sizes the gate's sweep.
+	if encSurface == "stream" && flushSize > 0 && flushSize < sofab.MinOutputBuffer {
+		fmt.Fprintf(os.Stderr, "crucible-go: SOFAB_FLUSH=%d is below this port's "+
+			"MIN_OUTPUT_BUFFER=%d — refused at the handover (CORELIB_PLAN §5.1)\n",
+			flushSize, sofab.MinOutputBuffer)
+		os.Exit(3)
+	}
+}
+
+// announceCfg prints the resolved configuration on stderr (never parsed). Stdout is
+// byte-identical across all three surfaces when they are correct, so without this a
+// driver that ignored the variables would be indistinguishable from one that honours
+// them — which is the vacuous pass the gate's opt-in roster exists to prevent.
+func announceCfg() {
+	if encSurface != "new" || flushSize != 0 {
+		fmt.Fprintf(os.Stderr, "crucible-go: streaming cfg enc=%s flush=%d\n",
+			encSurface, flushSize)
+	}
+}
+
+// encodeVia re-encodes through the selected surface. The three are genuinely
+// different paths through the corelib, not three names for one call:
+//
+//	new     -> Encode(): a ProbeMaxSize buffer the generated code allocates, no sink
+//	to      -> EncodeTo(w): the caller owns the destination; the corelib drains into
+//	           it through a small scratch window of its own
+//	stream  -> Serialize() into an encoder this driver builds, with the SOFAB_FLUSH
+//	           window, so the encoder crosses a buffer boundary every n bytes
+func encodeVia(m *msg.Probe) ([]byte, error) {
+	switch encSurface {
+	case "to":
+		var buf bytes.Buffer
+		if err := m.EncodeTo(&buf); err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), nil
+	case "stream":
+		n := flushSize
+		if n == 0 {
+			n = msg.ProbeMaxSize
+		}
+		var acc []byte
+		e, err := sofab.NewEncoderSink(make([]byte, n), 0,
+			func(_ *sofab.Encoder, b []byte) error {
+				acc = append(acc, b...)
+				return nil
+			})
+		if err != nil {
+			return nil, err
+		}
+		m.Serialize(e)
+		// Flush drains the tail through the sink; the sticky error surfaces here.
+		if err := e.Flush(); err != nil {
+			return nil, err
+		}
+		return acc, nil
+	default:
+		return m.Encode()
+	}
+}
 
 // schemaNode is one node of the materialized descriptor (oracle/materialized-schema.json).
 // A leaf carries only kind; struct carries fields; array/wrapper carry elem + count.
@@ -219,7 +320,7 @@ func canonical(w *bufio.Writer, data []byte) {
 		fmt.Fprintf(w, "A %s\n", materialize(m))
 		return
 	}
-	b, err := m.Encode()
+	b, err := encodeVia(m)
 	if err != nil {
 		fmt.Fprint(w, "R other\n")
 		return
@@ -228,6 +329,8 @@ func canonical(w *bufio.Writer, data []byte) {
 }
 
 func main() {
+	parseEncodeCfg()
+	announceCfg()
 	if materialized {
 		loadSchema()
 	}

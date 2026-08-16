@@ -147,7 +147,7 @@ has no `LimitExceeded`).
 
 ### Per-language driver notes (as built)
 
-**The streaming axes, per backend.** Every driver except `go` honours the five variables
+**The streaming axes, per backend.** Every driver honours the two ENCODE variables; every driver except `go` also honours the three DECODE ones
 (`drivers/common/CONTRACT.md`); what differs is what each backend *offers*, and that is
 where the per-language work went:
 
@@ -161,7 +161,7 @@ where the per-language work went:
 | zig | `decoder(out, alloc)` → `feed`, `status()` | `new`, `stream` | **borrows** a payload arriving whole in one chunk and requires the chunk to outlive the message, so `SOFAB_CHUNK_SCRUB` is inapplicable (exit 3) |
 | typescript | `new ProbeDecoder()` → `feed`, `status` | `stream` only | no `encode()`, no `encodeTo()`; `OStream` cannot encode below its largest contiguous write, so small `SOFAB_FLUSH` sizes are inapplicable |
 | python ×2 | **pull-shaped**: `deserialize(Decoder(reader))`, chunked by handing it a reader that returns short reads | `new`, `stream` | cannot alias — `read()` yields immutable `bytes` copied on arrival — so `SOFAB_CHUNK_SCRUB` is inapplicable for the opposite reason to zig's |
-| go | **none** — corelib-go has no resumable decoder | `new`, `to`, `stream` | declared `chunked_decode=none` in `meta`, so it is absent by record rather than by omission |
+| go | **none** — corelib-go has no resumable decoder (decode side only; the encode axis landed 2026-08-16) | `new`, `to`, `stream` | declared `chunked_decode=none` in `meta`, so it is absent by record rather than by omission |
 
 Every participating driver **announces its configuration on stderr** when a variable is
 set. Without that, a driver that silently ignored the variables would be
