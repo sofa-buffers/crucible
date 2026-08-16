@@ -163,6 +163,15 @@ carries both:
   `SOFAB_SPLIT_DRIVERS`, and `scripts/run-encode.sh` only those in
   `SOFAB_ENCODE_DRIVERS`. Empty → the gate skips **loudly**. This is what stops an
   untaught driver from passing vacuously.
+**The announcement is checked, not merely printed (since 2026-08-16).** A driver must write
+its resolved configuration to stderr whenever `SOFAB_ENCODE` names a surface — *including one
+that is its own default*, which is the part that used to be silent: the C driver defaults to
+`to` and so said nothing when asked for `to`, exactly as a driver ignoring the variable would.
+`oracle/encode_invariance.py` now requires the line to carry `enc=<surface>`, and
+`flush=<n>` whenever `SOFAB_FLUSH` is set; a missing announcement fails the gate. The one
+exemption is `SOFAB_ENCODE=new`, the family-wide default name, where honouring and ignoring
+the variable are the same run by construction. Announcing more than required is never wrong.
+
 - **The driver's own hard-fail**, as in the encode rule above. This is what stops a
   taught driver from silently degrading.
 

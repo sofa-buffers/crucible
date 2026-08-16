@@ -42,6 +42,13 @@ jobs:
       - name: Catalog consistency
         run: python3 scripts/check-catalog.py
 
+      # Same job on purpose: it needs no drivers and no corpora, so it costs seconds
+      # and reports before anything is built. It asserts that every roster entry
+      # DECLARES what the gates need to place it — the state that hid `go` outside the
+      # encode gate for eleven days was a missing declaration nobody could see.
+      - name: Driver participation ledger
+        run: ./scripts/driver-audit.sh
+
   differential:
     runs-on: ubuntu-latest
     container:

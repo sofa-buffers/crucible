@@ -708,7 +708,13 @@ here:
       declaration (floor+1, 2x floor, and one odd size) so the boundary lands at different offsets
       within the message; costs one run each and needs no spec change.
 
-- [ ] **The two streaming gates keep their own driver list, by hand.** `run-chunked.sh` and
+- [x] **DONE 2026-08-16 — both gates derive their list from the roster + `meta`.**
+      `scripts/roster.sh caps {encode|chunked}` reports the entries whose backend declares the
+      capability; `run-encode.sh` and `run-chunked.sh` call it instead of carrying a list. The
+      derived lists matched the hand-written ones exactly (encode 15, chunked 14 — `go` absent by
+      its declared `chunked_decode=none`), so this changed the mechanism without changing who
+      runs. `SOFAB_*_DRIVERS` still overrides for isolating one driver. Original note below.
+      ~~The two streaming gates keep their own driver list, by hand.~~ `run-chunked.sh` and
       `run-encode.sh` each hard-code a 14-name `SUPPORTED` default beside `drivers/roster`'s fifteen
       rows — the copied-list shape CLAUDE.md warns about, and it already misleads: the chunked gate's
       comment claimed nobody was held out while `go` was (legitimately — corelib-go has no resumable

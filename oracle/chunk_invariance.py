@@ -145,6 +145,26 @@ def main():
                       f"{len(inputs)}", file=sys.stderr)
                 bad += 1
                 continue
+            # The announcement is the only evidence the driver actually re-fed in
+            # pieces: a driver ignoring the variables emits byte-identical output, so
+            # equality with the whole-message line proves nothing by itself. Required
+            # by CONTRACT.md since the axis was written, asserted here since
+            # 2026-08-16 — before that it was captured and discarded, which is how
+            # the encode side came to have a driver that never announced at all.
+            # The announcement's key names are the contract's, not the variables':
+            # SOFAB_CHUNK_SCRUB is announced as `scrub`.
+            announced = {"SOFAB_SPLIT": "split", "SOFAB_CHUNK": "chunk",
+                         "SOFAB_CHUNK_SCRUB": "scrub"}
+            absent = [f"{announced[k]}={v}" for k, v in env.items()
+                      if f"{announced[k]}={v}" not in err]
+            if absent:
+                print(f"  [{name}] {label}: stderr does not announce "
+                      f"{', '.join(absent)} — CONTRACT.md requires the driver to say "
+                      "which configuration it ran, because identical stdout cannot "
+                      f"distinguish re-feeding from ignoring. stderr was: {err!r}",
+                      file=sys.stderr)
+                bad += 1
+                continue
             for i, (a, b) in enumerate(zip(whole, split)):
                 if a != b and applies(len(inputs[i])):
                     print(f"  [{name}] {files[i]} under {label}: whole={a!r} "

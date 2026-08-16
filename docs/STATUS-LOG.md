@@ -19,6 +19,37 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Participation is now derived, the announcement is now checked, and every roster entry gets a
+ledger (2026-08-16, last).**
+Three changes aimed at one failure mode: the one that let `go` sit outside the encode gate for
+eleven days without anything turning red.
+
+*The gate rosters are derived, not typed.* `scripts/roster.sh` gained `caps {encode|chunked}`,
+which reports the roster entries whose `drivers/<builder>/meta` declares the capability;
+`run-encode.sh` and `run-chunked.sh` call it instead of carrying a hand-written list. **The derived
+lists matched the hand-written ones exactly** — encode 15, chunked 14 with `go` absent by its own
+`chunked_decode=none` — so this changed the mechanism without changing who runs. The point is what
+it makes impossible: a driver can no longer be *forgotten* out of a gate, only *declared* out, in
+the file that owns the declaration. Note the mapping is deliberately not one-to-one — the four
+`cpp` rows share one `meta`, because the surfaces belong to the backend, not the build variant.
+
+*The stderr announcement is asserted.* It was required by `CONTRACT.md` from the day the axes were
+written, captured by both gates, and then thrown away — a mechanism that existed to prove a driver
+honoured a variable, proving nothing. Both gates now fail when the line is missing. **It found a
+real one on its first run:** the C driver announced nothing for `SOFAB_ENCODE=to`, because its
+condition was "announce when not on my default" and `to` *is* its default (C has no allocating
+encode). Indistinguishable from a driver ignoring the variable — exactly the hole the announcement
+exists to close. Fixed by announcing whenever the variable is present, and `CONTRACT.md` now states
+that rule: announce for any named surface, including one that is your own default. `new` stays
+exempt, being the one case where honouring and ignoring are the same run.
+
+*Every roster entry gets a ledger.* `scripts/driver-audit.sh` prints, per driver, what its `meta`
+declares and which gates that places it in, and fails when a declaration is missing or malformed —
+an absent `chunked_decode` is the dangerous state, while `none` is somebody having written down
+that the backend cannot do it. It also fails a quarantine that names no finding. Static only, so it
+runs in the `catalog` job in seconds, before anything is built. Verified by breaking a `meta` on
+purpose and watching it exit 1: a check nobody has seen fail is not a check.
+
 **`go` joins the encode gate — the whole roster is now on that axis, and no corelib change was
 needed (2026-08-16, later still).**
 `drivers/go/driver.go` called `m.Encode()` unconditionally and never read `SOFAB_ENCODE`, so the Go

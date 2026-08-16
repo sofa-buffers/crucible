@@ -35,28 +35,15 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 
-# Drivers known to implement the chunking variables. Add a name here only once it
-# demonstrably re-feeds — a driver that ignores them emits byte-identical output, so
-# this list is the only thing standing between the gate and a vacuous pass. Each of
-# these announces its configuration on stderr when a variable is set, so "does it
-# really re-feed" is checkable rather than asserted (see drivers/common/CONTRACT.md).
-# typescript is BACK since 2026-08-11: F-0061 (generator#300) closed with corelib-ts#141,
-# which stopped the cursor reading a fixlen subtype out of an incomplete varint. It had
-# been held out for F-0060 first and then for F-0061 — two reasons, one exclusion, both
-# now gone. Verified before re-adding rather than on the ticket: 0 mismatches over
-# corpus/interesting (9502 inputs x 6 chunk sizes), where it had been 5.
-# The rest are tracked in docs/TODO.md.
-# zig was held out for F-0058 (generator#293/#295) — its generated chunked reassembly
-# shared one buffer across split payloads, so two wrapper-array elements aliased each
-# other. That closed and zig is back; the comment saying otherwise outlived the
-# exclusion it described and is corrected here.
-# No driver is held out of this gate for a FINDING any more. `go` is absent for a
-# capability reason, not a defect: corelib-go has no resumable decoder, so the Go driver
-# declares `chunked_decode=none` in `drivers/go/meta` and has nothing to feed in chunks
-# (docs/ARCHITECTURE.md's streaming table; tracked in docs/TODO.md). Every other roster
-# entry is listed below — keep this list and `drivers/roster` in step by hand until the
-# list is derived from the per-driver `meta` (docs/TODO.md).
-SUPPORTED="${SOFAB_SPLIT_DRIVERS:-c rust-std rust-nostd cpp cpp-fixed cpp-c-cpp cpp-c-cpp-dyn typescript java csharp dart zig py-cython py-pure}"
+# WHO PARTICIPATES IS DERIVED, NOT TYPED. `roster.sh caps chunked` lists the roster
+# names whose `drivers/<builder>/meta` declares `chunked_decode` as anything but `none`,
+# so a new driver is in this gate by construction and cannot be forgotten into silence.
+# `go` is the one absence, and it is a declared one: corelib-go has no resumable decoder,
+# so `drivers/go/meta` says `chunked_decode=none` (docs/ARCHITECTURE.md streaming table).
+# Every past hold-out was finding-driven and all are gone — typescript (F-0060/F-0061,
+# closed with corelib-ts#141) and zig (F-0058, generator#293/#295) both rejoined.
+# SOFAB_SPLIT_DRIVERS still overrides, for isolating one driver by hand.
+SUPPORTED="${SOFAB_SPLIT_DRIVERS:-$("$ROOT/scripts/roster.sh" caps chunked | tr '\n' ' ')}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [chunked] no driver implements SOFAB_SPLIT yet — nothing to check." >&2
