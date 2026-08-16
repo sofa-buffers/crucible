@@ -121,6 +121,22 @@ exists), then record the new driver's quirks in `ARCHITECTURE.md`.
 
 ## Gotchas
 
+- **Touched a `findings/<id>/NOTES.md`? Regenerate the index.**
+  `results/FINDINGS.md` is **generated** from the write-ups — a new finding, a status
+  flip, an added `**Guard:**` or `**Issue:**` line all change it:
+
+  ```sh
+  python3 scripts/gen-findings.py      # rewrite results/FINDINGS.md from findings/
+  python3 scripts/check-catalog.py     # what CI runs: index current + guards declared
+  ```
+
+  Editing the index by hand is the mistake this replaced: it used to hold its own copy of
+  every state and ticket, and the copies drifted 46 times before anyone noticed. The CI
+  catalog job fails on a stale index and prints the command — but it runs after you push,
+  so running it before saves a round trip. A write-up needs four fields for the index to
+  render: the `# <ID> — <title>` heading, `**Status:**`, `**Issue:**`, and `**Guard:**`
+  where the finding carries reproducers.
+
 - **Which family you are testing is decided by the branch you are on.**
   `scripts/bootstrap.sh` vendors the corelibs *and* the generator at Crucible's own
   branch (`FAMILY_BRANCH`), falling back to `main` per repo when a repo lacks it. So a
