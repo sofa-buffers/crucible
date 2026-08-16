@@ -19,6 +19,41 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**A 72h fuzz run doubled the corpus and found nothing — but the clustering step's own timeout
+manufactured two phantom camps per run (2026-08-16).**
+The C pacemaker ran 2026-08-11 20:27 → 08-14 20:27 UTC (`FUZZ_TIME=259200 FUZZ_JOBS=3`, 3 parallel
+workers, ~10–14k exec/s) against `main`: corelib-c-cpp at `e93e4cd`, sofabgen `0.0.0-20260811165755`.
+`corpus/interesting` grew **9502 → 17870** inputs (+88 %). **No new crash artifacts** (the 6 in
+`corpus/crashes` are the pre-existing ones) and **no new divergence camp** — the round-trip oracle
+reports the single baselined java camp, and the materialized oracle over the same 17870 inputs is
+`0 divergence(s)` across all 15 drivers with `0/108` conformance mismatches against the C anchor. Its
+5463 warnings are all `incomplete_value`, which `oracle/policy.yaml:29` declares soft (partial-value
+materialization on a truncated stream is not aligned across languages in Phase 2).
+
+*The interesting part is the alarm that was not real.* The closing clustering pass came back **red**
+with two unexplained `TIMEOUT` camps (`py-pure` ×2 inputs, `cpp` ×1). They did not survive triage:
+replaying those exact inputs in isolation produced no timeout at all — not at the 5s budget, and not
+at 1s — and a second full-corpus pass produced two *different* phantom camps on two *different*
+inputs. Three passes, three disjoint sets of accused inputs, and at `TIMEOUT=30` the effect vanishes
+completely (`rc=0`, 1/1 camps). Swap was never involved (0 B configured). So these are sporadic
+multi-second scheduling stalls on a 6-core box, not hangs, and **the accused driver is an artifact of
+which input the stall lands on** — attribution to any corelib or to the generator would have been
+wrong in all three cases.
+
+**Decision: `nightly.yml`'s clustering step moves from `TIMEOUT=5` to `TIMEOUT=30`.** 30 is the floor
+`scripts/run.sh` already documents for its own default (`max(30, 0.25 × corpus size)`); the explicit
+`5` undercut it sixfold and made a non-blocking step report one to three false camps per run. A step
+that is routinely red for no reason stops meaning "something new broke" — the same reasoning that
+justifies `results/known-clusters.txt` and the quarantine tag. A genuine hang still fails it.
+
+*A second defect fell out of the same triage, and it is the more dangerous one.* `oracle/minimize.py`
+is contracted to shrink an input "while its camp partition holds", but a `TIMEOUT` camp is not a
+property of the bytes: the stall stops reproducing after the first deletion and the minimizer then
+drifts onto whatever camp the residue still lands in. Both phantom reproducers (2534 B, 8461 B)
+minimized to the *same* 1-byte input `06` — the representative of the long-known java camp. A
+minimizer that silently returns an artifact for a *different* bug than the one it was given is worse
+than one that fails; filed in [`TODO.md`](TODO.md) under engine & oracles.
+
 **Full box against the 08-11 family: eleven gates green, two drivers repaired for upstream API breaks, the encode gate re-based on the rewritten §5.1, F-0061 down to one input (2026-08-11).**
 Run against sofabgen `0.0.0-20260811122938-1a44ef44d5fe` (a main CI build, no release) with every
 corelib at its main tip and the spec at `dd2866b`. **All eleven gates green**, warm-up pass green
