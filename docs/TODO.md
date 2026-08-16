@@ -223,8 +223,20 @@ here:
       a conformance question. Worth measuring the whole-feed camps on it again and deciding whether
       the losing camp is a finding of its own. (Noted on generator#300.)
 
-- [ ] **The cluster baseline does not survive a roster change, and fails loudly in the wrong
-      direction.** Every signature in `results/known-clusters.txt` names every driver, so adding
+- [ ] **The cluster baseline still does not survive a roster change — only the report is honest now.**
+      **Done 2026-08-16 (the easy half):** `results/known-clusters.txt` carries a `# roster:` line naming the
+      drivers its signatures were recorded against, and `cluster.py` checks it before comparing camps. A
+      mismatch now says "roster changed since it was recorded (+ cpp-fixed)" and stops, instead of listing
+      every camp as NEW; a baseline without the stamp is refused. Verified by removing a name from the stamp
+      and watching the run refuse, and by removing the stamp entirely. *(One bug caught by that test and worth
+      recording: the first parser accepted wrapped roster lines and swallowed every ordinary comment containing
+      a comma, inventing driver names out of prose. The continuation support is gone — one line, no wrapping.)*
+      **Still open (the useful half):** compare camps modulo drivers absent from the baseline, so a driver
+      *joining* an existing camp does not invalidate the row and only a driver *moving* between camps does.
+      That is what makes the nightly useful on the day a driver is added, rather than merely honest about being
+      unusable. Roughly four hours, and it needs care not to mask real movement. Original note below.
+      ~~The cluster baseline does not survive a roster change, and fails loudly in the wrong
+      direction.~~ Every signature in `results/known-clusters.txt` names every driver, so adding
       `cpp-fixed` and `cpp-c-cpp-dyn` invalidated all ten entries at once: the 2026-08-05 nightly
       analysis reported **"9 NEW CAMPS, 0/9 accounted for"** when six were literally the old rows
       with the two new names inside them, and the other three were a single driver changing camp
