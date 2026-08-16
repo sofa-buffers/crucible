@@ -19,6 +19,29 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**F-0043 closed — the catalog has no open finding left (2026-08-16).**
+[generator#267](https://github.com/sofa-buffers/generator/issues/267) closed upstream on 2026-08-11
+with the fixlen-header hook F-0043's attribution addendum asked for: the five push/visitor corelibs
+now expose the length at the *word*, and the backends consume it, so a schema-bound violation is
+`INVALID` at the word instead of only once payload bytes arrive. **Verified here by deleting the
+carve-out, not by reading the upstream diff** — `engine/structured/sweep_malform_truncate.py` grows
+**43 → 96 vectors** (the exact growth that surfaced the finding on 2026-08-01) and comes back
+`0 divergence(s), 0 conformance failure(s)` across all 15 drivers, one soft hit on
+`incomplete_value`/`reject_class`. The scope caveat in the addendum — the wrapper-element rows whose
+camp differed, go and dart on the wrong side — is *discharged*: those are vectors of this same axis
+and they are green, so they never needed the separate analysis the note reserved for them.
+
+*The three F-0043 rows are deleted from `results/known-clusters.txt`, not relabelled*, per that
+file's own rule: a repaired camp must read as NEW if it returns, and this family has been caught
+regressing before (F-0054, twice). Independent corroboration that they are gone: none of the three
+appeared in any of four full clustering passes over the 17870-input corpus from the 08-11 72h run.
+
+**Tally: 99 entries — 97 resolved, 0 open, 2 by-design/withdrawn**, and `check-catalog.py` agrees
+with every write-up. The index's summary line had drifted (it read "91 entries — 87 resolved" while
+99 rows existed) — the checker asserts each row's state token against its NOTES but never the
+totals, so the one number nobody verifies is the one people read first. Refreshed here; making it
+checked is worth a follow-up.
+
 **Two sweep carve-outs outlived the findings that justified them; both lifted, both axes green
 (2026-08-16).**
 An inventory of every exception in the suite — `policy.yaml`'s soft axes and `allow` entries,

@@ -141,16 +141,15 @@ def malformations():
 # where §5.2 requires INVALID; documentation#15, adopted) — RESOLVED in the generator
 # (#222/#223/#224) + crucible#107.
 #
-# The carve-out nevertheless STAYS, for a different finding. Re-enabling it on
-# 2026-08-01 (corelibs 0.10.0 / sofabgen 0.22.0) grew the axis 43 -> 96 vectors and
-# surfaced **F-0043**: the schema-bound verdict is not established at the length/element
-# WORD but only once payload bytes arrive, so a message truncated exactly at that word is
-# INCOMPLETE on 5-7 impls where §5.2 requires INVALID (and python defers it to payload
-# completion for a blob at every offset). Reproducers in findings/F-0043. Re-enable when
-# that finding closes — the offsets are green for the reason the axis is about only then.
-STRUCTURAL = {"reserved_subtype_top", "reserved_subtype_nested",
-              "reserved_subtype_str_wrapper", "reserved_subtype_blob_wrapper",
-              "array_fixlen_bad_word"}
+# The carve-out then STAYED for a second finding. Re-enabling it on 2026-08-01 (corelibs
+# 0.10.0 / sofabgen 0.22.0) grew the axis 43 -> 96 vectors and surfaced **F-0043**: the
+# schema-bound verdict was not established at the length/element WORD but only once
+# payload bytes arrived, so a message truncated exactly at that word was INCOMPLETE on
+# 5-7 impls where §5.2 requires INVALID (and python deferred it to payload completion for
+# a blob at every offset). Fixed via the fixlen-header hook in the five push corelibs and
+# the backends consuming it (generator#267, closed 2026-08-11) — **carve-out removed
+# 2026-08-16**: all 96 vectors now agree, 0 conformance failures across 15 drivers, the
+# wrapper-element rows (the ones whose camp differed) included.
 
 
 def valid_probe():
@@ -168,11 +167,10 @@ def emit(out_dir):
         # R on all — INVALID dominates the trailing incomplete varint.
         vectors.append((f"{name}_trunc_tail.bin", body + TRUNC, "reject"))
         # broaden truncation (WP-09): truncate INTO the field at every offset from the
-        # malformation point. For a STRUCTURAL malformation (INVALID at the word) this is R
-        # on all; for a schema-bound one it is F-0043 (the verdict lands late) — carved out.
-        if name in STRUCTURAL:
-            for k in range(invalid_at, len(body)):
-                vectors.append((f"{name}_trunc_{k:03d}.bin", body[:k], "reject"))
+        # malformation point — R on all, whether the malformation is structural (INVALID at
+        # the word) or schema-bound (F-0043: the verdict used to land late, fixed upstream).
+        for k in range(invalid_at, len(body)):
+            vectors.append((f"{name}_trunc_{k:03d}.bin", body[:k], "reject"))
     # tail-alone controls: the truncation byte must not, by itself, force a reject
     v = valid_probe()
     vectors.append(("valid_complete.bin", v, "accept"))
