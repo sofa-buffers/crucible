@@ -20,6 +20,42 @@ hex        := *( HEXDIG HEXDIG )  ; lowercase, two digits per byte; empty allowe
 A trailing `\n` terminates every line. No other output goes to stdout (logs →
 stderr).
 
+### The reject classes, and which of them may legally appear
+
+CORELIB_PLAN §6.3 fixes the error taxonomy at **five** codes — `None`/`OK`,
+`BufferFull`, `InvalidArgument`, `InvalidMessage`, `LimitExceeded` — and settles what
+used to be an open question here by removing a category rather than refining it:
+
+> **A type-mismatched read is not an error at all.** […] There is therefore **no**
+> result code for "invalid usage": every remaining caller mistake is an out-of-range
+> argument (`InvalidArgument`) and every remaining malformed input is `InvalidMessage`.
+
+So the classes are not six equal alternatives to be compared. They fall into three
+groups, and the comparator treats them differently:
+
+| class | status | why |
+|---|---|---|
+| `invalid_msg` | **expected** | the `INVALID` outcome; what a decode reject is |
+| `limit_exceeded` | **expected** (limit mode) | §6.2.1's receiver cap, its own code and its own `L` verdict |
+| `argument`, `buffer_full`, `other` | **allowed but reported** | §6.3 permits language-specific conditions "as long as the baseline meanings are preserved", so these are legal — but on the **decode** path they mean a generated layer erred where the family cleanly rejects, which is the F-0003 / F-0008 shape. Surfaced as a warning, never silently equal |
+| `usage` | **FORBIDDEN** | §6.3 abolishes the category. A driver emitting it reports a corelib carrying a code the spec says cannot exist |
+
+**Why this is checked per line and not by comparing drivers.** The `reject_class` axis
+is hard, but it only fires on *disagreement*: if every implementation named the same
+forbidden class, the run would be unanimous and therefore green. A class that must never
+appear cannot be policed by agreement — it is checked on its own, per line, whatever the
+others said. This is the "cross-tier" case docs/TODO.md asked for, and the reason it
+needed its own mechanism.
+
+**Measured 2026-08-17, before the check was added:** across `corpus/interesting` (6000
+inputs), `crashes`, `regression`, `conformance`, `seeds`, `union` and `structured`, over
+all fifteen drivers, **every reject is `invalid_msg`**. Nothing emits `usage`, `other`,
+`argument` or `buffer_full` today, so the check starts green — it exists to keep it that
+way. One live source remains reachable in principle: `corelib-py` still defines
+`SofaStateError` (`types.py:155`) and `drivers/python/driver.py` maps it to `usage`. It
+never fires, because the generated §7.3 guards skip a mis-typed field before any read
+reaches it — which is exactly what §6.3 says should happen.
+
 ## The three verdicts (MESSAGE_SPEC §7)
 
 Decoding is three-valued and finish-less — a decoder reports exactly one of

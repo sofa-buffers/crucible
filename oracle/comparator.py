@@ -180,6 +180,24 @@ def run_driver(cmd, corpus, timeout=None):
     return padded[:n], fail_idx, stderr_tail, kind
 
 
+# Reject classes that CORELIB_PLAN §6.3 says cannot exist, mapped to why. A driver
+# naming one reports a corelib carrying a code the spec abolished — the finding is the
+# class itself, not a disagreement about it, which is why this is checked per line
+# rather than between drivers. oracle/canonical.md owns the full three-way split.
+FORBIDDEN_CLASSES = {
+    "usage": "CORELIB_PLAN §6.3 abolishes the category: a type-mismatched read is the "
+             "MESSAGE_SPEC §7.3 skip and not an error at all, so every remaining caller "
+             "mistake is `argument` and every remaining malformed input is `invalid_msg`. "
+             "There is no result code for 'invalid usage'.",
+}
+
+# Legal under §6.3's "language- or platform-specific conditions may extend or refine it",
+# so never a failure — but on the DECODE path each means a generated layer raised where
+# the family cleanly rejects, which is the F-0003 / F-0008 shape. Surfaced rather than
+# compared away.
+REPORTED_CLASSES = {"argument", "buffer_full", "other"}
+
+
 def parse(line):
     """(verdict, payload): ('A', hex), ('I', hex-or-empty), ('R', class), or
     ('L', class-or-empty).
@@ -247,7 +265,49 @@ def main():
             if stderr_tail:
                 print("        " + stderr_tail.replace("\n", "\n        "))
 
-    soft = 0
+    # --- the class check: what a driver may name, whatever the others named -------
+    #
+    # `reject_class` compares drivers, so it only fires on DISAGREEMENT. A class that
+    # must never appear cannot be policed that way: if every implementation named the
+    # same forbidden class the run would be unanimous, and unanimity is what green looks
+    # like everywhere else. So the class of each line is judged on its own.
+    #
+    # CORELIB_PLAN §6.3 fixes the taxonomy at five codes and abolishes one category
+    # outright — "there is no result code for 'invalid usage': every remaining caller
+    # mistake is an out-of-range argument and every remaining malformed input is
+    # InvalidMessage" — because a type-mismatched read is the §7.3 skip and not an error
+    # at all. `oracle/canonical.md` owns the resulting three-way split.
+    #
+    # Reported once per (driver, class) with a count and one example: over a fuzzed
+    # corpus the same class can be named thousands of times, and 2464 identical lines
+    # would bury the signal this is meant to raise.
+    seen_classes = {}   # (driver, class) -> [count, first_seed]
+    for i, (seed, _) in enumerate(corpus):
+        for nm, ln in drivers:
+            line = ln[i]
+            if line in (None, CRASH, TIMEOUT):
+                continue
+            v, p = parse(line)
+            if v not in ("R", "L") or not p:
+                continue
+            if p in FORBIDDEN_CLASSES or p in REPORTED_CLASSES:
+                e = seen_classes.setdefault((nm, p), [0, seed])
+                e[0] += 1
+
+    for (nm, cls), (count, first) in sorted(seen_classes.items()):
+        if cls in FORBIDDEN_CLASSES:
+            print(f"[DIVERGENCE] {first}  (reject_class_forbidden)\n"
+                  f"        {nm} reports class {cls!r} on {count} input(s) — "
+                  f"{FORBIDDEN_CLASSES[cls]}")
+            hard += count
+        else:
+            print(f"[warning] {first}  (reject_class_reported)\n"
+                  f"        {nm} reports class {cls!r} on {count} input(s) — legal under "
+                  "§6.3's language-specific allowance, but on the decode path it means a "
+                  "generated layer errored where the family cleanly rejects")
+
+    soft = sum(c for (nm, cls), (c, _) in seen_classes.items()
+               if cls in REPORTED_CLASSES)
     allowed = 0
     # Reference = first driver that did NOT crash/hang on a given input.
     for i, (seed, _) in enumerate(corpus):
