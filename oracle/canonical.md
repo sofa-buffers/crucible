@@ -54,7 +54,9 @@ all fifteen drivers, **every reject is `invalid_msg`**. Nothing emits `usage`, `
 way. One live source remains reachable in principle: `corelib-py` still defines
 `SofaStateError` (`types.py:155`) and `drivers/python/driver.py` maps it to `usage`. It
 never fires, because the generated §7.3 guards skip a mis-typed field before any read
-reaches it — which is exactly what §6.3 says should happen.
+reaches it — which is exactly what §6.3 says should happen, and why no run can surface it.
+Filed as [corelib-py#96](https://github.com/sofa-buffers/corelib-py/issues/96) (2026-08-17);
+until it closes, this check is what would notice the class appearing.
 
 ## The three verdicts (MESSAGE_SPEC §7)
 

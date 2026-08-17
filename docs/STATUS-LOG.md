@@ -45,13 +45,18 @@ drivers, **every reject is `invalid_msg`**. The check starts green and exists to
 so. Proven able to fail with fake drivers rather than argued: unanimous `usage` exits 1,
 mixed `usage` exits 1, `other` warns at exit 0, `invalid_msg` is silent.
 
-*One live source, deliberately not filed upstream.* `corelib-py` still defines
+*One live source — measured, then filed.* `corelib-py` still defines
 `SofaStateError` ("API misuse, e.g. reading a value of the wrong type for the current
 field") and `drivers/python/driver.py` maps it to `usage` — a code for precisely the case
 §6.3 says is not an error at all. It never fires: the generated §7.3 guards skip a
-mis-typed field before any read reaches it, which is what the spec says should happen. No
-reproducer, no observable behaviour, so no issue — a latent API surface that can now no
-longer appear unnoticed.
+mis-typed field before any read reaches it, which is what the spec says should happen. So
+the fuzzer cannot reach the path at all — this came from reading the clause, not from a
+failing run, and the first move was to build the reproducer the repo's own rule demands: 4
+wire bytes, identical on both engines. **corelib-py#96** followed, splitting the seven throw
+sites into three encoder ones that rename to `SofaRangeError` (already §6.3's
+`InvalidArgument`) and four decoder ones that must not raise at all; `_take_scalar` guards
+both conditions in one place and has to be split. corelib-cpp/-java/-cs removed the code
+years-equivalent ago and skip per §7.3, so py is the last port carrying it.
 
 **The pass-through axis, and what a one-port feature is worth testing (2026-08-17).**
 The §5.1 permission found in the spec re-check below is now gated. The decision worth
