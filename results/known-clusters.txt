@@ -1,5 +1,13 @@
 # Accounted-for cluster camps — the baseline `oracle/cluster.py --baseline` diffs against.
 #
+# roster: c,go,rust-std,rust-nostd,cpp,cpp-fixed,cpp-c-cpp,cpp-c-cpp-dyn,py-cython,py-pure,java,typescript,csharp,zig,dart
+#
+# ^ The drivers these signatures were recorded against, and the FIRST thing cluster.py
+# checks. Every row below names every driver, so one added driver invalidates all of them
+# at once; without this line the run would report each camp as NEW, which is true of the
+# file and false of the family. With it, the run says "roster changed, re-record" instead.
+# It does not make the baseline survive a roster change — re-recording is still the fix.
+#
 # A camp belongs here ONLY once it is explained: a catalogued finding, a legal
 # divergence, or a benign soft axis. Anything else is reported as NEW and the run
 # exits non-zero. That is deliberate — the nightly has clustered and uploaded its

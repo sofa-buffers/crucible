@@ -19,6 +19,33 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The cluster baseline now says "roster changed" instead of inventing nine findings (2026-08-16,
+last).**
+Every signature in `results/known-clusters.txt` names every driver, so adding one invalidates all of
+them at once. On 2026-08-05 that produced **"9 NEW CAMPS, 0/9 accounted for"** — six were the old
+rows with two new names inside them, three were a driver changing camp for a catalogued reason, and
+zero were new root causes. Maximum alarm from the mechanism that exists *because* nine genuinely
+unexplained camps once accumulated unread; a cry-wolf failure on the one check whose whole job is to
+be believed.
+
+**Decision: record the roster, and check it before comparing anything.** The baseline carries a
+`# roster:` line naming the drivers its signatures were recorded against. When that disagrees with
+the drivers running, the run reports the difference and stops rather than listing every camp as new.
+A baseline with no stamp is refused for the same reason: without it there is no way to tell which of
+the two situations you are in.
+
+*This does not make the baseline survive a roster change — nothing here does, and the file still has
+to be re-recorded.* What changed is that the run now states the truth about itself. The useful half —
+comparing camps modulo drivers absent from the baseline, so a driver *joining* a camp does not
+invalidate the row and only a driver *moving* does — is in [`TODO.md`](TODO.md) at roughly four
+hours, because it needs care not to mask real movement.
+
+*The test found a bug in the test's own subject, which is the point of writing tests before
+believing code.* The first parser accepted a wrapped roster line and swallowed every ordinary
+comment containing a comma, inventing driver names out of prose — the run then reported a roster
+change against a roster made of sentence fragments. Continuation support is gone: one line, no
+wrapping.
+
 **`results/FINDINGS.md` is generated from the write-ups now, and the checker that policed it shrank
 by a quarter (2026-08-16, last).**
 The index was maintained by hand beside the write-ups and carried **no fact of its own**: the id is

@@ -79,18 +79,34 @@ def sig_text(key):
 
 
 def load_baseline(path):
-    """Accounted-for camps, one signature per line; `#` starts a comment.
+    """(camps, roster) — accounted-for signatures, and the drivers they were recorded
+    against.
 
     A camp is in here only once it is *explained* — a catalogued finding, a legal
     divergence, or a benign soft axis. Anything else is reported as NEW and exits
-    non-zero, which is what turns an unread nightly artifact into a visible signal."""
-    out = {}
+    non-zero, which is what turns an unread nightly artifact into a visible signal.
+
+    The roster comes from a single `# roster: a,b,c` line — one line, no continuation.
+    An earlier version accepted wrapped lines and swallowed every ordinary comment that
+    happened to contain a comma, inventing driver names out of prose; the first test of it
+    caught that. Every signature names EVERY driver,
+    so one added driver invalidates every row at once — on 2026-08-05 that produced
+    "9 NEW CAMPS, 0/9 accounted for" when six were the old rows with two new names inside
+    them and the other three were a driver changing camp for a catalogued reason. Zero new
+    root causes, maximum alarm, on the mechanism that exists *because* nine unexplained
+    camps once accumulated unread. Recording the roster does not make the baseline survive
+    a roster change — nothing here does — but it lets the run say which of the two
+    situations it is in."""
+    out, roster = {}, None
     with open(path) as fh:
         for raw in fh:
+            if roster is None and raw.lstrip().startswith("# roster:"):
+                roster = [n.strip() for n in raw.split(":", 1)[1].split(",") if n.strip()]
+                continue
             line = raw.split("#")[0].strip()
             if line:
                 out[line] = raw.split("#", 1)[1].strip() if "#" in raw else ""
-    return out
+    return out, roster
 
 
 def main():
@@ -128,7 +144,7 @@ def main():
             c["min"] = (len(data), seed, groups)
 
     ranked = sorted(clusters.items(), key=lambda kv: -kv[1]["count"])
-    baseline = load_baseline(args.baseline) if args.baseline else None
+    baseline, base_roster = load_baseline(args.baseline) if args.baseline else (None, None)
     total = sum(c["count"] for _, c in ranked)
     agree = len(corpus) - total
     print(f"{len(corpus)} inputs: {agree} agree, {total} diverge "
@@ -152,6 +168,29 @@ def main():
 
     if baseline is None:
         return 0
+
+    # Before comparing camps at all: were these signatures recorded against THESE
+    # drivers? If not, no row can match, and reporting every camp as new would be a
+    # true statement about the file and a false one about the family. Say which it is.
+    running = sorted(name for name, _ in drivers)
+    if base_roster is None:
+        print(f"\nbaseline: cannot be read against this run — {args.baseline} carries no "
+              "`# roster: a,b,c` line, so there is no way to tell whether its signatures "
+              "were recorded against the drivers running now. Add one and re-record.",
+              file=sys.stderr)
+        return 1
+    if sorted(base_roster) != running:
+        added = [n for n in running if n not in base_roster]
+        gone = [n for n in base_roster if n not in running]
+        moved = ", ".join(filter(None, [
+            ("+ " + ", ".join(added)) if added else "",
+            ("− " + ", ".join(gone)) if gone else ""]))
+        print(f"\nbaseline: roster changed since it was recorded ({moved}).\n"
+              "Every row names every driver, so no row can match and every camp below "
+              "would read as new — that is a statement about the file, not about the\n"
+              "family. Re-record the baseline against the current roster before reading "
+              "this result as findings.", file=sys.stderr)
+        return 1
 
     # Every camp is either accounted for or new. "Accounted for" means a catalogued
     # finding, a legal divergence or a benign soft axis — see results/known-clusters.txt.
