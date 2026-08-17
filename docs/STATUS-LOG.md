@@ -19,6 +19,49 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Every open spec question re-read at the tip; three were stale and one clause is new
+(2026-08-17).** Both spec documents were read in full at documentation `main@dd2866b`
+(`MESSAGE_SPEC.md` at `4a517b5`, `CORELIB_PLAN.md` at `e34c78d`) rather than trusted from
+notes, and the spec repo has **zero** open issues — every question Crucible ever filed is
+answered. Four results, in the order they matter:
+
+- **A finding was nearly filed against conformant behaviour.** Measuring WP-08(c) (an
+  explicit `[]` against a non-empty declared array `default`) produced what looked like a
+  defect: an empty wrapper frame at `def_arr` decoded to the declared `[7, 9]` on all ten
+  heap drivers instead of `[]`. It is **MESSAGE_SPEC §7.3** — the field is a *compact*
+  numeric array, so a `SEQ_BEG` frame is a wire-type mismatch, which MUST be skipped, MUST
+  NOT be `INVALID`, and MUST NOT be decoded into the declared field. The explicit-empty
+  spelling for that field is **§3's compact `M = 0`**, which every driver does preserve.
+  Two clauses, both normative, both missed on the first pass. The vectors are committed and
+  the two mis-typed ones kept deliberately, since a §2-shaped reading expects `[]` there.
+- **`policy.yaml` carried a spec hole that had been closed.** Its `limit_exceeded` note read
+  "not yet in MESSAGE_SPEC — SPEC HOLE to file upstream". **CORELIB_PLAN §6.2.1**
+  ("Receiver-side technical limits", normative) names the three `max_dyn_*` caps, makes
+  exceeding one a policy rejection distinct from `INVALID`, forbids reporting it as
+  `InvalidMessage`, gives it the error code `LimitExceeded` (§6.3), and states that
+  conformance testing compares implementations configured *identically* — a description of
+  what limit mode already does. Two further citations in the same file were stale in the
+  same direction: the lazy-hold-back clause is in `main`, not on the POC branch, and the
+  embedded-NUL note was adopted — deliberately as **non-normative** interop text, which is
+  as far as F-0018's carve-out will ever be blessed.
+- **The two "unspecified streaming contracts" had been answered twelve days earlier**
+  (documentation#36/#37, closed 2026-08-05), and neither answer was a compromise. Chunk
+  lifetime went **against borrowing** (§6: a fed chunk is borrowed only for the duration of
+  `feed`), which corelib-zig had already complied with via generator#296. The minimum caller
+  buffer became a **declared constant** rather than a fixed floor: §5.1 explicitly *retires*
+  the one-byte rule and requires `MIN_OUTPUT_BUFFER` (1, or the largest reserved run, capped
+  at 20). Crucible's encode gate had already tracked that rewrite on 2026-08-11; the TODO
+  entry describing the questions had not.
+- **One clause is genuinely new and untested.** §5.1 gained *"Pass-through of a divisible
+  run"* on 2026-08-08 — an encoder MAY hand a `string`/`blob` payload straight to the sink.
+  The term appears **nowhere** in this repo. It is wire-neutral, so both oracles are
+  structurally blind to it; what is assertable is the borrow lifetime (the encode-side twin
+  of `SOFAB_CHUNK_SCRUB`) and its mutual exclusion with taking the buffer. Filed in
+  `TODO.md`, first step static: find out which backends implement the permission at all.
+  Related: §6.3 now states there is **no** result code for "invalid usage", while
+  `oracle/canonical.md` still admits `usage` and `other` reject classes — states the spec
+  says cannot occur, and a family-wide one would be unanimous and therefore green.
+
 **Two of the three soft axes were legacy, and the union pass had never been promoted — both
 measured, then fixed (2026-08-16, last).**
 The deliberate leniencies were reviewed the same way the carve-outs were: by measuring whether the

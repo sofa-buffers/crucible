@@ -37,7 +37,28 @@ here:
   `union` descriptor node + a `materialize.py` union reference (~12 walkers across 10 langs). Part A
   (union cross-encode) is green and gated.
 - [x] **WP-05 completion** — DONE 2026-07-27 (see the dated entry above).
-- [ ] **WP-08(c)** — the explicit `[]` that overrides a **non-empty** declared array `default`: still
+- [x] **WP-08(c) — DONE 2026-08-17: measured, and the family is correct in every cell.** The
+  vectors this item asked for now exist — `def_arr` (`array of u32`, `default: [7, 9]`) in
+  `schema/probe-dyn.sofab.yaml`, five isolates in `corpus/limits/default/`, swept by
+  `run_dim default` in `scripts/run-limits.sh`. **0 divergences over the 10 heap drivers.**
+  What the item got wrong is its framing: it called this "the only §2 case with no vector", but
+  the *compact* array form is what carries an explicit empty array here, not the wrapper frame —
+  **§3 (~line 236) states that a length of `M = 0` is the explicit empty array**, and every
+  driver keeps it rather than falling back to `[7, 9]`. Measured cells: absent → `[7,9]`;
+  `1b 00` (compact, `M=0`) → `[]`, preserved; `1b 02 05 06` → `[5,6]`; `1b 02 07 09` (the
+  declared default) → omitted on re-encode.
+  **Two further vectors turned out to be a §7.3 case, not a §2 one**, and were nearly filed as a
+  finding before the clause was read: a `SEQ_BEG` wrapper at a *compact numeric* array carries a
+  wire type the declared type does not map to, and **§7.3 says such a field MUST be skipped** — a
+  decoder MUST NOT report `INVALID` and MUST NOT decode the payload into the declared field. All
+  ten drivers skip it and keep the default, i.e. they are conformant. Empty wrappers at the
+  *wrapper* arrays (`string_array`/`blob_array`/`struct_array`, main schema, 15 drivers) normalize
+  away correctly, as §2's empty-frame table requires.
+  **What is still untested** (a test gap, not a spec question — the behaviour is fully specified):
+  a **wrapper** array carrying a non-empty declared `default`. There the empty frame is the
+  right wire type, §7.3 does not apply, and §2's table makes it the explicit `[]`. No schema
+  declares that combination. Original note below.
+  ~~the explicit `[]` that overrides a **non-empty** declared array `default`~~: still
   the only §2 case with no vector, and it needs a schema field carrying `default:` (any array now has
   an empty value — the 2026-07-27 "fixed-count has none" reasoning died with documentation#31). Add a
   defaulted array to `schema/probe-dyn.sofab.yaml` (heap roster), vectors = {absent → declared default;
@@ -261,7 +282,31 @@ here:
       chunks", "one byte at a time"), which is why "conformant" spans a 16x range there. What
       follows is kept as the reasoning.
 
-- [ ] **Two unspecified streaming contracts, both found by wiring the axes (2026-08-04).** Neither
+- [x] **BOTH ANSWERED — closed upstream 2026-08-05, verified against the spec 2026-08-17.**
+      This item outlived its questions by twelve days; documentation#36 and #37 are closed and
+      the spec repo has **zero** open issues. Neither answer was the compromise this item
+      expected, and both went against an implementation:
+      - **Chunk lifetime → borrowing is out.** CORELIB_PLAN §6 now carries a normative
+        *Chunk lifetime* bullet: a fed chunk is borrowed **only for the duration of the `feed`
+        call**, after which the caller may reuse or free it and the decoded message MUST NOT be
+        affected; a decoder handing a `string`/`blob` a slice into a chunk has to copy out
+        before returning. Only the one-shot `decode(buffer)` is exempt, and a port offering
+        that says so (§9.6). The stated reason is exactly the one this item gave — otherwise
+        the same message under a different chunking places different obligations on the same
+        calling code. corelib-zig's borrow is therefore non-conformant, and was already removed
+        by generator#296 (2026-08-04), so nothing is outstanding.
+      - **Minimum caller buffer → a declared constant, not a fixed floor.** §5.1 no longer
+        fixes one byte for everyone; it **retired that rule explicitly** (`e6c96d5`
+        2026-08-07, refined by `5d19b30`/`af50742`). Only a **divisible run** (a string/blob
+        payload) MUST be splittable across a flush; **atomic units** MAY be required to land
+        contiguously. Every corelib MUST expose a documented `MIN_OUTPUT_BUFFER` — `1` if it
+        splits atomic units, else the largest run it reserves, floor 10, **capped at 20** — and
+        every buffer at or above it MUST work and produce byte-identical output. So corelib-ts
+        was never the outlier this item took it for. Crucible already tracks the rewritten
+        clause (`oracle/encode_invariance.py:79`, documentation#46/#48, 2026-08-11); what
+        remains of it is the one-size-sweep item in the CI section, which is coverage, not spec.
+      Original note below.
+      ~~Two unspecified streaming contracts, both found by wiring the axes (2026-08-04).~~ Neither
       is a wire question, so the differential oracle is structurally blind to both — they are
       differences in what the *API* promises, and they only became visible once drivers started
       driving the streaming surfaces. All fourteen drivers are now wired, so the camps below are
@@ -359,7 +404,13 @@ here:
       F-0043 at the declared-width bound, whose partition moved when generator#279 pushed `cpp`
       from the `I` camp into the reject camp. Proven with three controls, not a new class.
 
-- [ ] **Chunked re-feed in the drivers (`SOFAB_SPLIT`, `SOFAB_CHUNK`, `SOFAB_CHUNK_SCRUB`)** —
+- [x] **DONE — every driver that can, does.** The headline below ("no driver implements them yet")
+      described 2026-08-04 and was never corrected: `scripts/run-chunked.sh` runs **14 drivers**
+      today. `go` is the one absence and a declared one — corelib-go has no resumable decoder, so
+      `drivers/go/meta` says `chunked_decode=none` and the gate's participant list is derived from
+      that rather than typed. Since 2026-08-16 the gate also asserts each driver's stderr
+      announcement, so honouring the variables is proven per run instead of assumed.
+      ~~Chunked re-feed in the drivers (`SOFAB_SPLIT`, `SOFAB_CHUNK`, `SOFAB_CHUNK_SCRUB`)~~ —
       the oracle and the gate exist and now implement **all three cuts** (`oracle/chunk_invariance.py`,
       `scripts/run-chunked.sh`, wired into `replay.yml`, contract section written); **no
       driver implements them yet**, so the gate skips loudly rather than passing vacuously.
@@ -384,7 +435,13 @@ here:
       wraps the chunks in a reader) and **go has none at all** (corelib-go has no resumable
       push decoder), so go must be declared absent rather than silently skipped.
 
-- [ ] **The streaming-encode axis (`SOFAB_ENCODE`, `SOFAB_FLUSH`)** — **oracle done 2026-08-04**
+- [x] **DONE 2026-08-16 — the whole roster is on this axis.** The note below ("every driver
+      re-encodes with exactly one call today") described 2026-08-04. All **15** drivers now run every
+      surface their `meta` declares; `go` was the last one plumbed, and needed no corelib change —
+      its backend had all three surfaces and even exported the `MIN_OUTPUT_BUFFER` constant the gate
+      reads. What remains of this axis is filed separately: a port with a high floor gets a one-size
+      flush sweep. Original note below.
+      ~~The streaming-encode axis (`SOFAB_ENCODE`, `SOFAB_FLUSH`)~~ — **oracle done 2026-08-04**
       (`oracle/encode_invariance.py`, `scripts/run-encode.sh`, wired into `replay.yml`, skipping
       loudly on an empty `SOFAB_ENCODE_DRIVERS`); the per-driver plumbing is what remains. The
       encode-side twin,
@@ -461,7 +518,7 @@ here:
 
 
 
-- [ ] **Finer reject-class taxonomy** (`oracle/canonical.md` + drivers + comparator + `policy.yaml`).
+- [ ] **Finer reject-class taxonomy — and the spec has since decided most of it.**
       Investigated 2026-07-17: the corelibs collapse *all* malformed-wire reasons into one
       `InvalidMessage` (spec §6.3), so a *semantic* taxonomy (truncated / bad-varint / depth /
       …) is **not** available from return codes. The achievable, valuable version is a
@@ -471,6 +528,45 @@ here:
       where the family cleanly rejects is a codegen smell (the F-0003/F-0008 class) — and keep
       within-tier differences soft. Also de-noises the fuzzer clusters (a big share of residual
       "divergences" are reject_class-only, verdict-agreeing).
+
+      **Re-checked against the spec 2026-08-17 (CORELIB_PLAN §6.3, main@dd2866b), and the
+      target moved.** The clause now fixes the taxonomy at **five** codes — `None/OK`,
+      `BufferFull`, `InvalidArgument`, `InvalidMessage`, `LimitExceeded` — and closes the tier
+      question outright: *"A type-mismatched read is not an error at all"* (the §7.3 skip), and
+      *"there is therefore **no** result code for 'invalid usage': every remaining caller
+      mistake is an out-of-range argument (`InvalidArgument`) and every remaining malformed
+      input is `InvalidMessage`."* `oracle/canonical.md:16` still admits `usage` and `other`.
+      Those name states the spec says **cannot occur**, so this is no longer "invent a
+      taxonomy" — it is an assertion: **a driver emitting `usage` or `other` is reporting a
+      conformance defect**, and the class should fail rather than be compared. `reject_class`
+      went hard 2026-08-16 and fires zero times, but that measures agreement, not this: a
+      family-wide `usage` would be unanimous and green. **Work:** decide what each driver maps
+      to `usage`/`other` today (some may be dead branches), then either fail on them or delete
+      them from the grammar; keep `limit_exceeded` (§6.2.1 gives it its own code) and
+      `buffer_full` (§6.3 keeps it, encode-side).
+
+- [ ] **The encoder's pass-through path is untested, and Crucible has never heard of it.**
+      CORELIB_PLAN §5.1 gained *"Pass-through of a divisible run (normative, optional)"* on
+      2026-08-08 (`27ad9a0`, `c5e318b`, `f0974df`, `e34c78d`) — after Crucible's last spec
+      round, and the term appears **nowhere in this repo** (grepped 2026-08-17). An encoder MAY
+      hand a `string`/`blob` payload to the sink directly instead of copying it through the
+      output buffer, if the caller granted it at installation (off by default), buffered bytes
+      are drained first, the run is divisible, and its wire bytes already exist contiguously as
+      caller memory. A port MAY always copy and stay conformant.
+      **Why the existing gates are structurally blind to it:** the output is byte-identical
+      either way, so neither the round-trip oracle nor `encode_invariance.py` can see it — the
+      same shape as the chunk-lifetime question, which is exactly the class that produced
+      F-0058/F-0060. Two rules *are* assertable:
+      - **borrow lifetime** — passed-through memory is borrowed only for the duration of the
+        sink call and MUST NOT be retained. That is the encode-side twin of
+        `SOFAB_CHUNK_SCRUB`: grant pass-through, have the sink copy, scrub the source buffer
+        after every sink return, and require the accumulated output to be unchanged.
+      - **mutual exclusion** — a sink granted pass-through MUST NOT call the buffer-set
+        operation, and a port SHOULD reject such a call as it rejects an undersized buffer.
+      **First step is cheap and static:** find out which backends implement the permission at
+      all (a `meta` key beside `min_output_buffer`, the way `encode_surfaces` records the
+      three surfaces), because a family where nobody implements it needs no axis yet — but
+      nobody has checked, and "off by default" is precisely how an untested path stays quiet.
 - [x] **Element-access / materialized-value probe** — **DONE 2026-07-21, all 12 drivers.**
       A second canonical form (`oracle/materialized.md`): `SOFAB_MATERIALIZE=1` makes a driver
       emit a full walk of the **decoded value** (every field + array element, floats as raw bits,

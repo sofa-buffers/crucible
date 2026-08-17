@@ -25,3 +25,9 @@ messages:
       dyn_arr: { id: 0, type: array, items: { type: u32 } }
       dyn_str: { id: 1, type: string }
       dyn_blb: { id: 2, type: blob }
+      # A bounded array carrying a NON-EMPTY declared default — the one §2 case
+      # Crucible could not reach, because no schema declared `default:` at all.
+      # MESSAGE_SPEC §2's empty-frame table: absent means this default, and an empty
+      # wrapper on the wire means the EMPTY array. That distinction only exists where
+      # the default is non-empty, so it needs a field like this one to be testable.
+      def_arr: { id: 3, type: array, items: { type: u32 }, default: [7, 9] }

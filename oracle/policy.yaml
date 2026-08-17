@@ -94,10 +94,14 @@ allow:
       sequences nested deeper than its bound, where full-depth profiles omit them.
       Divergent bytes, same value — legal per the constrained-profile allowance.
     spec: >-
-      CORELIB_PLAN §6 "How deep the hold-back reaches (normative)" (POC
-      omit-all-default-sequences branch) — the FIXLEN_MAX/ARRAY_MAX-style
-      constrained-profile allowance; MESSAGE_SPEC §2 requires every decoder to
-      accept and normalize the resulting frames.
+      CORELIB_PLAN §6 "How deep the hold-back reaches (normative)" — the
+      FIXLEN_MAX/ARRAY_MAX-style constrained-profile allowance; MESSAGE_SPEC §2
+      requires every decoder to accept and normalize the resulting frames. The
+      clause is in documentation `main` (verified 2026-08-17 at dd2866b); it was
+      cited here as living on the POC omit-all-default-sequences branch, which it
+      no longer does. Unchanged in substance: an implementation that can allocate
+      MUST hold back to full MAX_DEPTH, a heap-free profile MAY bound the run and
+      MUST document the bound.
 
   - id: c-embedded-nul-string-projection
     applies_to: [findings/F-0018-c-embedded-nul-string-truncation/embedded_nul.bin]  # probe, nested.str = "A\0B" (41 00 42)
@@ -112,9 +116,17 @@ allow:
       is inherent to the C-string convenience, not a decode loss. The lossless path is the
       byte/length (visitor) API. By design, not a bug — see findings/F-0018.
     spec: >-
-      MESSAGE_SPEC §8 — preservation of an embedded U+0000 across decode/encode is
-      implementation-defined for a NUL-terminated-string (constrained/C) profile. Proposed
-      one-line normative note; until adopted, treated as the §6.4-style profile allowance.
+      MESSAGE_SPEC §8 + CORELIB_PLAN §6.4 "Embedded U+0000 is allowed" — re-read
+      2026-08-17 at documentation main@dd2866b. The note this entry once proposed was
+      adopted, but deliberately as a NON-NORMATIVE interop note: NUL is valid UTF-8 and a
+      validator MUST NOT reject it, the corelib API is length-delimited, and
+      "NUL-terminated consumers truncate at the first NUL — producers targeting such
+      consumers SHOULD avoid embedded NUL or use blob". So the projection is acknowledged
+      as a consumer property with the burden placed on the producer, and it is not going
+      to become a normative allowance. Note also that §8's "MUST NOT mutate, truncate, or
+      empty" is scoped to an INVALID-UTF-8 string; `A\0B` is valid UTF-8, so that
+      prohibition does not reach this case. The entry therefore stands as a by-design
+      divergence, not as a pending spec question.
 
 # PLAN §8 is now RESOLVED. The open question was: is decoding of truncated input
 # specified (one correct outcome) or undefined? MESSAGE_SPEC §7 (finish-less
@@ -131,7 +143,13 @@ notes:
     max_dyn_blob_len, generator#102) on a schema-UNBOUNDED field. This is a POLICY
     rejection, a category distinct from INVALID: the bytes are well-formed and decode
     under a looser/unset cap. Surfaced as the `L` verdict (limit mode only). SPEC
-    BASIS: analogue of the MAX_DEPTH stack bound (MESSAGE_SPEC §5.4); the heap-limit
-    note is not yet in MESSAGE_SPEC — SPEC HOLE to file upstream (tracked via
-    generator#102). Differing *configured* caps across impls are NOT a divergence;
-    limit mode avoids that by generating the whole roster with identical caps.
+    BASIS: NORMATIVE since CORELIB_PLAN §6.2.1 "Receiver-side technical limits" —
+    verified 2026-08-17 at documentation main@dd2866b. It names these three caps,
+    calls them configuration rather than schema, states that exceeding one MUST NOT be
+    reported as InvalidMessage nor folded into the INVALID outcome, forbids applying
+    them to a field the schema already bounds, and gives the condition its own error
+    code `LimitExceeded` (§6.3). The clause also settles the roster question directly:
+    two receivers with DIFFERENT limits reaching different outcomes is not an interop
+    failure, and conformance testing therefore compares implementations configured
+    identically — which is what limit mode does. This note previously read "SPEC HOLE
+    to file upstream"; the hole is closed.
