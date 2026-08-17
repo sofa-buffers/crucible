@@ -78,6 +78,61 @@ def sig_text(key):
         f"{verdict}:{','.join(sorted(names))}" for names, verdict in key))
 
 
+def parse_sig(text):
+    """A signature's text form back into {(verdict, frozenset(drivers))}."""
+    camps = set()
+    for part in text.split(" | "):
+        verdict, _, names = part.partition(":")
+        camps.add((verdict.strip(), frozenset(n.strip() for n in names.split(",") if n.strip())))
+    return frozenset(camps)
+
+
+def project(partition, keep):
+    """The partition as it would look if only `keep` had been running.
+
+    Drivers outside `keep` are dropped and camps that become empty disappear. This is
+    what lets a baseline written before a driver existed still match: the drivers it
+    knows about are still split the same way."""
+    out = set()
+    for verdict, names in partition:
+        common = frozenset(names) & keep
+        if common:
+            out.add((verdict, common))
+    return frozenset(out)
+
+
+def camp_matches(camp, base_sig):
+    """Does this camp match a baseline row, ignoring drivers the row never named?
+
+    Compared on the intersection of the two driver sets, so neither an added driver nor
+    a retired one invalidates the row — while a driver that CHANGED CAMP still does,
+    because it is inside both sets and lands on the other side of the split.
+
+    Returns None on no match, otherwise the drivers the row did not know about. An empty
+    intersection is not a match: a camp made only of drivers this row never heard of is
+    genuinely new information (a fresh driver alone in a camp is exactly the divergence
+    worth seeing), and must not be swallowed by a row it has nothing in common with."""
+    base = parse_sig(base_sig)
+    base_drivers = frozenset().union(*(names for _, names in base))
+    camp_drivers = frozenset().union(*(frozenset(names) for names, _ in camp))
+    common = base_drivers & camp_drivers
+    if not common:
+        return None
+    cur = project([(v, frozenset(n)) for n, v in camp], common)
+    if cur != project(base, common):
+        return None
+    # The projection alone is too generous, and the first test of it said so: a driver
+    # this row never heard of, sitting ALONE in a camp, projects to nothing and the row
+    # matches — reporting "it joined an existing camp" about a driver that agrees with
+    # nobody. That is the divergence most worth seeing on the day a driver is added.
+    # So an unknown driver counts as accounted for only where it shares a camp with a
+    # driver the row does name.
+    for names, _ in camp:
+        if not (frozenset(names) & base_drivers):
+            return None
+    return camp_drivers - base_drivers
+
+
 def load_baseline(path):
     """(camps, roster) — accounted-for signatures, and the drivers they were recorded
     against.
@@ -86,17 +141,18 @@ def load_baseline(path):
     divergence, or a benign soft axis. Anything else is reported as NEW and exits
     non-zero, which is what turns an unread nightly artifact into a visible signal.
 
-    The roster comes from a single `# roster: a,b,c` line — one line, no continuation.
-    An earlier version accepted wrapped lines and swallowed every ordinary comment that
-    happened to contain a comma, inventing driver names out of prose; the first test of it
-    caught that. Every signature names EVERY driver,
-    so one added driver invalidates every row at once — on 2026-08-05 that produced
-    "9 NEW CAMPS, 0/9 accounted for" when six were the old rows with two new names inside
-    them and the other three were a driver changing camp for a catalogued reason. Zero new
-    root causes, maximum alarm, on the mechanism that exists *because* nine unexplained
-    camps once accumulated unread. Recording the roster does not make the baseline survive
-    a roster change — nothing here does — but it lets the run say which of the two
-    situations it is in."""
+    Every signature names every driver it knew about, which used to mean one added
+    driver invalidated every row at once: on 2026-08-05 that read as "9 NEW CAMPS, 0/9
+    accounted for" with zero new root causes. Rows are therefore matched **modulo the
+    drivers a row does not name** (see `camp_matches`), so adding a driver no longer
+    invalidates anything — only a driver *moving* between camps does.
+
+    The `# roster: a,b,c` line records which drivers the file was written against. It is
+    informational now rather than a gate: matching no longer depends on it, but a run
+    whose roster differs says so, because "these signatures predate two of your drivers"
+    is worth knowing when reading the result. One line, no continuation — an earlier
+    version accepted wrapped lines and swallowed every ordinary comment containing a
+    comma, inventing driver names out of prose."""
     out, roster = {}, None
     with open(path) as fh:
         for raw in fh:
@@ -169,35 +225,38 @@ def main():
     if baseline is None:
         return 0
 
-    # Before comparing camps at all: were these signatures recorded against THESE
-    # drivers? If not, no row can match, and reporting every camp as new would be a
-    # true statement about the file and a false one about the family. Say which it is.
+    # The roster stamp is informational now: matching tolerates a roster change on its
+    # own (camp_matches compares on the drivers a row actually names), so a difference
+    # here is context for the reader rather than a reason to stop.
     running = sorted(name for name, _ in drivers)
-    if base_roster is None:
-        print(f"\nbaseline: cannot be read against this run — {args.baseline} carries no "
-              "`# roster: a,b,c` line, so there is no way to tell whether its signatures "
-              "were recorded against the drivers running now. Add one and re-record.",
-              file=sys.stderr)
-        return 1
-    if sorted(base_roster) != running:
+    if base_roster is not None and sorted(base_roster) != running:
         added = [n for n in running if n not in base_roster]
         gone = [n for n in base_roster if n not in running]
-        moved = ", ".join(filter(None, [
-            ("+ " + ", ".join(added)) if added else "",
-            ("− " + ", ".join(gone)) if gone else ""]))
-        print(f"\nbaseline: roster changed since it was recorded ({moved}).\n"
-              "Every row names every driver, so no row can match and every camp below "
-              "would read as new — that is a statement about the file, not about the\n"
-              "family. Re-record the baseline against the current roster before reading "
-              "this result as findings.", file=sys.stderr)
-        return 1
+        note = ", ".join(filter(None, [("+ " + ", ".join(added)) if added else "",
+                                       ("− " + ", ".join(gone)) if gone else ""]))
+        print(f"\nnote: these signatures were recorded against a different roster ({note}). "
+              "Rows are matched on the drivers they name, so this does not invalidate them "
+              "— but where an added driver landed is called out per camp below.")
 
     # Every camp is either accounted for or new. "Accounted for" means a catalogued
     # finding, a legal divergence or a benign soft axis — see results/known-clusters.txt.
-    new_camps = [(n, key, c) for n, (key, c) in enumerate(ranked, 1)
-                 if sig_text(key) not in baseline]
+    new_camps, joined = [], []
+    for n, (key, c) in enumerate(ranked, 1):
+        text = sig_text(key)
+        if text in baseline:                       # exact row, nothing to say
+            continue
+        hit = next((extra for sig in baseline
+                    if (extra := camp_matches(key, sig)) is not None), None)
+        if hit is None:
+            new_camps.append((n, key, c))
+        elif hit:
+            joined.append((n, sorted(hit), text))
     known = len(ranked) - len(new_camps)
     print(f"\nbaseline: {known}/{len(ranked)} camp(s) accounted for")
+    for n, extra, text in joined:
+        print(f"  CLUSTER {n}: accounted for, and {', '.join(extra)} joined an existing "
+              f"camp — the drivers this row names are still split the same way.\n"
+              f"    now: {text}")
     if not new_camps:
         print("no new camp")
         return 0

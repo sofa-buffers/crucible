@@ -223,32 +223,18 @@ here:
       a conformance question. Worth measuring the whole-feed camps on it again and deciding whether
       the losing camp is a finding of its own. (Noted on generator#300.)
 
-- [ ] **The cluster baseline still does not survive a roster change — only the report is honest now.**
-      **Done 2026-08-16 (the easy half):** `results/known-clusters.txt` carries a `# roster:` line naming the
-      drivers its signatures were recorded against, and `cluster.py` checks it before comparing camps. A
-      mismatch now says "roster changed since it was recorded (+ cpp-fixed)" and stops, instead of listing
-      every camp as NEW; a baseline without the stamp is refused. Verified by removing a name from the stamp
-      and watching the run refuse, and by removing the stamp entirely. *(One bug caught by that test and worth
-      recording: the first parser accepted wrapped roster lines and swallowed every ordinary comment containing
-      a comma, inventing driver names out of prose. The continuation support is gone — one line, no wrapping.)*
-      **Still open (the useful half):** compare camps modulo drivers absent from the baseline, so a driver
-      *joining* an existing camp does not invalidate the row and only a driver *moving* between camps does.
-      That is what makes the nightly useful on the day a driver is added, rather than merely honest about being
-      unusable. Roughly four hours, and it needs care not to mask real movement. Original note below.
-      ~~The cluster baseline does not survive a roster change, and fails loudly in the wrong
-      direction.~~ Every signature in `results/known-clusters.txt` names every driver, so adding
-      `cpp-fixed` and `cpp-c-cpp-dyn` invalidated all ten entries at once: the 2026-08-05 nightly
-      analysis reported **"9 NEW CAMPS, 0/9 accounted for"** when six were literally the old rows
-      with the two new names inside them, and the other three were a single driver changing camp
-      for reasons already on record. Zero new root causes, maximum alarm.
-      That is the dangerous direction for a cry-wolf mechanism: this baseline exists *because*
-      nine unexplained camps once accumulated unread, and a false "everything is new" is the
-      fastest way to teach people to skip it again. Rebased for now.
-      *Options, none implemented:* compare modulo drivers absent from the baseline (a new driver
-      joining an existing camp would then not invalidate it, and only a driver **moving** camps
-      would); or stamp the baseline with the roster it was taken against and say "roster changed,
-      rebase required" instead of "NEW". The second is easier and honest; the first is what makes
-      the nightly useful on the day a driver is added.
+- [x] **DONE 2026-08-16 — the cluster baseline survives a roster change.** Rows are matched on the
+      drivers a row actually names (`oracle/cluster.py:camp_matches`): the current partition and the
+      baseline row are both projected onto the drivers they have in common, so a signature written
+      before a driver existed still matches and the file no longer has to be re-recorded when the
+      roster grows. The `# roster:` stamp added earlier the same day stays as context and is no
+      longer a gate. **What still turns a camp NEW, deliberately:** a driver the row names landing on
+      the other side of the split (real movement), and a driver the row does *not* name sitting alone
+      in a camp — the first cut of the matching swallowed that second case, reporting "joined an
+      existing camp" about a driver agreeing with nobody, which is exactly the masking this item
+      warned about. Verified on four cases: unchanged baseline (accounted), a baseline predating three
+      drivers that joined existing camps (accounted, with a per-camp note naming them), a driver moved
+      between camps (NEW), a driver alone in a new camp (NEW).
 
 - [x] **Two unspecified streaming contracts — FILED 2026-08-04** as
       [documentation#37](https://github.com/sofa-buffers/documentation/issues/37) (chunk

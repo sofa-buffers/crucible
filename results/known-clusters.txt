@@ -2,11 +2,17 @@
 #
 # roster: c,go,rust-std,rust-nostd,cpp,cpp-fixed,cpp-c-cpp,cpp-c-cpp-dyn,py-cython,py-pure,java,typescript,csharp,zig,dart
 #
-# ^ The drivers these signatures were recorded against, and the FIRST thing cluster.py
-# checks. Every row below names every driver, so one added driver invalidates all of them
-# at once; without this line the run would report each camp as NEW, which is true of the
-# file and false of the family. With it, the run says "roster changed, re-record" instead.
-# It does not make the baseline survive a roster change — re-recording is still the fix.
+# ^ The drivers these signatures were recorded against. INFORMATIONAL: cluster.py matches
+# each row on the drivers that row actually names, so adding a driver does not invalidate
+# anything and this file does not have to be re-recorded for it. The stamp is printed as
+# context when it differs, because "these signatures predate two of your drivers" is worth
+# knowing while reading a result.
+#
+# What still turns a camp NEW, by design:
+#   * a driver the row DOES name lands on the other side of the split — real movement;
+#   * a driver the row does NOT name sits alone in a camp, agreeing with nobody. That is
+#     the divergence most worth seeing on the day a driver is added, and an earlier version
+#     of the matching swallowed it — see oracle/cluster.py:camp_matches.
 #
 # A camp belongs here ONLY once it is explained: a catalogued finding, a legal
 # divergence, or a benign soft axis. Anything else is reported as NEW and the run
