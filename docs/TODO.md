@@ -37,7 +37,28 @@ here:
   `union` descriptor node + a `materialize.py` union reference (~12 walkers across 10 langs). Part A
   (union cross-encode) is green and gated.
 - [x] **WP-05 completion** — DONE 2026-07-27 (see the dated entry above).
-- [ ] **WP-08(c)** — the explicit `[]` that overrides a **non-empty** declared array `default`: still
+- [x] **WP-08(c) — DONE 2026-08-17: measured, and the family is correct in every cell.** The
+  vectors this item asked for now exist — `def_arr` (`array of u32`, `default: [7, 9]`) in
+  `schema/probe-dyn.sofab.yaml`, five isolates in `corpus/limits/default/`, swept by
+  `run_dim default` in `scripts/run-limits.sh`. **0 divergences over the 10 heap drivers.**
+  What the item got wrong is its framing: it called this "the only §2 case with no vector", but
+  the *compact* array form is what carries an explicit empty array here, not the wrapper frame —
+  **§3 (~line 236) states that a length of `M = 0` is the explicit empty array**, and every
+  driver keeps it rather than falling back to `[7, 9]`. Measured cells: absent → `[7,9]`;
+  `1b 00` (compact, `M=0`) → `[]`, preserved; `1b 02 05 06` → `[5,6]`; `1b 02 07 09` (the
+  declared default) → omitted on re-encode.
+  **Two further vectors turned out to be a §7.3 case, not a §2 one**, and were nearly filed as a
+  finding before the clause was read: a `SEQ_BEG` wrapper at a *compact numeric* array carries a
+  wire type the declared type does not map to, and **§7.3 says such a field MUST be skipped** — a
+  decoder MUST NOT report `INVALID` and MUST NOT decode the payload into the declared field. All
+  ten drivers skip it and keep the default, i.e. they are conformant. Empty wrappers at the
+  *wrapper* arrays (`string_array`/`blob_array`/`struct_array`, main schema, 15 drivers) normalize
+  away correctly, as §2's empty-frame table requires.
+  **What is still untested** (a test gap, not a spec question — the behaviour is fully specified):
+  a **wrapper** array carrying a non-empty declared `default`. There the empty frame is the
+  right wire type, §7.3 does not apply, and §2's table makes it the explicit `[]`. No schema
+  declares that combination. Original note below.
+  ~~the explicit `[]` that overrides a **non-empty** declared array `default`~~: still
   the only §2 case with no vector, and it needs a schema field carrying `default:` (any array now has
   an empty value — the 2026-07-27 "fixed-count has none" reasoning died with documentation#31). Add a
   defaulted array to `schema/probe-dyn.sofab.yaml` (heap roster), vectors = {absent → declared default;
@@ -359,7 +380,13 @@ here:
       F-0043 at the declared-width bound, whose partition moved when generator#279 pushed `cpp`
       from the `I` camp into the reject camp. Proven with three controls, not a new class.
 
-- [ ] **Chunked re-feed in the drivers (`SOFAB_SPLIT`, `SOFAB_CHUNK`, `SOFAB_CHUNK_SCRUB`)** —
+- [x] **DONE — every driver that can, does.** The headline below ("no driver implements them yet")
+      described 2026-08-04 and was never corrected: `scripts/run-chunked.sh` runs **14 drivers**
+      today. `go` is the one absence and a declared one — corelib-go has no resumable decoder, so
+      `drivers/go/meta` says `chunked_decode=none` and the gate's participant list is derived from
+      that rather than typed. Since 2026-08-16 the gate also asserts each driver's stderr
+      announcement, so honouring the variables is proven per run instead of assumed.
+      ~~Chunked re-feed in the drivers (`SOFAB_SPLIT`, `SOFAB_CHUNK`, `SOFAB_CHUNK_SCRUB`)~~ —
       the oracle and the gate exist and now implement **all three cuts** (`oracle/chunk_invariance.py`,
       `scripts/run-chunked.sh`, wired into `replay.yml`, contract section written); **no
       driver implements them yet**, so the gate skips loudly rather than passing vacuously.
@@ -384,7 +411,13 @@ here:
       wraps the chunks in a reader) and **go has none at all** (corelib-go has no resumable
       push decoder), so go must be declared absent rather than silently skipped.
 
-- [ ] **The streaming-encode axis (`SOFAB_ENCODE`, `SOFAB_FLUSH`)** — **oracle done 2026-08-04**
+- [x] **DONE 2026-08-16 — the whole roster is on this axis.** The note below ("every driver
+      re-encodes with exactly one call today") described 2026-08-04. All **15** drivers now run every
+      surface their `meta` declares; `go` was the last one plumbed, and needed no corelib change —
+      its backend had all three surfaces and even exported the `MIN_OUTPUT_BUFFER` constant the gate
+      reads. What remains of this axis is filed separately: a port with a high floor gets a one-size
+      flush sweep. Original note below.
+      ~~The streaming-encode axis (`SOFAB_ENCODE`, `SOFAB_FLUSH`)~~ — **oracle done 2026-08-04**
       (`oracle/encode_invariance.py`, `scripts/run-encode.sh`, wired into `replay.yml`, skipping
       loudly on an empty `SOFAB_ENCODE_DRIVERS`); the per-driver plumbing is what remains. The
       encode-side twin,
