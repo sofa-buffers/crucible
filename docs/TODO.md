@@ -540,9 +540,15 @@ here:
       exists to keep it that way. One source stays reachable in principle — `corelib-py`
       still defines `SofaStateError` (`types.py:155`) and `drivers/python/driver.py` maps
       it to `usage`. It never fires, because the generated §7.3 guards skip a mis-typed
-      field before any read reaches it, which is exactly what §6.3 says should happen. Not
-      filed upstream: no reproducer, no observable behaviour — a latent API surface, and
-      now one that cannot appear unnoticed. Original note below.
+      field before any read reaches it, which is exactly what §6.3 says should happen — so
+      the fuzzer structurally cannot reach the path, and this came from reading the clause.
+      **Filed 2026-08-17 as [corelib-py#96](https://github.com/sofa-buffers/corelib-py/issues/96)**
+      once a reproducer existed (4 wire bytes, both engines). The write-up splits the seven
+      throw sites: three encoder ones are genuine caller mistakes and rename to
+      `SofaRangeError` — which already *is* §6.3's `InvalidArgument` — while four decoder
+      ones must not raise at all. `_take_scalar` is one site guarding both conditions and
+      has to be split. corelib-cpp/-java/-cs removed the code and skip per §7.3, so py is
+      the last port. Original note below.
       ~~Finer reject-class taxonomy.~~
       Investigated 2026-07-17: the corelibs collapse *all* malformed-wire reasons into one
       `InvalidMessage` (spec §6.3), so a *semantic* taxonomy (truncated / bad-varint / depth /
