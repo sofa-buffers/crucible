@@ -282,7 +282,31 @@ here:
       chunks", "one byte at a time"), which is why "conformant" spans a 16x range there. What
       follows is kept as the reasoning.
 
-- [ ] **Two unspecified streaming contracts, both found by wiring the axes (2026-08-04).** Neither
+- [x] **BOTH ANSWERED — closed upstream 2026-08-05, verified against the spec 2026-08-17.**
+      This item outlived its questions by twelve days; documentation#36 and #37 are closed and
+      the spec repo has **zero** open issues. Neither answer was the compromise this item
+      expected, and both went against an implementation:
+      - **Chunk lifetime → borrowing is out.** CORELIB_PLAN §6 now carries a normative
+        *Chunk lifetime* bullet: a fed chunk is borrowed **only for the duration of the `feed`
+        call**, after which the caller may reuse or free it and the decoded message MUST NOT be
+        affected; a decoder handing a `string`/`blob` a slice into a chunk has to copy out
+        before returning. Only the one-shot `decode(buffer)` is exempt, and a port offering
+        that says so (§9.6). The stated reason is exactly the one this item gave — otherwise
+        the same message under a different chunking places different obligations on the same
+        calling code. corelib-zig's borrow is therefore non-conformant, and was already removed
+        by generator#296 (2026-08-04), so nothing is outstanding.
+      - **Minimum caller buffer → a declared constant, not a fixed floor.** §5.1 no longer
+        fixes one byte for everyone; it **retired that rule explicitly** (`e6c96d5`
+        2026-08-07, refined by `5d19b30`/`af50742`). Only a **divisible run** (a string/blob
+        payload) MUST be splittable across a flush; **atomic units** MAY be required to land
+        contiguously. Every corelib MUST expose a documented `MIN_OUTPUT_BUFFER` — `1` if it
+        splits atomic units, else the largest run it reserves, floor 10, **capped at 20** — and
+        every buffer at or above it MUST work and produce byte-identical output. So corelib-ts
+        was never the outlier this item took it for. Crucible already tracks the rewritten
+        clause (`oracle/encode_invariance.py:79`, documentation#46/#48, 2026-08-11); what
+        remains of it is the one-size-sweep item in the CI section, which is coverage, not spec.
+      Original note below.
+      ~~Two unspecified streaming contracts, both found by wiring the axes (2026-08-04).~~ Neither
       is a wire question, so the differential oracle is structurally blind to both — they are
       differences in what the *API* promises, and they only became visible once drivers started
       driving the streaming surfaces. All fourteen drivers are now wired, so the camps below are
@@ -494,7 +518,7 @@ here:
 
 
 
-- [ ] **Finer reject-class taxonomy** (`oracle/canonical.md` + drivers + comparator + `policy.yaml`).
+- [ ] **Finer reject-class taxonomy — and the spec has since decided most of it.**
       Investigated 2026-07-17: the corelibs collapse *all* malformed-wire reasons into one
       `InvalidMessage` (spec §6.3), so a *semantic* taxonomy (truncated / bad-varint / depth /
       …) is **not** available from return codes. The achievable, valuable version is a
@@ -504,6 +528,45 @@ here:
       where the family cleanly rejects is a codegen smell (the F-0003/F-0008 class) — and keep
       within-tier differences soft. Also de-noises the fuzzer clusters (a big share of residual
       "divergences" are reject_class-only, verdict-agreeing).
+
+      **Re-checked against the spec 2026-08-17 (CORELIB_PLAN §6.3, main@dd2866b), and the
+      target moved.** The clause now fixes the taxonomy at **five** codes — `None/OK`,
+      `BufferFull`, `InvalidArgument`, `InvalidMessage`, `LimitExceeded` — and closes the tier
+      question outright: *"A type-mismatched read is not an error at all"* (the §7.3 skip), and
+      *"there is therefore **no** result code for 'invalid usage': every remaining caller
+      mistake is an out-of-range argument (`InvalidArgument`) and every remaining malformed
+      input is `InvalidMessage`."* `oracle/canonical.md:16` still admits `usage` and `other`.
+      Those name states the spec says **cannot occur**, so this is no longer "invent a
+      taxonomy" — it is an assertion: **a driver emitting `usage` or `other` is reporting a
+      conformance defect**, and the class should fail rather than be compared. `reject_class`
+      went hard 2026-08-16 and fires zero times, but that measures agreement, not this: a
+      family-wide `usage` would be unanimous and green. **Work:** decide what each driver maps
+      to `usage`/`other` today (some may be dead branches), then either fail on them or delete
+      them from the grammar; keep `limit_exceeded` (§6.2.1 gives it its own code) and
+      `buffer_full` (§6.3 keeps it, encode-side).
+
+- [ ] **The encoder's pass-through path is untested, and Crucible has never heard of it.**
+      CORELIB_PLAN §5.1 gained *"Pass-through of a divisible run (normative, optional)"* on
+      2026-08-08 (`27ad9a0`, `c5e318b`, `f0974df`, `e34c78d`) — after Crucible's last spec
+      round, and the term appears **nowhere in this repo** (grepped 2026-08-17). An encoder MAY
+      hand a `string`/`blob` payload to the sink directly instead of copying it through the
+      output buffer, if the caller granted it at installation (off by default), buffered bytes
+      are drained first, the run is divisible, and its wire bytes already exist contiguously as
+      caller memory. A port MAY always copy and stay conformant.
+      **Why the existing gates are structurally blind to it:** the output is byte-identical
+      either way, so neither the round-trip oracle nor `encode_invariance.py` can see it — the
+      same shape as the chunk-lifetime question, which is exactly the class that produced
+      F-0058/F-0060. Two rules *are* assertable:
+      - **borrow lifetime** — passed-through memory is borrowed only for the duration of the
+        sink call and MUST NOT be retained. That is the encode-side twin of
+        `SOFAB_CHUNK_SCRUB`: grant pass-through, have the sink copy, scrub the source buffer
+        after every sink return, and require the accumulated output to be unchanged.
+      - **mutual exclusion** — a sink granted pass-through MUST NOT call the buffer-set
+        operation, and a port SHOULD reject such a call as it rejects an undersized buffer.
+      **First step is cheap and static:** find out which backends implement the permission at
+      all (a `meta` key beside `min_output_buffer`, the way `encode_surfaces` records the
+      three surfaces), because a family where nobody implements it needs no axis yet — but
+      nobody has checked, and "off by default" is precisely how an untested path stays quiet.
 - [x] **Element-access / materialized-value probe** — **DONE 2026-07-21, all 12 drivers.**
       A second canonical form (`oracle/materialized.md`): `SOFAB_MATERIALIZE=1` makes a driver
       emit a full walk of the **decoded value** (every field + array element, floats as raw bits,
