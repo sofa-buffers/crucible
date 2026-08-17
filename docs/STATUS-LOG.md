@@ -19,6 +19,40 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**A forbidden reject class cannot be caught by comparing drivers (2026-08-17).**
+The "finer reject-class taxonomy" item had been open since 2026-07-17 asking for a
+two-tier grade to be *invented*. Re-read against the spec, the taxonomy turned out to be
+already decided — CORELIB_PLAN §6.3 fixes it at five codes and **abolishes one category
+outright**: *"a type-mismatched read is not an error at all […] there is no result code
+for 'invalid usage'."* So the work was to enforce a decision, not to design one.
+
+The mechanism is the part worth recording. `reject_class` has been a **hard** axis since
+2026-08-16 and fires zero times — but it compares drivers, so it only ever fires on
+**disagreement**. A class the spec says cannot exist is invisible to it: if every
+implementation named the same forbidden class, the run would be unanimous, and unanimity
+is what green looks like everywhere else. **Agreement is the wrong instrument for a
+question about a single line.** The class of each line is therefore judged on its own,
+whatever the others said.
+
+Three groups, owned by `oracle/canonical.md`: `invalid_msg` / `limit_exceeded` expected;
+`argument` / `buffer_full` / `other` legal but **reported** (§6.3 permits
+language-specific conditions, yet on the decode path each means a generated layer erred
+where the family cleanly rejects — the F-0003 / F-0008 shape); `usage` **forbidden**.
+
+*Measured before the check existed, not after:* across `corpus/interesting` (6000 inputs),
+`crashes`, `regression`, `conformance`, `seeds`, `union` and `structured`, over all fifteen
+drivers, **every reject is `invalid_msg`**. The check starts green and exists to keep it
+so. Proven able to fail with fake drivers rather than argued: unanimous `usage` exits 1,
+mixed `usage` exits 1, `other` warns at exit 0, `invalid_msg` is silent.
+
+*One live source, deliberately not filed upstream.* `corelib-py` still defines
+`SofaStateError` ("API misuse, e.g. reading a value of the wrong type for the current
+field") and `drivers/python/driver.py` maps it to `usage` — a code for precisely the case
+§6.3 says is not an error at all. It never fires: the generated §7.3 guards skip a
+mis-typed field before any read reaches it, which is what the spec says should happen. No
+reproducer, no observable behaviour, so no issue — a latent API surface that can now no
+longer appear unnoticed.
+
 **The pass-through axis, and what a one-port feature is worth testing (2026-08-17).**
 The §5.1 permission found in the spec re-check below is now gated. The decision worth
 recording is what to do when a survey says **one port of eleven** implements a feature.

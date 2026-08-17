@@ -518,7 +518,32 @@ here:
 
 
 
-- [ ] **Finer reject-class taxonomy — and the spec has since decided most of it.**
+- [x] **DONE 2026-08-17 — the spec decided it, so the work was to enforce the decision
+      rather than invent a taxonomy.** The two-tier grade this item asked for is now in
+      `oracle/comparator.py`, but not as a comparison: **the class of each line is judged
+      on its own**, whatever the other drivers said. That is the whole point, and it is
+      what `reject_class` structurally cannot do — that axis fires on *disagreement*, so a
+      forbidden class named by **every** implementation would be unanimous and therefore
+      green. Verified with fake drivers rather than reasoned about: `usage` + `usage`
+      (unanimous) exits **1**, `usage` + `invalid_msg` exits 1, `other` + `other` exits 0
+      with a warning, `invalid_msg` + `invalid_msg` is silent.
+      Three groups now, owned by `oracle/canonical.md`: `invalid_msg` / `limit_exceeded`
+      are expected; `argument` / `buffer_full` / `other` are **legal but reported** (§6.3
+      permits language-specific conditions, but on the decode path each means a generated
+      layer erred where the family cleanly rejects — the F-0003 / F-0008 shape); and
+      **`usage` is forbidden**, because §6.3 abolished the category outright: *"a
+      type-mismatched read is not an error at all […] there is no result code for 'invalid
+      usage'"*.
+      **Measured before adding the check**, over `corpus/interesting` (6000 inputs),
+      `crashes`, `regression`, `conformance`, `seeds`, `union` and `structured` across all
+      fifteen drivers: **every reject is `invalid_msg`**. So the check starts green and
+      exists to keep it that way. One source stays reachable in principle — `corelib-py`
+      still defines `SofaStateError` (`types.py:155`) and `drivers/python/driver.py` maps
+      it to `usage`. It never fires, because the generated §7.3 guards skip a mis-typed
+      field before any read reaches it, which is exactly what §6.3 says should happen. Not
+      filed upstream: no reproducer, no observable behaviour — a latent API surface, and
+      now one that cannot appear unnoticed. Original note below.
+      ~~Finer reject-class taxonomy.~~
       Investigated 2026-07-17: the corelibs collapse *all* malformed-wire reasons into one
       `InvalidMessage` (spec §6.3), so a *semantic* taxonomy (truncated / bad-varint / depth /
       …) is **not** available from return codes. The achievable, valuable version is a
