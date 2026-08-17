@@ -19,8 +19,31 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The cluster baseline survives a roster change now — rows match on the drivers they name
+(2026-08-16, last).**
+The stamp shipped earlier the same day made the report honest; this makes the file keep working. A
+baseline row and the current partition are both projected onto the drivers they have **in common**,
+so a signature written before a driver existed still matches, and adding a driver no longer forces a
+re-record. The `# roster:` line stays as context and is no longer a gate.
+
+*The loosening is bounded on purpose, and the boundary is where the value is.* Two things still turn
+a camp NEW: a driver the row **does** name landing on the other side of the split — real movement,
+which is exactly what the baseline exists to catch — and a driver the row does **not** name sitting
+**alone** in a camp, agreeing with nobody.
+
+**The first cut got that second case wrong, and the test caught it.** Projection alone let a
+brand-new driver alone in a camp match a row that had never heard of it, and the run announced that
+it "joined an existing camp" — about a driver agreeing with no one. That is precisely the masking
+the open item had warned about, produced within an hour of writing the code that was supposed to
+avoid it. An unknown driver now counts as accounted for only where it shares a camp with a driver
+the row names.
+
+*Verified on four cases:* unchanged baseline → accounted; a baseline predating three drivers that
+joined existing camps → accounted, with a per-camp note naming them; a driver moved between camps →
+NEW; a driver alone in a new camp → NEW.
+
 **The cluster baseline now says "roster changed" instead of inventing nine findings (2026-08-16,
-last).**
+earlier).**
 Every signature in `results/known-clusters.txt` names every driver, so adding one invalidates all of
 them at once. On 2026-08-05 that produced **"9 NEW CAMPS, 0/9 accounted for"** — six were the old
 rows with two new names inside them, three were a driver changing camp for a catalogued reason, and
