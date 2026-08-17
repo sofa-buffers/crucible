@@ -134,6 +134,43 @@ Both halves of the clause are gated:
   exits 3 there. A port declaring `1` has no such case, since `SOFAB_FLUSH=0` is how the
   drivers spell "unset".
 
+### `SOFAB_PASSTHROUGH=1` — the pass-through permission
+
+CORELIB_PLAN §5.1 lets an encoder hand a `string`/`blob` payload to its sink **directly**
+instead of copying it through the output buffer, when the caller granted the permission at
+installation. It is **off by default**, **optional** — a port may always copy and stay
+conformant — and **wire-neutral**: the output is byte-identical either way. That last
+property is why it needs its own axis. Neither the round-trip nor the materialized oracle
+can see a difference that does not exist in the bytes, so nothing else in Crucible would
+ever exercise the path.
+
+Each driver declares in its `meta` whether its backend implements it — `pass_through=yes`
+or `no`. The declaration is **required**; `no` is a statement about the port, an absent key
+is nobody having looked. Today only `corelib-go` declares `yes`.
+
+A driver that declares `yes`:
+
+* installs its sink **with** the permission when `SOFAB_PASSTHROUGH=1` is set;
+* uses a sink that **copies** what it is handed, since §5.1 lends passed-through memory
+  only for the duration of the call, and that **never** calls the buffer-set operation —
+  granting the permission is the promise never to take a buffer, and the two are mutually
+  exclusive;
+* exits **3** if the permission is asked for on a surface that installs no sink, because
+  without a sink there is nothing to hand a payload to;
+* reports on stderr, at clean EOF, how many times its sink received memory that was **not**
+  the output buffer: `passthrough handovers=<n>`.
+
+That count is not decoration. A port that accepted the permission and quietly copied anyway
+produces byte-identical output and would pass a bytes-only check trivially — so the gate
+requires the count to be present **and non-zero**. Zero means the configuration asserted
+nothing, and the gate fails rather than reporting a green it did not earn. The same
+reasoning is why the flush sweep always includes the port's own declared minimum.
+
+Drivers declaring `pass_through=no` are **not** exercised on this axis at all: they do not
+recognise the variable and would exit 0 having ignored it. Making that refusal assertable —
+so an unimplemented permission is proven refused rather than assumed — is per-driver work
+tracked in `docs/TODO.md`.
+
 So exit 3 for a `SOFAB_FLUSH=n` is a **conformance failure** when `n >= min_output_buffer`
 and the **required** answer when `n < min_output_buffer`. Exit 3 also remains the right
 answer for a **surface** the backend does not have.

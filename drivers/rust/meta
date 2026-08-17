@@ -6,3 +6,5 @@ variants=rs,rs-no-std
 chunked_decode=push
 encode_surfaces=new,stream
 min_output_buffer=1
+# CORELIB_PLAN §5.1 pass-through permission: README "No pass-through" (both std and no-std)
+pass_through=no

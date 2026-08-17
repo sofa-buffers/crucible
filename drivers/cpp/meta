@@ -6,3 +6,5 @@ variants=cpp,c-cpp
 chunked_decode=push
 encode_surfaces=new,to,stream
 min_output_buffer=1
+# CORELIB_PLAN §5.1 pass-through permission: README — no pass-through of a string/blob run
+pass_through=no

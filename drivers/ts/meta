@@ -5,3 +5,5 @@ pacemaker=false
 chunked_decode=push
 encode_surfaces=stream
 min_output_buffer=1
+# CORELIB_PLAN §5.1 pass-through permission: README — this port grants no pass-through permission
+pass_through=no

@@ -33,8 +33,8 @@ chk_names=$("$ROOT/scripts/roster.sh" caps chunked | tr '\n' ' ')
 in_list() { case " $2 " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 metaval() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
 
-printf '%-15s %-9s %-7s %-14s %-6s %s\n' \
-    DRIVER BUILDER CHUNKED ENCODE MINBUF GATES
+printf '%-15s %-9s %-7s %-14s %-6s %-4s %s\n' \
+    DRIVER BUILDER CHUNKED ENCODE MINBUF PASS GATES
 printf '%s\n' "-------------------------------------------------------------------------------"
 
 rows=$(mktemp)
@@ -52,6 +52,7 @@ while read -r name builder arg tags binary; do
     chunked=$(metaval "$meta" chunked_decode)
     surfaces=$(metaval "$meta" encode_surfaces)
     minbuf=$(metaval "$meta" min_output_buffer)
+    passthru=$(metaval "$meta" pass_through)
 
     # Which gates this entry lands in, derived the same way the gates derive it.
     gates="differential,sweeps,materialize"
@@ -60,8 +61,9 @@ while read -r name builder arg tags binary; do
     case ",$tags," in *,limits,*) gates="$gates,limits" ;; esac
     case ",$tags," in *,blocking,*) ;; *) gates="$gates (QUARANTINED)" ;; esac
 
-    printf '%-15s %-9s %-7s %-14s %-6s %s\n' \
-        "$name" "$builder" "${chunked:-—}" "${surfaces:-—}" "${minbuf:-—}" "$gates"
+    printf '%-15s %-9s %-7s %-14s %-6s %-4s %s\n' \
+        "$name" "$builder" "${chunked:-—}" "${surfaces:-—}" "${minbuf:-—}" \
+        "${passthru:-—}" "$gates"
 
     # --- assertions: a declaration missing is the state that hides work ------------
     #
@@ -88,6 +90,16 @@ while read -r name builder arg tags binary; do
                 note "$name: min_output_buffer=$minbuf is outside §5.1's range (1..20)"
             fi
             ;;
+    esac
+
+    # CORELIB_PLAN §5.1's pass-through permission is OPTIONAL, so `no` is a statement
+    # about the port and never a defect — but WHICH ports take it has to be written
+    # down. Left absent, a port that implements it goes untested on an axis both
+    # oracles are structurally blind to (the output is byte-identical either way).
+    case "$passthru" in
+        yes|no) ;;
+        "") note "$name: meta declares no pass_through — §5.1's permission is optional, but an absent declaration means nobody has checked whether this port takes it" ;;
+        *)  note "$name: pass_through=$passthru is not yes or no" ;;
     esac
 
     # A quarantine must name the finding that justifies it, so it can be lifted the day

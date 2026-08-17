@@ -49,7 +49,40 @@ var materialized = os.Getenv("SOFAB_MATERIALIZE") == "1"
 var (
 	encSurface = "new" // new | to | stream
 	flushSize  = 0     // 0 = unset; only meaningful for `stream`
+
+	// The pass-through permission of CORELIB_PLAN §5.1 (SOFAB_PASSTHROUGH=1): the
+	// encoder may hand a string/blob run to the sink DIRECTLY instead of copying it
+	// through the output buffer. corelib-go is the only port in the roster that
+	// implements it (`meta`'s pass_through key records who does).
+	//
+	// It is wire-neutral by construction — §5.1: "the output is byte-identical either
+	// way" — which is exactly why neither the round-trip nor the materialized oracle
+	// can see it, and why it needs an axis of its own.
+	passThrough = false
+
+	// How often the sink was handed memory that is NOT the output buffer, i.e. how
+	// often pass-through actually happened. Without this the axis would be vacuous:
+	// a port that accepted the permission and quietly copied anyway would produce
+	// byte-identical output and pass, which is the same "green because nothing ran"
+	// shape the flush sweep's declared-minimum rule exists to prevent.
+	ptForeign = 0
 )
+
+// withinBuffer reports whether `inner` is a window into `outer`'s backing array.
+// A sink handed anything else received foreign memory — a passed-through payload.
+// (The same test corelib-go's own output_buffer_test.go uses.)
+func withinBuffer(outer, inner []byte) bool {
+	if len(inner) == 0 {
+		return true
+	}
+	o := outer[:cap(outer)]
+	for k := range o {
+		if &o[k] == &inner[0] {
+			return k+len(inner) <= len(o)
+		}
+	}
+	return false
+}
 
 // parseEncodeCfg resolves the axis before any record is written, because both
 // failures the contract names must land *before* output: an unknown surface, and a
@@ -85,6 +118,19 @@ func parseEncodeCfg() {
 			flushSize, sofab.MinOutputBuffer)
 		os.Exit(3)
 	}
+	if os.Getenv("SOFAB_PASSTHROUGH") == "1" {
+		// §5.1 grants the permission when a SINK is installed; without one there is
+		// nothing to hand a payload to and the option has no effect. Asking for it on
+		// a surface that has no sink is the contract's "cannot honour this setting"
+		// case — exit 3, the same answer as a flush size below the floor, and never a
+		// silent fallback that would report a config it did not run.
+		if encSurface != "stream" {
+			fmt.Fprintf(os.Stderr, "crucible-go: SOFAB_PASSTHROUGH needs a sink, and "+
+				"SOFAB_ENCODE=%s installs none (CORELIB_PLAN §5.1)\n", encSurface)
+			os.Exit(3)
+		}
+		passThrough = true
+	}
 }
 
 // announceCfg prints the resolved configuration on stderr (never parsed). Stdout is
@@ -92,9 +138,21 @@ func parseEncodeCfg() {
 // driver that ignored the variables would be indistinguishable from one that honours
 // them — which is the vacuous pass the gate's opt-in roster exists to prevent.
 func announceCfg() {
-	if encSurface != "new" || flushSize != 0 {
-		fmt.Fprintf(os.Stderr, "crucible-go: streaming cfg enc=%s flush=%d\n",
-			encSurface, flushSize)
+	if encSurface != "new" || flushSize != 0 || passThrough {
+		fmt.Fprintf(os.Stderr, "crucible-go: streaming cfg enc=%s flush=%d passthrough=%v\n",
+			encSurface, flushSize, passThrough)
+	}
+}
+
+// reportPassThrough prints, at clean EOF, how many times the sink actually received
+// foreign memory across the whole run. The gate reads it: a run that was granted the
+// permission and never used it proves nothing about pass-through, so the count is
+// what separates "the axis held" from "the axis never ran". It is a run total rather
+// than per input, because most inputs carry no payload large enough to qualify —
+// corelib-go passes a run through only when it exceeds the output buffer.
+func reportPassThrough() {
+	if passThrough {
+		fmt.Fprintf(os.Stderr, "crucible-go: passthrough handovers=%d\n", ptForeign)
 	}
 }
 
@@ -120,11 +178,23 @@ func encodeVia(m *msg.Probe) ([]byte, error) {
 			n = msg.ProbeMaxSize
 		}
 		var acc []byte
-		e, err := sofab.NewEncoderSink(make([]byte, n), 0,
+		buf := make([]byte, n)
+		var opts []sofab.Option
+		if passThrough {
+			opts = append(opts, sofab.WithPassThrough(true))
+		}
+		// This sink COPIES what it is handed (`append`), which is what makes it a legal
+		// destination for a passed-through run: §5.1 lends that memory only for the
+		// duration of the call. It also never calls SetBuffer — granting the permission
+		// is the promise never to take a buffer, and the two are mutually exclusive.
+		e, err := sofab.NewEncoderSink(buf, 0,
 			func(_ *sofab.Encoder, b []byte) error {
+				if passThrough && !withinBuffer(buf, b) {
+					ptForeign++
+				}
 				acc = append(acc, b...)
 				return nil
-			})
+			}, opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -343,6 +413,8 @@ func main() {
 	for {
 		_, err := io.ReadFull(r, lenbuf[:])
 		if err == io.EOF {
+			w.Flush()
+			reportPassThrough()
 			return // clean EOF at record boundary
 		}
 		if err != nil {
