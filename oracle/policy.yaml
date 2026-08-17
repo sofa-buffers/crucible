@@ -22,23 +22,31 @@ comparison:
   # On mutual ACCEPT, the decoded canonical value must match.
   accept_value: hard
 
-  # On mutual INCOMPLETE, whether the partial re-encoded value must match. Soft in
-  # Phase 2: partial-value materialization on a truncated stream is not aligned
-  # across languages yet (same rationale as reject_class). The I verdict itself is
-  # hard (above); only the payload comparison is soft.
+  # On mutual INCOMPLETE, whether the partial re-encoded value must match. **Stays soft**,
+  # and unlike its two neighbours it is not legacy: measured 2026-08-16, it fires 5471
+  # times (5463 over corpus/interesting, 8 over regression) and every single one is the
+  # same thing — java hands back what it had already read when the stream ended mid-field,
+  # where the other fourteen hand back nothing. The verdict is unanimous (`I` everywhere);
+  # only the payload differs. Hardening this would mean 5471 red lines for one known,
+  # catalogued behaviour. The I verdict itself is hard (above).
   incomplete_value: soft
 
-  # On mutual REJECT, whether the reject *class* must match. Soft in Phase 1:
-  # the per-language error taxonomies are not aligned yet, so two impls
-  # rejecting the same bytes for nominally different reasons is not (yet) a bug.
-  # Tighten to `hard` once the taxonomy in canonical.md is enforced everywhere.
-  reject_class: soft
+  # On mutual REJECT, whether the reject *class* must match. **HARD since 2026-08-16.**
+  # It was soft because the per-language error taxonomies were not aligned — that was
+  # true in Phase 1 and is not true now. Measured before flipping it: across
+  # corpus/interesting (17870 inputs), regression, structured, conformance, seeds and
+  # limit mode, this axis fires **zero** times. Every implementation names the same class
+  # for the same bytes, and the classes themselves are defined in oracle/canonical.md:16.
+  # Left soft it protected nothing and would have hidden the first real disagreement:
+  # the same bytes cannot be broken for two different reasons, so one side would be wrong.
+  reject_class: hard
 
   # On mutual LIMIT_EXCEEDED (limit mode only), whether the optional class must
-  # match. Soft for the same reason as reject_class. The L verdict itself is hard
-  # (via `verdict` above): in limit mode every driver is generated with identical
-  # max_dyn_* caps, so they must agree on L vs A/I/R. See oracle/canonical.md.
-  limit_class: soft
+  # match. **HARD since 2026-08-16**, measured the same way as reject_class: zero
+  # occurrences, including in limit mode itself where the axis is the whole point. The L
+  # verdict itself was always hard (via `verdict` above): in limit mode every driver is
+  # generated with identical max_dyn_* caps, so they must agree on L vs A/I/R.
+  limit_class: hard
 
 # ENFORCED since 2026-08-16 — `oracle/comparator.py` reads this block.
 #
