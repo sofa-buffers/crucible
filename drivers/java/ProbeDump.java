@@ -81,7 +81,10 @@ public final class ProbeDump {
                 return blob(value);
             case "array": {
                 // Inline fixed-count numeric/fp array; declared element type is `elem`
-                // (u/s distinction is descriptor-only — the storage is long[] either way).
+                // (u/s distinction is descriptor-only). The storage is the NATIVE width —
+                // byte[]/short[]/int[]/long[] — so an unsigned element arrives here already
+                // sign-extended by Java's widening; `u()` masks it back. This said "long[]
+                // either way" until 2026-08-17, when the Java array path went native-width.
                 String elem = (String) node.get("elem");
                 int n = Array.getLength(value);
                 StringBuilder sb = new StringBuilder();
@@ -173,7 +176,33 @@ public final class ProbeDump {
     private static long asLong(Object v) { return ((Number) v).longValue(); }
 
     // --- leaf encoders (unchanged formatting) --------------------------------
-    private static String u(Object v) { return "u" + Long.toUnsignedString(((Number) v).longValue()); }
+
+    /** An unsigned leaf, widened back out of Java's signed storage.
+     *
+     * Java has no unsigned integer type, so the generated message stores a `u8`/`u16`/`u32`
+     * array in the signed type of the same width — `byte[]`, `short[]`, `int[]` — which is
+     * lossless (every bit pattern fits) but makes `255` read back as `-1`. Widening that to
+     * `long` sign-extends it, and `Long.toUnsignedString` then prints 2^64-1.
+     *
+     * So the value must be masked to the width it was actually stored in, and the runtime
+     * type is what carries that width: the storage IS the declared width (MESSAGE_SPEC §1 —
+     * over-width values are rejected, so native-width storage is always sufficient). The
+     * descriptor cannot help here; its `kind` is just `u`/`s` and carries no width at all.
+     * A `Long` needs no mask — there `toUnsignedString` is already exact, which is why
+     * `071_arr_u64_max.bin` stayed green while `067_arr_u8_max.bin` did not.
+     *
+     * Scalars are unaffected: the generated class stores every integer scalar as `long`
+     * whatever its declared width. Only the arrays hold native width, which is what
+     * generator 93d34943 / corelib-java 54215f46 introduced on 2026-08-17 — before that day
+     * the array storage was `long[]` too, exactly as this file's `array` case still said. */
+    private static String u(Object v) {
+        Number n = (Number) v;
+        long x = n.longValue();
+        if (n instanceof Byte)         x &= 0xFFL;
+        else if (n instanceof Short)   x &= 0xFFFFL;
+        else if (n instanceof Integer) x &= 0xFFFFFFFFL;
+        return "u" + Long.toUnsignedString(x);
+    }
     private static String s(Object v) { return "s" + Long.toString(((Number) v).longValue()); }
 
     private static String f32(Object v) {

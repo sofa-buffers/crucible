@@ -332,6 +332,18 @@ def vectors():
     out.append(("sw_trailing_default", {"structarr": [{"k": 9, "v": "last-real"}, {}, {}]}))
     out.append(("sw_maxlen_v", {"structarr": [{"k": 0xFFFFFFFF, "v": "x" * 16}]}))  # boundary k + maxlen v
     out.append(("sw_unicode", {"structarr": [{"k": 1, "v": "äöü✓"}]}))
+    # --- the two unsigned array widths that had no maximum vector (2026-08-17) ---
+    # `arr_u8_max` and `arr_u64_max` exist above; u16 and u32 did not, and the gap is
+    # exactly what let a real defect through. When the Java array path went native-width
+    # (generator 93d34943), a `u8` element started arriving as a signed `byte`, so 255
+    # read back as -1 and materialized as 2^64-1. `arr_u8_max` caught it; `short[]` and
+    # `int[]` have the identical hazard and nothing would have caught theirs. A max value
+    # is where an unsigned type differs from the signed storage a language gives it, so
+    # every unsigned width needs one. Appended at the END on purpose: the filenames are
+    # numbered by position (`{i:03d}_{name}`), so inserting these beside their siblings
+    # would renumber every later vector and break the names other files cite.
+    out.append(("arr_u16_max", {"au16": [U["u16"]] * 5}))
+    out.append(("arr_u32_max", {"au32": [U["u32"]] * 5}))
     return out
 
 # --- union message (schema/probe-union.sofab.yaml) — WP-02 ------------------
