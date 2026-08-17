@@ -5,3 +5,5 @@ pacemaker=false
 chunked_decode=none
 encode_surfaces=new,to,stream
 min_output_buffer=20
+# CORELIB_PLAN §5.1 pass-through permission: sofab.WithPassThrough(bool); blob runs above the buffer size
+pass_through=yes

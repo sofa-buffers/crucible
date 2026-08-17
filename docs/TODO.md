@@ -545,7 +545,51 @@ here:
       them from the grammar; keep `limit_exceeded` (§6.2.1 gives it its own code) and
       `buffer_full` (§6.3 keeps it, encode-side).
 
-- [ ] **The encoder's pass-through path is untested, and Crucible has never heard of it.**
+- [x] **DONE 2026-08-17 — the axis exists, and one port of eleven had anything to test.**
+      The static survey the item asked for first, done by reading each corelib rather than
+      guessing: **only `corelib-go` implements the permission** (`WithPassThrough(bool)`,
+      `limits.go:128`). Eight ports state "no pass-through" in their own README
+      (c-cpp, cpp, rs, rs-no-std, zig, dart, py, ts) and `cs`/`java` do not mention it —
+      consistent with §5.1, which notes that a UTF-16 port has nothing to hand over because
+      its wire bytes do not exist until the encoder produces them. Every driver's `meta` now
+      records the answer as `pass_through=yes|no`, `scripts/driver-audit.sh` fails on an
+      absent declaration (an absent key is nobody having looked; `no` is somebody having
+      checked), and the ledger prints the column.
+      **The axis is in the encode gate** (`SOFAB_PASSTHROUGH=1`, contract in
+      `drivers/common/CONTRACT.md`), asserting both halves: the bytes must be identical to
+      the default path, **and** the permission must actually have been exercised — the
+      driver reports `passthrough handovers=<n>` at EOF and a count of **zero fails**.
+      Without that second half the axis would be the vacuous green it exists to prevent: a
+      port that took the permission and quietly copied anyway emits identical bytes.
+      Both failure modes were provoked rather than assumed: corrupting one passed-through
+      byte turned it red on exactly the two vectors that hand a run over, and running it
+      over `corpus/seeds` (no payload above the threshold) turned it red with "0 handovers".
+      *Two facts worth keeping.* Go passes a **blob** run through once it exceeds the output
+      buffer but a **string** only past 4096 bytes (`encoder.go:851`) — legal, since §5.1
+      lets a port ignore the permission entirely — so only blobs reach this path at
+      `probe`'s scale. And the corpus triggered it exactly **once** in 110 vectors until
+      `ba_maxlen_full` (five maxlen-64 blob elements) was added, which also exercises the
+      wire-order rule — buffered bytes drained before the passed-through run — five times
+      per input instead of once. Six handovers now.
+      **What is deliberately not covered:** a port declaring `no` is not exercised at all,
+      because the other fourteen drivers do not recognise the variable and would exit 0
+      having ignored it. Proving the refusal instead of assuming it is per-driver work,
+      filed as its own item below. Original note follows.
+- [ ] **A driver that cannot pass through should be made to say so.** The pass-through axis
+      exercises the one port that implements the §5.1 permission and skips the other
+      fourteen, because they do not recognise `SOFAB_PASSTHROUGH` and would exit 0 having
+      ignored it — indistinguishable from honouring it, since the output is byte-identical
+      either way. That is the same "silent skip" shape the encode gate's surface hard-fail
+      and the chunked gate's stderr announcement each exist to close, and it is the reason
+      `meta`'s `pass_through=no` is currently believed rather than verified. **Work:** have
+      every driver recognise the variable and exit **3** when its backend grants no
+      permission, then assert that refusal in `encode_invariance.py` exactly as the missing
+      surface is asserted today. Cheap per driver (read one env var, exit 3), fourteen of
+      them, and it turns a declaration into a checked property. Until then the gate says
+      "pass-through declared absent (not exercised)" on those rows rather than implying
+      coverage it does not have.
+
+      ~~The encoder's pass-through path is untested, and Crucible has never heard of it.~~
       CORELIB_PLAN §5.1 gained *"Pass-through of a divisible run (normative, optional)"* on
       2026-08-08 (`27ad9a0`, `c5e318b`, `f0974df`, `e34c78d`) — after Crucible's last spec
       round, and the term appears **nowhere in this repo** (grepped 2026-08-17). An encoder MAY

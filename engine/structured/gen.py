@@ -344,6 +344,17 @@ def vectors():
     # would renumber every later vector and break the names other files cite.
     out.append(("arr_u16_max", {"au16": [U["u16"]] * 5}))
     out.append(("arr_u32_max", {"au32": [U["u32"]] * 5}))
+    # --- the densest payload `probe` can express, for the pass-through axis ---
+    # CORELIB_PLAN §5.1 lets an encoder hand a string/blob run to its sink directly
+    # instead of copying it through the output buffer. corelib-go does that for a blob
+    # once the run exceeds the buffer, so a maxlen-64 element crosses the threshold at
+    # the gate's 20-byte window while a short one never does. `ba_maxlen` above carries
+    # ONE such element and was the only vector in the whole corpus that triggered a
+    # handover; five of them exercise the rule that matters five times over — the
+    # buffered bytes (each element's header) MUST be drained before the passed-through
+    # run, so wire order survives. Appended at the end for the same numbering reason as
+    # the two vectors above.
+    out.append(("ba_maxlen_full", {"blobarr": [bytes([0x5A + i]) * 64 for i in range(5)]}))
     return out
 
 # --- union message (schema/probe-union.sofab.yaml) — WP-02 ------------------

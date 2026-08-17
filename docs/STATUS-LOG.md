@@ -19,6 +19,44 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The pass-through axis, and what a one-port feature is worth testing (2026-08-17).**
+The §5.1 permission found in the spec re-check below is now gated. The decision worth
+recording is what to do when a survey says **one port of eleven** implements a feature.
+
+The survey came first, by reading each corelib rather than guessing: only `corelib-go`
+has it (`WithPassThrough(bool)`); eight ports say "no pass-through" in their own README,
+and `cs`/`java` do not mention it because a UTF-16 port has nothing to hand over — its wire
+bytes do not exist until the encoder transcodes them. That is now `meta`'s `pass_through`
+key, asserted by `driver-audit.sh`: an absent declaration fails, `no` does not. **An absent
+key is nobody having looked; `no` is somebody having checked.**
+
+*Built it anyway, for a reason that is not "completeness".* The permission is
+**wire-neutral** — §5.1 says the output is byte-identical either way — so both existing
+oracles are structurally blind to it by construction, not by omission. That is the same
+class as the chunk-lifetime question, which is what produced F-0058 and F-0060. A path
+nothing can observe is exactly where a defect survives, and the axis costs one extra run.
+
+*The half that makes it real.* Asserting only "the bytes match" would be vacuous: a port
+that accepted the permission and quietly copied anyway satisfies it trivially. So the
+driver reports `passthrough handovers=<n>` at EOF and **zero fails the gate**. Both failure
+modes were provoked rather than assumed — corrupting one passed-through byte turned it red
+on exactly the two vectors that hand a run over, and running it over a corpus with no
+payload above the threshold turned it red with "0 handovers".
+
+*Two measurements worth keeping.* corelib-go passes a **blob** run through once it exceeds
+the output buffer but a **string** only past 4096 bytes, so at `probe`'s scale only blobs
+reach the path — legal, since §5.1 lets a port ignore the permission entirely. And the
+corpus triggered it **once in 110 vectors** until `ba_maxlen_full` (five maxlen-64 blob
+elements) was added; the wire-order rule — buffered bytes drained before the passed-through
+run — is now exercised five times per input rather than once.
+
+*What is deliberately not covered, and said out loud on the gate's own output.* The
+fourteen ports declaring `no` are not exercised: they do not recognise the variable and
+would exit 0 having ignored it, which is indistinguishable from honouring it when the bytes
+are identical either way. Their rows read "pass-through declared absent (not exercised)"
+rather than implying coverage. Making the refusal assertable is per-driver work, filed in
+`TODO.md` — until then `pass_through=no` is believed, not verified.
+
 **Every open spec question re-read at the tip; three were stale and one clause is new
 (2026-08-17).** Both spec documents were read in full at documentation `main@dd2866b`
 (`MESSAGE_SPEC.md` at `4a517b5`, `CORELIB_PLAN.md` at `e34c78d`) rather than trusted from

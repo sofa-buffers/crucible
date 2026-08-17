@@ -88,3 +88,25 @@ def min_output_buffer(builder):
     """
     v = meta(builder).get("min_output_buffer", "")
     return None if v == "" else int(v)
+
+
+def pass_through(builder):
+    """Whether this port implements the §5.1 pass-through permission.
+
+    An encoder MAY hand a `string`/`blob` run to its sink directly rather than copying
+    it through the output buffer, when the caller granted it at installation. The
+    permission is optional and wire-neutral — §5.1: "A port MAY ignore the permission
+    entirely and always copy. That is conformant" — so a `no` here is a statement about
+    the port, never a defect.
+
+    Declared rather than detected for the same reason as `min_output_buffer`: the
+    spelling differs per language, and most ports state it only in prose in their
+    README. A missing declaration returns None and is an error at the point of use, so
+    a new driver cannot join the roster silently untested on this axis.
+    """
+    v = meta(builder).get("pass_through", "").strip().lower()
+    if v in ("yes", "true", "1"):
+        return True
+    if v in ("no", "false", "0"):
+        return False
+    return None
