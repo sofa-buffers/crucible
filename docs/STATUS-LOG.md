@@ -19,6 +19,41 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Two of the three soft axes were legacy, and the union pass had never been promoted — both
+measured, then fixed (2026-08-16, last).**
+The deliberate leniencies were reviewed the same way the carve-outs were: by measuring whether the
+reason still holds, not by re-reading it.
+
+*Three comparison axes were soft because "the per-language error taxonomies are not aligned yet" —
+a Phase-1 statement nobody had re-checked.* Counted across `corpus/interesting` (17870 inputs),
+regression, structured, conformance, seeds and limit mode:
+
+| axis | occurrences | verdict |
+|---|---|---|
+| `reject_class` | **0** | soft protected nothing → **hard** |
+| `limit_class` | **0**, including in limit mode itself | **hard** |
+| `incomplete_value` | **5471** | stays soft — and now for a measured reason |
+
+Every one of the 5471 is the same thing: java hands back what it had already read when the stream
+ended mid-field, where the other fourteen hand back nothing. The verdict is unanimous (`I`
+everywhere); only the payload differs. Hardening it would mean 5471 red lines for one catalogued
+behaviour. The other two were the opposite: leniency for a disagreement that no longer happens, and
+which would have hidden the first real one — the same bytes cannot be broken for two different
+reasons, so a split there means one side is wrong.
+
+*The union pass was report-only, and the project's own rule says it should not have been.* Ground
+rule 4: an axis is report-only **until it is green or every divergence it surfaces is catalogued**.
+It has been green for weeks — `wiretype` 77 vectors, `reserved_subtype` 28, `truncation` 13,
+`repeated_id` 8, `empty_frame` 6, `overbound` 4, `tolerance` 7, all zero — while `sweep.sh`'s own
+comment called promotion "a follow-up". Three sibling axes were promoted the day they went green;
+this one was forgotten, and a test that cannot fail is not a test. The `|| echo "REPORT-ONLY"` is
+gone.
+
+**Every gate re-run on the tightened policy: seeds, regression, conformance, the 17870-input corpus,
+limit mode, and the sweep family including the now-blocking union pass — all green**, 0 divergences.
+Which is the expected result and also the point: the tightening costs nothing today and catches the
+first case tomorrow.
+
 **The cluster baseline survives a roster change now — rows match on the drivers they name
 (2026-08-16, last).**
 The stamp shipped earlier the same day made the report honest; this makes the file keep working. A
