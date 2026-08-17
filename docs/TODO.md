@@ -132,7 +132,12 @@ here:
       its `NOTES.md` which gate owns the rule now; F-0018 is the one case that cannot be promoted
       until the `allow:` item above is settled.
 
-- [ ] **`engine/structured/audit_canonical.py` is wired to nothing.** A static canonicality audit of
+- [x] **DECIDED 2026-08-16 — stays a hand-run tool, not a gate. The reasoning lives in the file's
+      own header** (`engine/structured/audit_canonical.py`), which now states what it is for, the 4
+      of 10 statically checkable rules it covers, the six it does not, and the two reasons it is not
+      a gate — the coverage, and the missing executable self-test. Deliberately not repeated here:
+      the file owns it. Original note below.
+      ~~`engine/structured/audit_canonical.py` is wired to nothing.~~ A static canonicality audit of
       the committed corpora, independent of `gen.py` (it re-derives the properties from the bytes, so
       it can catch a reference encoder that is itself wrong) — exactly the check that would notice a
       corpus drifting away from §2/§3. Nothing calls it, no CI job runs it, and it is absent from
@@ -141,7 +146,16 @@ here:
       are the deliberately non-canonical inputs those corpora exist to carry. **Work:** gate it on the
       canonical corpora only (`structured`, `structured-union`), where a hit is unambiguous.
 
-- [ ] **`oracle/minimize.py` silently changes target on a TIMEOUT camp.** The contract
+- [x] **DONE 2026-08-16 — the minimizer never applies a deletion it did not observe.** Three
+      defects, all in the same direction: an unanswered slot (a driver that hung earlier in the
+      batch) compared equal to a TIMEOUT target, so deletions "held" that were never measured; the
+      single-deletion fallback was applied without being checked on its own; and a target resting on
+      a hang was never re-confirmed. All three closed — unanswered now matches nothing, the fallback
+      is verified, and a TIMEOUT target is re-measured (`--confirm`) with the run refusing rather
+      than shrinking against something that has gone away. Verified with two fake drivers: a stable
+      hang minimizes to the byte that causes it, a flaky one exits 3 and writes no file. Original
+      note below.
+      ~~`oracle/minimize.py` silently changes target on a TIMEOUT camp.~~ The contract
       (`run.sh:37`) is "shrink one input while its camp partition holds". It does not hold when the
       camp is defined by a `TIMEOUT`: a stall is not a property of the bytes, so the timeout stops
       reproducing after the first deletion, and the minimizer keeps shrinking against whatever camp

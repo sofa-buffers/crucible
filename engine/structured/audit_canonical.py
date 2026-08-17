@@ -60,6 +60,13 @@ WHY IT IS NOT A CI GATE (decided 2026-08-16)
     the situation it was built for. Before it could ever be gated it needs the self-test
     above, and preferably the six missing rules.
 
+    STATUS: this is a decision, not an oversight, and docs/TODO.md carries it as closed
+    pointing back here rather than restating it — one owner per fact. If you are reading
+    this because you want to gate it after all, the two paragraphs above are the entry
+    price, in that order: the self-test first, because without it a gate that silently
+    stopped reporting would stay green forever, which is the failure this file exists to
+    prevent.
+
     Also note it carries its own hand-written copy of the probe field layout below,
     while `oracle/materialized-schema.json` holds the same thing machine-generated and
     freshness-checked. A gate would have to read that instead; a hand-run tool can live
