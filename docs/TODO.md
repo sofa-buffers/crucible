@@ -12,8 +12,10 @@ results: (1) the **over-bound §7.1 blob path is GREEN** — over-index / over-m
 12 reject, so `_BlobSeq` enforces its `count`/`maxlen`; the long-open F-0013 blob-path re-check is
 **answered**. (2) A **new finding, F-0026** — the §7.4 `blob_array` wrapper **re-open** keeps a stale
 zeroed element on the C object API (corelib-c-cpp `sofab_object_init` never resets a sized blob's
-companion length); `string_array` is uniform. Corelib-only, minimal isolate, carved out of the blocking
-repeated-id sweep axis until fixed.
+companion length); `string_array` is uniform. Corelib-only, minimal isolate. *(The carve-out this described is
+gone: `engine/structured/sweep_repeated_id.py:97` records that blob-wrapper reopens agree
+across all drivers, and the CI sweep of 2026-08-18 reads `[sweep_repeated_id] 159 vectors —
+0 divergence(s)`. Corrected 2026-08-18; the sentence had outlived the exclusion.)*
 
 **Array-of-struct integration (WP-05) — DONE 2026-07-27** on the `poc/omit-all-default-sequences`
 family (F-0030 / corelib-c-cpp#109 fixed there): `struct_array` (id 202, `struct{k: u32, v: string
@@ -518,8 +520,17 @@ here:
       `same:` vector whose twin re-encodes to the empty message, so this blind spot cannot come
       back silently.
 
-- [~] **Over-width vectors at the array-element position — WRITTEN 2026-08-03, carved out
-      until [generator#279](https://github.com/sofa-buffers/generator/issues/279) closes.**
+- [x] **DONE — the carve-out was deleted 2026-08-16 with generator#281, and this entry
+      simply never said so.** The prediction it ends with is now the measured state: the CI
+      sweep of 2026-08-18 reports `[sweep_overbound] 67 vectors — 0 divergence(s), 0
+      conformance failures`, exactly the "67 vectors, 0 divergences" it asked for. The code
+      has said it all along (`engine/structured/sweep_overbound.py:62` — *"#279 landed as
+      generator PR #281 and the carve-out was removed 2026-08-16"*), and `_F0052_CARVEOUT`
+      no longer exists anywhere. The axis is blocking, so every green CI run since has been
+      running the full 67 — a carve-out that had outlived its reason only in this file.
+      Original note below.
+      ~~Over-width vectors at the array-element position — WRITTEN 2026-08-03, carved out
+      until [generator#279](https://github.com/sofa-buffers/generator/issues/279) closes.~~
       `sweep_overbound` now derives the declared element width from the schema
       (`Position.itype` + `INT_RANGE`, no literals — WP-11) and emits, per integer array
       position: over-the-top, at-the-top control, and for signed types under-the-bottom plus an
@@ -931,7 +942,15 @@ here:
 
 ## Open — CI / infra
 
-- [ ] **`image.yml`**: confirm the GHCR toolchain image is seeded and the live runs are green.
+- [x] **DONE 2026-08-18 — the evidence this asked for has been arriving all along.**
+      `replay.yml` runs its `differential` job **inside** the image
+      (`container: ghcr.io/sofa-buffers/crucible-ci:latest`, `replay.yml:56`), so a green run
+      *is* the confirmation that the image is seeded and usable — a missing or broken image
+      fails the job before the first step. Today's runs (#163, #164) were green there. The
+      item was written before the container block existed and was never re-read afterwards.
+      This unblocks the devcontainer item below, which named it as its blocker. Original note
+      below.
+      ~~`image.yml`: confirm the GHCR toolchain image is seeded and the live runs are green.~~
       *(update 2026-07-23: confirmed `replay.yml`/`nightly.yml` **do** consume
       `ghcr.io/sofa-buffers/crucible-ci:latest`; the remaining task is confirming the image is
       seeded and a live run is green.)*
@@ -978,6 +997,14 @@ here:
       spot-verified in the bare workspace + hand-installed clang). *(update 2026-07-23:
       `.devcontainer/{Dockerfile,devcontainer.json,start.sh}` exist and `image.yml` builds them;
       still no CI evidence every driver builds inside the image — blocked on the `image.yml` item above.)*
+      **No longer blocked (2026-08-18):** the `image.yml` item above is closed, and in fact
+      the evidence is already partly in hand — `replay.yml`'s `differential` job runs inside
+      `ghcr.io/sofa-buffers/crucible-ci:latest` and builds **every driver** there on each run,
+      so "every driver builds inside the image" is demonstrated for the CI image. What is
+      still unverified is the **devcontainer** image specifically (`.devcontainer/Dockerfile`),
+      which is a different artifact from the CI one; the remaining work is checking whether
+      the two have drifted, and if they are meant to be the same image, saying so in one place
+      rather than maintaining two.
 - [ ] **OSS-Fuzz** onboarding for continuous fuzzing (eventual).
 
 ## Done — key harness milestones (finding history is in `../results/FINDINGS.md`)
