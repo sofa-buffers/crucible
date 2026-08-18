@@ -107,6 +107,14 @@ seeds, which are small. Only the manual step-6 pass over a fuzzed corpus does, a
 fixed cap turned a legitimate long run into a traceback. `CHUNK_FEED_TIMEOUT` (and
 `ENCODE_FEED_TIMEOUT` for the encode twin) now override it, default unchanged at 120.
 
+*With the cap sized, the pass ran, and it is green:* **10270 inputs x 7 chunkings x 14
+drivers, `TOTAL: 0 chunk-invariance mismatch(es)`** — the first time this gate has been run
+over a fuzzed corpus. It took **1220 s**, not the "roughly two hours" this entry first
+predicted: that extrapolated from `SOFAB_CHUNK=1` on the slowest driver, and the larger chunk
+sizes are far cheaper than the one-byte cut. `py-cython` and `py-pure` report the scrub config
+*not applicable* — their pull Decoder copies bytes on arrival, so no borrow is observable —
+counted as neither pass nor fail.
+
 **Nightly 32096008437 (2026-08-18) triaged — the camps are quiet.** CI's own clustering
 reported `baseline: 1/1 camp(s) accounted for`: the benign `I:… | I:java` payload axis that
 is the single live row in `known-clusters.txt`. The artifact carried **no crashes**. CI's
