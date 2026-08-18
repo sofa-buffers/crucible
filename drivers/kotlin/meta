@@ -1,0 +1,15 @@
+lang=kotlin
+corelib=corelib-kotlin-mp
+# Jazzer on the JVM leg (FuzzProbe.kt). The native leg has no coverage front-end:
+# Kotlin/Native exposes no libFuzzer entry point, the zig/dart position (PLAN §14).
+framework=jazzer
+pacemaker=false
+# One driver source per KMP target: `jvm` (VarHandle word access) and `native`
+# (linuxX64, indexed shifts) — registered as two rows in drivers/roster.
+variants=jvm,native
+chunked_decode=push
+encode_surfaces=new,to,stream
+min_output_buffer=1
+# CORELIB_PLAN §5.1 pass-through permission: README — "Pass-through is not
+# implemented (CORELIB_PLAN §5.1 makes it a MAY)".
+pass_through=no

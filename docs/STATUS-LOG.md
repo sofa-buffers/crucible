@@ -3171,6 +3171,90 @@ resulting *what-is* stays in ARCHITECTURE.
 
 ## Key decisions (decision log)
 
+- **2026-08-18 — the Kotlin target lands as TWO drivers, because "multiplatform" is the
+  thing worth testing.** sofabgen grew a `kotlin` backend (generator#340, its 11th) and
+  `corelib-kotlin-mp` joined the family, so `drivers/kotlin/` was built and the roster went
+  from fifteen rows to **seventeen**. The decision was how many rows, not whether to have any.
+  A Kotlin Multiplatform library is one `commonMain` codec compiled for several platforms;
+  registering only `jvm` would have tested it as "a second Java port" and left the entire
+  reason the library exists — that the same source produces the same bytes on unlike
+  runtimes — outside the harness. The little-endian word access is an `expect`/`actual`
+  (byte-array `VarHandle`s on the JVM, indexed shifts through LLVM on Kotlin/Native), so the
+  two legs are genuinely different machine code over one design: the `drivers/rust/`
+  situation (one `driver.rs`, two corelibs) one level up, and the same answer — one source,
+  two roster rows, and any divergence between them a bug by construction. **What that cost,
+  concretely:** exactly one file per target, the IO shim (`io_jvm.kt` / `io_native.kt`),
+  because common Kotlin has no API for the environment, for binary stdin or for stdout and
+  nothing else in a replay driver is platform-bound. The verdict mapping, the chunking, the
+  three encode surfaces and the materialized walk are shared verbatim.
+  **Two build decisions worth recording.** (1) The *corelib* is built by its own Gradle build
+  (`jvmJar` / `linuxX64MainKlibrary`), never by hand-compiling its sources with `kotlinc`,
+  which was the tempting shortcut: `build.gradle.kts` pins the JVM target, `-jvm-default=no-compatibility`
+  and the native target list, and a driver linked against a differently-compiled corelib is
+  not testing the artifact the project ships. The *driver* is compiled directly with
+  `kotlinc`/`kotlinc-native`, for the reason `drivers/java/build.sh` calls `javac` — a
+  driver is a handful of files against a built library and should not carry a build system.
+  (2) `kotlinc-native` is **not** in the standalone `kotlinc` (its `bin/` is jvm/js/wasm
+  only); it lives in the separate Kotlin/Native distribution, which Gradle will provision on
+  demand. The image now carries it — and, separately, warms the LLVM + sysroot dependencies
+  it fetches *lazily on first compile* by building a hello-world — because otherwise the
+  first CI gate to touch the native leg downloads ~2 GB mid-run.
+  **The materialized walker is generated, not reflected**, joining the rust/cpp/zig/dart camp
+  rather than java's. Kotlin has property reflection only on the JVM (`kotlin-reflect`), so
+  reflecting would have meant a second walker for the native leg — the one thing having a
+  shared driver is for.
+  **Validation (PLAN §13.6), all green on the first run, no divergence anywhere:** seeds 6,
+  structured 111, conformance 8, regression 239, union 11 and all four limit dimensions ×
+  17 drivers; the materialized oracle 111 × 17 with the C anchor still 0/111 against the
+  reference; every sweep axis on both the probe and the union schema; the encode gate 111 ×
+  9 configs on both legs; chunk invariance 6 × 311 chunkings on seeds and 239 × 6 on the
+  regression corpus, `SOFAB_CHUNK_SCRUB` included (nothing borrows from a fed chunk). Then
+  the real test for a new implementation — the **19157-input fuzzed corpus**, clustered
+  against `results/known-clusters.txt`: 8898 agree, 10259 diverge into **one** root-cause
+  camp, the known benign `incomplete_value` split, with both Kotlin legs **inside** the
+  existing camp. No new camp. That last point is the finding of the day and it is a
+  negative one: a brand-new independent implementation, dropped into a corpus grown by
+  fuzzing eleven others, produced not one novel disagreement.
+  **The one behaviour it did change** is a soft axis: on `INCOMPLETE` the Kotlin ports hand
+  back the partial value they had already read, as `java` does, so the `incomplete_value`
+  camp is now three drivers wide rather than one. Both names were written into the baseline
+  row — not required (cluster.py matches a row on the drivers it names), but a row that
+  under-describes its own camp produces a per-run note nobody can act on, and recording them
+  arms the check that matters: a Kotlin leg *leaving* that camp now reads as NEW.
+  **Not done, and deliberately:** the `js` and `linuxArm64` legs (docs/TODO.md). The JS one
+  is the interesting remainder — Kotlin/JS has neither a native 64-bit integer nor an fp32
+  value type, the shape that has produced findings in every other double-only port.
+
+- **2026-08-18 — the image's JVM is Temurin 21, and the Kotlin toolchain rides on it.**
+  `.devcontainer/Dockerfile` gained the toolchain for **corelib-kotlin-mp**, the new Kotlin
+  Multiplatform corelib: Gradle 8.14.5, `kotlinc` 2.4.10 and `KONAN_DATA_DIR`. The part worth
+  logging is not the additions but the JDK swap they forced. That repo is built by Gradle
+  (its wrapper pins **8.14.5**), and Gradle 8.x **refuses to start** on the JDK the image had —
+  Ubuntu 26.04's `default-jdk` is **JDK 25**. Two ways out: a second JDK used only by Gradle,
+  or one JDK for the whole image. **One JDK, and it is Temurin 21** — the LTS corelib-kotlin-mp's
+  own devcontainer and CI leg use. A side JDK would have to be selected by every entry point,
+  and the canonical one is `./gradlew`, which reads `JAVA_HOME`/`PATH` like everything else: the
+  "only for Gradle" split would have been one env var away from silently building on 25 again.
+  Making it image-wide costs nothing measurable on the other side — corelib-java compiles to
+  `release 17`, so `drivers/java/` cannot tell 25 from 21, and **Jazzer**, the fuzzing framework
+  both JVM drivers share, tracks the LTS line rather than the newest release. One trap found
+  while verifying: the Temurin package does **not** win `update-alternatives` against the distro
+  JDK, so `/usr/bin/java` still reports 25 and only the explicit `JAVA_HOME`/`PATH` (at
+  `/opt/java-current`, the arch-suffix symlink) decides what a build actually gets — a version
+  check that reads `java -version` from a login shell without that PATH would report the wrong
+  answer. `kotlinc` is installed next to Gradle for the same reason `drivers/java/build.sh` calls
+  `javac` directly: Gradle builds the corelib, a driver is a couple of files compiled against its
+  jar and should not carry a Gradle project of its own. Both versions are pinned to what that repo
+  declares (wrapper version, `kotlin("multiplatform")` version) — a driver compiled by a newer
+  `kotlinc` than the corelib fails on metadata version, which reads like a corelib bug and is not
+  one. **Verified by running it, not by reading it:** the Dockerfile's steps were executed on the
+  same `ubuntu:26.04` base and `./gradlew build` on corelib-kotlin-mp@main went green across all
+  three legs it configures on Linux — JVM, JS on Node, and Kotlin/Native `linuxX64` (which pulls
+  its own ~2 GB LLVM into `KONAN_DATA_DIR` on first use, which is why that cache is pinned out of
+  the mounted workspace). **No Kotlin driver yet, and it cannot exist today**: `sofabgen --lang`
+  offers `c|cpp|csharp|dart|docs|go|java|python|rust|typescript|zig` — there is no `kotlin`
+  backend, so the roster, `drivers/roster` and the gates are untouched by this change.
+
 - **2026-07-28 — `count` is a capacity: the spec contradiction I found, and the suite
   re-pointed at the answer.** The static audit against the POC branch surfaced that
   `oracle/materialized.md` and §5.1 disagreed about a `count: N` wrapper's length. Tracing it

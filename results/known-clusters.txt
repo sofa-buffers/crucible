@@ -1,6 +1,6 @@
 # Accounted-for cluster camps — the baseline `oracle/cluster.py --baseline` diffs against.
 #
-# roster: c,go,rust-std,rust-nostd,cpp,cpp-fixed,cpp-c-cpp,cpp-c-cpp-dyn,py-cython,py-pure,java,typescript,csharp,zig,dart
+# roster: c,go,rust-std,rust-nostd,cpp,cpp-fixed,cpp-c-cpp,cpp-c-cpp-dyn,py-cython,py-pure,java,typescript,csharp,zig,dart,kotlin-jvm,kotlin-native
 #
 # ^ The drivers these signatures were recorded against. INFORMATIONAL: cluster.py matches
 # each row on the drivers that row actually names, so adding a driver does not invalidate
@@ -42,7 +42,16 @@
 #
 # Format: <signature>  # <label>
 
-I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescript,zig | I:java  # benign — java emits an incomplete_value payload on I; the verdict is unanimous (policy incomplete_value: soft)
+I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescript,zig | I:java,kotlin-jvm,kotlin-native  # benign — java and both Kotlin legs emit an incomplete_value payload on I; the verdict is unanimous (policy incomplete_value: soft)
+
+# --- 2026-08-18: the two Kotlin rows written INTO the row above --------------------
+# Adding a driver does not require re-recording this file — cluster.py matches a row on
+# the drivers it names. The two names are recorded anyway, because the alternative is a
+# row that permanently under-describes the split and a per-run "an unnamed driver joined
+# this camp" note nobody can act on. Recording them also arms the check that matters: if
+# a Kotlin leg ever leaves this camp, that is real movement and now reads as NEW.
+# Verified over the 19157-input corpus: 8898 agree, 10259 diverge -> this one camp, both
+# Kotlin legs inside it, no new camp.
 
 # --- deleted 2026-08-06, cause repaired -------------------------------------------
 # The fixlen header hook landed in all five push/visitor corelibs (corelib-cs#53,

@@ -22,6 +22,13 @@
 # both allow_dynamic settings. The wire format is byte-identical across all four, so
 # any divergence between them is a bug by construction — see crucible#129.
 #
+# The two Kotlin rows are the same shape one level up: one source
+# (drivers/kotlin/driver.kt) against one corelib compiled for two Kotlin Multiplatform
+# targets — `jvm` (byte-array VarHandles for little-endian word access) and `native`
+# (linuxX64 through LLVM, indexed shifts). Same commonMain codec, different machine
+# code underneath it, so a divergence between the two rows is likewise a bug by
+# construction.
+#
 # QUARANTINE. A gate selects `blocking` by default; `ROSTER_TAG= ./scripts/run.sh`
 # (empty) selects the whole roster, quarantine included, which is how a quarantined
 # driver is exercised. The mechanism exists for the same reason
@@ -45,3 +52,5 @@ typescript         ts       -          blocking,limits   drivers/ts/build/driver
 csharp             cs       -          blocking,limits   drivers/cs/build/driver
 zig                zig      -          blocking,limits   drivers/zig/build/driver
 dart               dart     -          blocking,limits   drivers/dart/build/driver
+kotlin-jvm         kotlin   jvm        blocking,limits   drivers/kotlin/build/jvm/driver
+kotlin-native      kotlin   native     blocking,limits   drivers/kotlin/build/native/driver

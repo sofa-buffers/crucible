@@ -9,8 +9,9 @@
 
 **Differential fuzzing for the SofaBuffers wire format.** SofaBuffers ships one
 wire format implemented independently in many languages (`corelib-c-cpp`, `-cpp`,
-`-cs`, `-go`, `-java`, `-py`, `-rs`, `-rs-no-std`, `-ts`, `-zig`, `-dart` — eleven
-corelibs, and `c-cpp` backs two drivers: its C object API and its C++ wrapper). Independent
+`-cs`, `-go`, `-java`, `-kotlin-mp`, `-py`, `-rs`, `-rs-no-std`, `-ts`, `-zig`,
+`-dart` — twelve corelibs, and two of them back more than one driver: `c-cpp` its C
+object API and its C++ wrapper, `kotlin-mp` its JVM and its Kotlin/Native target). Independent
 implementations of one format **drift** — and the drift that hurts is *silent*:
 two implementations both accept a byte sequence but decode it to different values,
 or one accepts what another rejects. No crash, no exception — just broken interop
@@ -104,14 +105,16 @@ everyone else's.
 `run.sh` prints, per driver, its built binary, then the differential result:
 
 ```
-6 inputs × 15 drivers (c, go, rust-std, rust-nostd, cpp, cpp-fixed, cpp-c-cpp, cpp-c-cpp-dyn,
-  py-cython, py-pure, java, typescript, csharp, zig, dart): 0 divergence(s) (0 crash, 0 timeout), 0 warning(s)
+6 inputs × 17 drivers (c, go, rust-std, rust-nostd, cpp, cpp-fixed, cpp-c-cpp, cpp-c-cpp-dyn,
+  py-cython, py-pure, java, typescript, csharp, zig, dart, kotlin-jvm, kotlin-native):
+  0 divergence(s) (0 crash, 0 timeout), 0 warning(s)
 ```
 
 No toolchains in the bare workspace — everything runs inside
 [`.devcontainer/`](.devcontainer/), which carries the fuzzing frameworks
 (libFuzzer, cargo-fuzz, Jazzer, Atheris, SharpFuzz, Jazzer.js) and every language
-toolchain.
+toolchain — including, for the Kotlin Multiplatform target, both a JVM and a
+Kotlin/Native compiler.
 
 ## Test suites
 
@@ -276,8 +279,8 @@ schema-agnostic C anchor vs the `engine/structured/materialize.py` reference, so
 family-wide-wrong dump is caught). The schema-type table a value walk needs is
 *generated* from the schema (`engine/structured/schema.py` → `oracle/materialized-schema.json`),
 so **every walker is schema-agnostic** — C via the corelib object descriptor,
-go/ts/java/cs/python by consuming the descriptor at runtime, rust/cpp/zig by generating
-their walker source from it at build time. Wired into CI alongside the other gates.
+go/ts/java/cs/python by consuming the descriptor at runtime, rust/cpp/zig/dart/kotlin by
+generating their walker source from it at build time. Wired into CI alongside the other gates.
 
 ### 8. Clustering (`CLUSTER=1`)
 
