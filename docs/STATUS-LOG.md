@@ -81,6 +81,32 @@ not owned by the build user, so git exits 128 and takes `go list` with it. `go b
 the lesson is that this step must not be able to die of a lookup. That run also carried the
 whole fix end to end: **41 inputs harvested, step exit 0, no red step in the run.**
 
+**The streaming gates' feed cap is sized for the hand-written corpora, not for a fuzzed one
+(measured 2026-08-18).** Step 6 of a nightly triage points `run-chunked.sh` at
+`corpus/interesting`. Over tonight's 10270-input corpus that died with
+`subprocess.TimeoutExpired ... timed out after 120 seconds` on `cpp`, after `c`, `rust-std`
+and `rust-nostd` had each passed 7 chunkings — which reads exactly like a hang in one driver.
+
+It is arithmetic. `feed()` hands a driver the **whole corpus in one run**, so the cap scales
+with corpus size rather than with an input, and `SOFAB_CHUNK=1` turns 12.5 MB into 12.5M
+single-byte feeds. Measured on the `cpp` driver, quiet machine:
+
+| inputs | whole-message | `SOFAB_CHUNK=1` |
+|---|---|---|
+| 500 | 0.13 s | 6.34 s |
+| 1000 | 0.11 s | 12.69 s |
+| 2000 | 0.17 s | 35.94 s |
+| 4000 | 0.32 s | 79.08 s |
+
+Linear, ~12500 inputs/s whole against ~50/s at one byte at a time; 10270 extrapolates to
+~200 s against a 120 s cap. No input hangs — the same corpus completes whole in under a
+second.
+
+CI never meets this: `replay.yml` runs the chunked gate over `corpus/regression` and the
+seeds, which are small. Only the manual step-6 pass over a fuzzed corpus does, and there the
+fixed cap turned a legitimate long run into a traceback. `CHUNK_FEED_TIMEOUT` (and
+`ENCODE_FEED_TIMEOUT` for the encode twin) now override it, default unchanged at 120.
+
 **Nightly 32096008437 (2026-08-18) triaged — the camps are quiet.** CI's own clustering
 reported `baseline: 1/1 camp(s) accounted for`: the benign `I:… | I:java` payload axis that
 is the single live row in `known-clusters.txt`. The artifact carried **no crashes**. CI's
@@ -96,6 +122,14 @@ reported a NEW camp: `TIMEOUT:py-pure`, 2 inputs of 19157. It is the spurious cl
   everyone else, and all 15 drivers agree on it at a longer budget;
 - a **second pass at the same `TIMEOUT=5` accused a disjoint set** — two different inputs,
   the first no longer among them — while the machine's 15-minute load average sat at ~19.
+
+*The other two nets over the same corpus.* The materialized-value oracle is **green**:
+10270 inputs x 15 drivers, **0 divergences** (0 crash, 0 timeout). The encode gate reports a
+single counted failure for `go`, and it is not an encoder defect — it is the gate saying the
+string/blob **pass-through** permission was granted and never exercised (`0 handovers over
+10270 input(s)`), because nothing in this corpus carries a payload above the port's
+threshold. A configuration that asserts nothing is counted as a failure by design; the
+corpus, not `corelib-go`, is what does not reach it.
 
 Always `py-pure`, which is simply the slowest driver in the roster. The same corpus at
 `TIMEOUT=30` — the nightly's own budget — reports **`1/1 camp(s) accounted for`, no new
