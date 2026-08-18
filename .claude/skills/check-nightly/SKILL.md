@@ -86,12 +86,19 @@ bootstrap prints before concluding anything about generated code.
 ## 4. Re-cluster locally against the baseline
 
 ```sh
-CLUSTER=1 TIMEOUT=5 CORPUS=corpus/interesting BASELINE=results/known-clusters.txt ./scripts/run.sh
+CLUSTER=1 TIMEOUT=30 CORPUS=corpus/interesting BASELINE=results/known-clusters.txt ./scripts/run.sh
 ```
 
 Always via `run.sh` — it builds the roster and passes `--driver` from `drivers/roster`.
 Calling `oracle/cluster.py`/`comparator.py` directly risks measuring whatever binaries the
 limit/sweep suites left in `drivers/*/build/`.
+
+**`TIMEOUT=30`, matching the nightly — not a tighter one.** A tight budget manufactures
+`TIMEOUT` camps out of scheduling stalls, on different inputs every run, and they read
+exactly like a new camp until you chase one down. `results/CLUSTERS.md` owns that measurement
+and the reason the nightly settled on 30. If a `TIMEOUT` camp does show up, replay the accused
+input on its own before believing it — this bit a session on 2026-08-18, and the input decoded
+in a millisecond.
 
 ## 5. Triage the NEW camps — in this order
 
@@ -170,6 +177,5 @@ say that plainly — a quiet nightly is the expected outcome and is a result.
 
 ## Timing
 
-Bootstrap + a full 15-driver build is minutes; a cluster run over ~9k inputs is ~10 min at
-`TIMEOUT=5`; the chunked pass is ~1 min per driver. Don't poll CI in a loop — differential
+Bootstrap + a full 15-driver build is minutes; a cluster run over ~9k inputs is ~10 min; the chunked pass is ~1 min per driver. Don't poll CI in a loop — differential
 CI is ~8 min, the catalog job seconds.

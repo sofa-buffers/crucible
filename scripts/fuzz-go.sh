@@ -60,11 +60,52 @@ rc=0
     go test -run '^$' -fuzz=FuzzProbe -fuzztime="${FUZZ_TIME}s" . ) || rc=$?
 
 # --- harvest: Go's coverage corpus -> raw bytes -----------------------------
-PKG=$(cd "$GODIR" && GOFLAGS=-mod=mod GOTOOLCHAIN=local go list -f '{{.ImportPath}}' . 2>/dev/null)
-CACHE="$(go env GOCACHE)/fuzz/$PKG/FuzzProbe"
+# Locating Go's per-target fuzz cache must not be able to kill the step. It used
+# to: `go list` ran with its stderr discarded and, under `set -e`, a single
+# failure threw away the whole harvest *and* the crash scan without printing one
+# word. That is exactly what happened — nightlies 2026-08-14..18 each fuzzed for
+# 450s, found new inputs, and dropped every one of them; `continue-on-error` kept
+# the run green, so nothing said so. So: no fatal step, and every fallback is
+# announced.
+#
+# The cache layout is $GOCACHE/fuzz/<import path>/<fuzz target>.
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+
+GOCACHE_DIR=""
+if GOTOOLCHAIN=local go env GOCACHE >"$tmp/gocache" 2>"$tmp/err"; then
+    GOCACHE_DIR=$(cat "$tmp/gocache")
+else
+    echo "==> [go-fuzz] WARNING: 'go env GOCACHE' failed — cannot harvest:" >&2
+    sed 's/^/    /' "$tmp/err" >&2
+fi
+
+# The import path, preferably from the toolchain; from go.mod when `go list`
+# fails (it resolves the whole module graph, so it has more ways to fail than
+# reading the one line we actually want).
+PKG=""
+if [ -n "$GOCACHE_DIR" ]; then
+    if ( cd "$GODIR" && GOFLAGS=-mod=mod GOTOOLCHAIN=local \
+             go list -f '{{.ImportPath}}' . ) >"$tmp/pkg" 2>"$tmp/err"; then
+        PKG=$(cat "$tmp/pkg")
+    else
+        echo "==> [go-fuzz] WARNING: 'go list' failed — falling back to go.mod:" >&2
+        sed 's/^/    /' "$tmp/err" >&2
+        PKG=$(awk '$1 == "module" { print $2; exit }' "$GODIR/go.mod")
+    fi
+fi
+
+CACHE=""
+if [ -n "$GOCACHE_DIR" ] && [ -n "$PKG" ] && [ -d "$GOCACHE_DIR/fuzz/$PKG/FuzzProbe" ]; then
+    CACHE="$GOCACHE_DIR/fuzz/$PKG/FuzzProbe"
+elif [ -n "$GOCACHE_DIR" ] && [ -d "$GOCACHE_DIR/fuzz" ]; then
+    # Last resort: FuzzProbe is the only fuzz target in this repo, so the one
+    # directory of that name under the cache is ours whatever the import path.
+    CACHE=$(find "$GOCACHE_DIR/fuzz" -type d -name FuzzProbe 2>/dev/null | head -n 1)
+    [ -n "$CACHE" ] && echo "==> [go-fuzz] fuzz cache located by search: $CACHE" >&2
+fi
+
 new=0
-if [ -d "$CACHE" ]; then
-    tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+if [ -n "$CACHE" ] && [ -d "$CACHE" ]; then
     for f in "$CACHE"/*; do
         [ -f "$f" ] || continue
         python3 "$CONV" decode "$f" "$tmp/x" 2>/dev/null || continue
@@ -73,6 +114,8 @@ if [ -d "$CACHE" ]; then
         cp "$tmp/x" "$CORP/$h"
         new=$((new + 1))
     done
+else
+    echo "==> [go-fuzz] WARNING: no fuzz cache under GOCACHE — harvested nothing" >&2
 fi
 echo "==> [go-fuzz] $new new input(s) harvested into $(basename "$CORP")" >&2
 

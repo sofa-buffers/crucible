@@ -97,6 +97,12 @@ step). `FUZZ_TIME` (default 1800s) is overridable via manual dispatch.
   The two streaming gates (`run-chunked.sh`, `run-encode.sh`) each pay a build too: since
   2026-08-16 they derive their participants from the roster + `meta` (`roster.sh caps`),
   and both run a full roster — fourteen and fifteen drivers.
+- **A `continue-on-error` step that stops working says nothing.** The nightly's Go engine
+  failed for five nights (2026-08-14…18) without colouring a single run, because that is
+  what `continue-on-error` is for — a Go panic there is a finding, not a build break. The
+  flag is still right; what is missing is a final step that reads the job's step outcomes
+  and prints the ones that were non-zero, so a step that quietly stopped contributing is
+  visible on night one instead of on the next hand triage.
 - **Cross-repo auto-annotation:** have `nightly` open/annotate issues on the owning
   corelib/generator repos (needs a PAT with `issues:write`), instead of only
   uploading artifacts.
