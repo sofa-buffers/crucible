@@ -59,7 +59,7 @@ NO_FETCH="${NO_FETCH:-0}"
 GEN_REPO="https://github.com/sofa-buffers/generator"
 
 # Corelibs needed by the current drivers. Extend as languages are added.
-CORELIBS="corelib-c-cpp corelib-cpp corelib-cs corelib-dart corelib-go corelib-java corelib-py corelib-rs corelib-rs-no-std corelib-ts corelib-zig"
+CORELIBS="corelib-c-cpp corelib-cpp corelib-cs corelib-dart corelib-go corelib-java corelib-kotlin-mp corelib-py corelib-rs corelib-rs-no-std corelib-ts corelib-zig"
 
 # ------------------------------------------------------------ family branch ----
 # Default: whatever branch this checkout is on. In Actions, HEAD is detached, so read

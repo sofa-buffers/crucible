@@ -964,6 +964,23 @@ here:
 
 ## Open — CI / infra
 
+- [ ] **The Kotlin target has two of its four KMP legs.** `drivers/kotlin/` runs
+      corelib-kotlin-mp on `jvm` and on `linuxX64` (2026-08-18). The corelib also builds
+      for **`js` (IR, Node/browser)** and **`linuxArm64`**, and the JS leg is the
+      interesting one: Kotlin/JS has neither a 64-bit integer nor an `fp32` value type
+      natively — `Long` is emulated and `Float` is a JS `number` — which is the shape that
+      produced findings in the other double-only ports (the Dart `Fp32Bits` channel,
+      generator#275). Wiring it needs an `io_js.kt` (Node `fs.readFileSync(0)` /
+      `process.env`) and the corelib's JS klib on the compile line; the driver core, the
+      materialize walker and the streaming axes are already target-agnostic and would need
+      no change. `linuxArm64` is cheap but only tests a cross-compile on an x86 runner —
+      worth it on an arm64 runner, not before.
+- [ ] **The Kotlin/Native leg has no coverage front-end.** Jazzer steers the JVM leg
+      (`drivers/kotlin/FuzzProbe.kt`), and both legs are replayed against the corpus it
+      grows — but Kotlin/Native exposes no libFuzzer entry point, so nothing steers by
+      *native* coverage. This is the zig/dart position (PLAN §14), and the same
+      C-interop-to-libFuzzer path is the candidate answer for all three.
+
 - [x] **DONE 2026-08-18 — the evidence this asked for has been arriving all along.**
       `replay.yml` runs its `differential` job **inside** the image
       (`container: ghcr.io/sofa-buffers/crucible-ci:latest`, `replay.yml:56`), so a green run
