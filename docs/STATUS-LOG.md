@@ -19,6 +19,36 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**corelib-py#96 merged, verified — and the first verification was wrong (2026-08-18).**
+The `SofaStateError` split filed yesterday landed upstream the same evening, in the shape
+the write-up proposed: a deprecated alias of `SofaRangeError` for the caller-mistake half,
+and the four type-mismatched reads now returning `None` and skipping the field per §7.3.
+Re-measured here rather than taken from the merge — the rule that a closed upstream issue
+is a reason to re-measure, never a substitute for it, which this repo has now learned three
+times (generator#293 → #295, generator#300, and this).
+
+*The first measurement said the fix had not worked.* All four reads still raised. The cause
+was not the fix: a compiled `_speedups` artifact from **before** it was still sitting in
+`vendor/corelib-py/src/`, where a `git checkout` does not remove it, and `sys.path` order
+made it win over the freshly checked-out sources. Removing it and rebuilding gave the
+correct answer on both engines. **The stale-build rule reaches further than the drivers'
+own outputs** — a corelib's build products live inside the vendored checkout and survive
+exactly the operation one performs to get new code.
+
+*Crucible's own dead row went with it.* `drivers/python/driver.py` mapped `SofaStateError`
+to the `usage` class; with the alias in place `type(e).__name__` can never spell it again,
+and mapping it would now be wrong in the other direction — an alias of `SofaRangeError` is
+§6.3's `InvalidArgument`, i.e. `argument`. **No source of `usage` remains in the roster.**
+The per-line check added yesterday therefore guards a class nothing can emit, which is the
+point of keeping it: it makes the state unreachable rather than merely absent, including
+for a driver added later.
+
+*One stale citation found while editing:* `canonical.md` still said the receiver-limit
+"heap note is pending upstream (generator#102)". CORELIB_PLAN §6.2.1 closed that hole, and
+`policy.yaml` was corrected yesterday while this copy was not — the same
+description-in-two-places drift CLAUDE.md warns about, caught only because the paragraph
+happened to be under the cursor.
+
 **A forbidden reject class cannot be caught by comparing drivers (2026-08-17).**
 The "finer reject-class taxonomy" item had been open since 2026-07-17 asking for a
 two-tier grade to be *invented*. Re-read against the spec, the taxonomy turned out to be
