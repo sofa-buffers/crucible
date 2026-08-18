@@ -58,13 +58,23 @@ DRIVERS = roster.drivers(roster.gate_tag())
 CHUNK_SIZES = (1, 2, 3, 5, 8, 16)
 
 
+# One driver run gets the whole corpus, so the cap scales with corpus size, not with
+# one input. 120s is ample for the hand-written corpora this gate was written against;
+# over a fuzzed `corpus/interesting` it is not — at SOFAB_CHUNK=1 a 12.5 MB corpus is
+# 12.5M single-byte feeds, and a sanitized C++ driver needs ~200s for it while the same
+# corpus takes 0.8s whole. That is arithmetic, not a hang (measured 2026-08-18), but the
+# fixed cap reported it as one. Overridable so the pass can be run over a big corpus.
+FEED_TIMEOUT = int(os.environ.get("CHUNK_FEED_TIMEOUT", "120"))
+
+
 def feed(path, inputs, env=None):
     """Run a driver over `inputs`; returns (lines, returncode, stderr)."""
     blob = b"".join(struct.pack("<I", len(d)) + d for d in inputs)
     e = dict(os.environ)
     if env:
         e.update(env)
-    p = subprocess.run([path], input=blob, capture_output=True, env=e, timeout=120)
+    p = subprocess.run([path], input=blob, capture_output=True, env=e,
+                       timeout=FEED_TIMEOUT)
     return (p.stdout.decode(errors="replace").splitlines(), p.returncode,
             p.stderr.decode(errors="replace").strip())
 

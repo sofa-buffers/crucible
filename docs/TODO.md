@@ -124,6 +124,28 @@ here:
       matches), or delete the block and let the finding write-ups carry the reasoning. Both beat the
       present state, where the file reads as policy and behaves as a comment.
 
+- [x] **DONE 2026-08-18 — the chunked gate has now run over a fuzzed corpus, and it is
+      green: 10270 inputs x 7 chunkings x 14 drivers, `TOTAL: 0 chunk-invariance
+      mismatch(es)`, in 1220 s once the cap was sized (`CHUNK_FEED_TIMEOUT=900`). The two
+      `py-cython`/`py-pure` scrub configs report *not applicable* — their pull Decoder copies
+      the bytes on arrival, so no borrow is observable — and are counted as neither pass nor
+      fail. The estimate below that this would take "roughly two hours" was wrong by 6x: it
+      extrapolated from `SOFAB_CHUNK=1` on the slowest driver, and the larger chunk sizes are
+      far cheaper. What follows is the measurement that got it there.**
+      Step 6 of a nightly triage points `run-chunked.sh` at `corpus/interesting`, and on
+      2026-08-18 that turned out to be impossible rather than merely slow: `feed()` hands a
+      driver the **whole corpus in one run**, and the 120 s cap (now `CHUNK_FEED_TIMEOUT`,
+      default unchanged) is sized for the hand-written corpora. At `SOFAB_CHUNK=1` a 12.5 MB
+      corpus is 12.5M single-byte feeds — measured ~50 inputs/s on the sanitized `cpp` driver
+      against ~12500/s whole, so ~200 s for one config of one driver and roughly two hours for
+      the roster. Nothing hangs; the arithmetic was mistaken for a hang until it was measured.
+      What is known so far: `c`, `rust-std` and `rust-nostd` pass all 7 chunkings over the
+      10270-input corpus with **0 mismatches**; the remaining eleven drivers are unmeasured.
+      **What is left:** the gate still reports a slow driver as a traceback rather than as
+      slow. A per-driver budget derived from its whole-message throughput would say
+      "cpp needs ~200 s at SOFAB_CHUNK=1" instead of dying at a fixed wall — worth having the
+      next time someone points this at a corpus that has grown again.
+
 - [x] **DONE 2026-08-18 — the chunked gate replays `corpus/regression`, and the guard is
       proven able to fail.** `replay.yml` gained a second chunked step,
       `CORPUS=corpus/regression ./scripts/run-chunked.sh --modes chunk`. Measured before

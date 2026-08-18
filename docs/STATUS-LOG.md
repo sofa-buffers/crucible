@@ -19,6 +19,133 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The nightly's second steering engine has been throwing its whole harvest away since
+2026-08-14 (found 2026-08-18, triaging run 32096008437).** The nightly's *own* verdict was
+quiet — one camp, already accounted for, no crashes — but the run was red in a place nobody
+has to look at: the Go step is `continue-on-error`, so its failure never coloured a run.
+Five consecutive nightlies (2026-08-14 … 2026-08-18) end that step with the same three
+lines and nothing else:
+
+```
+PASS
+ok  	crucible/driver/go	452.244s
+##[error]Process completed with exit code 1.
+```
+
+`PASS` means the fuzzing itself was fine. What is missing is everything `fuzz-go.sh` prints
+*after* it — the harvest count, the crash scan, the corpus total. The step died between the
+fuzzer stopping and its first report.
+
+*Which line, established rather than guessed.* Exactly one command in that stretch had its
+stderr discarded — `PKG=$(cd "$GODIR" && … go list … 2>/dev/null)` — and the script runs
+under `set -e`, so a failing `go list` ends it instantly and silently. Replaying the old
+script against a `go` shim whose `list` always fails reproduces the CI log exactly: `PASS`,
+`ok`, exit 1, not one further word.
+
+*Why it earns a session.* The C pacemaker is saturated on this schema. Over its full
+30-minute budget in this run it moved `cov: 667 → 667`, `ft: 4731 → 4732`, `corp: 481 → 482`
+— one new feature, one new unit, in ~7.7M executions, every other event a `REDUCE`. The Go
+engine, on a quarter of that budget, reported **194 new interesting inputs** (its corpus
+10493 → 10687) in 7m31s. Those are precisely the inputs a C-steered corpus does not reach,
+which is the whole reason the second engine exists — and every one was dropped, five nights
+running. `nightly.yml` caches only `corpus/interesting`, so nothing survived in `$GOCACHE`
+either.
+
+*The fix, and what it deliberately does not do.* `scripts/fuzz-go.sh` no longer lets cache
+discovery fail the step: `go env GOCACHE` and `go list` are each guarded, their stderr is
+**printed** rather than discarded, the import path falls back to the `module` line of
+`drivers/go/go.mod` (the one line that `go list` call was after), and the cache directory
+falls back to a search for the single `FuzzProbe` directory under `$GOCACHE/fuzz`. A harvest
+that finds nothing now says so out loud. The step still exits with `go test`'s own status,
+so a Go panic remains a crash finding rather than a harness error.
+
+Verified both ways in a worktree: with `go list` working, 465 inputs harvested, exit 0; with
+the shim making it fail, the warning and the underlying error are printed, the `go.mod`
+fallback takes over, 483 inputs harvested, exit 0.
+
+*And with the error finally visible, the cause took one run.* A dispatched nightly on the fix
+(run 32126917676) printed what five nights had swallowed:
+
+```
+==> [go-fuzz] WARNING: 'go list' failed — falling back to go.mod:
+    error obtaining VCS status: exit status 128
+    	Use -buildvcs=false to disable VCS stamping.
+==> [go-fuzz] 41 new input(s) harvested into interesting
+==> [go-fuzz] corpus now 10319 input(s); go test exit 0
+```
+
+`go list` stamps VCS metadata, which shells out to git; in the CI container the checkout is
+not owned by the build user, so git exits 128 and takes `go list` with it. `go build` and
+`go test` never trip it, which is why only this one call died. The call now passes
+`-buildvcs=false`, so the nightly stops relying on the fallback — the fallback stays, because
+the lesson is that this step must not be able to die of a lookup. That run also carried the
+whole fix end to end: **41 inputs harvested, step exit 0, no red step in the run.**
+
+**The streaming gates' feed cap is sized for the hand-written corpora, not for a fuzzed one
+(measured 2026-08-18).** Step 6 of a nightly triage points `run-chunked.sh` at
+`corpus/interesting`. Over tonight's 10270-input corpus that died with
+`subprocess.TimeoutExpired ... timed out after 120 seconds` on `cpp`, after `c`, `rust-std`
+and `rust-nostd` had each passed 7 chunkings — which reads exactly like a hang in one driver.
+
+It is arithmetic. `feed()` hands a driver the **whole corpus in one run**, so the cap scales
+with corpus size rather than with an input, and `SOFAB_CHUNK=1` turns 12.5 MB into 12.5M
+single-byte feeds. Measured on the `cpp` driver, quiet machine:
+
+| inputs | whole-message | `SOFAB_CHUNK=1` |
+|---|---|---|
+| 500 | 0.13 s | 6.34 s |
+| 1000 | 0.11 s | 12.69 s |
+| 2000 | 0.17 s | 35.94 s |
+| 4000 | 0.32 s | 79.08 s |
+
+Linear, ~12500 inputs/s whole against ~50/s at one byte at a time; 10270 extrapolates to
+~200 s against a 120 s cap. No input hangs — the same corpus completes whole in under a
+second.
+
+CI never meets this: `replay.yml` runs the chunked gate over `corpus/regression` and the
+seeds, which are small. Only the manual step-6 pass over a fuzzed corpus does, and there the
+fixed cap turned a legitimate long run into a traceback. `CHUNK_FEED_TIMEOUT` (and
+`ENCODE_FEED_TIMEOUT` for the encode twin) now override it, default unchanged at 120.
+
+*With the cap sized, the pass ran, and it is green:* **10270 inputs x 7 chunkings x 14
+drivers, `TOTAL: 0 chunk-invariance mismatch(es)`** — the first time this gate has been run
+over a fuzzed corpus. It took **1220 s**, not the "roughly two hours" this entry first
+predicted: that extrapolated from `SOFAB_CHUNK=1` on the slowest driver, and the larger chunk
+sizes are far cheaper than the one-byte cut. `py-cython` and `py-pure` report the scrub config
+*not applicable* — their pull Decoder copies bytes on arrival, so no borrow is observable —
+counted as neither pass nor fail.
+
+**Nightly 32096008437 (2026-08-18) triaged — the camps are quiet.** CI's own clustering
+reported `baseline: 1/1 camp(s) accounted for`: the benign `I:… | I:java` payload axis that
+is the single live row in `known-clusters.txt`. The artifact carried **no crashes**. CI's
+corpus 10148 → 10270; merged into the local union corpus **17870 → 19157** (+1287, the local
+accumulation being the larger of the two). Nothing was filed and the baseline is unchanged.
+
+*One camp had to be chased down before it could be dismissed, and the procedure is what sent
+it.* A local re-cluster at `TIMEOUT=5` — the value the `check-nightly` skill prescribed —
+reported a NEW camp: `TIMEOUT:py-pure`, 2 inputs of 19157. It is the spurious class
+`results/CLUSTERS.md` already describes, and this session added two more measurements of it:
+
+- the accused input decodes in **1 ms** through *both* Python profiles, rejecting like
+  everyone else, and all 15 drivers agree on it at a longer budget;
+- a **second pass at the same `TIMEOUT=5` accused a disjoint set** — two different inputs,
+  the first no longer among them — while the machine's 15-minute load average sat at ~19.
+
+*The other two nets over the same corpus.* The materialized-value oracle is **green**:
+10270 inputs x 15 drivers, **0 divergences** (0 crash, 0 timeout). The encode gate reports a
+single counted failure for `go`, and it is not an encoder defect — it is the gate saying the
+string/blob **pass-through** permission was granted and never exercised (`0 handovers over
+10270 input(s)`), because nothing in this corpus carries a payload above the port's
+threshold. A configuration that asserts nothing is counted as a failure by design; the
+corpus, not `corelib-go`, is what does not reach it.
+
+Always `py-pure`, which is simply the slowest driver in the roster. The same corpus at
+`TIMEOUT=30` — the nightly's own budget — reports **`1/1 camp(s) accounted for`, no new
+camp**: the timeout camps disappear completely rather than moving. So the skill now
+prescribes `TIMEOUT=30` (the nightly's own value, for the reason CLUSTERS.md records) and
+says to replay an accused input on its own before believing a `TIMEOUT` camp. A tight budget
+measures the machine, not the drivers.
+
 **The chunk-boundary findings are now guarded against chunk boundaries (2026-08-18).**
 F-0058, F-0060 and F-0061 were promoted into `corpus/regression` on 2026-08-16, and every
 gate replaying that corpus feeds each record **whole** — so what stood guard was their

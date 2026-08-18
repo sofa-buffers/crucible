@@ -80,13 +80,19 @@ def flush_sizes(minbuf):
     return tuple(sorted({minbuf} | {n for n in FLUSH_SIZES if n > minbuf}))
 
 
+# Same cap, same reason as chunk_invariance.FEED_TIMEOUT: one run carries the whole
+# corpus, so a fuzzed corpus needs more than the hand-written ones this was sized for.
+FEED_TIMEOUT = int(os.environ.get("ENCODE_FEED_TIMEOUT", "120"))
+
+
 def run(path, inputs, env=None):
     """Run a driver over `inputs`; returns (lines, returncode, stderr)."""
     blob = b"".join(struct.pack("<I", len(d)) + d for d in inputs)
     e = dict(os.environ)
     if env:
         e.update(env)
-    p = subprocess.run([path], input=blob, capture_output=True, env=e, timeout=120)
+    p = subprocess.run([path], input=blob, capture_output=True, env=e,
+                       timeout=FEED_TIMEOUT)
     return (p.stdout.decode(errors="replace").splitlines(), p.returncode,
             p.stderr.decode(errors="replace").strip())
 
