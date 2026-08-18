@@ -125,5 +125,20 @@ jobs:
       - name: Chunk invariance (streaming decode, opt-in roster)
         run: ./scripts/run-chunked.sh
 
+      # ...and again over the resolved-findings corpus, because that is where the
+      # chunk-boundary findings live. F-0058, F-0060 and F-0061 were promoted into
+      # corpus/regression on 2026-08-16, but every gate replaying it feeds each record
+      # WHOLE — so it held their one-shot verdict and not the behaviour they were
+      # actually about. Both their write-ups and corpus/regression/README.md said so
+      # rather than implying a guard they did not have; this is that guard.
+      #
+      # `--modes chunk` only: the split sweep is O(maxlen) per driver, and over 239
+      # inputs it does not fit the budget (docs/TODO.md tracks sampling it). Fixed-size
+      # chunking still crosses every internal boundary at six different offsets, which
+      # is what these three findings need. Measured: 239 inputs x 6 chunkings x 14
+      # drivers in ~10s once the drivers are built, and they already are by here.
+      - name: Chunk invariance over the resolved-findings corpus
+        run: CORPUS=corpus/regression ./scripts/run-chunked.sh --modes chunk
+
       - name: Encode invariance (streaming encode, opt-in roster)
         run: ./scripts/run-encode.sh

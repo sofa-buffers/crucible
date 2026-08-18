@@ -19,6 +19,29 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**The chunk-boundary findings are now guarded against chunk boundaries (2026-08-18).**
+F-0058, F-0060 and F-0061 were promoted into `corpus/regression` on 2026-08-16, and every
+gate replaying that corpus feeds each record **whole** — so what stood guard was their
+one-shot verdict, not the behaviour they were filed for. The write-ups and the corpus README
+said so in as many words rather than implying a guard they did not have, which is why this
+was a known gap and not a discovered one. `replay.yml` now runs the chunked gate over that
+corpus as a second step.
+
+*Measured before wiring, not after:* **239 inputs x 6 chunkings x 14 drivers, 0 mismatches**,
+about ten seconds once the drivers are built — and they already are by that point in the
+workflow, so the step is nearly free.
+
+*`--modes chunk` only, and the reason is arithmetic.* The split sweep is O(maxlen) **per
+driver**; over 239 inputs it does not fit the budget, which is the separate scaling item in
+`TODO.md`. Fixed-size chunking still crosses every internal boundary at six different
+offsets, which is what these three findings need.
+
+*The guard was proven able to fail.* Appending one byte to a driver's output **only when
+`SOFAB_CHUNK` is set** turned the new step red with **522 mismatches**, naming
+`F0058_r2_realloc_rebases_first.bin` among them. That is the difference between a corpus a
+step points at and a corpus a step actually re-feeds — worth establishing, because a green
+gate over vectors it silently skipped would read exactly like a green gate that guards them.
+
 **corelib-py#96 merged, verified — and the first verification was wrong (2026-08-18).**
 The `SofaStateError` split filed yesterday landed upstream the same evening, in the shape
 the write-up proposed: a deprecated alias of `SofaRangeError` for the caller-mistake half,
