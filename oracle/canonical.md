@@ -51,12 +51,20 @@ needed its own mechanism.
 inputs), `crashes`, `regression`, `conformance`, `seeds`, `union` and `structured`, over
 all fifteen drivers, **every reject is `invalid_msg`**. Nothing emits `usage`, `other`,
 `argument` or `buffer_full` today, so the check starts green — it exists to keep it that
-way. One live source remains reachable in principle: `corelib-py` still defines
-`SofaStateError` (`types.py:155`) and `drivers/python/driver.py` maps it to `usage`. It
-never fires, because the generated §7.3 guards skip a mis-typed field before any read
-reaches it — which is exactly what §6.3 says should happen, and why no run can surface it.
-Filed as [corelib-py#96](https://github.com/sofa-buffers/corelib-py/issues/96) (2026-08-17);
-until it closes, this check is what would notice the class appearing.
+way. **No source of `usage` remains in the roster.** The last one was `corelib-py`'s
+`SofaStateError`, filed as
+[corelib-py#96](https://github.com/sofa-buffers/corelib-py/issues/96) and **merged
+2026-08-17**: it is now a deprecated alias of `SofaRangeError` — which *is* §6.3's
+`InvalidArgument` — and the four type-mismatched reads that used to raise return `None`
+and skip the field instead (MESSAGE_SPEC §7.3), so they yield no reject class at all.
+Re-measured here on both engines after removing a stale compiled `_speedups` artifact that
+had made the first attempt report the pre-fix behaviour: all four skip, pure and cython
+alike. `drivers/python/driver.py`'s dead `usage` row went with it.
+
+So the check now guards a class nothing can emit. That is the point of keeping it: it
+costs one comparison per line, and it is what makes the state unreachable rather than
+merely absent — including for a driver added later, whose author would otherwise have only
+this document's prose to go on.
 
 ## The three verdicts (MESSAGE_SPEC §7)
 
@@ -93,8 +101,15 @@ fields, limit mode uses a dedicated **unbounded** schema (`schema/probe-dyn.sofa
 and a **heap-only** driver roster (the fixed-capacity profiles — c, c-cpp, rust-nostd —
 cannot represent an unbounded field; see `scripts/run-limits.sh`). Comparing a limited
 against an unlimited implementation is **not** a divergence and is avoided by
-construction (identical caps across the roster) — MESSAGE_SPEC §5.4's `MAX_DEPTH` note
-is the stack analogue; the heap note is pending upstream (generator#102).
+construction (identical caps across the roster) — which is not this document's own rule
+but the spec's: **CORELIB_PLAN §6.2.1** (normative) states that two receivers configured
+with different limits reaching different outcomes is neither an interop failure nor a
+conformance defect, and that conformance testing therefore compares implementations
+configured identically. It also gives the condition its own error code, `LimitExceeded`
+(§6.3), and forbids reporting it as `InvalidMessage` — which is what `L` being a category
+distinct from `R` encodes here. MESSAGE_SPEC §5.4's `MAX_DEPTH` note is the stack
+analogue. *(This paragraph read "the heap note is pending upstream (generator#102)" until
+2026-08-18; §6.2.1 closed that hole and the citation had gone stale.)*
 
 ### The `I` payload
 

@@ -543,7 +543,14 @@ here:
       field before any read reaches it, which is exactly what §6.3 says should happen — so
       the fuzzer structurally cannot reach the path, and this came from reading the clause.
       **Filed 2026-08-17 as [corelib-py#96](https://github.com/sofa-buffers/corelib-py/issues/96)**
-      once a reproducer existed (4 wire bytes, both engines). The write-up splits the seven
+      once a reproducer existed (4 wire bytes, both engines), **merged the same day** and
+      **verified here 2026-08-18** — all four type-mismatched reads now return `None` and
+      skip, on the pure and cython engines alike, and `SofaStateError` is a deprecated
+      alias of `SofaRangeError`. The verification took two attempts: the first reported the
+      pre-fix behaviour because a compiled `_speedups` artifact from before the fix was
+      still sitting in `vendor/corelib-py/src/` — a `git checkout` does not remove one, and
+      `sys.path` order made it win over the freshly checked-out sources. The stale-build
+      rule applies to a corelib's own build outputs, not only to the drivers'. The write-up splits the seven
       throw sites: three encoder ones are genuine caller mistakes and rename to
       `SofaRangeError` — which already *is* §6.3's `InvalidArgument` — while four decoder
       ones must not raise at all. `_take_scalar` is one site guarding both conditions and

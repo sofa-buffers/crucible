@@ -83,10 +83,22 @@ def _materialize(m) -> str:
         f"{f['id']}:{_walk(f, getattr(m, f['name']))}" for f in _SCHEMA["fields"]
     ) + "}"
 
+# Exception class name -> the canonical reject class (oracle/canonical.md).
+#
+# `SofaStateError` is deliberately absent. corelib-py#96 (merged 2026-08-17) made it a
+# deprecated ALIAS of SofaRangeError, so `type(e).__name__` can never spell it again and
+# the entry mapping it to "usage" was dead code. Keeping it would also have been wrong in
+# the other direction: `usage` is the class CORELIB_PLAN §6.3 abolished, and an alias for
+# SofaRangeError is precisely §6.3's `InvalidArgument`, which is `argument` below.
+#
+# The four type-mismatched reads that used to raise here now return None and skip the
+# field (MESSAGE_SPEC §7.3), so they produce no reject class at all — which is why this
+# table no longer needs a row for them. `oracle/comparator.py` still rejects the `usage`
+# class outright; nothing in the roster can emit it now, and that check is what keeps it
+# so rather than something to be removed alongside this.
 _CLASS = {
     "SofaDecodeError": "invalid_msg",
     "SofaRangeError": "argument",
-    "SofaStateError": "usage",
     "SofaBufferError": "buffer_full",
 }
 
