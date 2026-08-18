@@ -3171,6 +3171,36 @@ resulting *what-is* stays in ARCHITECTURE.
 
 ## Key decisions (decision log)
 
+- **2026-08-18 — the image's JVM is Temurin 21, and the Kotlin toolchain rides on it.**
+  `.devcontainer/Dockerfile` gained the toolchain for **corelib-kotlin-mp**, the new Kotlin
+  Multiplatform corelib: Gradle 8.14.5, `kotlinc` 2.4.10 and `KONAN_DATA_DIR`. The part worth
+  logging is not the additions but the JDK swap they forced. That repo is built by Gradle
+  (its wrapper pins **8.14.5**), and Gradle 8.x **refuses to start** on the JDK the image had —
+  Ubuntu 26.04's `default-jdk` is **JDK 25**. Two ways out: a second JDK used only by Gradle,
+  or one JDK for the whole image. **One JDK, and it is Temurin 21** — the LTS corelib-kotlin-mp's
+  own devcontainer and CI leg use. A side JDK would have to be selected by every entry point,
+  and the canonical one is `./gradlew`, which reads `JAVA_HOME`/`PATH` like everything else: the
+  "only for Gradle" split would have been one env var away from silently building on 25 again.
+  Making it image-wide costs nothing measurable on the other side — corelib-java compiles to
+  `release 17`, so `drivers/java/` cannot tell 25 from 21, and **Jazzer**, the fuzzing framework
+  both JVM drivers share, tracks the LTS line rather than the newest release. One trap found
+  while verifying: the Temurin package does **not** win `update-alternatives` against the distro
+  JDK, so `/usr/bin/java` still reports 25 and only the explicit `JAVA_HOME`/`PATH` (at
+  `/opt/java-current`, the arch-suffix symlink) decides what a build actually gets — a version
+  check that reads `java -version` from a login shell without that PATH would report the wrong
+  answer. `kotlinc` is installed next to Gradle for the same reason `drivers/java/build.sh` calls
+  `javac` directly: Gradle builds the corelib, a driver is a couple of files compiled against its
+  jar and should not carry a Gradle project of its own. Both versions are pinned to what that repo
+  declares (wrapper version, `kotlin("multiplatform")` version) — a driver compiled by a newer
+  `kotlinc` than the corelib fails on metadata version, which reads like a corelib bug and is not
+  one. **Verified by running it, not by reading it:** the Dockerfile's steps were executed on the
+  same `ubuntu:26.04` base and `./gradlew build` on corelib-kotlin-mp@main went green across all
+  three legs it configures on Linux — JVM, JS on Node, and Kotlin/Native `linuxX64` (which pulls
+  its own ~2 GB LLVM into `KONAN_DATA_DIR` on first use, which is why that cache is pinned out of
+  the mounted workspace). **No Kotlin driver yet, and it cannot exist today**: `sofabgen --lang`
+  offers `c|cpp|csharp|dart|docs|go|java|python|rust|typescript|zig` — there is no `kotlin`
+  backend, so the roster, `drivers/roster` and the gates are untouched by this change.
+
 - **2026-07-28 — `count` is a capacity: the spec contradiction I found, and the suite
   re-pointed at the answer.** The static audit against the POC branch surfaced that
   `oracle/materialized.md` and §5.1 disagreed about a `count: N` wrapper's length. Tracing it

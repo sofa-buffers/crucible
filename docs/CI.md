@@ -6,7 +6,7 @@ as the corelibs churn. See PLAN §10/§12.
 
 | workflow | trigger | blocking? | what it does |
 |---|---|---|---|
-| [`image.yml`](../.github/workflows/image.yml) | `.devcontainer/Dockerfile` change · manual | — | build the 13-toolchain image (incl. the Dart SDK), push to GHCR |
+| [`image.yml`](../.github/workflows/image.yml) | `.devcontainer/Dockerfile` change · manual | — | build the 14-toolchain image (incl. the Dart SDK and the Kotlin toolchain — Gradle, kotlinc and Kotlin/Native), push to GHCR |
 | [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | the catalog + participation checks, then build all drivers and run the eight **green** gates + the two streaming gates |
 | [`nightly.yml`](../.github/workflows/nightly.yml) | 03:00 UTC daily · manual | no | fuzz → grow corpus → cluster → upload artifacts |
 
@@ -14,7 +14,7 @@ as the corelibs churn. See PLAN §10/§12.
 
 A full run needs every language toolchain **and** its fuzzing framework
 (clang/libFuzzer, cargo-fuzz, go, dotnet+SharpFuzz, zig, node+Jazzer.js, jdk+maven,
-python+atheris/cython) — that is `.devcontainer/Dockerfile`, ~15 min to build. We
+jdk+gradle/kotlinc/kotlin-native, python+atheris/cython) — that is `.devcontainer/Dockerfile`, ~15 min to build. We
 build it **once** here and push `ghcr.io/<owner>/crucible-ci:latest`; the replay and
 nightly jobs then start in that prebuilt container in seconds instead of
 re-installing toolchains every run. The image rebuilds only when the Dockerfile

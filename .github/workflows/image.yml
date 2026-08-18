@@ -2,7 +2,8 @@
 #
 # A full differential run needs every language toolchain + its fuzzing framework
 # (clang/libFuzzer, cargo-fuzz, go, dotnet+SharpFuzz, zig, node+Jazzer.js,
-# jdk+maven, python+atheris/cython) — that is the .devcontainer/Dockerfile, ~15 min
+# jdk+maven, jdk+gradle/kotlinc/kotlin-native, python+atheris/cython) — that is the
+# .devcontainer/Dockerfile, ~15 min
 # to build. So we build it ONCE here (on Dockerfile changes, or manually) and push
 # it to ghcr.io/sofa-buffers/crucible-ci:latest; the replay + nightly jobs then start
 # in that prebuilt container in seconds instead of re-installing toolchains every run.
@@ -28,7 +29,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The image installs clang + rust + go + dotnet + zig + node + jdk — several GB.
+      # The image installs clang + rust + go + dotnet + zig + node + jdk + gradle/kotlinc
+      # + the Kotlin/Native toolchain (which alone unpacks its own LLVM) — several GB.
       # ubuntu-latest ships ~14 GB free, which a build this heavy can exhaust
       # ("no space left on device"); reclaim the preinstalled SDKs we don't need.
       - name: Free disk space
