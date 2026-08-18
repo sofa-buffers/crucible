@@ -122,6 +122,21 @@ here:
       matches), or delete the block and let the finding write-ups carry the reasoning. Both beat the
       present state, where the file reads as policy and behaves as a comment.
 
+- [ ] **Run the chunked gate over a fuzzed corpus to completion — nobody has yet.**
+      Step 6 of a nightly triage points `run-chunked.sh` at `corpus/interesting`, and on
+      2026-08-18 that turned out to be impossible rather than merely slow: `feed()` hands a
+      driver the **whole corpus in one run**, and the 120 s cap (now `CHUNK_FEED_TIMEOUT`,
+      default unchanged) is sized for the hand-written corpora. At `SOFAB_CHUNK=1` a 12.5 MB
+      corpus is 12.5M single-byte feeds — measured ~50 inputs/s on the sanitized `cpp` driver
+      against ~12500/s whole, so ~200 s for one config of one driver and roughly two hours for
+      the roster. Nothing hangs; the arithmetic was mistaken for a hang until it was measured.
+      What is known so far: `c`, `rust-std` and `rust-nostd` pass all 7 chunkings over the
+      10270-input corpus with **0 mismatches**; the remaining eleven drivers are unmeasured.
+      **Work:** either run it once with a sized cap and record the result, or give the gate a
+      per-driver budget derived from its whole-message throughput so a slow driver is reported
+      as slow rather than as a traceback. Worth doing: the chunked pass over a fuzzed corpus is
+      where F-0060 came from.
+
 - [x] **DONE 2026-08-18 — the chunked gate replays `corpus/regression`, and the guard is
       proven able to fail.** `replay.yml` gained a second chunked step,
       `CORPUS=corpus/regression ./scripts/run-chunked.sh --modes chunk`. Measured before
