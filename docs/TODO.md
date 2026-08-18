@@ -122,7 +122,23 @@ here:
       matches), or delete the block and let the finding write-ups carry the reasoning. Both beat the
       present state, where the file reads as policy and behaves as a comment.
 
-- [ ] **The chunked gate does not replay `corpus/regression`.** F-0058, F-0060 and F-0061 were
+- [x] **DONE 2026-08-18 — the chunked gate replays `corpus/regression`, and the guard is
+      proven able to fail.** `replay.yml` gained a second chunked step,
+      `CORPUS=corpus/regression ./scripts/run-chunked.sh --modes chunk`. Measured before
+      wiring it, not after: **239 inputs x 6 chunkings x 14 drivers, 0 mismatches**, the
+      whole step ~10s once the drivers are built — and they already are by that point in the
+      workflow, so it costs the budget almost nothing.
+      `--modes chunk` rather than the full sweep, deliberately: the split sweep is O(maxlen)
+      *per driver* and does not fit over 239 inputs (that is the separate scaling item
+      below). Fixed-size chunking still crosses every internal boundary at six offsets,
+      which is what these three findings need.
+      **The guard bites.** Breaking chunk invariance in one driver on purpose — a byte
+      appended only when `SOFAB_CHUNK` is set — turned the step red with **522 mismatches**,
+      naming `F0058_r2_realloc_rebases_first.bin` among them. So the finding vectors are
+      genuinely re-fed rather than merely present in a directory the step points at.
+      Three `**Guard:**` lines and `corpus/regression/README.md` said "half a guard, stated
+      plainly" and now say what is actually gated. Original note below.
+      ~~The chunked gate does not replay `corpus/regression`.~~ F-0058, F-0060 and F-0061 were
       promoted there on 2026-08-16, which holds their *one-shot* verdict — but all three are
       chunk-boundary findings, and `scripts/run-chunked.sh` runs `corpus/seeds` by default. So the
       half that matters is unguarded, and both the write-ups and `corpus/regression/README.md` say

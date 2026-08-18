@@ -1,7 +1,7 @@
 # F-0060 — the generated TypeScript chunked decoder lets a raw `TypeError` escape where the one-shot path throws `SofabError`
 
 **Status:** ✅ **RESOLVED** — [generator#297](https://github.com/sofa-buffers/generator/issues/297) fixed by
-**Guard:** corpus/regression — vectors promoted 2026-08-16. **Half a guard, stated plainly:** the gate replays them whole, so it holds the one-shot verdict. The chunk-boundary behaviour this finding was actually about is owned by `scripts/run-chunked.sh`, which does not replay this corpus — wiring it to is in docs/TODO.md.
+**Guard:** corpus/regression — vectors promoted 2026-08-16, and **chunk-replayed since 2026-08-18**: `replay.yml` runs `scripts/run-chunked.sh --modes chunk` over that corpus, so the chunk-boundary behaviour this finding was actually about is now gated, not only its one-shot verdict. Verified the gate can fail on these very vectors by breaking chunk invariance in one driver on purpose — it named this finding's files among 522 mismatches.
 **Issue:** [generator#297](https://github.com/sofa-buffers/generator/issues/297), [generator#298](https://github.com/sofa-buffers/generator/pull/298)
 **Codegen:** G-0037 | [generator#297](https://github.com/sofa-buffers/generator/issues/297), [generator#298](https://github.com/sofa-buffers/generator/pull/298) | the generator side of F-0060 — the TypeScript visitor calls the fatal TextDecoder without the conversion its own corelib performs
 

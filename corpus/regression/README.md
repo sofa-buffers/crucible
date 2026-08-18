@@ -89,14 +89,23 @@ exits 0. Divergences — not warnings — are the signal.
 | `F0036_*.bin` (3) | F-0036 | generator#248 + documentation#31 | a trailing all-default struct element is still written as an empty frame, per the amended §3/§5.1 last-element rule |
 | `F0037_*.bin` (2) | F-0037 | generator#249 | a mistyped element that must be skipped leaves **no phantom element** behind in the container |
 | `F0043_*.bin` (17) | F-0043 | generator#267 | a schema-bound violation is `INVALID` **at the word that carries the number**, not once payload bytes arrive. The 17 vectors sweep the offsets the finding lived at; the axis that owns the rule family-wide is `sweep_malform_truncate` |
-| `F0058_*.bin` (4) | F-0058 | generator#293 + #295 | *(whole-message half only — see the note below)* the zig reassembly buffer is not shared across wrapper-array elements |
-| `F0060_*.bin` (2) | F-0060 | generator#297 + #298 | *(whole-message half only)* a chunked UTF-8 boundary does not escape as a TypeError |
-| `F0061_*.bin` (3) | F-0061 | generator#300 + corelib-ts#141 | *(whole-message half only)* the cursor does not read a fixlen subtype out of an incomplete varint |
+| `F0058_*.bin` (4) | F-0058 | generator#293 + #295 | the zig reassembly buffer is not shared across wrapper-array elements |
+| `F0060_*.bin` (2) | F-0060 | generator#297 + #298 | a chunked UTF-8 boundary does not escape as a TypeError |
+| `F0061_*.bin` (3) | F-0061 | generator#300 + corelib-ts#141 | the cursor does not read a fixlen subtype out of an incomplete varint |
 
-The last three rows are **half a guard, and the README says so**: this gate replays every
-input whole, so it holds their one-shot verdict but not the chunk-boundary behaviour those
-findings were actually about. `scripts/run-chunked.sh` owns that and does not replay this
-corpus — wiring it to is in [`docs/TODO.md`](../../docs/TODO.md).
+**The last three rows are chunk-boundary findings, and this corpus is now replayed under
+chunking too.** Every gate here feeds each record *whole*, which held their one-shot verdict
+and not the behaviour they were actually about — half a guard, said plainly, from
+2026-08-16 until 2026-08-18. Since then `replay.yml` also runs
+`CORPUS=corpus/regression scripts/run-chunked.sh --modes chunk`, so each of these inputs is
+re-fed at six chunk sizes and the boundary behaviour is gated. `--modes chunk` rather than
+the full split sweep: the latter is O(maxlen) per driver and does not fit the budget over
+239 inputs (sampling it is in [`docs/TODO.md`](../../docs/TODO.md)); fixed-size chunking
+still crosses every internal boundary at six different offsets.
+
+Verified the guard can fail rather than assumed: breaking chunk invariance in one driver on
+purpose turned the new step red with 522 mismatches, naming `F0058_r2_realloc_rebases_first.bin`
+among the inputs it caught.
 
 ## What is deliberately NOT here
 

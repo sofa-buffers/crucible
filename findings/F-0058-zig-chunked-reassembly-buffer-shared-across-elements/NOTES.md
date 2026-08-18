@@ -1,7 +1,7 @@
 # F-0058 — sofabgen's Zig backend shares one reassembly buffer across every split payload, so array elements alias each other
 
 **Status:** ✅ **RESOLVED** — [generator#293](https://github.com/sofa-buffers/generator/issues/293) fixed by
-**Guard:** corpus/regression — vectors promoted 2026-08-16. **Half a guard, stated plainly:** the gate replays them whole, so it holds the one-shot verdict. The chunk-boundary behaviour this finding was actually about is owned by `scripts/run-chunked.sh`, which does not replay this corpus — wiring it to is in docs/TODO.md.
+**Guard:** corpus/regression — vectors promoted 2026-08-16, and **chunk-replayed since 2026-08-18**: `replay.yml` runs `scripts/run-chunked.sh --modes chunk` over that corpus, so the chunk-boundary behaviour this finding was actually about is now gated, not only its one-shot verdict. Verified the gate can fail on these very vectors by breaking chunk invariance in one driver on purpose — it named this finding's files among 522 mismatches.
 **Issue:** [generator#293](https://github.com/sofa-buffers/generator/issues/293), [generator#295](https://github.com/sofa-buffers/generator/issues/295)
 **Codegen:** G-0036 | [generator#293](https://github.com/sofa-buffers/generator/issues/293), [generator#295](https://github.com/sofa-buffers/generator/issues/295) | the generator side of F-0058 — the Zig backend's chunked reassembly buffer is shared across split payloads, so wrapper-array elements alias each other
 
