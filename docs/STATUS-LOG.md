@@ -63,9 +63,23 @@ Verified both ways in a worktree: with `go list` working, 465 inputs harvested, 
 the shim making it fail, the warning and the underlying error are printed, the `go.mod`
 fallback takes over, 483 inputs harvested, exit 0.
 
-*Left open on purpose:* **why** `go list` fails on the runner and not locally is still
-unknown — that is the one thing the old script made unknowable. The next nightly prints the
-real error, and the harvest no longer waits on the answer.
+*And with the error finally visible, the cause took one run.* A dispatched nightly on the fix
+(run 32126917676) printed what five nights had swallowed:
+
+```
+==> [go-fuzz] WARNING: 'go list' failed — falling back to go.mod:
+    error obtaining VCS status: exit status 128
+    	Use -buildvcs=false to disable VCS stamping.
+==> [go-fuzz] 41 new input(s) harvested into interesting
+==> [go-fuzz] corpus now 10319 input(s); go test exit 0
+```
+
+`go list` stamps VCS metadata, which shells out to git; in the CI container the checkout is
+not owned by the build user, so git exits 128 and takes `go list` with it. `go build` and
+`go test` never trip it, which is why only this one call died. The call now passes
+`-buildvcs=false`, so the nightly stops relying on the fallback — the fallback stays, because
+the lesson is that this step must not be able to die of a lookup. That run also carried the
+whole fix end to end: **41 inputs harvested, step exit 0, no red step in the run.**
 
 **Nightly 32096008437 (2026-08-18) triaged — the camps are quiet.** CI's own clustering
 reported `baseline: 1/1 camp(s) accounted for`: the benign `I:… | I:java` payload axis that

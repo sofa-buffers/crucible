@@ -84,8 +84,12 @@ fi
 # reading the one line we actually want).
 PKG=""
 if [ -n "$GOCACHE_DIR" ]; then
+    # -buildvcs=false: `go list` stamps VCS metadata, which shells out to git. In
+    # the CI container the checkout is not owned by the build user, so git exits
+    # 128 ("dubious ownership") and takes `go list` down with it — the actual
+    # cause of the five silent nightlies. `go build`/`go test` do not trip it.
     if ( cd "$GODIR" && GOFLAGS=-mod=mod GOTOOLCHAIN=local \
-             go list -f '{{.ImportPath}}' . ) >"$tmp/pkg" 2>"$tmp/err"; then
+             go list -buildvcs=false -f '{{.ImportPath}}' . ) >"$tmp/pkg" 2>"$tmp/err"; then
         PKG=$(cat "$tmp/pkg")
     else
         echo "==> [go-fuzz] WARNING: 'go list' failed — falling back to go.mod:" >&2
