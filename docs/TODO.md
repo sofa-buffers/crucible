@@ -1030,8 +1030,26 @@ here:
       roster entry is in. Unlike the chunked axis this is **not** a corelib capability gap: the Go
       backend has all three surfaces. Either plumb it or make the `meta` tell the truth.
 
-- [ ] **Build-reuse in `replay.yml`**: each gate rebuilds the whole roster, so CI
-      pays the build 7×. Cache/reuse the built drivers across gates.
+- [ ] **Build-reuse in `replay.yml`**: each gate rebuilds the whole roster, so CI pays
+      the build once per gate — **fifteen** full roster builds today, not the 7× this item
+      said when there were fewer gates. Cache/reuse the built drivers across gates.
+      **What it costs, measured (2026-08-18):** the `differential` job went from ~8 min
+      to **25 min 4 s** ([run 32166892794](https://github.com/sofa-buffers/crucible/actions/runs/32166892794))
+      when the Kotlin target landed. The job's eleven gates rebuild the whole roster
+      **fifteen** times — counted, not derived: `gh run view --job <id> --log | grep -c
+      '==> kotlin-native:'`, one line per full roster build — because several gates build
+      for themselves and `sweep.sh` does it three times. Every one of those fifteen now
+      adds a Gradle corelib build plus `kotlinc` *and* `kotlinc-native` (~46 s for the
+      native leg alone) on top of the other fifteen drivers. The item is unchanged in kind;
+      what changed is the price, and it is now the dominant cost of a push. Adding the next driver multiplies by fifteen again, so this
+      stops being a tidiness item at about the point the next language arrives.
+      **Where the rebuilds are**, because despite this item's title it is not all
+      `replay.yml`: the gate scripts build for themselves — `run-chunked.sh:56` and
+      `run-encode.sh:50` each call `run.sh`, `sweep.sh` calls it three times (probe, union,
+      probe again — lines 38/68/72, since it re-points the roster at another schema and
+      back), and `materialize.sh:41` goes through `roster.sh build` directly. So a fix
+      belongs in `roster.sh` — the one place every one of them passes through — and not in
+      the workflow, which is why the title is slightly misleading about where to look.
 - [ ] **Devcontainer image**: verify it builds and every driver builds *inside* it (so far
       spot-verified in the bare workspace + hand-installed clang). *(update 2026-07-23:
       `.devcontainer/{Dockerfile,devcontainer.json,start.sh}` exist and `image.yml` builds them;
