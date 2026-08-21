@@ -47,7 +47,16 @@ if [ -z "$SUPPORTED" ]; then
 fi
 
 echo "==> [encode] building drivers" >&2
-"$ROOT/scripts/run.sh" >/dev/null
+# PIN THE CORPUS. run.sh is used here only to build the roster, but it also runs the
+# differential comparison and reads CORPUS from the environment — so without this pin it
+# inherits *this* gate's CORPUS and compares that instead. On any corpus with known
+# divergences (corpus/interesting, which docs/CI.md and the check-nightly procedure both
+# point this gate at) the comparator exits non-zero, `set -e` aborts here, and the encode
+# check never runs. It fails silently: run.sh's stdout is the summary and goes to
+# /dev/null, so the log ends at "differential comparison over N input(s)" with no
+# divergence count and no traceback, which reads like a killed process rather than a
+# guard. run-chunked.sh pins it for the same reason.
+CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
 
 echo "==> [encode] encode invariance over $(ls "$CORPUS" | grep -vc -e gitkeep -e '\.md$') input(s)" >&2
 python3 "$ROOT/oracle/encode_invariance.py" --corpus "$CORPUS" --drivers "$SUPPORTED" "$@"

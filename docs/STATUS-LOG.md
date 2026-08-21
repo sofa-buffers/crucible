@@ -19,6 +19,133 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**Nightly 32444261107 (2026-08-21) — one new camp, and it is a missed site of a class we
+had already closed.** The run was otherwise unremarkable: ~11.1 M execs, 51 new inputs
+harvested by the Go steering engine (which is reporting its harvest again since #166), no
+crashes, no sanitizer hits, no `slow-unit-*`. It exited non-zero on a single five-byte
+input, `ce 0c 22 e3 30`, where **py-cython and py-pure alone say `INCOMPLETE`** and the
+other fifteen drivers reject it.
+
+Triaged to **F-0062 / G-0039** ([generator#377](https://github.com/sofa-buffers/generator/issues/377)): generated Python checks a **blob wrapper-array element**'s
+`maxlen` *after* `d.bytes()` rather than at the `fixlen_word`, so an element that is both
+over-`maxlen` and truncated reaches end-of-input before the check runs. Write-up and the
+five vectors are in `findings/F-0062-py-blob-array-element-maxlen-checked-after-payload/`.
+
+**This is the F-0043 class at a site generator#267 never covered — not a regression of
+it.** That ticket is scoped `[rust, rust-no-std, java, csharp, zig]`, and the control
+`56 1a e3 30` proves Python's *plain*-field path is fixed. What survives is the blob
+**wrapper element**, which is the one site of five in the generated `message.py` that does
+not use `fixlen_len()`; the string wrapper element one field earlier does. Deciding this by
+reading the emitter rather than by re-running the old reproducer is what kept it from being
+filed as "F-0043 came back".
+
+*Attribution — the generator, established not inferred.* `maxlen` is a schema fact, so
+corelib-py cannot know it and `INCOMPLETE` is the only answer it can give for a declared
+780-byte blob with no payload. Its `schema_bounded()` docstring hands the obligation to the
+caller in as many words — declaring is "a **promise to enforce**" — and that call *is*
+emitted here, so the generated code switches the receiver-side `max_blob_len` cap off and
+then enforces nothing at the word. The wrong verdict is what the oracle sees; the removed
+cap is why this is worth fixing promptly. Both Python profiles fail identically (so: not
+the Cython path), and within one language `string_array` and `nested.bytes_field` are both
+correct (so: one emitter site, not the wrapper machinery or the blob type).
+
+*The controls are the deliverable, not the reproducer.* Four of them, each changing exactly
+one thing; the load-bearing one is `ce 0c 22 23` — the same truncation with an in-bound
+declared length, unanimously `INCOMPLETE` including Python. Without it, a "fix" that simply
+dropped the bound would also turn the finding green. Filed with them for that reason.
+
+**Decision — the camp goes into `results/known-clusters.txt` while the finding is open.**
+The file's rule is that a camp belongs there once *explained*, not once *fixed*; leaving it
+out would keep the nightly red on a catalogued finding, which is precisely the cry-wolf
+failure the file exists to prevent. The row names the reason and carries the instruction to
+delete it when the fix lands, so a return then reads as NEW. Verified: `2/2 camps accounted
+for, no new camp`.
+
+*Measurement.* CI's 10 969 inputs merged into the local corpus, 19 157 → **19 847** (union,
+not minimized, per the 2026-08-03 policy). Clustered at the `main` family — corelibs at
+their 2026-08-21 tips, sofabgen `0.0.0-20260821072613-fdb72c0ea113`: **9 127 agree, 10 720
+diverge → 2 camps**, the benign java/kotlin-jvm `incomplete_value` row and this one. So
+nothing else new surfaced in a corpus nearly twice the size of CI's.
+
+*Two environment notes, neither a repo defect.* **`kotlin-native` was missing from this
+workspace and has been installed.** The image predates `34c0702` (2026-08-18), the commit
+that added both the Kotlin driver and the Dockerfile's Kotlin/Native stage — so
+`KONAN_DATA_DIR=/opt/konan` was set but empty, `kotlinc` had no native front-end, and
+`roster.sh build` aborted the whole gate rather than compare a subset (by design). Fixed by
+running that Dockerfile stage's own steps against the live container: the
+`kotlin-native-prebuilt-linux-x86_64-2.4.10` distribution plus the LLVM 21 / LLDB / libffi
+dependencies it fetches lazily on first compile — 1.8 GB under `/opt/konan`. **The Dockerfile
+needed no change**; a devcontainer rebuild would have sufficed. The first local measurement
+therefore ran on 16 of 17 drivers and was **re-measured on all 17**: identical counts, with
+`kotlin-native` rejecting `r0` exactly as CI reported.
+Second: a **stale compiled `.so` survived the vendor checkout** again —
+`vendor/corelib-py/build/lib.../_speedups*.so` — and was removed before measuring. That is
+the same trap as 2026-08-18 on corelib-py#96, and it would have been measured against the
+*old* Python corelib had it stood.
+
+*The other two oracles were run over the same corpus, since the round-trip oracle is not
+the whole net.* The **materialized** (element-access) pass is green — 111 × 16 drivers, 0
+divergences, and 0/111 on the C-anchor conformance check, so no value defect hides behind
+the agreeing verdicts. The **chunked** pass (`--modes chunk,scrub`) is green too: 16
+chunk-capable drivers x 19 847 inputs x 7 chunkings, **0 chunk-invariance mismatches**,
+`kotlin-native` included (39 min). `split` was deliberately omitted, as its per-`k` sweep is
+~44 h over a fuzzed corpus (`docs/TODO.md`).
+
+**The encode pass over the same corpus did not complete — and the cause was this repo's own
+gate, now fixed.** It printed `differential comparison over 19847 input(s)` and exited 1 with
+no summary, no divergence count and no traceback, which reads exactly like a killed process;
+OOM was the first hypothesis and it was **wrong**.
+
+`scripts/run-encode.sh` used `run.sh` only to build the roster — but `run.sh` also *runs the
+differential comparison* and takes `CORPUS` from the environment. Unpinned, it inherited the
+encode gate's own `CORPUS` and compared all 19 847 inputs; that corpus has 10 720 legitimate
+divergences, so the comparator exited non-zero, `set -e` aborted the script, and
+`encode_invariance.py` never started. The silence is the same bug's other half: `run.sh`'s
+stdout — the summary — goes to `/dev/null`, so only the stderr progress line survives.
+
+The twin gate is the proof: `scripts/run-chunked.sh` pins `CORPUS="$ROOT/corpus/seeds"` for
+its build step and therefore passed on the same corpus in the same session; `run-encode.sh`
+did not. Reproduced on a 3-input corpus (identical signature) before fixing, and fixed by
+pinning the corpus the same way — with a comment naming the trap, since the sibling pins it
+without recording why and the wart was latent there too.
+
+**Scope beyond this session: the gate was unrunnable over any corpus containing divergences**
+— which is exactly what `docs/CI.md` and the check-nightly procedure point it at
+(`CORPUS=corpus/interesting ./scripts/run-encode.sh`). Anyone who ran that step got a silent
+exit 1 and no encode coverage at all.
+
+*With the gate fixed, the run itself is clean — and its one red line is the gate working as
+designed, not a defect.* 17 drivers x 19 847 inputs: **16 report 0 mismatches**; `go` reports
+1. That 1 is **not** a byte divergence and not a §5.1 refusal failure — it is the
+`0 handovers` branch of the pass-through check, which increments the counter on purpose
+(`oracle/encode_invariance.py:300`). `go` is the only port declaring `pass_through=yes`; the
+gate granted the permission and the driver exercised it zero times, and the gate refuses to
+call an unexercised configuration passing — the vacuous-green shape it exists to prevent.
+
+**The cause is the corpus, not the port.** The same driver over `corpus/structured` reports
+**6 handovers, 0 mismatches, OK**. So the permission is wired and works; `corpus/interesting`
+simply carries no *accepted* input whose payload clears the port's threshold — unsurprising,
+since only accepted inputs re-encode and most of a fuzzed corpus is rejected. Established by
+running both corpora, not by reading the driver.
+
+**Consequence to know before the next run:** the encode gate over `corpus/interesting` will
+keep reporting that single `go` line until the fuzzed corpus grows a large-payload accepted
+input. It is a coverage statement, not a regression. If that proves noisy, the pass-through
+axis belongs on `corpus/structured` while the surface/flush axes run on the fuzzed corpus —
+not yet decided, and deliberately not changed here.
+
+*A note on that pass, because the first attempt looked like a finding and was not.* It first
+died with a `TimeoutExpired` on the cpp driver, which reads exactly like a hang. It was the
+fixed 120 s per-feed cap in `oracle/chunk_invariance.py` — a cap that file's own comment
+documents as too small for a fuzzed corpus, and makes overridable via `CHUNK_FEED_TIMEOUT`.
+One driver run gets the *whole* corpus, so the cap scales with corpus size: at 34.5 MB and
+`SOFAB_CHUNK=1` that is 34.5 M single-byte feeds. Re-run at `CHUNK_FEED_TIMEOUT=2400` it
+passes clean. The skill's step-6 command line does not mention the override; anyone running
+that pass over a grown `corpus/interesting` needs it.
+
+
+---
+
 **The nightly's second steering engine has been throwing its whole harvest away since
 2026-08-14 (found 2026-08-18, triaging run 32096008437).** The nightly's *own* verdict was
 quiet — one camp, already accounted for, no crashes — but the run was red in a place nobody
