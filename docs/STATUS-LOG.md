@@ -114,6 +114,26 @@ without recording why and the wart was latent there too.
 (`CORPUS=corpus/interesting ./scripts/run-encode.sh`). Anyone who ran that step got a silent
 exit 1 and no encode coverage at all.
 
+*With the gate fixed, the run itself is clean — and its one red line is the gate working as
+designed, not a defect.* 17 drivers x 19 847 inputs: **16 report 0 mismatches**; `go` reports
+1. That 1 is **not** a byte divergence and not a §5.1 refusal failure — it is the
+`0 handovers` branch of the pass-through check, which increments the counter on purpose
+(`oracle/encode_invariance.py:300`). `go` is the only port declaring `pass_through=yes`; the
+gate granted the permission and the driver exercised it zero times, and the gate refuses to
+call an unexercised configuration passing — the vacuous-green shape it exists to prevent.
+
+**The cause is the corpus, not the port.** The same driver over `corpus/structured` reports
+**6 handovers, 0 mismatches, OK**. So the permission is wired and works; `corpus/interesting`
+simply carries no *accepted* input whose payload clears the port's threshold — unsurprising,
+since only accepted inputs re-encode and most of a fuzzed corpus is rejected. Established by
+running both corpora, not by reading the driver.
+
+**Consequence to know before the next run:** the encode gate over `corpus/interesting` will
+keep reporting that single `go` line until the fuzzed corpus grows a large-payload accepted
+input. It is a coverage statement, not a regression. If that proves noisy, the pass-through
+axis belongs on `corpus/structured` while the surface/flush axes run on the fuzzed corpus —
+not yet decided, and deliberately not changed here.
+
 *A note on that pass, because the first attempt looked like a finding and was not.* It first
 died with a `TimeoutExpired` on the cpp driver, which reads exactly like a hang. It was the
 fixed 120 s per-feed cap in `oracle/chunk_invariance.py` — a cap that file's own comment
