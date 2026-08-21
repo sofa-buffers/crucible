@@ -91,15 +91,28 @@ chunk-capable drivers x 19 847 inputs x 7 chunkings, **0 chunk-invariance mismat
 `kotlin-native` included (39 min). `split` was deliberately omitted, as its per-`k` sweep is
 ~44 h over a fuzzed corpus (`docs/TODO.md`).
 
-**The encode pass over the same corpus did NOT complete and is unexplained — open.** It
-printed `differential comparison over 19847 input(s)` and then exited 1 with *no* summary
-line, no divergence count and no traceback (stderr was captured, so a Python exception would
-have been in the log). Silent death with a captured stderr points at the process being
-killed rather than failing — OOM is the first hypothesis, since `run-encode.sh` was handed
-34.5 MB across the full 17-driver roster — but that is a **hypothesis, not a diagnosis**;
-nothing here has been established yet. Do not read the earlier "encode" line in this
-session's report as green. Next step: re-run it alone with the roster trimmed, watching
-`dmesg`/exit signal, and if it is OOM decide whether the pass needs batching.
+**The encode pass over the same corpus did not complete — and the cause was this repo's own
+gate, now fixed.** It printed `differential comparison over 19847 input(s)` and exited 1 with
+no summary, no divergence count and no traceback, which reads exactly like a killed process;
+OOM was the first hypothesis and it was **wrong**.
+
+`scripts/run-encode.sh` used `run.sh` only to build the roster — but `run.sh` also *runs the
+differential comparison* and takes `CORPUS` from the environment. Unpinned, it inherited the
+encode gate's own `CORPUS` and compared all 19 847 inputs; that corpus has 10 720 legitimate
+divergences, so the comparator exited non-zero, `set -e` aborted the script, and
+`encode_invariance.py` never started. The silence is the same bug's other half: `run.sh`'s
+stdout — the summary — goes to `/dev/null`, so only the stderr progress line survives.
+
+The twin gate is the proof: `scripts/run-chunked.sh` pins `CORPUS="$ROOT/corpus/seeds"` for
+its build step and therefore passed on the same corpus in the same session; `run-encode.sh`
+did not. Reproduced on a 3-input corpus (identical signature) before fixing, and fixed by
+pinning the corpus the same way — with a comment naming the trap, since the sibling pins it
+without recording why and the wart was latent there too.
+
+**Scope beyond this session: the gate was unrunnable over any corpus containing divergences**
+— which is exactly what `docs/CI.md` and the check-nightly procedure point it at
+(`CORPUS=corpus/interesting ./scripts/run-encode.sh`). Anyone who ran that step got a silent
+exit 1 and no encode coverage at all.
 
 *A note on that pass, because the first attempt looked like a finding and was not.* It first
 died with a `TimeoutExpired` on the cpp driver, which reads exactly like a hang. It was the
