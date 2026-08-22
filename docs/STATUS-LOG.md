@@ -19,6 +19,73 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**README pass across all twelve corelibs (2026-08-22) — the guards are the deliverable,
+not the shortening.** The corelib READMEs had drifted into spec commentary: 244 §-clause
+citations across the twelve, a justification clause on most paragraphs, and changelog
+material (removed helpers, benchmark figures measured against implementations that no
+longer exist) sitting next to tables those figures no longer matched. Two ports were done
+by hand to establish a recipe (corelib-go#125, corelib-cpp#122), nine by a sequential
+workflow, and corelib-c-cpp#147 by hand after the workflow agent for it was refused by a
+safety classifier that read the run as breaching the user's earlier "not yet" instruction.
+
+*The method, and why it is in this order.* **Guard first, cut second.** Each port gets a
+README check wired into its own test runner — the §9 section list and order, the §9.2
+badge block, the §9.5 examples, the §6.4 knob, §9.6's `MIN_OUTPUT_BUFFER`, §6.1.1's closed
+name set, and that every in-document link resolves — and that check must pass on the
+**unmodified** README and fail on deliberate damage before a word is cut. A shortening pass
+with no machine-checked floor is a pass that silently deletes what it does not understand,
+and the floor is what survives the session; the shortening is a one-off.
+
+*The rule the cut followed.* Remove justification, never facts: every assertion, example
+and table stays, and per-symbol detail may only leave a README if it already lives in the
+port's API documentation — the Docs badge target §9.4 designates. Measured after the fact,
+**code and table lines are unchanged in all twelve** (e.g. corelib-go 141→132 code lines,
+corelib-c-cpp 91→91 and 132→132) while prose fell 16–46 %. The spread is the point: go and
+cpp lost ~45 % because they argued the most; corelib-c-cpp lost 18 % because a third of it
+is footprint and Ir/op tables and its prose carries interop bounds an embedded caller
+needs. **Deliberately no line target** — a README already lean is left alone.
+
+*What the guards found on their first run, which is the return on the whole pass.*
+Nineteen defects, most of them invisible to every existing test:
+
+- **§9 violations in seven ports** — invented top-level sections (`Feature flags`,
+  `Generated-code support layer`, `Decode limits`, `Native accelerator`, and in
+  corelib-rs-no-std a `Choosing between the two Rust corelibs` that §9.8 requires as a
+  Benchmarks subsection). All demoted, no prose changed. corelib-cs had carried a comment
+  asserting the family shape justified its extra chapter; go and cpp had already dropped it.
+- **corelib-dart never documented the raw fp32-bytes path** that CORELIB_PLAN §6.5 obliges
+  a double-only target to expose. `writeFp32Bits` / `onFp32Bits` exist and are tested; a
+  reader following the README would have written a bit-inexact fp32 round trip.
+- **corelib-kotlin-mp's guard would never have run.** Gradle's `jvmTest` task did not
+  declare `README.md` an input, so a README-only edit left it `UP-TO-DATE` — the check
+  passed all ten negative tests by not executing. Only the negative testing exposed it.
+- Stale facts corrected in four ports: a pinned Gradle version, two CI descriptions that
+  no longer matched `ci.yml`, and three footprint figures no job compares against the tool
+  that produces them.
+
+*One finding filed upstream.* **G-0040** — the TypeScript backend gives every generated
+message class `decodeFrom` and `decodeInto` alongside `decode`, and §6.1.1 names
+`decode_from` and `decode_into` among the spellings a port must not invent, permitting only
+a casing adaptation. Attribution is codegen and was established, not inferred: the corelib
+is schema-agnostic and emits no message classes, and grepping every backend's output under
+`drivers/*` finds the two names in the TypeScript output only, where Zig names the same
+entry point `decoder()`. Filed as [generator#384](https://github.com/sofa-buffers/generator/issues/384).
+The neighbouring case — Go's `Decode<Name>From` against §6.1.1's `decoder()` — is raised in
+that issue as a separate question rather than folded in, since the words there are not
+literally `decode_from`.
+
+*Two defects deliberately left open*, each needing its own vehicle: corelib-cs' docfx
+reports a broken logo link on the published docs landing page (`--warningsAsErrors false`
+hides it), and the corelib-ts README keeps `decodeFrom` because §9 requires it to describe
+the code as it stands — renaming it there would document a method that does not exist.
+
+*The workflow script is kept*, at `.claude/workflows/corelib-readme-tighten.js`: one agent
+per repo, strictly sequential because the agents build and test inside the shared `vendor/`
+checkouts and two concurrent build jobs corrupt each other. Its post-processing had one
+defect worth recording — it reported a guard as "unproven" when the guard had *failed on
+the unmodified README*, which is the recipe's designed outcome for a port with a real §9
+violation, not a broken guard.
+
 **Nightly 32444261107 (2026-08-21) — one new camp, and it is a missed site of a class we
 had already closed.** The run was otherwise unremarkable: ~11.1 M execs, 51 new inputs
 harvested by the Go steering engine (which is reporting its harvest again since #166), no
