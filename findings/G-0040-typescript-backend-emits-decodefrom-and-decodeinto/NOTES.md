@@ -1,6 +1,8 @@
 # G-0040 — generated TypeScript exposes `decodeFrom` / `decodeInto` (two names §6.1.1 forbids)
 
-**Status:** 🔴 **open** — filed 2026-08-22 as [generator#384](https://github.com/sofa-buffers/generator/issues/384)
+**Status:** ✅ **fixed in sofabgen 9c613ed** — [generator#389](https://github.com/sofa-buffers/generator/pull/389), verified 2026-08-23
+**Guard:** none — a naming defect has no input that exposes it; the generator's own
+`TestTSClosedNameSet` is the regression gate (see below)
 **Issue:** [generator#384](https://github.com/sofa-buffers/generator/issues/384)
 
 Found 2026-08-22 while auditing every corelib README against CORELIB_PLAN §9 (the
@@ -53,3 +55,41 @@ to the corelib, not to the generated object.
 `decoder()`. The words are not literally `decode_from` and the name is consistent
 with its own `DecodeProbe`, so it is raised in the issue as a separate question
 rather than folded into this finding.
+
+## Resolution (verified 2026-08-23)
+
+PR [generator#389](https://github.com/sofa-buffers/generator/pull/389) takes both
+names off the generated class. The two cursor-level steps still have to exist —
+§7.4 needs the decode loop separable from the fresh-object entry — so they became
+**module-level, non-exported** functions of the generated file
+(`_decodeFromProbe` / `_decodeIntoProbe`), reachable from the sibling classes that
+decode into one another and from nowhere else. That is the TypeScript analogue of
+the Dart backend's library-private `_decodeInto`.
+
+Verified against a sofabgen **built from source at generator `main@9c613ed`**, since
+the CI artifact for that commit had not been attached yet:
+
+* `drivers/ts/build/message.ts` regenerated — no `static decodeFrom` / `static
+  decodeInto`, and no `.decodeFrom(` / `.decodeInto(` call site anywhere.
+* The module-level replacements are **not** exported (`export function _decode…`:
+  0 matches), so they are not part of any surface a user can reach.
+* The statics a generated class now carries are exactly `decode`, `fromJSON` and
+  one `static readonly` — the §6.1.1 set plus the allowlist.
+* No other backend's generated output carries either name.
+
+**The wire is untouched, checked rather than taken on trust.** Both oracles over
+`corpus/regression` with the regenerated driver: **239 inputs × 17 drivers, 0
+divergences** on the round-trip oracle, and 0 on the materialized-value oracle
+(`SOFAB_MATERIALIZE=1`), with the C-anchor conformance check at 0/111 mismatches.
+Warning and allowed counts are unchanged from before the fix.
+
+Going forward the generator pins it itself: `TestTSClosedNameSet` rejects
+`static decodeFrom`/`decodeInto`, either call site, an exported module-level
+decoder, and any static a generated class grows outside the allowlist.
+
+**Residual, not part of this finding:** `corelib-ts`'s README still teaches the old
+shape in its generator example (`static decodeFrom(c: Cursor)`, and a commented
+`Child.decodeFrom(c)`). The example is self-contained, so the repo's own
+`readme-generator-example.test.ts` still runs it green — it checks that the code
+works, not that it matches what sofabgen emits. Owner is `corelib-ts`; §9 requires
+a README to describe the code as it stands.
