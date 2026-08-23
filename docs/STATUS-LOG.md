@@ -19,6 +19,97 @@ Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug l
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);
 Crucible is the catalog + verifier.
 
+**README pass across all twelve corelibs (2026-08-22/23) — what shipped is not what
+was built first.** The corelib READMEs had drifted into spec commentary: 244 §-clause
+citations across the twelve, a justification clause on most paragraphs, and changelog
+material (removed helpers, benchmark figures measured against implementations that no
+longer exist) sitting next to tables those figures no longer matched. All twelve are
+now tightened and merged — corelib-go#125, corelib-cpp#122, corelib-c-cpp#147,
+corelib-rs#94, corelib-rs-no-std#106, corelib-py#108, corelib-ts#159, corelib-java#100,
+corelib-kotlin-mp#25, corelib-cs#97, corelib-dart#81, corelib-zig#76.
+
+*The cut rule.* Remove justification, never facts: every assertion, example and table
+stays, and per-symbol detail may only leave a README if it already lives in the port's
+API documentation — the Docs badge target §9.4 designates. Measured after the fact,
+**code and table lines are unchanged in all twelve** (corelib-go 141→132 code lines,
+corelib-c-cpp 91→91 and 132→132) while prose fell 16–46 %. The spread is the point: go
+and cpp lost ~45 % because they argued the most; corelib-c-cpp lost 18 % because a third
+of it is footprint and Ir/op tables and its prose carries interop bounds an embedded
+caller needs. **No line target** — a README already lean was left alone.
+
+*Two review decisions changed the shape of the work, and both are the record here.*
+
+**1. The README guards were built, then removed.** The first pass put a doc test in each
+port — the §9 section list, the badge block, the §9.5 examples, §6.4's UTF-8 knob,
+§9.6's `MIN_OUTPUT_BUFFER`, §6.1.1's closed name set, resolving links — proven to pass on
+the *unmodified* README and to fail on deliberate damage before a word was cut. On review
+that was judged too far: a test that goes red when a heading is renamed makes
+documentation expensive to change, which is the opposite of what it should be. All of it
+was removed, **including the pre-existing ones this repo had not written** — 11 whole
+files and 9 individual tests across ten ports. Behaviour that was only asserted inside a
+doc test was kept and moved to a test of its own rather than deleted with it (corelib-go's
+decode-path ownership check is now `decode_ownership_test.go`).
+
+*The guards earned their keep on the way out, though.* Their first run found **19 defects**
+no existing test could see: invented top-level sections in **seven** ports (§9 forbids
+them; corelib-cs even carried a comment asserting `## Feature flags` was de-facto family
+shape, which go and cpp had already dropped); **corelib-dart never documented the raw
+fp32-bytes path** CORELIB_PLAN §6.5 obliges a double-only target to expose, so a reader
+following its README would have written a bit-inexact fp32 round trip; and a
+**corelib-kotlin-mp guard that could never have run**, because Gradle's `jvmTest` did not
+declare `README.md` an input and a README-only edit left it `UP-TO-DATE`. Plus stale facts
+in four ports — a pinned Gradle version, two CI descriptions that no longer matched
+`ci.yml`, three footprint figures no job compares against the tool that produces them.
+
+**2. Testing the README's *code* is the part worth keeping, and it is now family-wide.**
+The same review that rejected prose tests asked for the opposite of the opposite: every
+port should run the example its README shows. Six had one already (cs, java, py, rs, ts,
+zig); six did not and now do (go, cpp, c-cpp, rs-no-std, kotlin-mp, dart). Each puts the
+example in a **real translation unit the compiler sees**, runs it — round trip, streaming
+through a buffer far smaller than the message, decode fed one byte at a time — and checks
+that every line (or call) the README shows stands in that compiled file. Each was
+negative-tested by corrupting one line of the README. corelib-kotlin-mp's
+`build.gradle.kts` now declares `README.md` an input for exactly the reason above.
+
+*Measured figures left the READMEs too*, on the same review: they belong to the
+cross-language arena, which runs every port on one host under one methodology, and a table
+taken on one contributor's machine goes stale silently. **Two exceptions stay** — the
+sibling comparisons `corelib-c-cpp` ↔ `corelib-cpp` and `corelib-rs-no-std` ↔ `corelib-rs`.
+Two ports of the same language for opposite use cases can only be chosen between on their
+performance and footprint difference, and nothing outside those READMEs compares them.
+Those tables were then **re-measured** with valgrind and the ARM/AVR/RISC-V cross
+toolchains installed for the purpose: all 30 Ir/op values of the C/C++ pair, all four
+c-cpp footprint tables and the per-switch table, and rs-no-std's 24 flash/RAM values
+reproduce **exactly** — nothing needed changing. Two figures remain unverified and are
+recorded as such: the arena MB/s row (the arena is a separate repo) and c-cpp's
+`SOFAB_DISABLE_LAZY_SEQ_SUPPORT` column, whose ~6 Ir/op delta the single-shot method
+cannot resolve. Reconciling the Rust pair did surface three **contradictions** between the
+two READMEs (1.3× vs 1.4× micropb, ~7.0 vs ~6.8 KB, 1.4× vs 1.5× prost); each was settled
+in favour of the repo the figure belongs to.
+
+*One finding filed upstream.* **G-0040** — the TypeScript backend gives every generated
+message class `decodeFrom` and `decodeInto` alongside `decode`, and §6.1.1 names
+`decode_from` and `decode_into` among the spellings a port must not invent, permitting only
+a casing adaptation. Attribution is codegen and was established, not inferred: the corelib
+is schema-agnostic and emits no message classes, and grepping every backend's output under
+`drivers/*` finds the two names in the TypeScript output only, where Zig names the same
+entry point `decoder()`. Filed as [generator#384](https://github.com/sofa-buffers/generator/issues/384).
+The neighbouring case — Go's `Decode<Name>From` against §6.1.1's `decoder()` — is raised in
+that issue as a separate question rather than folded in, since the words there are not
+literally `decode_from`. **One cosmetic item is left open**: corelib-cs' docfx emits
+`InvalidFileLink` for the logo in `docs/index.md`. It is a build-time validation
+warning only — docfx resolves the link against the markdown file's own folder, while the
+`resource` rule copies `assets/**` into the site root, where the path is correct. The
+published page renders the logo; verified by building the docs.
+
+*The workflow script is kept*, at `.claude/workflows/corelib-readme-tighten.js`: one agent
+per repo, strictly sequential because the agents build and test inside the shared `vendor/`
+checkouts and two concurrent build jobs corrupt each other. It drove nine of the twelve;
+one agent was refused by a safety classifier reading a stale timing instruction, and that
+port was finished by hand. Its post-processing had one defect worth recording — it reported
+a guard as "unproven" when the guard had *failed on the unmodified README*, which is the
+recipe's designed outcome for a port with a real §9 violation, not a broken guard.
+
 **Nightly 32444261107 (2026-08-21) — one new camp, and it is a missed site of a class we
 had already closed.** The run was otherwise unremarkable: ~11.1 M execs, 51 new inputs
 harvested by the Go steering engine (which is reporting its harvest again since #166), no
