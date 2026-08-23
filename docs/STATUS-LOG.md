@@ -96,9 +96,11 @@ is schema-agnostic and emits no message classes, and grepping every backend's ou
 entry point `decoder()`. Filed as [generator#384](https://github.com/sofa-buffers/generator/issues/384).
 The neighbouring case — Go's `Decode<Name>From` against §6.1.1's `decoder()` — is raised in
 that issue as a separate question rather than folded in, since the words there are not
-literally `decode_from`. **One defect is deliberately left open**: corelib-cs' docfx reports
-a broken logo link on the published docs landing page, which `--warningsAsErrors false`
-hides.
+literally `decode_from`. **One cosmetic item is left open**: corelib-cs' docfx emits
+`InvalidFileLink` for the logo in `docs/index.md`. It is a build-time validation
+warning only — docfx resolves the link against the markdown file's own folder, while the
+`resource` rule copies `assets/**` into the site root, where the path is correct. The
+published page renders the logo; verified by building the docs.
 
 *The workflow script is kept*, at `.claude/workflows/corelib-readme-tighten.js`: one agent
 per repo, strictly sequential because the agents build and test inside the shared `vendor/`
