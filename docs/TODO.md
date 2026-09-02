@@ -734,7 +734,8 @@ here:
           drivers are now **schema-agnostic**: a schema change reflows to every walker with zero
           hand-editing. 75×12 stays 0-divergence; the generators run cleanly during the default `run.sh`
           builds too. **The materialized-value oracle is fully complete** — no open refinements.
-- [ ] **No coverage engine ever exercises the streaming decode path.** Every fuzz
+- [ ] **No coverage engine ever exercises the streaming decode path**
+      ([crucible#178](https://github.com/sofa-buffers/crucible/issues/178)). Every fuzz
       front-end calls the one-shot block API: `message_probe_decode(&m, data, size)` in
       `drivers/c/driver.c`'s `LLVMFuzzerTestOneInput`, `msg.DecodeProbe(data)` in
       `drivers/go/fuzz_test.go`, `Probe.decode(...)` in the ts/java/kotlin/csharp entry
