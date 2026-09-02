@@ -734,6 +734,30 @@ here:
           drivers are now **schema-agnostic**: a schema change reflows to every walker with zero
           hand-editing. 75×12 stays 0-divergence; the generators run cleanly during the default `run.sh`
           builds too. **The materialized-value oracle is fully complete** — no open refinements.
+- [ ] **No coverage engine ever exercises the streaming decode path.** Every fuzz
+      front-end calls the one-shot block API: `message_probe_decode(&m, data, size)` in
+      `drivers/c/driver.c`'s `LLVMFuzzerTestOneInput`, `msg.DecodeProbe(data)` in
+      `drivers/go/fuzz_test.go`, `Probe.decode(...)` in the ts/java/kotlin/csharp entry
+      points. The chunked surface (`feed`/`finish`) appears in the replay drivers only,
+      behind `SOFAB_SPLIT` / `SOFAB_CHUNK` / `SOFAB_CHUNK_SCRUB` — so the `feed` state
+      machine is never *steered*, only replayed over a corpus the block API grew.
+      Nothing in PLAN or ARCHITECTURE decided this: the streaming axes were added after
+      the fuzz front-ends existed, and the front-ends were never taught them.
+      The gap is not theoretical — the first manual `--modes chunk,scrub` pass over the
+      fuzzed corpus (2026-08-04) produced F-0060's 12 436 mismatches on inputs the
+      hand-written suites had called green, i.e. the streaming path is measurably the
+      weaker one and is the one nothing steers.
+      *Shape of the fix:* take the chunk boundaries from the fuzz input itself (a small
+      header the harness peels off, or the structure-aware mutator in `engine/mutator/`
+      emitting them) so the cut positions are under coverage feedback, instead of being
+      fixed from outside as the replay gates do. Start with **c** and **go** — the only
+      two engines that steer today. Verdict derivation must match
+      `drivers/common/CONTRACT.md` ("Deriving the verdict, identically in every
+      language"), so a chunked front-end cannot report a difference of API shape as a
+      crash-free pass.
+      *Not a substitute:* "Wire the fuzzed corpus into the streaming axes routinely"
+      (above) replays the streaming path over a block-grown corpus; this item is about
+      growing a corpus *for* the streaming path.
 - [ ] **Encoder-side fuzzing.** The pacemaker is **decode-only**; encoders are only exercised
       via cross-encode's deterministic values. Mutate the *value* (floats, boundary ints, array
       sizes, unicode) and feed all 12 *encoders* → compare bytes. Reaches encoder divergences
