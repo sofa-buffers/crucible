@@ -35,12 +35,18 @@ ENV DEBIAN_FRONTEND=noninteractive
 #                                the driver's package deps per build (like Jazzer).
 #   binutils / llvm-symbolizer readable sanitizer + coverage reports
 #   gh, jq, git                repo + findings plumbing
+#   ripgrep, fd-find           searching the vendored corelibs and the corpus
+#                                (fd-find's binary is `fdfind`, not `fd`)
+#   shellcheck, shfmt          the driver build.sh / scripts/*.sh are POSIX sh
+#   xxd                        reading a corpus input or a minimized reproducer
+#                                by hand — findings are argued in bytes
 #
 # NOT installed (vs Arena): protobuf / nanopb / EmbeddedProto (no baselines here),
 # and the bare-metal cross toolchains (fuzzing runs hosted, not on Cortex-M/RISC-V).
 # =============================================================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl wget unzip zip gnupg git jq time pkg-config ripgrep \
+    fd-find shellcheck shfmt xxd \
     build-essential cmake make gcc g++ \
     clang lld llvm llvm-dev libclang-rt-dev \
     python3 python3-venv python3-pip python3-dev \
