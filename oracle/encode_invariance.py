@@ -38,7 +38,6 @@ drivers to run are named explicitly by the caller and never inferred.
 
 import argparse
 import os
-import re
 import struct
 import subprocess
 import sys
@@ -249,73 +248,29 @@ def main():
                       file=sys.stderr)
                 bad += 1
 
-        # --- the §5.1 pass-through permission -------------------------------------
+        # --- §5.1.6: the sink never receives foreign memory ------------------------
         #
-        # An encoder MAY hand a string/blob run to its sink DIRECTLY instead of copying
-        # it through the output buffer. It is wire-neutral by construction — "the output
-        # is byte-identical either way" — which is precisely why neither the round-trip
-        # nor the materialized oracle can see it, and why it belongs here: this gate is
-        # the one that compares a *configuration* against the same driver's default.
+        # There is nothing to configure here any more, which is why this axis no longer
+        # exists. An earlier revision of §5.1 let an encoder hand a string/blob run to
+        # its sink DIRECTLY instead of copying it through the output buffer, and
+        # Crucible carried a `SOFAB_PASSTHROUGH=1` axis for it because the permission is
+        # wire-neutral and both other oracles are structurally blind to it.
+        # documentation §5.1.6 withdrew the permission: "An encoder MUST NOT hand any
+        # memory other than the installed output buffer to the sink", on every flush of
+        # every message, with no flag to set and no exemption to claim.
         #
-        # Optional, so `no` is a statement about the port and not a defect; only an
-        # ABSENT declaration is an error, the same rule `min_output_buffer` follows.
-        pt = roster.pass_through(BUILDERS[name])
-        pt_note = ""
-        if pt is None:
-            print(f"  [{name}] meta declares no pass_through — CORELIB_PLAN §5.1 makes "
-                  "the permission optional, but which ports take it must be written "
-                  "down, or a port that implements it goes untested", file=sys.stderr)
-            bad += 1
-        elif pt and "stream" in surfaces:
-            tried += 1
-            env = {"SOFAB_ENCODE": "stream", "SOFAB_FLUSH": str(minbuf),
-                   "SOFAB_PASSTHROUGH": "1"}
-            lines, rc, err = run(path, inputs, env)
-            if rc != 0 or len(lines) != len(inputs):
-                print(f"  [{name}] pass-through: rc={rc}, {len(lines)} lines, expected "
-                      f"{len(inputs)}: {err}", file=sys.stderr)
-                bad += 1
-            else:
-                # (1) The permission must not change a single byte.
-                diff = [files[i] for i, (a, b) in enumerate(zip(base, lines)) if a != b]
-                for f in diff[:5]:
-                    print(f"  [{name}] {f} under pass-through: output differs from the "
-                          "default path — §5.1 requires the bytes to be identical "
-                          "either way", file=sys.stderr)
-                bad += len(diff)
-                # (2) …and it must actually have happened. A port that accepted the
-                # permission and quietly copied anyway produces identical bytes and
-                # would pass (1) trivially, so the driver reports how often its sink
-                # received memory that was not the output buffer. Zero means the run
-                # proved nothing — the vacuous-green shape this gate exists to refuse,
-                # the same reasoning behind the flush sweep's declared-minimum rule.
-                m = re.search(r"passthrough handovers=(\d+)", err)
-                if not m:
-                    print(f"  [{name}] pass-through: driver reports no handover count "
-                          "— CONTRACT.md requires it, because identical bytes cannot "
-                          f"distinguish a used permission from an ignored one: {err!r}",
-                          file=sys.stderr)
-                    bad += 1
-                elif int(m.group(1)) == 0:
-                    print(f"  [{name}] pass-through: 0 handovers over {len(inputs)} "
-                          "input(s) — the permission was granted and never exercised, "
-                          "so this configuration asserts nothing. Either the corpus "
-                          "carries no payload above the port's threshold, or the "
-                          "permission is not wired.", file=sys.stderr)
-                    bad += 1
-                else:
-                    pt_note = f", pass-through {m.group(1)} handover(s)"
+        # So the check inverted from "prove the permission was exercised" to "prove it
+        # never happens", and a driver can assert that on its own: it owns the sink, so
+        # it can test every slice it is handed against the buffer it installed. A
+        # violation makes the driver exit non-zero, which the stream-surface runs above
+        # already fail on — the gate needs no configuration of its own to catch it.
+        # Today only `go` implements the assertion; extending it to the other
+        # sink-capable drivers is per-driver work tracked in docs/TODO.md.
 
         status = "OK" if not bad else "FAIL"
         have = ",".join(s for s in ALL_SURFACES if s in surfaces)
-        if pt is False:
-            # Said out loud rather than skipped quietly: a port that declares `no` is
-            # not checked on this axis at all, because the other drivers do not yet
-            # recognise SOFAB_PASSTHROUGH and would exit 0 having ignored it. Making
-            # that refusal assertable is per-driver work, tracked in docs/TODO.md.
-            pt_note = ", pass-through declared absent (not exercised)"
         print(f"[{name}] {len(inputs)} input(s) x {tried} config(s), surfaces={have}, "
-              f"min_output_buffer={minbuf}{pt_note} — {bad} mismatch(es)  [{status}]")
+              f"min_output_buffer={minbuf} — {bad} mismatch(es)  [{status}]")
         failures += bad
 
     print(f"\nTOTAL: {failures} encode-invariance mismatch(es)")

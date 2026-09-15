@@ -17,7 +17,7 @@
 // built package dir (beside the generated message.dart).
 import 'dart:typed_data';
 
-import 'package:sofabuffers/sofabuffers.dart' as sofab;
+import 'package:sofa_buffers_corelib/sofa_buffers_corelib.dart' as sofab;
 import 'message.dart';
 
 void _expect(bool cond, String msg) {

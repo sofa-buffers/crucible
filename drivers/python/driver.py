@@ -20,8 +20,8 @@ import struct
 import sys
 
 from message import Probe
-from sofab import (Decoder, Encoder, SofaError, SofaIncompleteError,
-                   SofaLimitError)
+from sofab import (Encoder, SofaDecodeError, SofaError, SofaIncompleteError,
+                   SofaLimitError, Status)
 
 # --- materialized value dump (oracle/materialized.md), SOFAB_MATERIALIZE=1 -------
 # The dataclass carries no schema type (fp32 vs fp64, unsigned vs signed), so the
@@ -117,17 +117,17 @@ def _reject(e: Exception) -> str:
 # so neither streaming surface of the generated API is reachable through it. Unset,
 # every variable below is today's behaviour byte for byte.
 #
-# Python is the one PULL-shaped backend: there is no push `feed`. `Probe.decode(data)`
-# is `deserialize(Decoder(io.BytesIO(data)))`, so the driver expresses chunking by
-# handing the Decoder a reader that returns SHORT READS — at most `n` bytes per call.
-# That is faithful rather than a workaround: the Decoder's `_need` loop treats a short
-# read as "more to come" and only an empty return as end-of-input, which is exactly the
-# distinction the axis is about. `chunk_size` is set to match so each refill asks for
-# the same small amount.
+# corelib-py is a PUSH decoder like every other corelib, and has been since
+# corelib-py#142 (2026-09-02, "feed is the only answer; the status property is gone").
+# `Probe.decoder()` hands back the generated streaming reader; `feed(chunk)` returns the
+# three-valued outcome (CORELIB_PLAN §5.2.1). Before that it was the one pull-shaped
+# backend, and this driver expressed chunking by handing the Decoder a reader that
+# returned SHORT READS. That reader is gone, and so is the `Decoder(reader, chunk_size=)`
+# constructor it needed — `Decoder` is keyword-only now and takes a `visitor`/`binding`.
 #
-# There is no push decoder to expose a `status`, so the verdict comes from the same
-# exceptions the one-shot path raises — which is the contract's rule (derive it the way
-# the one-shot path does), not an exception to it.
+# The verdict still comes from the same exceptions the one-shot path raises, because
+# `_decode_streamed` re-raises what `Probe.decode` would have: both paths then answer in
+# one currency and `canonical()`'s try/except covers them alike.
 def _env_int(name: str) -> int:
     v = os.environ.get(name, "")
     try:
@@ -141,19 +141,15 @@ _CHUNK = _env_int("SOFAB_CHUNK")
 _FLUSH = _env_int("SOFAB_FLUSH")
 _SCRUB = os.environ.get("SOFAB_CHUNK_SCRUB", "") not in ("", "0")
 _ENCODE = os.environ.get("SOFAB_ENCODE", "") or "new"
-_CHUNKING = bool(_SPLIT or _CHUNK)
+_CHUNKING = bool(_SPLIT or _CHUNK or _SCRUB)
 
 
 def _check_cfg() -> None:
-    if _SCRUB:
-        # Not applicable, and for the opposite reason to corelib-zig's: this runtime
-        # cannot alias a fed chunk at all. `read()` returns immutable `bytes` and the
-        # Decoder copies them into its own buffer on arrival, so there is no borrow to
-        # expose by overwriting. Exit 3 says "cannot be tested here" — never "passed".
-        sys.stderr.write(
-            "crucible-py: SOFAB_CHUNK_SCRUB is not applicable — the pull Decoder reads "
-            "immutable bytes and copies them on arrival, so no borrow is observable\n")
-        sys.exit(3)
+    # SOFAB_CHUNK_SCRUB used to exit 3 here ("cannot be tested"), because the pull
+    # Decoder was handed immutable `bytes` by a reader and there was no buffer this
+    # driver could overwrite. The push `feed` takes any buffer and states the lifetime
+    # itself — the chunk is borrowed for the call only — so the axis became testable the
+    # moment the surface changed, and `_chunks` now hands over `bytearray`s to scrub.
     if _ENCODE == "to":
         sys.stderr.write("crucible-py: SOFAB_ENCODE=to — this backend has no encodeTo "
                          "(it has new, stream)\n")
@@ -164,44 +160,57 @@ def _check_cfg() -> None:
         sys.exit(2)
     # Announce on stderr (never parsed). A driver that silently ignored these would be
     # indistinguishable from one that honours them — stdout is identical either way.
-    if _SPLIT or _CHUNK or _FLUSH or _ENCODE != "new":
+    if _SPLIT or _CHUNK or _FLUSH or _SCRUB or _ENCODE != "new":
         sys.stderr.write(f"crucible-py: streaming cfg split={_SPLIT} chunk={_CHUNK} "
-                         f"enc={_ENCODE} flush={_FLUSH}\n")
+                         f"scrub={1 if _SCRUB else 0} enc={_ENCODE} flush={_FLUSH}\n")
 
 
-class _ChunkedReader:
-    """A reader that hands the Decoder the record in pieces.
+def _chunks(data: bytes) -> list:
+    """The record cut the way drivers/common/CONTRACT.md says, piece by piece.
 
-    `SOFAB_CHUNK=n` caps every read at n bytes; `SOFAB_SPLIT=k` gives k bytes first and
-    the rest afterwards. An empty return means end-of-input and nothing else, so a
-    short read is never mistaken for truncation.
+    `SOFAB_CHUNK=n` gives fixed-size pieces (the last one short); `SOFAB_SPLIT=k` gives
+    exactly two, `[0,k)` and `[k,end)`; an empty record gives **no** pieces at all — it
+    is the valid empty message (MESSAGE_SPEC §2), not something to feed through.
+
+    Each piece is a `bytearray` this driver owns, so `SOFAB_CHUNK_SCRUB` has a mutable
+    buffer to overwrite once `feed` has returned.
     """
-
-    def __init__(self, data: bytes) -> None:
-        self._d = data
-        self._pos = 0
-        self._first = True
-
-    def read(self, n: int) -> bytes:
-        if self._pos >= len(self._d):
-            return b""
-        if _CHUNK > 0:
-            take = min(n, _CHUNK)
-        elif _SPLIT > 0 and self._first:
-            take = min(n, _SPLIT)
-        else:
-            take = n
-        self._first = False
-        out = self._d[self._pos:self._pos + take]
-        self._pos += len(out)
-        return out
+    if not data:
+        return []
+    if _CHUNK > 0:
+        return [bytearray(data[o:o + _CHUNK]) for o in range(0, len(data), _CHUNK)]
+    if 0 < _SPLIT < len(data):
+        return [bytearray(data[:_SPLIT]), bytearray(data[_SPLIT:])]
+    return [bytearray(data)]
 
 
 def _decode_streamed(data: bytes) -> Probe:
-    o = Probe()
-    size = _CHUNK if _CHUNK > 0 else (_SPLIT if _SPLIT > 0 else 65536)
-    o.deserialize(Decoder(_ChunkedReader(data), chunk_size=max(size, 1)))
-    return o
+    """Feed the record in pieces, then answer exactly as `Probe.decode` would.
+
+    `INVALID` is terminal (§5.2.1) — every later `feed` returns it again without
+    consuming anything — so feeding stops at the first one rather than pushing bytes at
+    a decoder that is already done. A record with no pieces never calls `feed`, and the
+    outcome stays COMPLETE: that is the empty message, and it is what the one-shot path
+    reports for the same bytes.
+    """
+    d = Probe.decoder()
+    st = Status.COMPLETE
+    for c in _chunks(data):
+        st = d.feed(c)
+        if _SCRUB:
+            # feed borrows the chunk for the duration of the call only: whatever the
+            # decoder still needs afterwards it copies out before returning (corelib-py
+            # `Decoder.feed`, §6 chunk lifetime). Overwriting the piece here is what
+            # holds it to that — a decoder that kept a window into the chunk instead
+            # reads 0xA5 and the canonical line diverges from the whole-record one.
+            c[:] = b"\xa5" * len(c)
+        if st is Status.INVALID:
+            break
+    if st is Status.INVALID:
+        raise SofaDecodeError(d.error or "invalid message")
+    if st is Status.INCOMPLETE:
+        raise SofaIncompleteError(d.error or "truncated message")
+    return d.message
 
 
 def _encode_via(m: Probe) -> bytes:

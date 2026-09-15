@@ -41,7 +41,14 @@ export LIMITS="$CAP"
 # and c-cpp are fixed-capacity, and c-cpp-dyn is growable but the C wrapper's Error has
 # no such code. dart qualifies (growable List<...>, and its generated tryDecode bakes
 # the max_dyn_* caps into a DecoderLimits).
-ALL=$("$ROOT/scripts/roster.sh" build limits | tr '\n' ' ')
+# NOT `roster.sh build limits | tr ...`: a pipeline's status is its LAST command's, so
+# `tr` succeeding hid every failed driver build behind it. `set -e` never fired, the gate
+# compared whatever had been built before the break, and reported OK — on 2026-09-14 that
+# was 6 of the 12 declared drivers, because the TypeScript build died and the loop stopped
+# there. A gate that goes green on a broken build is worse than no gate, so the build runs
+# on its own (status visible to `set -e`) and the reshaping happens afterwards.
+ALL=$("$ROOT/scripts/roster.sh" build limits)
+ALL=$(printf '%s\n' "$ALL" | tr '\n' ' ')
 unset SCHEMA LIMITS  # don't leak the limit config into anything downstream
 
 # Optional per-driver hang budget (seconds); unset → comparator defaults to
