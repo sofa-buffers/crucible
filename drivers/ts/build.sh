@@ -14,6 +14,7 @@ SOFABGEN="$ROOT/tools/sofabgen"
 CORELIB="$ROOT/vendor/corelib-ts"
 BUILD="$HERE/build"
 ESBUILD="$CORELIB/node_modules/.bin/esbuild"
+TSC="$CORELIB/node_modules/.bin/tsc"
 SRC_ENTRY="$CORELIB/src/index.ts"
 
 [ -x "$SOFABGEN" ] || { echo "missing $SOFABGEN — run scripts/bootstrap.sh" >&2; exit 1; }
@@ -35,6 +36,34 @@ if [ -n "${LIMITS:-}" ]; then
 fi
 "$SOFABGEN" ${LIMCFG:+--config "$LIMCFG"} --lang typescript --in "$SCHEMA" --out "$BUILD" >&2
 cp "$HERE/driver.ts" "$BUILD/driver.ts"
+
+# TYPE-CHECK BEFORE BUNDLING. esbuild strips types without checking them, so a
+# corelib API change lands in the bundle intact and only fails when a record reaches
+# the changed call — as a crash the comparator reports as a divergence, on whatever
+# input happens to be first. Both breaks corelib-ts#161 caused here were of that shape:
+# `new OStream()` lost its allocating form (the buffer is the caller's, §6.6) and threw
+# on record #0, and `FlushSink` gained `(buffer, start, end)` coordinates, which the
+# old one-argument sink would have silently read as "copy the whole window". tsc sees
+# both at build time; nothing else in this build did.
+[ -x "$TSC" ] || { echo "missing $TSC — corelib-ts devDependencies are not installed" >&2; exit 1; }
+echo "==> [ts] type-check (driver + generated, against corelib source)" >&2
+cat > "$BUILD/tsconfig.check.json" <<EOF
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": true,
+    "target": "ES2022",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "typeRoots": ["$CORELIB/node_modules/@types"],
+    "types": ["node"],
+    "paths": { "@sofa-buffers/corelib": ["$SRC_ENTRY"] }
+  },
+  "files": ["driver.ts", "message.ts"]
+}
+EOF
+"$TSC" -p "$BUILD/tsconfig.check.json" >&2
 
 echo "==> [ts] esbuild bundle (driver + message + corelib source)" >&2
 "$ESBUILD" "$BUILD/driver.ts" \

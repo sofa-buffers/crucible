@@ -22,9 +22,19 @@
 // It fires solely under a configured cap (limit mode); with no cap it never occurs,
 // so the default conformance run is unchanged.
 //
+// The decode verdict comes back in TWO types since the generator adopted the §5.2.1
+// IStream contract (generator#463, 2026-09-03): `IStream::feed` answers
+// `Result<Status, Error>` — running out of bytes mid-field is `Ok(Status::Incomplete)`,
+// an outcome rather than a failure, because only the caller's framing knows whether
+// more bytes are coming — while the two whole-buffer entry points (`try_decode`,
+// `Decoder::finish`) ARE that framing and fold a trailing `Status::Incomplete` into
+// `DecodeError::Incomplete`. `sofab::Error` consequently has no `Incomplete` variant
+// any more. `DecodeError` is generated code, so the preamble build.sh prepends brings
+// it into scope from the variant's crate alongside `Probe`.
+//
 // Emits the canonical form (oracle/canonical.md) over the replay protocol
 // (drivers/common/CONTRACT.md).
-use sofab::Error;
+use sofab::{Error, Status};
 use std::io::{Read, Write};
 
 // ---- the streaming axes (drivers/common/CONTRACT.md, "The streaming axes") -------
@@ -36,7 +46,7 @@ use std::io::{Read, Write};
 // Rust's generated `Decoder` has **no `status`** — crucible#132's API table says every
 // chunked decoder exposes one, and at sofabgen cfe5250b this backend does not. So the
 // verdict comes from `finish()`, which is sound here for the reason the contract gives:
-// `finish()` returns `Result<Probe, sofab::Error>`, the *same* three-valued outcome
+// `finish()` returns `Result<Probe, DecodeError>`, the *same* three-valued outcome
 // `try_decode` returns, so routing through it introduces no API-shape difference. It is
 // also more than a formality — `finish()` feeds an empty chunk to probe end-of-input,
 // which is exactly what makes a truncated stream an error rather than a half-filled
@@ -126,9 +136,10 @@ fn slices(cfg: &StreamCfg, len: usize) -> Vec<(usize, usize)> {
 }
 
 // Feed the record in the configured pieces through ONE decoder, then take the verdict
-// from `finish()`. An `Incomplete` from a mid-stream `feed` is not terminal — it says
-// only that *those bytes* ended mid-field; any other error is.
-fn decode_streamed(cfg: &StreamCfg, data: &[u8]) -> Result<Probe, Error> {
+// from `finish()`. A `Status::Incomplete` from a mid-stream `feed` is not terminal — it
+// says only that *those bytes* ended mid-field, and it arrives in the success arm for
+// exactly that reason; every `Err` is terminal.
+fn decode_streamed(cfg: &StreamCfg, data: &[u8]) -> Result<Probe, DecodeError> {
     let mut d = Probe::decoder();
     let mut scratch: Vec<u8> = Vec::new();
     for (off, n) in slices(cfg, data.len()) {
@@ -144,9 +155,11 @@ fn decode_streamed(cfg: &StreamCfg, data: &[u8]) -> Result<Probe, Error> {
             d.feed(&data[off..off + n])
         };
         match r {
-            Ok(()) => {}
-            Err(Error::Incomplete) => {}      // mid-field between chunks: expected
-            Err(e) => return Err(e),          // terminal
+            // Both statuses are fine mid-stream: `Complete` says these bytes ended on a
+            // field boundary, `Incomplete` that they ended inside one. Neither answers
+            // whether the MESSAGE is done — `finish()` below does that.
+            Ok(Status::Complete) | Ok(Status::Incomplete) => {}
+            Err(e) => return Err(e.into()), // terminal
         }
     }
     d.finish()
@@ -256,19 +269,23 @@ fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool, cfg: &St
             }
             let _ = writeln!(out);
         }
-        Err(Error::Incomplete) => {
+        Err(DecodeError::Incomplete) => {
             // INCOMPLETE (MESSAGE_SPEC §7): the bytes end mid-message — the third
-            // canonical verdict, neither accept (A) nor reject (R). Not an error.
+            // canonical verdict, neither accept (A) nor reject (R). Not an error, which
+            // is why it reaches us as its own `DecodeError` arm rather than out of
+            // `sofab::Error`: the corelib handed the end-of-input judgement to the
+            // caller (§5.2.4) and the generated entry point, holding the whole buffer,
+            // made it.
             let _ = writeln!(out, "I");
         }
         #[cfg(feature = "limit")]
-        Err(Error::LimitExceeded) => {
+        Err(DecodeError::Sofab(Error::LimitExceeded)) => {
             // LIMIT_EXCEEDED (generator#102, limit mode only): a configured
             // receiver-side cap on a schema-unbounded field was exceeded. A policy
             // rejection distinct from INVALID — its own verdict `L`, not `R`.
             let _ = writeln!(out, "L");
         }
-        Err(e) => {
+        Err(DecodeError::Sofab(e)) => {
             let _ = writeln!(out, "R {}", reject_class(e));
         }
     }

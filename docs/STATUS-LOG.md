@@ -14,6 +14,178 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-15 — the last pull-shaped driver, and a gate that reported green on a broken build
+
+Pulled again (every corelib to `origin/main`, `tools/sofabgen` to run 34820141892,
+`0.0.0-20260914073114-cb465063` → `0.0.0-20260914075539-8287f6c5`, sha256 verified) and ran
+all eleven gates end to end: 9 green, 2 red, and — the one worth the entry — 1 **falsely**
+green. No corelib disagreed with another anywhere: 385 corpus inputs, 1008 sweep vectors and
+111 encode inputs over 17 drivers produced **0 divergences**. Everything below is Crucible's
+side again.
+
+**python ×2 — the last pull-shaped driver, and it had stopped working.** Both Python drivers
+failed chunk invariance at *every* split point — 1028 mismatches over the seeds, 2044 over the
+findings corpus, identical counts on `py-cython` and `py-pure` because they share one
+`driver.py`. Whole-buffer said `A`, chunked said `R other`, which is this driver's label for an
+exception that is not a `SofaError` — a Python error escaping, not a verdict. The cause is
+`corelib-py#142` (2026-09-02, *"feed is the only answer; the status property is gone"*):
+corelib-py became a **push** decoder with a visitor, like every other port. The driver still
+opened with *"Python is the one PULL-shaped backend: there is no push `feed`"* and chunked by
+handing the decoder a reader that returned short reads; that reader is gone, and so is the
+`Decoder(reader, chunk_size=)` constructor it needed — `Decoder` is keyword-only now and takes
+a `visitor`/`binding`. It now feeds `Probe.decoder()` the pieces `drivers/common/CONTRACT.md`
+specifies, the same split the Java driver performs, and re-raises what the one-shot
+`Probe.decode` would have raised so both paths answer in one currency. 3072 mismatches → 0.
+
+### Decision: the scrub axis is live for Python, because the reason it was skipped expired
+
+`SOFAB_CHUNK_SCRUB` exited 3 ("cannot be tested here") on the grounds that the pull reader was
+handed immutable `bytes` and there was no buffer the driver could overwrite. That was true of
+the reader and is not true of `feed`, which takes any buffer and states the lifetime itself:
+*"the chunk is borrowed only for the duration of this call … the caller may reuse or overwrite
+that memory the moment `feed` comes back."* A skip whose premise the corelib has retired is not
+a skip, it is an untested claim, so `_chunks` hands over `bytearray`s and overwrites each one
+after its `feed`. **The claim holds** — 311 chunkings, 0 mismatches, and the gate line no
+longer carries the `1 n/a`. Python is now the only driver that asserts §6.7 chunk lifetime
+rather than merely not contradicting it; zig still declines for its own reason (it borrows).
+
+**`scripts/run-limits.sh` reported OK having compared half its roster.** The gate exited 0 with
+6 of the 12 drivers it declares — `typescript, csharp, zig, dart, kotlin-jvm, kotlin-native`
+never took part, and the last five were never even built. One line did it:
+
+```sh
+ALL=$("$ROOT/scripts/roster.sh" build limits | tr '\n' ' ')
+```
+
+A pipeline's status is its **last** command's. `tr` always succeeds, so a failed driver build
+was invisible, `set -e` never fired, and the comparison ran over whatever had been built before
+the break. Every other gate calls `roster.sh build` without a pipe, which is why only this one
+could lie. The build now runs on its own and the reshaping happens after, so a broken build
+fails the gate — and it immediately did, which is how the next item was found. A gate that goes
+green on a broken build is worse than no gate: it converts an outage into a reassurance.
+
+**generator#545 — the TypeScript backend targets an API corelib-ts has never had.** What broke
+the limits build is `error TS2305: … has no exported member 'ArrayTarget'`. `ArrayTarget`,
+`Visitor.arrayBulk` and `BULK_MIN` do not exist in corelib-ts — not at main, and not at any of
+eight points sampled back to 2026-08-05, so this is **not** a corelib regression. The generator
+emits the CORELIB_PLAN §6.6.3 *hand-back a destination* form; corelib-ts implements §6.6.3's
+*in pieces* form, and the generator's own comments state the missing constant as fact
+(`generators/typescript/visitor.go:1055`, *"tsBulkMin mirrors corelib-ts's BULK_MIN"*).
+
+The trigger is far wider than limit mode, and that is the part worth recording: `bulkEligible`
+takes any narrow-width array element that is **unbounded or declared `count >= 16`**. A
+three-line schema reproduces it; `count: 15` generates clean. Crucible saw it only in limit mode
+because `schema/probe.sofab.yaml` bounds every array below 16 and `probe-dyn.sofab.yaml`
+carries a count-less one. The other four drivers the gate had never reached build clean in limit
+mode, so TypeScript is the only blocker.
+
+---
+
+## 2026-09-14 — the family moved 42 generator commits; four drivers stopped building, two more were quietly wrong
+
+Pulled every corelib to `origin/main` and `tools/sofabgen` to the latest green CI build
+(`0.0.0-20260902221642-33d065ed` → `0.0.0-20260914073114-cb465063`, run 34818240355,
+sha256 verified). Eleven of twelve corelibs moved; only `corelib-c-cpp` was already at
+its tip. Between the two generator builds lie **42 commits**, and they were not additive:
+four drivers stopped compiling and two more compiled into something that no longer did
+what it said. Every fix below is on Crucible's side — none of the six is a finding, they
+are this repo owing the family an update.
+
+**rust (both variants) — the verdict now arrives in two types.** generator#463 adopted
+the §5.2.1 IStream contract: `IStream::feed` answers `Result<Status, Error>`, and
+`sofab::Error` lost its `Incomplete` variant entirely. The reasoning is worth keeping,
+because it is the same distinction `oracle/canonical.md` draws between `I` and `R`:
+running out of bytes mid-field is an **outcome**, not a failure, since only the caller's
+framing knows whether more bytes are coming. The generated whole-buffer entry points
+(`try_decode`, `Decoder::finish`) *are* that framing, so they — and only they — fold a
+trailing `Status::Incomplete` into `DecodeError::Incomplete`, which stays distinct from
+`DecodeError::Sofab(InvalidMsg)`: unfinished is not malformed. `driver.rs` now matches on
+`DecodeError`, treats both `Ok(Status::…)` as non-terminal mid-stream, and `build.sh`'s
+per-variant preamble imports `DecodeError` beside `Probe` — it is generated code, not
+corelib API.
+
+**cpp (both corelib-cpp variants) — the receiver cap became a constructor argument.**
+corelib-cpp#128 (§6.2.1, "no held limit, and no cap that can be left out") removed
+`IStreamInline`'s and `IStreamObject`'s default: the library has no number to invent, so
+the caller states one. The driver's hand-built stream must therefore state the **same**
+number the generated `try_decode` states, or the chunked path would decode under a
+different policy than the one-shot path and `oracle/chunk_invariance.py` would report the
+difference as a divergence. So it mirrors generated code literally —
+`SOFAB_MAX_DYN_BUFFERED_FIELD` where the build configured caps, `SIZE_MAX` otherwise —
+rather than picking a value of its own. The c-cpp wrapper kept its one-argument
+constructor, which is why `build.sh` now selects between the shapes with
+`-DCRUCIBLE_ISTREAM_TAKES_LIMITS` instead of the driver guessing.
+
+**dart — the pub package was renamed.** `sofabuffers` → `sofa_buffers_corelib` (the org
+slug plus `corelib` in pub.dev's required form, the derivation every port follows). pub
+verifies a path dependency's name against the target's own `pubspec.yaml`, so `pub get`
+refused outright. Generated code had already followed the rename; the hand-written
+`driver.dart` and `fuzz.dart` had not — the recurring shape where generated and
+hand-written halves of one driver drift.
+
+**typescript — compiled clean, crashed on record #0.** corelib-ts#161 ("one visitor
+surface, heap-free codec, no views") made the output buffer the caller's (§6.6), so
+`new OStream()` lost its allocating form; the driver's default encode path threw a
+`TypeError` on the first input and the comparator reported it as a crash divergence. The
+second break in the same commit was worse because it was **silent**: `FlushSink` became
+`(buffer, start, end)` — coordinates rather than a subarray, since a view would be an
+allocation per flush — and the driver's one-argument sink `(c) => parts.push(...)` would
+have kept running while copying the whole window instead of the written region, i.e.
+wrong bytes on the `SOFAB_FLUSH` axis, on a gate whose entire job is to prove the bytes
+do not change.
+
+**Decision: `drivers/ts/build.sh` type-checks before it bundles.** esbuild strips types
+without checking them, which is how both TS breaks reached runtime — one as a crash on an
+arbitrary input, one as bytes nobody would have questioned. A `tsc --noEmit --strict` pass
+over `driver.ts` + the generated `message.ts` against the corelib source catches both at
+build time and costs seconds. Every other driver's build already type-checks by virtue of
+its compiler; TS was the only one where "it built" meant nothing.
+
+### Decision: the §5.1 pass-through axis is retired, and inverted
+
+`corelib-go` stopped compiling because `sofab.WithPassThrough` is gone — deleted on
+2026-08-24 (`db4933b`) citing **CORELIB_PLAN §5.1.6**, which is normative at the
+documentation tip (main@38c3736, re-read before acting): *"An encoder MUST NOT hand any
+memory other than the installed output buffer to the sink."*
+
+**The permission's whole life was fifteen days, and Crucible's axis was built inside it.**
+documentation `27ad9a0` introduced it on 2026-08-08; `8d9e668` withdrew it on 2026-08-23,
+as one of four prohibitions in the CORELIB_PLAN restructure that *"remove features rather
+than adding rules"*. Crucible built the axis on 2026-08-17 — six days before it was
+withdrawn — and kept it for three weeks after. The spec's own reason is worth quoting,
+because it is the streaming argument and not a stylistic one: *"It only ever worked under
+chunked encoding, and there it contradicted what a chunk is: a flushed unit may be a
+fragment of a lower-layer protocol, framed by the caller — foreign memory in the middle of
+that sequence is not such a fragment. Four sub-rules existed only to keep it safe; all
+gone."* corelib-ts#161 states the same from its own side.
+
+The straightforward repair would have been to delete the axis. What was done instead is to
+**invert** it, because the assertion did not disappear — it flipped from *prove the
+permission was exercised* to *prove it never happens*, and the driver already had the hard
+part. `drivers/go/driver.go` kept `withinBuffer` and now applies it to **every** sink call
+unconditionally, prints `foreign sink handovers=<n>` at clean EOF (printed even at zero, so
+a reader can tell the check from a check that never ran) and **exits non-zero** above zero.
+
+Two consequences follow, and both are deletions:
+
+* **No gate wiring.** The encode gate's flush sweep already runs the stream surface at
+  every declared size and already fails a driver that exits non-zero, so the §5.1.6 block
+  in `oracle/encode_invariance.py` is gone rather than rewritten. An axis that needs no
+  configuration needs no axis.
+* **No `meta` declaration.** `pass_through=yes|no` is deleted from all eleven `meta` files,
+  from `oracle/roster.py`, and as a column from `scripts/driver-audit.sh`. It was a real
+  declaration while the permission was optional — which port takes it was the port's
+  choice, and an absent key meant nobody had looked. §5.1.6 fixes the answer for every port,
+  and a declaration whose only legal value is set by the spec is not a declaration.
+
+`drivers/common/CONTRACT.md` now specifies the assertion instead of the variable. **Only
+`go` implements it** — the other sink-capable drivers prove nothing about §5.1.6 today,
+they merely do not contradict it, and extending the few lines to them is tracked in
+`docs/TODO.md`. That is the honest state, and it is the same "a skip must be visible"
+rule the retired axis was built under.
+
+---
+
 ## Findings & tracking
 Reproducers in `findings/<id>/`; catalog in `results/FINDINGS.md`; codegen-bug log
 in `results/FINDINGS.md`. Fixes live in the **owning repos** (done in fresh contexts);

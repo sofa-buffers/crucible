@@ -632,7 +632,10 @@ here:
       them from the grammar; keep `limit_exceeded` (§6.2.1 gives it its own code) and
       `buffer_full` (§6.3 keeps it, encode-side).
 
-- [x] **DONE 2026-08-17 — the axis exists, and one port of eleven had anything to test.**
+- [x] **SUPERSEDED 2026-09-14 — §5.1.6 withdrew the permission this axis tested; the axis is
+      retired and inverted into the item above. The entry below is kept as the record of what
+      was built and measured, not as a description of the suite today.**
+      **DONE 2026-08-17 — the axis exists, and one port of eleven had anything to test.**
       The static survey the item asked for first, done by reading each corelib rather than
       guessing: **only `corelib-go` implements the permission** (`WithPassThrough(bool)`,
       `limits.go:128`). Eight ports state "no pass-through" in their own README
@@ -662,42 +665,47 @@ here:
       because the other fourteen drivers do not recognise the variable and would exit 0
       having ignored it. Proving the refusal instead of assuming it is per-driver work,
       filed as its own item below. Original note follows.
-- [ ] **A driver that cannot pass through should be made to say so.** The pass-through axis
-      exercises the one port that implements the §5.1 permission and skips the other
-      fourteen, because they do not recognise `SOFAB_PASSTHROUGH` and would exit 0 having
-      ignored it — indistinguishable from honouring it, since the output is byte-identical
-      either way. That is the same "silent skip" shape the encode gate's surface hard-fail
-      and the chunked gate's stderr announcement each exist to close, and it is the reason
-      `meta`'s `pass_through=no` is currently believed rather than verified. **Work:** have
-      every driver recognise the variable and exit **3** when its backend grants no
-      permission, then assert that refusal in `encode_invariance.py` exactly as the missing
-      surface is asserted today. Cheap per driver (read one env var, exit 3), fourteen of
-      them, and it turns a declaration into a checked property. Until then the gate says
-      "pass-through declared absent (not exercised)" on those rows rather than implying
-      coverage it does not have.
+- [ ] **The limits gate is one driver short until generator#545 lands.** `typescript` declares
+      the `limits` tag and cannot be built in limit mode: the TS backend emits
+      `Visitor.arrayBulk` / `ArrayTarget`, which corelib-ts has never had
+      (generator#545, filed 2026-09-15). The gate now fails loudly on that build rather than
+      comparing a reduced roster in silence, so the red is the honest state — but it is red,
+      and it stays red until the generator drops the arm or corelib-ts grows the hook.
+      `csharp`, `zig`, `dart` and `kotlin` (both legs) were verified to build clean in limit
+      mode on 2026-09-15, so nothing else is hiding behind it.
+- [ ] **Only one driver proves §6.7 chunk lifetime; the rest merely do not contradict it.**
+      `SOFAB_CHUNK_SCRUB` overwrites each fed chunk after `feed` returns, which catches a
+      decoder that kept a window into it. Since 2026-09-15 `python` runs it and passes; `zig`
+      declines by declaration (it borrows a whole-chunk payload deliberately). Every other
+      driver feeds a buffer it could scrub and does not, so the axis is unasserted there —
+      the same shape as the §5.1.6 item below, and the same per-driver work.
+- [ ] **Only `go` asserts that the sink never receives foreign memory.** CORELIB_PLAN
+      **§5.1.6** (2026-09-08 tip) withdrew the pass-through permission and replaced it with a
+      prohibition: *"An encoder MUST NOT hand any memory other than the installed output
+      buffer to the sink"*, on every flush of every message, with no permission flag to set
+      and no exemption to claim. A driver that installs a sink can check that itself — it
+      owns the sink, so every slice it is handed is testable against the buffer it installed
+      — and `drivers/go/driver.go` does: it counts the handovers that are not windows into
+      that buffer, prints `foreign sink handovers=<n>` at clean EOF, and exits non-zero when
+      `n > 0`. The encode gate needs no wiring for it, because its flush sweep already runs
+      the stream surface and already fails a driver that exits non-zero. **Work:** the same
+      few lines in the other sink-capable drivers — roughly "is this slice a window into the
+      buffer I installed", which every language can answer — so the rule is checked
+      family-wide rather than in one port. Until then the other rows prove nothing about
+      §5.1.6; they merely do not contradict it.
 
-      ~~The encoder's pass-through path is untested, and Crucible has never heard of it.~~
-      CORELIB_PLAN §5.1 gained *"Pass-through of a divisible run (normative, optional)"* on
-      2026-08-08 (`27ad9a0`, `c5e318b`, `f0974df`, `e34c78d`) — after Crucible's last spec
-      round, and the term appears **nowhere in this repo** (grepped 2026-08-17). An encoder MAY
-      hand a `string`/`blob` payload to the sink directly instead of copying it through the
-      output buffer, if the caller granted it at installation (off by default), buffered bytes
-      are drained first, the run is divisible, and its wire bytes already exist contiguously as
-      caller memory. A port MAY always copy and stay conformant.
-      **Why the existing gates are structurally blind to it:** the output is byte-identical
-      either way, so neither the round-trip oracle nor `encode_invariance.py` can see it — the
-      same shape as the chunk-lifetime question, which is exactly the class that produced
-      F-0058/F-0060. Two rules *are* assertable:
-      - **borrow lifetime** — passed-through memory is borrowed only for the duration of the
-        sink call and MUST NOT be retained. That is the encode-side twin of
-        `SOFAB_CHUNK_SCRUB`: grant pass-through, have the sink copy, scrub the source buffer
-        after every sink return, and require the accumulated output to be unchanged.
-      - **mutual exclusion** — a sink granted pass-through MUST NOT call the buffer-set
-        operation, and a port SHOULD reject such a call as it rejects an undersized buffer.
-      **First step is cheap and static:** find out which backends implement the permission at
-      all (a `meta` key beside `min_output_buffer`, the way `encode_surfaces` records the
-      three surfaces), because a family where nobody implements it needs no axis yet — but
-      nobody has checked, and "off by default" is precisely how an untested path stays quiet.
+      *What this replaced.* Between 2026-08-17 and 2026-09-14 this repo carried the opposite
+      axis: `SOFAB_PASSTHROUGH=1`, a `pass_through=yes|no` key in every `meta`, a column in
+      `scripts/driver-audit.sh`, and a block in `oracle/encode_invariance.py` that required
+      the count to be **non-zero** — because the permission was wire-neutral, so a port that
+      took it and quietly copied anyway would have passed a bytes-only check trivially. §5.1.6
+      inverted the assertion (prove it never happens, not prove it was exercised) and removed
+      the per-port choice with it, so the declaration stopped being a declaration: the answer
+      is the same for every port and fixed by the spec. The axis was retired on 2026-09-14 —
+      the day `corelib-go` stopped compiling against `sofab.WithPassThrough`, which
+      corelib-go#(db4933b) had deleted on 2026-08-24 citing the same clause. See
+      `docs/STATUS-LOG.md`.
+
 - [x] **Element-access / materialized-value probe** — **DONE 2026-07-21, all 12 drivers.**
       A second canonical form (`oracle/materialized.md`): `SOFAB_MATERIALIZE=1` makes a driver
       emit a full walk of the **decoded value** (every field + array element, floats as raw bits,
@@ -759,6 +767,26 @@ here:
       "done when". Ideally in the nightly. (Mutator itself is built; `engine/mutator/DESIGN.md`.)
 
 ## Open — schemas & corpus
+
+- [ ] **`probe` carries no `enum` and no `bitfield`, and both became CLOSED types.** MESSAGE_SPEC
+      gained two normative bounds on 2026-09-08 (doc #89/#90): an `enum`'s bound is the **set of
+      constants the schema declares** — the signed-32-bit wire range is the ceiling of the *wire
+      type*, not of the field, so a value inside that range the schema does not declare is
+      `INVALID` all the same — and a `bitfield`'s bound is the **mask of declared positions**
+      (`v & ~mask == 0`), which is *not* "every bit up to the highest declared one": positions
+      0/1/3 give `mask = 0b1011`, so `4` is `INVALID`. §7.3 also moved `enum` from the unsigned to
+      the **signed** wire type, and `boolean` is the explicit exception — canonical on encode,
+      tolerant on decode, every non-`0` read as true and normalized (§4.4).
+      `sofabgen` implemented all of it in generator#530 and added corpus coverage of its own in
+      generator#532 — **Crucible has none.** `schema/probe.sofab.yaml` declares 0 enum and 0
+      bitfield (sofabgen's own validate line says so on every build), so the whole family could
+      disagree on either bound and every gate here would stay green. That is the exact shape this
+      repo exists to catch, and it is a *coverage* gap rather than a passing test.
+      **Work:** add an `enum` and a `bitfield` field to `probe` — scalar and inside a composite,
+      matching generator#532's shape — with a non-contiguous constant set and a non-contiguous bit
+      mask, since a contiguous one cannot tell the set/mask rule from a range check. Then sweep the
+      undeclared values: a constant outside the set, a bit outside the mask, and the boundary the
+      wire type still admits.
 
 - [x] **blob array** — **DONE 2026-07-21.** Added `blob_array` (id 201) to `probe` + all six sweep
       axes. The over-index / `maxlen` blob paths (§7.1) that F-0013 could not test for lack of a field

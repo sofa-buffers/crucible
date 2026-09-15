@@ -33,19 +33,26 @@ SOFABGEN="$ROOT/tools/sofabgen"
 CXX="${CXX:-g++}"
 CC="${CC:-cc}"
 
-# HASLIM: the pure-C++ corelib's sofab::Error carries LimitExceeded (the heap
-# profile, generator#102); the c-cpp wrapper's Error does NOT (fixed-capacity), so
-# the shared driver.cpp guards its L verdict behind this macro. Only the cpp variant
-# is in limit mode — the c-cpp fixed-capacity profile cannot generate an unbounded
-# field (see scripts/run-limits.sh).
+# HASLIM: two properties of the pure-C++ corelib that the c-cpp wrapper does not
+# share, so the shared driver.cpp guards the code needing them.
+#   CRUCIBLE_HAS_LIMIT_EXCEEDED — its sofab::Error carries LimitExceeded (the heap
+#     profile, generator#102); the c-cpp wrapper's Error does NOT (fixed-capacity),
+#     so the L verdict is compiled in only here. Only the cpp variant is in limit
+#     mode — the c-cpp fixed-capacity profile cannot generate an unbounded field
+#     (see scripts/run-limits.sh).
+#   CRUCIBLE_ISTREAM_TAKES_LIMITS — since corelib-cpp#128 its IStreamInline and
+#     IStreamObject take the receiver's field-span cap as a constructor argument with
+#     no default (§6.2.1 leaves the library no number to invent), so the streams
+#     driver.cpp builds by hand must state it. The c-cpp wrapper takes no such
+#     argument, and its one-argument constructor is what the absent macro selects.
 # STRICT: strict UTF-8 (MESSAGE_SPEC §8 / CORELIB_PLAN §6.4). The fuzzer runs the
 # check ON so an invalid-UTF-8 `string` is family-uniformly rejected (F-0004). The
 # pure-C++ corelib (cpp) defaults SOFAB_STRICT_UTF8=1 already; only the c-cpp
 # (C-corelib) profile defaults OFF for footprint and must opt in explicitly.
 CCPP_SRC="src/object.c src/istream.c src/ostream.c src/utf8.c"
 case "$VARIANT" in
-    cpp)       CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: {} }";                                     CSRC=""; HASLIM="-DCRUCIBLE_HAS_LIMIT_EXCEEDED"; STRICT="" ;;
-    cpp-fixed) CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: { allow_dynamic: false } }";               CSRC=""; HASLIM="-DCRUCIBLE_HAS_LIMIT_EXCEEDED"; STRICT="" ;;
+    cpp)       CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: {} }";                                     CSRC=""; HASLIM="-DCRUCIBLE_HAS_LIMIT_EXCEEDED -DCRUCIBLE_ISTREAM_TAKES_LIMITS"; STRICT="" ;;
+    cpp-fixed) CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: { allow_dynamic: false } }";               CSRC=""; HASLIM="-DCRUCIBLE_HAS_LIMIT_EXCEEDED -DCRUCIBLE_ISTREAM_TAKES_LIMITS"; STRICT="" ;;
     c-cpp)     CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp } }";                     CSRC=""; HASLIM=""; STRICT="-DSOFAB_ENABLE_STRICT_UTF8" ;;
     c-cpp-dyn) CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp, allow_dynamic: true } }"; CSRC=""; HASLIM=""; STRICT="-DSOFAB_ENABLE_STRICT_UTF8" ;;
     *) echo "unknown variant '$VARIANT' (want: cpp | cpp-fixed | c-cpp | c-cpp-dyn)" >&2; exit 2 ;;

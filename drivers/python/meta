@@ -3,8 +3,6 @@ corelib=corelib-py
 framework=atheris
 pacemaker=false
 variants=cython,pure
-chunked_decode=pull
+chunked_decode=push
 encode_surfaces=new,stream
 min_output_buffer=1
-# CORELIB_PLAN §5.1 pass-through permission: README "There is no pass-through"
-pass_through=no

@@ -46,6 +46,11 @@ python3 "$HERE/materialize_gen.py" "$BIN/materialize_gen.dart" "$SCHEMA" >&2
 # A minimal package with a path dependency on the vendored corelib. dev deps of
 # the corelib (test/lints) are not fetched transitively, so pub get needs nothing
 # hosted.
+#
+# The dependency name must equal the `name:` in the corelib's own pubspec.yaml, which
+# pub verifies: it is `sofa_buffers_corelib` — the organization slug plus `corelib` in
+# pub.dev's lowercase_with_underscores form, the derivation every port follows. It was
+# `sofabuffers` before the registry rollout renamed it.
 cat > "$OUT/pubspec.yaml" <<EOF
 name: crucible_dart_driver
 description: Crucible replay driver for corelib-dart.
@@ -53,7 +58,7 @@ publish_to: none
 environment:
   sdk: ^3.8.0
 dependencies:
-  sofabuffers:
+  sofa_buffers_corelib:
     path: $CORELIB
 EOF
 

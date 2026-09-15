@@ -216,7 +216,15 @@ function rejectClass(e: unknown): string {
 function encodeBytes(m: Probe): Uint8Array {
   if (_FLUSH > 0) {
     const parts: Uint8Array[] = [];
-    const os = new OStream(new Uint8Array(_FLUSH), 0, (c) => parts.push(Uint8Array.from(c)));
+    // The sink is handed the INSTALLED BUFFER plus coordinates — `buffer[start..end)`
+    // — never a subarray, because a view would be an allocation per flush and the
+    // encoder allocates nothing after construction (§6.6); and never foreign memory,
+    // because §5.1.6 forbids pass-through. Copying the region out is what lets the
+    // encoder keep writing into the same buffer. Taking `buffer` whole here instead
+    // would append the untouched tail of the window to every piece.
+    const os = new OStream(new Uint8Array(_FLUSH), 0, (buffer, start, end) =>
+      parts.push(buffer.slice(start, end)),
+    );
     try {
       m.serialize(os);
     } catch (e) {
@@ -243,7 +251,13 @@ function encodeBytes(m: Probe): Uint8Array {
     for (const p of parts) { out.set(p, o); o += p.length; }
     return out;
   }
-  const os = new OStream();
+  // The buffer is the CALLER's since corelib-ts#161: OStream holds none of its own
+  // (CORELIB_PLAN §6.6), so its first argument is required and there is no allocating
+  // constructor to fall back on. This mirrors what the generated `encode()` does —
+  // one exact MAX_SIZE buffer, the schema's worst case, so every value the schema
+  // permits fits — while keeping the bytes coming out of the same `serialize(os)`
+  // stream surface the flush sweep compares against.
+  const os = new OStream(new Uint8Array(Probe.MAX_SIZE));
   m.serialize(os);
   return os.bytes();
 }

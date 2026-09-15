@@ -134,42 +134,38 @@ Both halves of the clause are gated:
   exits 3 there. A port declaring `1` has no such case, since `SOFAB_FLUSH=0` is how the
   drivers spell "unset".
 
-### `SOFAB_PASSTHROUGH=1` — the pass-through permission
+### The sink never receives foreign memory (no variable)
 
-CORELIB_PLAN §5.1 lets an encoder hand a `string`/`blob` payload to its sink **directly**
-instead of copying it through the output buffer, when the caller granted the permission at
-installation. It is **off by default**, **optional** — a port may always copy and stay
-conformant — and **wire-neutral**: the output is byte-identical either way. That last
-property is why it needs its own axis. Neither the round-trip nor the materialized oracle
-can see a difference that does not exist in the bytes, so nothing else in Crucible would
-ever exercise the path.
+CORELIB_PLAN **§5.1.6** is normative and absolute: *"An encoder MUST NOT hand any memory
+other than the installed output buffer to the sink."* Every byte a sink receives lies
+inside the buffer the caller installed, at every flush of every message. A `string` or
+`blob` payload run is copied through the output buffer like anything else, however large
+it is and wherever its bytes already live.
 
-Each driver declares in its `meta` whether its backend implements it — `pass_through=yes`
-or `no`. The declaration is **required**; `no` is a statement about the port, an absent key
-is nobody having looked. Today only `corelib-go` declares `yes`.
+There is therefore **nothing to configure**, and no `meta` declaration: the answer is the
+same for every port, fixed by the spec rather than chosen by the implementation.
 
-A driver that declares `yes`:
+A driver that installs a sink **asserts** it instead. It owns the sink, so it can test
+every slice it is handed against the buffer it installed, and it:
 
-* installs its sink **with** the permission when `SOFAB_PASSTHROUGH=1` is set;
-* uses a sink that **copies** what it is handed, since §5.1 lends passed-through memory
-  only for the duration of the call, and that **never** calls the buffer-set operation —
-  granting the permission is the promise never to take a buffer, and the two are mutually
-  exclusive;
-* exits **3** if the permission is asked for on a surface that installs no sink, because
-  without a sink there is nothing to hand a payload to;
-* reports on stderr, at clean EOF, how many times its sink received memory that was **not**
-  the output buffer: `passthrough handovers=<n>`.
+* reports on stderr, at clean EOF, how many slices were **not** windows into that buffer:
+  `foreign sink handovers=<n>` — printed even when the count is zero, so a reader can tell
+  the check from a check that never ran;
+* **exits non-zero** when `n > 0`, naming §5.1.6.
 
-That count is not decoration. A port that accepted the permission and quietly copied anyway
-produces byte-identical output and would pass a bytes-only check trivially — so the gate
-requires the count to be present **and non-zero**. Zero means the configuration asserted
-nothing, and the gate fails rather than reporting a green it did not earn. The same
-reasoning is why the flush sweep always includes the port's own declared minimum.
+That failure needs no gate wiring: the flush sweep above already runs the stream surface
+at every declared size and already fails a driver that exits non-zero. Today only `go`
+implements the assertion; extending it to the other sink-capable drivers is per-driver
+work tracked in `docs/TODO.md`.
 
-Drivers declaring `pass_through=no` are **not** exercised on this axis at all: they do not
-recognise the variable and would exit 0 having ignored it. Making that refusal assertable —
-so an unimplemented permission is proven refused rather than assumed — is per-driver work
-tracked in `docs/TODO.md`.
+An earlier revision of §5.1 **permitted** the opposite — an encoder could hand a divisible
+run to the sink directly, saving a copy — and this contract carried a `SOFAB_PASSTHROUGH=1`
+axis to exercise it, because the permission was wire-neutral and both other oracles were
+structurally blind to it. §5.1.6 withdrew the permission, for two reasons it states: foreign
+memory arriving mid-sequence is not a framable chunk (§5.1.1), and the permission cost four
+rules — installation flag, drain ordering, retention, mutual exclusion with the buffer-set
+operation — for one avoided copy. The axis inverted with it: from *prove the permission was
+exercised* to *prove it never happens*.
 
 So exit 3 for a `SOFAB_FLUSH=n` is a **conformance failure** when `n >= min_output_buffer`
 and the **required** answer when `n < min_output_buffer`. Exit 3 also remains the right
@@ -215,9 +211,12 @@ the variable are the same run by construction. Announcing more than required is 
 `meta` records the same facts declaratively, for the reader rather than the gate:
 
 ```
-chunked_decode=push|pull|none    push: feed(chunk); pull: the corelib pulls from a
-                                 reader the driver wraps around the chunks (python);
-                                 none: the corelib has no resumable decoder (go)
+chunked_decode=push|pull|none    push: feed(chunk) — every corelib with a resumable
+                                 decoder; pull: the corelib pulls from a reader the
+                                 driver wraps around the chunks (no port does this
+                                 today — corelib-py was the last and became push in
+                                 corelib-py#142); none: the corelib has no resumable
+                                 decoder (go)
 encode_surfaces=new,to,stream    which of the three this backend actually has
 ```
 

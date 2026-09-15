@@ -16,9 +16,9 @@ SOFABGEN="$ROOT/tools/sofabgen"
 
 case "$VARIANT" in
     rs)        CORELIB="$ROOT/vendor/corelib-rs";        CFG="targets: { rust: {} }";
-               PREAMBLE='mod message;\nuse message::Probe;\n' ;;
+               PREAMBLE='mod message;\nuse message::{Probe, DecodeError};\n' ;;
     rs-no-std) CORELIB="$ROOT/vendor/corelib-rs-no-std"; CFG="targets: { rust: { corelib: rs-no-std } }";
-               PREAMBLE='use sofabuffers_generated::Probe;\n' ;;
+               PREAMBLE='use sofabuffers_generated::{Probe, DecodeError};\n' ;;
     *) echo "unknown variant '$VARIANT' (want: rs | rs-no-std)" >&2; exit 2 ;;
 esac
 

@@ -12,4 +12,3 @@ encode_surfaces=new,to,stream
 min_output_buffer=1
 # CORELIB_PLAN §5.1 pass-through permission: README — "Pass-through is not
 # implemented (CORELIB_PLAN §5.1 makes it a MAY)".
-pass_through=no

@@ -50,26 +50,40 @@ var (
 	encSurface = "new" // new | to | stream
 	flushSize  = 0     // 0 = unset; only meaningful for `stream`
 
-	// The pass-through permission of CORELIB_PLAN §5.1 (SOFAB_PASSTHROUGH=1): the
-	// encoder may hand a string/blob run to the sink DIRECTLY instead of copying it
-	// through the output buffer. corelib-go is the only port in the roster that
-	// implements it (`meta`'s pass_through key records who does).
+	// How often the sink was handed memory that is NOT the installed output buffer.
+	// CORELIB_PLAN §5.1.6 forbids that outright, so this is an assertion and not an
+	// axis: any count above zero fails the run (see reportForeign).
 	//
-	// It is wire-neutral by construction — §5.1: "the output is byte-identical either
-	// way" — which is exactly why neither the round-trip nor the materialized oracle
-	// can see it, and why it needs an axis of its own.
-	passThrough = false
-
-	// How often the sink was handed memory that is NOT the output buffer, i.e. how
-	// often pass-through actually happened. Without this the axis would be vacuous:
-	// a port that accepted the permission and quietly copied anyway would produce
-	// byte-identical output and pass, which is the same "green because nothing ran"
-	// shape the flush sweep's declared-minimum rule exists to prevent.
+	// WHERE THIS CHECK COMES FROM, because it fires from nowhere if you have not seen
+	// the history. The permission it now refuses existed for FIFTEEN DAYS:
+	//
+	//   2026-08-08  documentation 27ad9a0 — §5.1 ALLOWS an encoder to hand a
+	//               string/blob run to its sink directly, by the caller's permission.
+	//   2026-08-17  crucible 703f100 — we build an axis for it: SOFAB_PASSTHROUGH=1,
+	//               a `pass_through` key in every meta, and a gate demanding this
+	//               counter be > 0, since identical bytes cannot tell a used
+	//               permission from an ignored one.
+	//   2026-08-23  documentation 8d9e668 — §5.1.6 WITHDRAWS it, six days later, as
+	//               one of four prohibitions that "remove features rather than adding
+	//               rules": "It only ever worked under chunked encoding, and there it
+	//               contradicted what a chunk is: a flushed unit may be a fragment of
+	//               a lower-layer protocol, framed by the caller -- foreign memory in
+	//               the middle of that sequence is not such a fragment. Four sub-rules
+	//               existed only to keep it safe; all gone."
+	//   2026-08-24  corelib-go db4933b — deletes WithPassThrough, citing that clause.
+	//   2026-09-14  this driver stops compiling against it. The measurement is kept and
+	//               its PASS CONDITION FLIPPED: was `> 0` (prove the permission was
+	//               exercised), is now `== 0` (prove it never happens). Same counter,
+	//               same withinBuffer, opposite verdict.
+	//
+	// So if this ever fires: it is not a new rule, it is the 2026-08-23 prohibition
+	// finally being checked. The decision and what it replaced are in
+	// docs/STATUS-LOG.md (2026-09-14); the contract is drivers/common/CONTRACT.md.
 	ptForeign = 0
 )
 
 // withinBuffer reports whether `inner` is a window into `outer`'s backing array.
-// A sink handed anything else received foreign memory — a passed-through payload.
+// A sink handed anything else received foreign memory, which §5.1.6 forbids.
 // (The same test corelib-go's own output_buffer_test.go uses.)
 func withinBuffer(outer, inner []byte) bool {
 	if len(inner) == 0 {
@@ -118,19 +132,6 @@ func parseEncodeCfg() {
 			flushSize, sofab.MinOutputBuffer)
 		os.Exit(3)
 	}
-	if os.Getenv("SOFAB_PASSTHROUGH") == "1" {
-		// §5.1 grants the permission when a SINK is installed; without one there is
-		// nothing to hand a payload to and the option has no effect. Asking for it on
-		// a surface that has no sink is the contract's "cannot honour this setting"
-		// case — exit 3, the same answer as a flush size below the floor, and never a
-		// silent fallback that would report a config it did not run.
-		if encSurface != "stream" {
-			fmt.Fprintf(os.Stderr, "crucible-go: SOFAB_PASSTHROUGH needs a sink, and "+
-				"SOFAB_ENCODE=%s installs none (CORELIB_PLAN §5.1)\n", encSurface)
-			os.Exit(3)
-		}
-		passThrough = true
-	}
 }
 
 // announceCfg prints the resolved configuration on stderr (never parsed). Stdout is
@@ -138,21 +139,41 @@ func parseEncodeCfg() {
 // driver that ignored the variables would be indistinguishable from one that honours
 // them — which is the vacuous pass the gate's opt-in roster exists to prevent.
 func announceCfg() {
-	if encSurface != "new" || flushSize != 0 || passThrough {
-		fmt.Fprintf(os.Stderr, "crucible-go: streaming cfg enc=%s flush=%d passthrough=%v\n",
-			encSurface, flushSize, passThrough)
+	if encSurface != "new" || flushSize != 0 {
+		fmt.Fprintf(os.Stderr, "crucible-go: streaming cfg enc=%s flush=%d\n",
+			encSurface, flushSize)
 	}
 }
 
-// reportPassThrough prints, at clean EOF, how many times the sink actually received
-// foreign memory across the whole run. The gate reads it: a run that was granted the
-// permission and never used it proves nothing about pass-through, so the count is
-// what separates "the axis held" from "the axis never ran". It is a run total rather
-// than per input, because most inputs carry no payload large enough to qualify —
-// corelib-go passes a run through only when it exceeds the output buffer.
-func reportPassThrough() {
-	if passThrough {
-		fmt.Fprintf(os.Stderr, "crucible-go: passthrough handovers=%d\n", ptForeign)
+// reportForeign states, at clean EOF, how many times the sink received memory that was
+// not the installed output buffer. CORELIB_PLAN §5.1.6 forbids that on every flush of
+// every message, with no permission flag to set and no exemption to claim, so a count
+// above zero is a conformance failure of the corelib and the driver exits non-zero:
+// the encode gate already fails a driver that does, which is why this needs no axis of
+// its own. The line is printed either way, so a reader can tell the check from a check
+// that never ran.
+//
+// It is a run total rather than per input, because the violation this catches — an
+// encoder handing a long string/blob run straight to the sink — only arises on a
+// payload larger than the output buffer, which most inputs do not carry.
+func reportForeign() {
+	if encSurface != "stream" {
+		return // no sink installed on this surface: nothing could be handed over
+	}
+	fmt.Fprintf(os.Stderr, "crucible-go: foreign sink handovers=%d\n", ptForeign)
+	if ptForeign > 0 {
+		fmt.Fprintf(os.Stderr, "crucible-go: CORELIB_PLAN §5.1.6 — every byte a sink "+
+			"receives must lie inside the installed output buffer; %d handover(s) did "+
+			"not\n", ptForeign)
+		// Say where the rule came from, not just which number it is. §5.1.6 withdrew a
+		// permission this repo had an axis for six days earlier, so someone meeting this
+		// failure cold will reasonably ask whether the check itself is the bug.
+		fmt.Fprintf(os.Stderr, "crucible-go: this refuses a pass-through the spec "+
+			"ALLOWED until documentation 8d9e668 (2026-08-23) withdrew it; corelib-go "+
+			"dropped WithPassThrough on 2026-08-24. History and the decision to keep "+
+			"the check: docs/STATUS-LOG.md (2026-09-14). Contract: "+
+			"drivers/common/CONTRACT.md\n")
+		os.Exit(1)
 	}
 }
 
@@ -179,22 +200,18 @@ func encodeVia(m *msg.Probe) ([]byte, error) {
 		}
 		var acc []byte
 		buf := make([]byte, n)
-		var opts []sofab.Option
-		if passThrough {
-			opts = append(opts, sofab.WithPassThrough(true))
-		}
-		// This sink COPIES what it is handed (`append`), which is what makes it a legal
-		// destination for a passed-through run: §5.1 lends that memory only for the
-		// duration of the call. It also never calls SetBuffer — granting the permission
-		// is the promise never to take a buffer, and the two are mutually exclusive.
+		// The sink COPIES what it is handed (`append`) and never calls SetBuffer, so the
+		// buffer it was given stays installed for the whole encode and `withinBuffer`
+		// below is a question about one fixed array. Every call is checked: §5.1.6 binds
+		// every flush of every message.
 		e, err := sofab.NewEncoderSink(buf, 0,
 			func(_ *sofab.Encoder, b []byte) error {
-				if passThrough && !withinBuffer(buf, b) {
+				if !withinBuffer(buf, b) {
 					ptForeign++
 				}
 				acc = append(acc, b...)
 				return nil
-			}, opts...)
+			})
 		if err != nil {
 			return nil, err
 		}
@@ -414,7 +431,7 @@ func main() {
 		_, err := io.ReadFull(r, lenbuf[:])
 		if err == io.EOF {
 			w.Flush()
-			reportPassThrough()
+			reportForeign()
 			return // clean EOF at record boundary
 		}
 		if err != nil {
