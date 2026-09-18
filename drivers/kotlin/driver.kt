@@ -20,8 +20,8 @@
 // `main`, so this one has no entry point of its own.
 //
 // Single-pass decode via the generated status-returning `Probe.tryDecode(ByteArray,
-// Probe)`: it feeds the bytes into the passed `Probe`, then returns the terminal
-// `IStream.status`, so one call yields both the three-valued VERDICT (its returned
+// Probe)`: it feeds the bytes into the passed `Probe` and returns what `IStream.feed`
+// answered, so one call yields both the three-valued VERDICT (its returned
 // status, or the SofabException it throws on malformed input) and the decoded VALUE
 // (the filled `Probe`, re-encoded for the A/I hex).
 //
@@ -167,22 +167,27 @@ private fun canonical(data: ByteArray): String {
     // One pass: tryDecode fills `m` and returns the corelib's real three-valued
     // outcome (or throws SofabException on malformed input, MESSAGE_SPEC §7).
     var m = Probe()
-    val status: DecodeStatus
+    // `var`, not `val`: the chunked branch below reassigns it once per fed chunk,
+    // because the verdict now arrives as feed()'s return value rather than from a
+    // status accessor (CORELIB_PLAN §5.2.1).
+    var status: DecodeStatus
     try {
         if (CHUNKING) {
             // Chunked decode via the generated Decoder, taken ONLY when a chunking
             // variable is set — the default stays the one-shot tryDecode byte for
             // byte, which is also what makes the gate meaningful: it then compares
-            // two genuinely different code paths. The verdict comes from `status`,
-            // never from finish(), which throws mid-field (CONTRACT.md).
+            // two genuinely different code paths. The verdict is the last feed()'s
+            // return value, never finish(), which throws mid-field (CONTRACT.md).
+            // A record with no chunks (a zero-length one) feeds nothing and keeps
+            // COMPLETE: zero bytes are the valid empty message.
             val d = Probe.decoder()
+            status = DecodeStatus.COMPLETE
             for (c in chunksOf(data)) {
-                d.feed(c)
+                status = d.feed(c)
                 // Scrub: the chunk is a copy the driver owns, so overwriting it
                 // after feed exposes a decoder that borrowed instead of copying.
                 if (SCRUB) c.fill(0xA5.toByte())
             }
-            status = d.status
             m = d.message
         } else {
             status = Probe.tryDecode(data, m)

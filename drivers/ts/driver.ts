@@ -122,12 +122,20 @@ function _f32(x: number): string {
 }
 // CORELIB_PLAN §6.5: TS has no fp32 value type, so `x` above is already a widened
 // double and the widening SETS the quiet bit — an fp32 signaling NaN can never be
-// recovered from it. The generated Probe therefore captures the wire bytes
-// alongside the value (`<field>Fp32Raw`, populated on decode when the value is a
-// NaN); the round-trip path already re-encodes from them, which is why the
-// round-trip oracle sees nothing. The materialized walk is a bit-exact consumer too
-// (§6.5 "Testing"), so it must read the same raw channel rather than repack the
-// double. `off` selects the element inside an fp32 *array*'s flat payload.
+// recovered from it. The generated code therefore keeps a bit-exact channel beside
+// the widened value, and since the typed-array codegen there are TWO of them:
+//
+//   * a SCALAR fp32 parks the four wire bytes in a sibling field `<name>Fp32Raw`,
+//     populated on decode only when the value is a NaN (unchanged);
+//   * an fp32 ARRAY no longer has that sibling — it materializes as a
+//     `Float32Array`, whose buffer the decoder fills with the 32-bit wire words
+//     directly, so the array IS its own raw channel and a byte view over it is
+//     bit-exact for every element, NaN or not.
+//
+// The round-trip path re-encodes from the same storage, which is why the round-trip
+// oracle sees nothing either way. The materialized walk is a bit-exact consumer too
+// (§6.5 "Testing"), so it must read the raw channel rather than repack the double.
+// `off` selects the element inside an fp32 *array*'s flat payload.
 function _f32FromRaw(raw: Uint8Array, off: number): string {
   const bits = (raw[off] | (raw[off + 1] << 8) | (raw[off + 2] << 16) |
                 (raw[off + 3] << 24)) >>> 0;   // little-endian wire order
@@ -174,17 +182,32 @@ function walk(node: SchemaNode, value: unknown, raw?: unknown): string {
     case "struct": {
       const v = value as Record<string, unknown>;
       // Thread the sibling raw-bits field (§6.5) down with each child: the generated
-      // type parks it next to the value as `<name>Fp32Raw`, for a scalar fp32 and for
-      // an fp32 array alike (there it is the flat count*4 payload).
+      // type parks it next to the value as `<name>Fp32Raw` for a SCALAR fp32. An
+      // fp32 array carries its bits in its own Float32Array instead (see below), so
+      // for that child the lookup simply finds nothing and the array case supplies it.
       return "{" + node.fields!.map((c) =>
         c.id + ":" + walk(c, v[c.name], v[c.name + "Fp32Raw"])).join(";") + "}";
     }
     case "array":
-    case "wrapper":
-      // array: numeric/fp materialized to N in memory; wrapper: index order,
-      // container length is the signal. Both just map over the in-memory elements.
-      return "[" + (value as unknown[]).map((el, i) =>
-        formatLeaf(node.elem!, el, raw, i * 4)).join(",") + "]";
+    case "wrapper": {
+      // `array` (a compact scalar/float array, §3) materializes as a TYPED array —
+      // Uint8Array … BigInt64Array, Float32Array, Float64Array — while `wrapper`
+      // (string/blob elements, §5.1) stays a plain array. Both are ArrayLike, which
+      // is all this needs. Never `.map()`: a typed array's flavour of it coerces the
+      // callback's string back to a number (Uint8Array) or throws (BigInt64Array),
+      // and neither failure is visible in the output — it just silently materializes
+      // the wrong value.
+      const arr = value as ArrayLike<unknown>;
+      // fp32 elements: the Float32Array's buffer holds the wire words verbatim, so a
+      // byte view over it is the bit-exact channel (§6.5) that `<name>Fp32Raw` is for
+      // a scalar. `raw` stays the fallback for a shape that still passes one down.
+      const bits = node.elem === "fp32" && value instanceof Float32Array
+        ? new Uint8Array(value.buffer, value.byteOffset, value.length * 4)
+        : raw;
+      const out: string[] = [];
+      for (let i = 0; i < arr.length; i++) out.push(formatLeaf(node.elem!, arr[i], bits, i * 4));
+      return "[" + out.join(",") + "]";
+    }
     case "struct_wrapper":
       // struct_array (WP-05): elements are generated objects — an obj walk per
       // element, container length as-is (like `wrapper`).
@@ -268,17 +291,25 @@ function encodeBytes(m: Probe): Uint8Array {
 // meaningful: the gate then checks `decode(whole) == feed(a); feed(b); …`, two
 // genuinely different code paths, rather than one path against itself.
 //
-// The verdict comes from `status`, never from `finish()`: finish() throws mid-field
-// here and returns null in Dart, so routing the verdict through it would bake a
-// backend difference into the canonical line (CONTRACT.md).
+// The verdict is what the LAST `feed` returned, never what `finish()` says: finish()
+// throws mid-field here and returns null in Dart, so routing the verdict through it
+// would bake a backend difference into the canonical line (CONTRACT.md).
+//
+// It used to be read from a `status` accessor beside `feed`. CORELIB_PLAN §5.2.1
+// closed that door — the outcome "MUST reach the caller from the `feed` that produced
+// it", with "no second place to ask", because two surfaces holding one answer can
+// disagree — so the generated decoder has no such accessor any more. A record with no
+// chunks at all (a zero-length one) feeds nothing and keeps the initial COMPLETE: zero
+// bytes are the valid empty message.
 function canonicalChunked(data: Uint8Array): string {
   const d = new ProbeDecoder();
+  let st: DecodeStatus = DecodeStatus.Complete;
   try {
     for (const c of chunksOf(data)) {
       // Scrub mode needs a buffer the driver owns: feed it, then overwrite. A decoder
       // that borrowed from the chunk instead of copying out of it reads back 0xA5.
       const buf = _SCRUB ? Uint8Array.from(c) : c;
-      d.feed(buf);
+      st = d.feed(buf);
       if (_SCRUB) buf.fill(0xa5);
     }
   } catch (e) {
@@ -286,8 +317,10 @@ function canonicalChunked(data: Uint8Array): string {
     if (e instanceof SofabError && e.code === SofabErrorCode.LimitExceeded) return "L";
     return "R " + rejectClass(e);
   }
-  const st = d.status;
-  if (st === DecodeStatus.Invalid) return "R invalid_msg";
+  // No `Invalid` arm: `feed` returns only Complete or Incomplete (corelib-ts types
+  // that as `FeedStatus`), and a malformed message arrives as the throw the catch
+  // above already classifies — CORELIB_PLAN §6.3's error-channel option for the one
+  // outcome that is terminal.
   if (st !== DecodeStatus.Complete) return "I";
   const m = d.message;
   if (_MATERIALIZE) return "A " + materialize(m);
