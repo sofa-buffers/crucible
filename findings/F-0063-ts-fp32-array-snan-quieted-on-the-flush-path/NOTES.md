@@ -1,7 +1,7 @@
 # F-0063 — corelib-ts quiets an fp32 array's **signaling** NaN whenever the array does not fit the output buffer (the streaming encode path)
 
-**Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-**Guard:** live and currently **red** — the encode gate (`scripts/run-encode.sh`) already replays `corpus/structured/083_arr_fp32_nan_bits.bin` at every `SOFAB_FLUSH` size and reports 6 mismatches on `typescript`. The four vectors in this folder are the minimized form, kept here because the corpus input alone does not separate the mechanism from its neighbours.
+**Status:** ✅ **fixed in corelib-ts `1c370a4`** — [corelib-ts#185](https://github.com/sofa-buffers/corelib-ts/issues/185), verified 2026-09-18; [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail, this file is the evidence.
+**Guard:** the encode gate (`scripts/run-encode.sh`), which replays `corpus/structured/083_arr_fp32_nan_bits.bin` at every `SOFAB_FLUSH` size — it went red on this finding and is green again with the fix, so a regression re-reds it on the next push. The four vectors in this folder are the minimized form, kept because the corpus input alone does not separate the mechanism from its neighbours.
 **Issue:** [corelib-ts#185](https://github.com/sofa-buffers/corelib-ts/issues/185)
 
 **Found 2026-09-18** by the encode gate on the first full suite run after catching the
@@ -157,3 +157,69 @@ already writes element by element — it simply stops going through a double on 
 
 `writeFp32ArrayRaw` is unaffected and stays the entry point for a caller holding a payload
 rather than a typed array.
+
+## Resolution (verified 2026-09-18)
+
+corelib-ts `1c370a4`, *"fix: a streamed Float32Array keeps its signaling NaNs"* — landed the
+same day. The fix is cut differently from what this write-up proposed, and better: instead of
+a branch **beside** the number loop, a `Float32Array` is diverted at the **entry**, before the
+array head is even written.
+
+```ts
+writeFp32Array(id: number, values: ArrayLike<number>): void {
+  // A Float32Array holds the wire words already, and reading them as numbers
+  // would quiet a signaling NaN (§6.5), so it takes a route that copies words
+  // on every path, streamed included (corelib-ts#185). Split off here, at the
+  // entry, rather than as a branch beside the number loop below: the branch
+  // alone cost that loop 20% (Callgrind, 1000 elements through a 64-byte sink).
+  if (values instanceof Float32Array) {
+    this.writeFp32Words(id, values);
+    return;
+  }
+  …
+```
+
+The reason given for the placement is worth keeping: the `instanceof` test *inside* the
+fallback loop — the shape suggested here — measured a **20 % loss** on that loop (Callgrind,
+1000 elements through a 64-byte sink). Diverting once at the entry costs the number path
+nothing.
+
+### Verified three ways
+
+**1. Driver-free, against `vendor/corelib-ts/src`** — the same five-element reproducer as
+above, now identical on every buffer size:
+
+```
+no sink        : 0505200100807f0100c07f0000c0ff010000000000803f
+ 4-byte + sink : 0505200100807f…      <- was 0100c07f
+ 8-byte + sink : 0505200100807f…
+16-byte + sink : 0505200100807f…
+```
+
+**2. The guard, both locally and in CI** — from 6 mismatches to 0:
+
+```
+[typescript] 111 input(s) x 9 config(s), surfaces=stream, min_output_buffer=1 — 0 mismatch(es)  [OK]
+TOTAL: 0 encode-invariance mismatch(es)
+```
+
+CI run [35345313863](https://github.com/sofa-buffers/crucible/actions/runs/35345313863) on
+PR #181, and the local full suite — **all eleven gates green**, 0 divergences, 0 conformance
+failures, 0 chunk mismatches.
+
+**3. The four vectors, both oracles** — `c` anchor, `ts` default, `ts` under `SOFAB_FLUSH=4`,
+and the materialized walk all agree, on the finding and on all three controls:
+
+```
+vector                                 c anchor   ts     ts+flush   materialized c==ts
+r0_fp32_array_snan.bin                 ok         ok     ok         ok
+c1_control_scalar_fp32_snan.bin        ok         ok     ok         ok
+c2_control_fp32_array_quiet_nan.bin    ok         ok     ok         ok
+c3_control_fp64_array_same_shape.bin   ok         ok     ok         ok
+```
+
+*Measure on a quiet tree.* A first attempt at this table ran while the `sweep` gate was
+rebuilding the drivers against its own schemas, and reported every row as a mismatch —
+including the controls, and once with the `ts` binary vanishing mid-measurement. That is the
+`drivers/*/build/` hazard the repo already knows: those paths are gate-owned while a gate
+runs. The numbers above were taken after the suite finished.
