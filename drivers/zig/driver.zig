@@ -39,8 +39,10 @@ const matgen = @import("materialize_gen.zig");
 // so neither streaming surface of the generated API is reachable through it. Unset,
 // every variable below is today's behaviour byte for byte.
 //
-// Zig's generated Decoder exposes status(), so the verdict comes from there rather
-// than from finish() (which returns an error mid-field).
+// The verdict is what the last feed() returned, not finish() (which returns an error
+// mid-field). It used to come from a status() accessor beside feed; CORELIB_PLAN
+// §5.2.1 closed that door ("no second place to ask"), so the generated Decoder no
+// longer has one.
 //
 // SOFAB_CHUNK_SCRUB used to be inapplicable here: the generated Decoder borrowed a
 // string/blob that arrived whole inside one chunk, and required a fed chunk to
@@ -163,6 +165,10 @@ pub fn main(init: std.process.Init) !void {
             var acc: message.Probe = .{};
             var d = message.Probe.decoder(&acc, a);
             var off: usize = 0;
+            // The verdict is what the LAST feed returned. A record with no bytes
+            // feeds nothing and keeps `.complete`: zero bytes are the valid empty
+            // message.
+            var st: sofab.Status = .complete;
             while (off < n) {
                 var step: usize = if (cfg.chunk > 0) cfg.chunk else n;
                 if (cfg.chunk == 0 and cfg.split > 0 and cfg.split < n and off == 0)
@@ -177,13 +183,13 @@ pub fn main(init: std.process.Init) !void {
                     @memcpy(copy, data[off .. off + step]);
                     break :blk2 copy;
                 } else data[off .. off + step];
-                _ = d.feed(piece) catch |e| break :blk @as(
+                st = d.feed(piece) catch |e| break :blk @as(
                     message.DecodeError!message.Probe, e);
                 if (cfg.scrub) @memset(@constCast(piece), 0xA5);
                 off += step;
             }
-            // Verdict from status(), never from finish() (CONTRACT.md).
-            if (d.status() == .incomplete)
+            // Verdict from the last feed's return, never from finish() (CONTRACT.md).
+            if (st == .incomplete)
                 break :blk @as(message.DecodeError!message.Probe, error.IncompleteMessage);
             break :blk @as(message.DecodeError!message.Probe, acc);
         } else message.Probe.decode(a, data)) catch |err| {

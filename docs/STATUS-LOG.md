@@ -14,6 +14,94 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-18 — the TypeScript backend moved to typed arrays, the status accessor left five drivers, and the flush path lost a signaling NaN
+
+Pulled again (every corelib to `origin/main`, `tools/sofabgen` to run 35319313674,
+`0.0.0-20260914075539-8287f6c5` → `0.0.0-20260918072500-d865b921`, sha256 verified). Only
+`corelib-ts` moved among the corelibs; the generator moved a great deal more. Six drivers
+needed work, one real finding came out of it, and a second was found by reading generated
+code rather than by any input.
+
+**Typed arrays (`cf6de0fb`, "every native array is a typed array").** A scalar array now
+materializes as the typed container of its declared width — `Uint8Array` … `BigInt64Array`,
+`Float32Array`, `Float64Array` — instead of `number[]`/`bigint[]`, and decode fills it
+through one new visitor hook, `arrayBulk(id, kind, count) -> ArrayTarget`. The corelib half
+is the same change seen from the other side: corelib-ts `f4c64c0` deletes the bulk kernel's
+element-width estimate, which had been read off `values.constructor` — an `ArrayLike`
+claiming to be a `Uint16Array` while holding `0xffffffff` got three bytes an element
+reserved, needed five, and the kernel wrote past the buffer while `bytesUsed` reported the
+length that was never written. With the width a property of the storage, there is nothing
+left to misreport.
+
+*Three breaks in `drivers/ts/driver.ts`, all in the materialized walk, none of which failed
+the build.* The walk reached its elements with `(value as unknown[]).map(...)`:
+`Uint8Array.prototype.map` coerces the callback's **return** value back to a number, so
+`[1, 2, 255]` materialized as `[u0,u0,u0]`; `BigInt64Array.prototype.map` throws on the same
+line; and the fp32 array lost its bit-exact channel, because the generated type no longer
+parks a `<field>Fp32Raw` sibling beside it — it does not need one, the decoder writes the
+32-bit wire words straight into the `Float32Array`'s buffer. The walk asked for the sibling,
+found nothing, and fell back to repacking the widened double, which is F-0031 exactly.
+
+**Decision: a cast is not a type-check, and this is where that bites.** `tsc --noEmit
+--strict` runs over this file on every build since 2026-09-14 and passed all three, because
+the defect lives in `value as unknown[]` — an assertion the compiler is obliged to believe.
+The walk now casts to `ArrayLike<unknown>`, true of both a typed array and a plain one, and
+iterates by index. The type-check remains worth its seconds; what it cannot do is check a
+claim the author invented.
+
+**§5.2.1 reached five drivers at once (`4f0076c1`, generator#541).** *"COMPLETE and
+INCOMPLETE are returned, not implied … no second place to ask"* — the generated decoder's
+`status` accessor is gone, and java, kotlin, zig, typescript and csharp all read it. Each
+now keeps what the last `feed` returned, initialised to COMPLETE so a zero-length record
+(which feeds nothing) still answers for the valid empty message. TypeScript additionally
+loses its `Invalid` arm: `feed` returns only `Complete`/`Incomplete` there, a refusal
+arrives as the throw the catch already classifies.
+
+### F-0063 — the encode gate found a signaling NaN going quiet on the flush path
+
+Ten gates green, `encode` red on one driver: `typescript`, 6 mismatches, one input, every
+flush size. `corelib-ts`'s `writeFp32Array` is bit-exact on one of its two paths — when
+`reserveBulk(n*4)` cannot get the payload contiguously it falls back to per-element
+`putFp32(values[i])`, which reads a `Float32Array` element as a widened double and sets the
+quiet bit. `0x7f800001` comes back `0x7fc00001`. The fallback is not an edge case: it is the
+streaming case, which is what a smaller-than-message buffer is for.
+
+Two clauses, and the second needs no argument about NaNs: §6.5 requires bit-exactness at
+every `fp32` position including each array element, and §5.1.4 requires any buffer at or
+above `MIN_OUTPUT_BUFFER` to produce output **byte-identical to the one-shot path** — this
+port declares 1. Filed as [corelib-ts#185](https://github.com/sofa-buffers/corelib-ts/issues/185);
+write-up and four vectors in `findings/F-0063-ts-fp32-array-snan-quieted-on-the-flush-path/`.
+
+*Not F-0031 coming back.* That guard replays the default path, which is green here on every
+driver. This is the same class at a site the guard never reached — the flush path of an
+array — decided by reading `ostream.ts`, not by re-running the old reproducer, the same
+discipline F-0062 needed against F-0043. It surfaced now because the old codegen carried the
+wire bytes beside the value and called `writeFp32ArrayRaw` whenever an element was a NaN,
+bypassing the path entirely; the new codegen drops that companion, correctly, and depends on
+`writeFp32Array` being exact.
+
+### G-0041 — the one backend the IStream contract never reached
+
+While checking which languages lost the `status` accessor: ten of eleven backends emit none,
+**dart still does** (`generators/dart/backend.go:929`). Not a line the sweep forgot — dart
+was outside #541's scope ("six exception-shaped backends") and outside #463's before it, so
+the accessor predates the whole arc. corelib-dart itself has no such accessor and latches the
+terminal verdict at the top of `feed` (`decoder.dart:858`), which is #541's own argument
+applied to dart; the extra surface is generated code alone. Filed as
+[generator#555](https://github.com/sofa-buffers/generator/issues/555).
+
+Stated there so it is not assumed: #541's *behavioural* complaint does not reproduce on dart,
+whose `DecodeStatus` is four-valued and carries a cap refusal faithfully. And it is not a
+deletion — dart's `finish()` is built on the accessor and its doc sends the caller there, so
+it needs the restructuring the six got.
+
+**No corelib disagreed with another anywhere in the run.** Across seeds, regression,
+conformance, cross-encode, union, limits, the twelve sweep axes, the materialized oracle and
+both chunk-invariance gates: 0 divergences, 0 conformance failures, 0 chunk mismatches. The
+one red gate is upstream.
+
+---
+
 ## 2026-09-15 — the last pull-shaped driver, and a gate that reported green on a broken build
 
 Pulled again (every corelib to `origin/main`, `tools/sofabgen` to run 34820141892,

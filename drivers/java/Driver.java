@@ -6,7 +6,7 @@
 //
 // Single-pass decode via the generated status-returning `Probe.tryDecode(byte[],
 // Probe)` (sofabgen 0.16.0 — G-0008 fixed, see docs/SOFABGEN.md): it feeds the
-// bytes into the passed `Probe`, then returns the terminal `IStream.status()`, so
+// bytes into the passed `Probe` and returns what `IStream.feed` answered, so
 // one call yields both the three-valued VERDICT (its returned status, or the
 // SofabException it throws on malformed input) and the decoded VALUE (the filled
 // `Probe`, re-encoded for the A/I hex). This replaces the earlier two-pass
@@ -44,9 +44,12 @@ public final class Driver {
     // call, so neither streaming surface of the generated API is reachable through
     // it. Unset, every variable below is today's behaviour byte for byte.
     //
-    // Java's generated Decoder DOES expose status(), so the verdict comes from there
-    // rather than from finish() — finish() throws when the stream ended mid-field,
-    // and routing the verdict through it would bake that into the canonical line.
+    // The verdict is what the LAST feed() returned, not finish() — finish() throws
+    // when the stream ended mid-field, and routing the verdict through it would bake
+    // that into the canonical line. It used to come from a status() accessor beside
+    // feed; CORELIB_PLAN §5.2.1 closed that door ("no second place to ask" — two
+    // surfaces holding one answer can disagree), so the generated Decoder no longer
+    // has one.
     private static int envInt(String name) {
         String v = System.getenv(name);
         if (v == null || v.isEmpty()) return 0;
@@ -183,16 +186,18 @@ public final class Driver {
                 // Chunked decode via the generated Decoder, taken ONLY when a chunking
                 // variable is set — the default stays the one-shot tryDecode byte for
                 // byte, which is also what makes the gate meaningful: it then compares
-                // two genuinely different code paths. The verdict comes from status(),
-                // never from finish(), which throws mid-field (CONTRACT.md).
+                // two genuinely different code paths. The verdict is the last feed()'s
+                // return value, never finish(), which throws mid-field (CONTRACT.md).
+                // A record with no chunks (a zero-length one) feeds nothing and keeps
+                // COMPLETE: zero bytes are the valid empty message.
                 Probe.Decoder d = Probe.decoder();
+                status = DecodeStatus.COMPLETE;
                 for (byte[] c : chunksOf(data)) {
-                    d.feed(c);
+                    status = d.feed(c);
                     // Scrub: the chunk is a copy the driver owns, so overwriting it
                     // after feed exposes a decoder that borrowed instead of copying.
                     if (SCRUB) java.util.Arrays.fill(c, (byte) 0xA5);
                 }
-                status = d.status();
                 m = d.message();
             } else {
                 status = Probe.tryDecode(data, m);

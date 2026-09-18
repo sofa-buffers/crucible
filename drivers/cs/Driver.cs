@@ -347,16 +347,21 @@ internal static class Driver
                 // Chunked decode via the generated Decoder, taken ONLY when a chunking
                 // variable is set — the default stays the one-shot TryDecode byte for
                 // byte, which is what makes the gate meaningful: it then compares two
-                // genuinely different code paths. Verdict from Status, never Finish().
+                // genuinely different code paths. The verdict is the last Feed()'s
+                // return value, never Finish(). It used to be read from a Status
+                // property beside Feed; CORELIB_PLAN §5.2.1 closed that door ("no
+                // second place to ask"), so the generated Decoder no longer has one.
+                // A record with no chunks (a zero-length one) feeds nothing and keeps
+                // Complete: zero bytes are the valid empty message.
                 var d = new Probe.Decoder();
+                status = DecodeStatus.Complete;
                 foreach (var c in ChunksOf(data))
                 {
-                    d.Feed(c);
+                    status = d.Feed(c);
                     // Scrub: the chunk is a copy the driver owns, so overwriting it
                     // after Feed exposes a decoder that borrowed instead of copying.
                     if (Scrub) Array.Fill(c, (byte)0xA5);
                 }
-                status = d.Status;
                 m = d.Message;
             }
             else
