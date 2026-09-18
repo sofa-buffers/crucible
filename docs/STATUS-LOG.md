@@ -72,6 +72,12 @@ above `MIN_OUTPUT_BUFFER` to produce output **byte-identical to the one-shot pat
 port declares 1. Filed as [corelib-ts#185](https://github.com/sofa-buffers/corelib-ts/issues/185);
 write-up and four vectors in `findings/F-0063-ts-fp32-array-snan-quieted-on-the-flush-path/`.
 
+**Fixed the same day** (corelib-ts `1c370a4`), and cut better than this repo proposed: a
+`Float32Array` is diverted at the **entry** to `writeFp32Array` rather than by a branch beside
+the number loop, because that branch alone measured a 20 % loss on the loop (Callgrind, 1000
+elements through a 64-byte sink). The guard went 6 mismatches → 0, and the full suite is green
+on all eleven gates.
+
 *Not F-0031 coming back.* That guard replays the default path, which is green here on every
 driver. This is the same class at a site the guard never reached — the flush path of an
 array — decided by reading `ostream.ts`, not by re-running the old reproducer, the same
