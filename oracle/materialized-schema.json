@@ -65,6 +65,11 @@
           "id": 3,
           "name": "bytes_field",
           "kind": "blob"
+        },
+        {
+          "id": 9,
+          "name": "flag",
+          "kind": "bool"
         }
       ]
     },
@@ -181,8 +186,25 @@
           "id": 1,
           "name": "v",
           "kind": "string"
+        },
+        {
+          "id": 2,
+          "name": "f",
+          "kind": "bool"
         }
       ]
+    },
+    {
+      "id": 203,
+      "name": "flag",
+      "kind": "bool"
+    },
+    {
+      "id": 204,
+      "name": "flag_array",
+      "kind": "array",
+      "elem": "bool",
+      "count": 5
     }
   ]
 }

@@ -281,6 +281,14 @@ func mLeaf(kind string, v reflect.Value) string {
 	switch kind {
 	case "u":
 		return fmt.Sprintf("u%d", v.Uint())
+	// §4.4 boolean: rendered as the unsigned value it is on the wire — u1/u0. The
+	// generated Go type is a real bool, so only those two are reachable here; a port
+	// that kept a non-normalized raw value shows it instead, which is the point.
+	case "bool":
+		if v.Bool() {
+			return "u1"
+		}
+		return "u0"
 	case "s":
 		return fmt.Sprintf("s%d", v.Int())
 	case "fp32":

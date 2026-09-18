@@ -72,6 +72,100 @@ The chunk-invariance pass over the fuzzed corpus also showed that `CHUNK_FEED_TI
 too short for py-pure at chunk size 1 over 21k inputs: the run aborts and every driver after it
 goes unchecked. `CHUNK_FEED_TIMEOUT=1800` completed it. Recorded in `docs/TODO.md`.
 
+## 2026-09-18 — `probe` grew a `boolean`, and the §4.4 tolerance rule found three drivers
+
+Derived from AUDIT_v3's largest single class: ten of the twelve ports carry an open "no
+dedicated boolean read function" finding against CORELIB_PLAN §4.4, and `corelib-cpp` has
+neither half of the clause. That is a normative decode rule with no implementation in most
+of the family — and every gate here was green, because **`schema/probe.sofab.yaml` declared
+no `boolean`**. No vector in any corpus could carry one, so the rule was not merely untested:
+it was unreachable.
+
+**Decision: model the boolean as its own kind, not as `u`.** On the wire a boolean *is* an
+unsigned integer (MESSAGE_SPEC §7.3 cannot even distinguish them), so every position-driven
+axis must treat it as one — `CAT_TO_CONSTRUCT` maps `scalar_bool`/`arr_bool` to `U`/`ARR_U`
+and the §7.3, §4.6, §7.4 and §2 sweeps sweep it unchanged. But its *value* rule is its own:
+every non-zero reads as `true` and normalizes to `1`, and it is the one integer-backed leaf
+type with **no width bound** (MESSAGE_SPEC §1). Folding it into `u` would have got the wire
+right and made both halves of the value rule inexpressible — over-width would have read as
+`INVALID` (the over-bound sweep) and normalization would have had nothing to assert. Hence a
+separate `bool` kind in `engine/structured/schema.py`, with `INT_RANGE` deliberately carrying
+no `boolean` entry so `sweep_overbound` skips the width vectors and sweeps only the count.
+
+**Four positions** (ids chosen so no existing vector changes meaning — 50/51 are the sweeps'
+unknown ids and 202 was the highest declared id): root scalar `flag` (203), root inline
+`array of boolean` `flag_array` (204, count 5), struct child `nested.flag` (10/9 — *not* 4,
+which `sweep_framing` places as the unknown id inside `nested`), and wrapper-element child
+`struct_array[…].f` (202/0/2).
+
+**The tolerance axis owns the rule.** `sweep_tolerance` (§7.2 class 5b) already existed for
+exactly this shape — a rule about what a decoder must *accept and normalize*, which no
+agreement oracle can see, since a family that is uniformly too strict is unanimous and
+unanimity is what green looks like. The boolean family adds 47 vectors over the four
+positions: the canonical `true` as control, then `2`, `0xff`, `256`, `2^32`, `2^64-1` and a
+non-minimally spelled `1`, each `same:` the control; `false` written explicitly, `same:` the
+*field-absent* twin at the same position (not a bare marker — the enclosing scopes then
+re-encode identically for both, so §2 omission and §5.1 last-element framing need no
+modelling in this axis); and an over-64-bit varint as the strict-side contrast, because §4.4
+lifts the width bound, not the format's own varint ceiling.
+
+**Result: 20 divergences on the first run — 24 once the sign-bit value and the union
+member were added — and 14 of 17 drivers correct.** Two findings, and the attribution split
+is the interesting part:
+
+* **F-0064 — `corelib-c-cpp`.** `sofab_istream_read_bool` (`istream.h:403`) delegates to
+  `read_field` with a **one-byte destination of type unsigned**: the raw value is stored
+  as-is and anything above 255 is an over-width read reported `InvalidMessage`. `drivers/c`
+  echoes `2` straight back; `cpp-c-cpp` gets worse than wrong — the wrapper hands the raw
+  value to a `bool` object, which violates the C++ ABI invariant, and g++'s `test al,1`
+  makes `2` decode as **`false`** while `0xff` decodes as `true`. The reason this is the
+  corelib's and not the generator's is `object.h:57-67`: the object layer has eleven field
+  types and **no boolean among them**, so the descriptor route has no tag the backend could
+  have emitted. The schema fact has nowhere to go until the corelib grows a slot for it.
+* **G-0042 — `sofabgen`, the C++ backend.** `array of boolean` generates
+  `std::vector<std::uint8_t>` / `InlineVector<std::uint8_t, 5>` while the scalar at the same
+  position correctly generates `bool`. So elements are never normalized, and `256` truncates
+  to eight bits: a `true` the sender wrote decodes as **`false`** with a `COMPLETE` verdict
+  and no error anywhere. Silent value corruption on sender-chosen bytes.
+
+`sweep_tolerance` is **blocking and therefore red** until these land. Both are catalogued
+with minimized isolates, which is the condition sweep.sh states for an axis to block.
+
+**One Crucible-side hazard came out of it**, in `drivers/cs/Driver.cs`: the materialized
+walker cast a compact array to `System.Array`, and the C# backend emits `T[]` for a numeric
+element type but `List<bool>` for a boolean one — so the walker threw `InvalidCastException`
+on every vector carrying `flag_array` and the materialize gate reported two crashes. Fixed
+by walking `IList`, which both shapes implement. Worth recording because it is the third
+time a walker has been written against the *one* container shape the schema happened to
+produce (`c`/`go`/`zig`/`dart` had the capacity-vs-length version in 2026-07-29); a new
+element type is exactly when that assumption surfaces.
+
+**One axis, one rule — a correction the first full sweep forced.** Running every axis
+showed `wiretype_sweep` (4 vectors) and `sweep_overbound` (1) red as well, and on
+inspection neither was finding anything new: their generic unsigned constructs carry the
+value `5` (`[1..n]` for an array), which at a boolean position is a perfectly legal but
+NON-canonical `true` — so a §7.3 control cell and a §7.1 count vector were both asserting
+§4.4's normalization on the side, and both failed on F-0064 / G-0042. Those constructs now
+use the canonical spelling at a boolean position. This hides nothing: §4.4 is swept in full
+by `sweep_tolerance` at all five positions over six values, and the two findings carry their
+own isolates. What it buys is that one defect makes one axis red, and that fixing it turns
+exactly that axis green — the property the axis family is built on.
+
+**Coverage, measured rather than asserted.** After the work, seven of the twelve blocking
+axes reach a boolean position: `wiretype_sweep` 44 vectors, `sweep_tolerance` 51 (+10 in
+its union pass), `sweep_reserved_subtype` 16, `sweep_truncation` 9 cut points inside a
+boolean field, `sweep_repeated_id` 3, `sweep_overbound` 3 (count only — `INT_RANGE` has no
+`boolean`, so the width vectors are correctly absent), `sweep_empty_frame` 1, plus one
+malformation×truncation vector (an over-64-bit varint as a boolean's value: §4.4 lifts the
+width bound and only the width bound, and §5.2's precedence still applies). The five axes
+that reach none are the sequence-shaped ones — `sweep_framing`, `sweep_unknown_seq`,
+`sweep_repeated_elem`, `sweep_malform_truncate`'s other twelve malformations and
+`sweep_varint`, whose five varint ROLES a boolean does not add to (its value varint is the
+"array element value" role at a different position, and the non-minimal spelling of a
+boolean is swept by the tolerance axis at all five positions).
+
+---
+
 ## 2026-09-18 — the TypeScript backend moved to typed arrays, the status accessor left five drivers, and the flush path lost a signaling NaN
 
 Pulled again (every corelib to `origin/main`, `tools/sofabgen` to run 35319313674,

@@ -16,4 +16,10 @@ messages:
           as_i32:  { id: 1, type: i32 }
           as_text: { id: 2, type: string, maxlen: 16 }
           as_blob: { id: 3, type: blob,   maxlen: 8 }
+          # §4.4 boolean as a union member (2026-09-18) — the fifth boolean position,
+          # and the only one where the §4.2 identity rule meets the §4.4 value rule: a
+          # member at its own default (`false`) reduces to the OMITTED union, so a
+          # non-canonical `false` (e.g. a padded `00`) must re-encode to nothing at all,
+          # while a non-canonical `true` must re-encode to this option id carrying 1.
+          as_flag: { id: 4, type: boolean }
       trailer: { id: 2, type: u8 }

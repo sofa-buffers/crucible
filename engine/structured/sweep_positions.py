@@ -20,6 +20,12 @@ A `Position` is one field slot in `schema/probe.sofab.yaml`:
   fid    the field id in that scope
   cat    category — how the field is shaped on the wire:
            'scalar_u' 'scalar_s'                     integer scalars
+           'scalar_bool' 'arr_bool'                  §4.4 booleans — the unsigned wire
+                                                     form (so §7.3/§4.6/§7.4 treat them
+                                                     as unsigned, via CAT_TO_CONSTRUCT)
+                                                     but their OWN value rule: every
+                                                     non-zero reads as true and carries
+                                                     no width bound
            'fp32' 'fp64' 'str' 'blob'                fixlen leaves
            'arr_u' 'arr_s' 'arr_fp32' 'arr_fp64'     compact/fixlen arrays
            'seq_struct'                               a struct sequence (opens a scope)
@@ -155,6 +161,7 @@ POSITIONS = [
     Position((10,), 0, "fp32"), Position((10,), 1, "fp64"),
     Position((10,), 2, "str", maxlen=_maxlen((10,), 2)),
     Position((10,), 3, "blob", maxlen=_maxlen((10,), 3)),
+    Position((10,), 9, "scalar_bool"),
     # arrays struct (id 100): eight numeric arrays + the nested fp-array struct
     Position((100,), 0, "arr_u", count=_count((100,), 0), itype=_itype((100,), 0)), Position((100,), 1, "arr_s", count=_count((100,), 1), itype=_itype((100,), 1)),
     Position((100,), 2, "arr_u", count=_count((100,), 2), itype=_itype((100,), 2)), Position((100,), 3, "arr_s", count=_count((100,), 3), itype=_itype((100,), 3)),
@@ -181,10 +188,19 @@ POSITIONS = [
     Position((202,), 0, "seq_struct"),
     Position((202, 0), 0, "scalar_u"),
     Position((202, 0), 1, "str", maxlen=_maxlen((202, 0), 1)),
+    Position((202, 0), 2, "scalar_bool"),
+    # §4.4 booleans (2026-09-18) — four positions: a root scalar, a root inline array,
+    # a struct child (10/9) and a wrapper-element child (202/0/2), so every axis that
+    # is position-driven sweeps the boolean wire form wherever the schema puts one.
+    Position((), 203, "scalar_bool"),
+    Position((), 204, "arr_bool", count=_count((), 204), itype=_itype((), 204)),
 ]
 
 SEQ_POSITIONS = [p for p in POSITIONS if p.cat in ("seq_struct", "seq_wrapper")]
-SCALAR_POSITIONS = [p for p in POSITIONS if p.cat in ("scalar_u", "scalar_s")]
+# `scalar_bool` is IN: §7.4's merge-vs-replace question is about the field slot, not
+# about the value type, and `valid_field` gives a boolean two distinguishable variants
+# (true / false) so the axis can still tell which occurrence won.
+SCALAR_POSITIONS = [p for p in POSITIONS if p.cat in ("scalar_u", "scalar_s", "scalar_bool")]
 ARRAY_POSITIONS = [p for p in POSITIONS if p.cat.startswith("arr_")]
 
 # cat -> the ONE wire construct that is a §7.3 *control* at a position of that cat
@@ -192,6 +208,11 @@ ARRAY_POSITIONS = [p for p in POSITIONS if p.cat.startswith("arr_")]
 # model instead of carrying its own parallel position list (WP-11).
 CAT_TO_CONSTRUCT = {
     "scalar_u": "U", "scalar_s": "S",
+    # MESSAGE_SPEC §7.3: "u8, u16, u32, u64, boolean and bitfield all map to the
+    # unsigned-integer wire type, so a header carrying that type is well-formed for
+    # every one of them" — a boolean's §7.3 control is therefore exactly `U`, and an
+    # array of boolean reuses the unsigned array wire form (§4.7).
+    "scalar_bool": "U", "arr_bool": "ARR_U",
     "fp32": "FIX_fp32", "fp64": "FIX_fp64", "str": "FIX_str", "blob": "FIX_blob",
     "arr_u": "ARR_U", "arr_s": "ARR_S", "arr_fp32": "ARR_fp32", "arr_fp64": "ARR_fp64",
     "seq_struct": "SEQ", "seq_wrapper": "SEQ", "seq_swrapper": "SEQ",
@@ -213,7 +234,8 @@ UNION_SCHEMA = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "..", "..", "schema", "probe-union.sofab.yaml")
 
 # descriptor kind -> Position category (the wire-shape the axes perturb)
-_UNION_CAT = {"u": "scalar_u", "s": "scalar_s", "string": "str", "blob": "blob"}
+_UNION_CAT = {"u": "scalar_u", "bool": "scalar_bool", "s": "scalar_s",
+              "string": "str", "blob": "blob"}
 
 
 def _union_positions():
@@ -260,6 +282,11 @@ def valid_field(cat, fid, variant=0):
     if cat == "fp64":     return fixlen(fid, FL_FP64, struct.pack("<d", 1.0 + variant))
     if cat in ("str", "welem_str"):   return fixlen(fid, FL_STRING, (b"A", b"B", b"C")[variant % 3])
     if cat in ("blob", "welem_blob"): return fixlen(fid, FL_BLOB, (b"\xde\xad", b"\xbe\xef", b"\x11\x22")[variant % 3])
+    # §4.4: `true` is canonically 1 and `false` is 0. The two variants are the two
+    # VALUES (not 5/6 as for an integer) — that keeps §7.4's merge-vs-replace test
+    # able to tell the occurrences apart, since a boolean has no third value to use.
+    if cat == "scalar_bool": return scalar_u(fid, 1 if variant % 2 == 0 else 0)
+    if cat == "arr_bool":    return arr_u(fid, [1] * (1 + variant % 2))
     if cat == "arr_u":    return arr_u(fid, [v])
     if cat == "arr_s":    return arr_s(fid, [v])
     if cat == "arr_fp32": return arr_fp(fid, [1.0 + variant], "<f", FL_FP32)
@@ -274,11 +301,11 @@ def valid_field(cat, fid, variant=0):
 # distinguish merge (both kept) from replace (first lost); the rest are available for
 # any axis that wants a wider reopen and keep the model complete.
 STRUCT_CHILDREN = {
-    (10,):     [("fp32", 0), ("fp64", 1), ("str", 2), ("blob", 3)],
+    (10,):     [("fp32", 0), ("fp64", 1), ("str", 2), ("blob", 3), ("scalar_bool", 9)],
     (100,):    [("arr_u", 0), ("arr_s", 1), ("arr_u", 2), ("arr_s", 3),
                 ("arr_u", 4), ("arr_s", 5), ("arr_u", 6), ("arr_s", 7)],
     (100, 10): [("arr_fp32", 0), ("arr_fp64", 1)],
-    (202, 0):  [("scalar_u", 0), ("str", 1)],   # struct_array element {k, v} (WP-05)
+    (202, 0):  [("scalar_u", 0), ("str", 1), ("scalar_bool", 2)],  # struct_array element {k, v, f}
 }
 
 def struct_children(scope, variant):

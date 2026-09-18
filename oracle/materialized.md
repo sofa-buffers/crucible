@@ -90,6 +90,14 @@ Rules that make it byte-reproducible across 13 languages:
   encoding question. A `string` is its UTF-8 bytes; a `blob` its opaque bytes.
 - Integers are decimal with no padding; unsigned and signed carry distinct tags
   (`u`/`s`) so the wire subtype is visible even when the numeric value coincides.
+- **A `boolean` emits `u1` / `u0`** — no tag of its own, because it has no wire type of
+  its own either (CORELIB_PLAN §4.4: a boolean *is* an unsigned integer). The descriptor
+  carries it as its own kind (`bool`) all the same, so each walker can convert its
+  language's native `bool` to the two values; a port whose storage is a real `bool` can
+  therefore only ever produce those two. **That is the point of not normalizing in the
+  walker:** a port that kept a *non-normalized* wire value prints it as-is (`u2` for the
+  input `2`), which is how F-0064 surfaced. A walker that emitted `1 if v else 0` would
+  have hidden exactly the defect the form exists to expose.
 
 Example — the all-defaults `probe` (schema `schema/probe.sofab.yaml`):
 

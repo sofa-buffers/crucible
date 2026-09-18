@@ -49,6 +49,13 @@ def rich_message():
         "afp32": [1.0, 2.0], "afp64": [3.0, 4.0],
         "strarr": ["alpha", "beta", "gamma"],
         "blobarr": [b"\xde\xad", b"\xbe\xef", b"\x01\x02\x03"],
+        # §4.4 booleans at all four positions (2026-09-18). A boolean's payload is a
+        # varint like any other, so truncating through one is the ordinary mid-varint
+        # case — but only if the message HAS one: the docstring's "every field populated"
+        # was untrue for booleans until they were added here, and the axis would have
+        # swept every other field boundary and skipped theirs.
+        "flag": True, "nflag": True, "flagarr": [True, False, True],
+        "structarr": [{"k": 1, "v": "a", "f": True}, {"k": 2, "f": True}],
     })
 
 

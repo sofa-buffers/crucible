@@ -94,7 +94,18 @@ def emit(out_dir):
             # consumed by the backends in generator#259; the cells are green on their own
             # now, so the axis covers the full construct product again.
             name = f"{p.tag()}_{cname}_{kind}.bin"
-            data = place(list(p.path), p.fid, build(p.fid))
+            # One axis, one rule. At a boolean position the unsigned constructs carry
+            # the generic value 5 (or [5]), which is a perfectly legal `true` — but it
+            # is a NON-CANONICAL one, so this §7.3 cell would also assert §4.4's
+            # normalization and go red on F-0064 / G-0042. Use the canonical spelling
+            # here; the §4.4 rule is swept in full, at all five boolean positions and
+            # over six values, by sweep_tolerance, which is where a failure belongs.
+            b = build
+            if p.cat == "scalar_bool" and cname == "U":
+                b = lambda fid: scalar_u(fid, 1)
+            elif p.cat == "arr_bool" and cname == "ARR_U":
+                b = lambda fid: arr_u(fid, [1])
+            data = place(list(p.path), p.fid, b(p.fid))
             with open(os.path.join(out_dir, name), "wb") as fh:
                 fh.write(data)
             vectors.append((name, data, "accept"))
@@ -166,7 +177,7 @@ def _sized_mismatches():
 # (§4.2), so a mismatch still decodes as the default union — verdict `A`, all agree,
 # same as the probe pass. The `seq_union` position (the union field itself) declares
 # SEQ; a non-SEQ construct there skips the whole union field -> default_id likewise.
-_UNION_DECL = {"scalar_u": "U", "scalar_s": "S", "str": "FIX_str",
+_UNION_DECL = {"scalar_u": "U", "scalar_bool": "U", "scalar_s": "S", "str": "FIX_str",
                "blob": "FIX_blob", "seq_union": "SEQ"}
 
 

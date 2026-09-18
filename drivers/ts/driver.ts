@@ -94,9 +94,9 @@ const _MATERIALIZE = process.env.SOFAB_MATERIALIZE === "1";
 interface SchemaNode {
   id: number;
   name: string;
-  kind: "u" | "s" | "fp32" | "fp64" | "string" | "blob" | "struct" | "array" | "wrapper" | "struct_wrapper";
+  kind: "u" | "bool" | "s" | "fp32" | "fp64" | "string" | "blob" | "struct" | "array" | "wrapper" | "struct_wrapper";
   fields?: SchemaNode[];
-  elem?: "u" | "s" | "fp32" | "fp64" | "string" | "blob";
+  elem?: "u" | "bool" | "s" | "fp32" | "fp64" | "string" | "blob";
   count?: number;
 }
 interface SchemaDescriptor { message: string; fields: SchemaNode[]; }
@@ -160,6 +160,11 @@ function _b(bytes: Uint8Array): string {
 function formatLeaf(kind: string, v: unknown, raw?: unknown, off = 0): string {
   switch (kind) {
     case "u": return "u" + (v as number | bigint).toString();
+    // §4.4 boolean: the unsigned value it is on the wire — u1/u0. `Number(v)` rather
+    // than a ternary on purpose: a generated `boolean` yields 1/0, and a port that
+    // handed back a non-normalized raw number renders that number, which is the
+    // divergence the materialized form exists to surface.
+    case "bool": return "u" + Number(v as boolean | number).toString();
     case "s": return "s" + (v as number | bigint).toString();
     case "fp32":
       // Prefer the raw wire bytes when the generated type captured them (NaN only);

@@ -13,6 +13,12 @@ single schema source — so a schema change regenerates the table instead.
 drivers/reference consume). Kinds:
 
   u s fp32 fp64 string blob        leaves
+  bool                             a CORELIB_PLAN §4.4 boolean. Its own kind, not `u`:
+                                   the wire carries an unsigned integer but the VALUE is
+                                   two-valued, so a walker must render `u0`/`u1` out of a
+                                   native `bool` (Go/Dart/Kotlin/…) — and a port that kept
+                                   a non-normalized `2` renders `u2`, which is the
+                                   divergence this kind exists to make visible
   struct  { fields: [...] }        a nested struct/message scope
   union   { default_id, options: [...] }   a sequence carrying at most one child;
                                            the active option's id selects it (§4.2)
@@ -37,6 +43,10 @@ _SCALAR = {
     "u8": "u", "u16": "u", "u32": "u", "u64": "u",
     "i8": "s", "i16": "s", "i32": "s", "i64": "s",
     "fp32": "fp32", "fp64": "fp64", "string": "string", "blob": "blob",
+    # §4.4: a boolean is an unsigned integer on the wire, but it is NOT `u` here —
+    # see the kind list above. `array of boolean` reuses the unsigned array wire form
+    # (MESSAGE_SPEC §4.7), so `elem` becomes "bool" and the array node is unchanged.
+    "boolean": "bool",
 }
 
 

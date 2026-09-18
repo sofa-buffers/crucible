@@ -147,7 +147,10 @@ def emit(out_dir):
     #    array (documentation#31) — that axis lives in the cross-encode value corpus
     #    (`cap_*` vectors), where the exact re-encoded bytes are compared.
     for p in ARRAY_POSITIONS:
-        if p.cat == "arr_u":      body = arr_u(p.fid, [])
+        # `arr_bool` builds as unsigned: §4.7 gives an array of boolean the unsigned
+        # array wire form. Spelled out rather than left to the fp64 `else`, which would
+        # have emitted an fp64 array at a boolean position and swept nothing.
+        if p.cat in ("arr_u", "arr_bool"): body = arr_u(p.fid, [])
         elif p.cat == "arr_s":    body = arr_s(p.fid, [])
         elif p.cat == "arr_fp32": body = arr_fp(p.fid, [], "<f", FL_FP32)
         else:                     body = arr_fp(p.fid, [], "<d", FL_FP64)

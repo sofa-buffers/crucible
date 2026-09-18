@@ -69,6 +69,8 @@ public final class ProbeDump {
                 return walkStruct(fieldsOf(node), value);
             case "u":
                 return u(value);
+            case "bool":
+                return bool(value);
             case "s":
                 return s(value);
             case "fp32":
@@ -85,13 +87,25 @@ public final class ProbeDump {
                 // byte[]/short[]/int[]/long[] — so an unsigned element arrives here already
                 // sign-extended by Java's widening; `u()` masks it back. This said "long[]
                 // either way" until 2026-08-17, when the Java array path went native-width.
+                // …except for a BOOLEAN element type, where the backend emits
+                // `List<Boolean>` rather than a native array (the same split C# has:
+                // `T[]` for a numeric element, `List<bool>` for a boolean one). Handle
+                // both shapes rather than assuming the one the schema used to produce.
                 String elem = (String) node.get("elem");
-                int n = Array.getLength(value);
                 StringBuilder sb = new StringBuilder();
                 sb.append('[');
-                for (int i = 0; i < n; i++) {
-                    if (i > 0) sb.append(',');
-                    sb.append(leaf(elem, Array.get(value, i)));
+                if (value instanceof java.util.List) {
+                    java.util.List<?> list = (java.util.List<?>) value;
+                    for (int i = 0; i < list.size(); i++) {
+                        if (i > 0) sb.append(',');
+                        sb.append(leaf(elem, list.get(i)));
+                    }
+                } else {
+                    int n = Array.getLength(value);
+                    for (int i = 0; i < n; i++) {
+                        if (i > 0) sb.append(',');
+                        sb.append(leaf(elem, Array.get(value, i)));
+                    }
                 }
                 sb.append(']');
                 return sb.toString();
@@ -146,6 +160,7 @@ public final class ProbeDump {
     private static String leaf(String kind, Object value) {
         switch (kind) {
             case "u":      return u(value);
+            case "bool":   return bool(value);
             case "s":      return s(value);
             case "fp32":   return f32(value);
             case "fp64":   return f64(value);
@@ -202,6 +217,18 @@ public final class ProbeDump {
         else if (n instanceof Short)   x &= 0xFFFFL;
         else if (n instanceof Integer) x &= 0xFFFFFFFFL;
         return "u" + Long.toUnsignedString(x);
+    }
+
+    /**
+     * §4.4 boolean: rendered as the unsigned value it is on the wire — u1/u0. A
+     * Boolean renders as 1/0; anything numeric renders as itself, so a port that kept
+     * a non-normalized raw value shows it rather than hiding behind a cast.
+     */
+    private static String bool(Object value) {
+        if (value instanceof Boolean) {
+            return ((Boolean) value) ? "u1" : "u0";
+        }
+        return u(value);
     }
     private static String s(Object v) { return "s" + Long.toString(((Number) v).longValue()); }
 
