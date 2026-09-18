@@ -43,6 +43,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from gen import (  # noqa: E402
+    WT_U,
     hdr, varint, WT_FIX, WT_ARR_FIX, WT_SEQ_BEG, WT_SEQ_END, FL_FP32, FL_STRING, FL_BLOB, arr_u,
 )
 from sweep_positions import place, open_path  # noqa: E402
@@ -129,6 +130,17 @@ def malformations():
     # wrapper element id >= count — string_array (200) and blob_array (201)
     b, at = wrapper_over_id(200, FL_STRING); out.append(("string_array_over_id", b, at))
     b, at = wrapper_over_id(201, FL_BLOB);   out.append(("blob_array_over_id", b, at))
+    # a §4.1.3 over-64-bit varint as a BOOLEAN's value (2026-09-18). §4.4 lifts the
+    # width bound from a boolean and only from it, which makes this the one position
+    # where a port could plausibly conclude that no value check applies at all — and
+    # then meet truncation, where §5.2 still requires INVALID to dominate INCOMPLETE.
+    # `invalid_at` is the TENTH payload byte, not the eleventh: nine 0xff bytes carry
+    # 63 payload bits, so the tenth already pushes bits to position >= 64 and §4.1.3 is
+    # provable there — a decoder that waits for the varint to finish reports INCOMPLETE
+    # for a message it has already proved malformed (§5.2.3, the F-0016 class).
+    h = hdr(203, WT_U)
+    f = h + b"\xff" * 10 + b"\x02"
+    out.append(("bool_varint_over_64bit", f, len(h) + 10))
     return out
 
 

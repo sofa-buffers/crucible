@@ -42,7 +42,13 @@ def _t(s):  b = s.encode("utf-8"); return f"t{len(b)}:{b.hex()}"
 def _b(bb): bb = bytes(bb); return f"b{len(bb)}:{bb.hex()}"
 
 # One formatter per materialized-form leaf kind (also the array/wrapper element kind).
-_LEAF = {"u": _u, "s": _s, "fp32": _f32, "fp64": _f64, "string": _t, "blob": _b}
+# `_bool` is int(), not `1 if v else 0`, on purpose: int(True) is 1 and int(False) is 0,
+# so a native bool renders as u1/u0 — while a port that kept the RAW wire value (a
+# non-normalized `2`) renders `u2`, which is the divergence this form exists to surface.
+def _bool(v): return f"u{int(v)}"
+
+_LEAF = {"u": _u, "bool": _bool, "s": _s, "fp32": _f32, "fp64": _f64,
+         "string": _t, "blob": _b}
 
 
 def _load_schema():

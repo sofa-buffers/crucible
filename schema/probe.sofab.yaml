@@ -34,6 +34,9 @@ messages:
           f64:         { id: 1, type: fp64 }
           str:         { id: 2, type: string, maxlen: 32 }
           bytes_field: { id: 3, type: blob,   maxlen: 4 }
+          # A `boolean` inside a struct scope. Child id 9 deliberately: id 4 is the
+          # "unknown id inside nested" every framing sweep places (sweep_framing.py).
+          flag:        { id: 9, type: boolean }
 
       arrays:
         id: 100
@@ -84,3 +87,27 @@ messages:
           fields:
             k: { id: 0, type: u32 }
             v: { id: 1, type: string, maxlen: 16 }
+            # the fourth boolean position: inside a wrapper *element* sequence
+            f: { id: 2, type: boolean }
+
+      # CORELIB_PLAN §4.4 — `boolean` has no wire type of its own: it is an unsigned
+      # integer, **canonical on encode** (`true` -> 1) and **tolerant on decode**
+      # (EVERY non-zero value reads as true, is normalized away, and re-encodes as 1;
+      # it is never INVALID). It is also the one integer-backed leaf type that carries
+      # **no width bound** (MESSAGE_SPEC §1) — where `u8 = 256` is INVALID under §7.1,
+      # `boolean = 256` is a legal spelling of `true`.
+      #
+      # Both halves were unreachable here until 2026-09-18: `probe` declared no
+      # boolean, so no vector in any corpus could carry one and the whole rule was
+      # untestable family-wide (AUDIT_v3: ten ports carry an open finding for the
+      # missing dedicated boolean read, `corelib-cpp` has neither half).
+      #
+      # Ids 203/204 continue the append pattern of 200/201/202 and are chosen so no
+      # existing vector changes meaning: 50/51 are the sweeps' unknown ids, and the
+      # highest id any corpus file uses as a *declared* field is 202.
+      flag: { id: 203, type: boolean }
+
+      flag_array:
+        id: 204
+        type: array
+        items: { type: boolean, count: 5 }

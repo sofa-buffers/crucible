@@ -85,12 +85,23 @@ def emit(out_dir):
 
     for p in POSITIONS:
         tag = p.tag()
-        if p.cat in ("arr_u", "arr_s"):
+        if p.cat in ("arr_u", "arr_s", "arr_bool"):
             n = p.count
-            over = arr_u(p.fid, list(range(1, n + 2))) if p.cat == "arr_u" \
-                else arr_s(p.fid, list(range(1, n + 2)))
-            at = arr_u(p.fid, list(range(1, n + 1))) if p.cat == "arr_u" \
-                else arr_s(p.fid, list(range(1, n + 1)))
+            # `arr_bool` is swept here for its COUNT: §7.1 binds an array of boolean
+            # exactly like any other array (count 5 is a schema bound, and M > N is
+            # INVALID). What it is NOT swept for is the element WIDTH — `INT_RANGE` has
+            # no entry for `boolean`, so `rng` below is None and the width vectors are
+            # skipped. That is the §4.4 rule, not an omission: a boolean carries no
+            # width bound, and the positive half of that ("256 IS a legal true") is
+            # asserted by sweep_tolerance.py.
+            signed = p.cat == "arr_s"
+            # `1..n` are legal booleans but non-canonical ones, so at a boolean position
+            # they would make this §7.1 count vector assert §4.4's normalization too and
+            # go red on G-0042. Elements stay canonical here; §4.4 is sweep_tolerance's.
+            vals = (lambda k: [1] * k) if p.cat == "arr_bool" \
+                else (lambda k: list(range(1, k + 1)))
+            over = arr_s(p.fid, vals(n + 1)) if signed else arr_u(p.fid, vals(n + 1))
+            at = arr_s(p.fid, vals(n)) if signed else arr_u(p.fid, vals(n))
             vectors.append((f"{tag}_overcount.bin", place(p.path, over), "reject"))
             vectors.append((f"{tag}_atcount_ctl.bin", place(p.path, at), "accept"))
 
@@ -105,7 +116,7 @@ def emit(out_dir):
             rng = INT_RANGE.get(p.itype)
             if rng:
                 lo, hi = rng
-                enc = arr_u if p.cat == "arr_u" else arr_s
+                enc = arr_s if signed else arr_u
                 # first element over the top of the range, the rest well inside
                 vectors.append((f"{tag}_elem_over_width.bin",
                                 place(p.path, enc(p.fid, [hi + 1] + [1] * (n - 1))),
@@ -126,9 +137,9 @@ def emit(out_dir):
                                     "accept"))
             # WP-07: mid-magnitude over (2N elements) — still R (a count-prefixed array
             # can't declare a huge count without materializing the elements, so no BIG here).
-            mk = arr_u if p.cat == "arr_u" else arr_s
+            mk = arr_s if signed else arr_u
             vectors.append((f"{tag}_overcount_2x.bin",
-                            place(p.path, mk(p.fid, list(range(1, 2 * n + 1)))), "reject"))
+                            place(p.path, mk(p.fid, vals(2 * n))), "reject"))
         elif p.cat in ("arr_fp32", "arr_fp64"):
             n = p.count
             fmt, st = ("<f", FL_FP32) if p.cat == "arr_fp32" else ("<d", FL_FP64)

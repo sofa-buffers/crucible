@@ -780,7 +780,14 @@ here:
       `sofabgen` implemented all of it in generator#530 and added corpus coverage of its own in
       generator#532 — **Crucible has none.** `schema/probe.sofab.yaml` declares 0 enum and 0
       bitfield (sofabgen's own validate line says so on every build), so the whole family could
-      disagree on either bound and every gate here would stay green. That is the exact shape this
+      disagree on either bound and every gate here would stay green.
+      *(Update 2026-09-18: the **`boolean`** third of this item is **DONE** — `probe` now declares
+      four boolean positions and `sweep_tolerance` owns the §4.4 tolerance rule; it found F-0064
+      and G-0042 on its first run. `enum` and `bitfield` are still open, and this item now means
+      only those two. The boolean work is also the template for them: a schema kind of its own, the
+      unsigned/signed wire form via `CAT_TO_CONSTRUCT`, and the value rule asserted on the axis that
+      can see it — for enum/bitfield that is the **strict** side (a value outside the declared set
+      or mask is INVALID), so their vectors belong in `sweep_overbound`, not in the tolerance axis.)* That is the exact shape this
       repo exists to catch, and it is a *coverage* gap rather than a passing test.
       **Work:** add an `enum` and a `bitfield` field to `probe` — scalar and inside a composite,
       matching generator#532's shape — with a non-contiguous constant set and a non-contiguous bit

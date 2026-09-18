@@ -93,6 +93,9 @@ def _zig_str(s):
 def _emit_leaf(em, kind, expr):
     if kind == "u":
         em.stmt(f'try out.print("u{{d}}", .{{{expr}}});')
+    elif kind == "bool":
+        # §4.4 boolean: rendered as the unsigned value it is on the wire — `u1` / `u0`. A port whose storage is a real bool can only ever produce those two; one that kept a non-normalized raw value renders it as-is, which is exactly the divergence the form exists to surface.
+        em.stmt(f'try out.print("u{{d}}", .{{@as(u8, if ({expr}) 1 else 0)}});')
     elif kind == "s":
         em.stmt(f'try out.print("s{{d}}", .{{{expr}}});')
     elif kind == "fp32":

@@ -156,7 +156,7 @@ Exit `0` = all agree (modulo soft axes); `1` = a hard divergence (a finding).
 The third oracle. The malformed track (below) feeds *wire* and mostly exercises
 decoders on reject/incomplete paths; this suite instead generates **valid,
 value-rich** `probe` messages — float specials (±0, ±inf, NaN, subnormal), unicode
-strings, boundary integers — and runs them through the round-trip + decode-agreement
+strings, boundary integers, booleans — and runs them through the round-trip + decode-agreement
 oracle. Because the whole family is byte-canonical (every encoder emits identical
 wire for a value), "encode in A, decode in B, compare" reduces to *all drivers must
 emit the same `A <hex>`* — so a divergence here is a real cross-language
@@ -177,7 +177,7 @@ object API pads a sub-`maxlen` blob to `maxlen` / drops an all-zero blob).
 The `probe` message covers every wire feature except one — the **union** (a
 tagged/​discriminated variant: a field that holds exactly one of several members).
 This suite points the differential + round-trip oracles at
-`schema/probe-union.sofab.yaml` (a message with a 4-variant union). Because the
+`schema/probe-union.sofab.yaml` (a message with a 5-variant union). Because the
 drivers are schema-agnostic, no driver code changes — they are just rebuilt against
 the union schema.
 

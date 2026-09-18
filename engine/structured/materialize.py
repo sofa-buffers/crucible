@@ -62,6 +62,10 @@ _MSG_KEY = {
     ("arrays", "nested", "fp32"): "afp32", ("arrays", "nested", "fp64"): "afp64",
     ("string_array",): "strarr", ("blob_array",): "blobarr",
     ("struct_array",): "structarr",
+    # §4.4 booleans — the four positions (2026-09-18). The struct_array element's own
+    # `f` is not here: element fields are read out of the element dict by NAME in the
+    # struct_wrapper branch, not through this table.
+    ("nested", "flag"): "nflag", ("flag",): "flag", ("flag_array",): "flagarr",
 }
 
 
@@ -119,6 +123,9 @@ def _walk(node, msg, path):
         return _obj([(c["id"], _walk(c, msg, path + (c["name"],))) for c in node["fields"]])
     key = _MSG_KEY[path]
     if kind == "u":      return _u(msg.get(key, 0))
+    # §4.4: a boolean is two-valued, so the materialized form is u1/u0 — a decode has
+    # already normalized every non-zero spelling away (that is the rule under test).
+    if kind == "bool":   return _u(1 if msg.get(key) else 0)
     if kind == "s":      return _s(msg.get(key, 0))
     if kind == "fp32":
         v = msg.get(key, 0.0)                       # raw bytes are explicit (no omit-normalize)
@@ -130,6 +137,9 @@ def _walk(node, msg, path):
     if kind == "blob":   return _blob(msg.get(key, b""))
     if kind == "array":
         vals = msg.get(key, [])
+        if node["elem"] == "bool":
+            # an array of boolean is an array of unsigned 0/1 (MESSAGE_SPEC §4.7)
+            return _num_array([1 if v else 0 for v in vals], False)
         if node["elem"] in ("u", "s"):
             return _num_array(vals, node["elem"] == "s")
         return _fp_array(vals, _f32 if node["elem"] == "fp32" else _f64)
@@ -145,7 +155,9 @@ def _walk(node, msg, path):
         # element dict keys are the schema field names (gen.py's convention). Same
         # length rule as _wrapper: interior all-default elements are gaps on the wire
         # and come back as all-default elements, the last one is always written.
-        fmts = {"u": (_u, 0), "s": (_s, 0), "string": (_text, ""), "blob": (_blob, b"")}
+        fmts = {"u": (_u, 0), "s": (_s, 0), "string": (_text, ""), "blob": (_blob, b""),
+                # §4.4 inside a wrapper element: `false` is the element field's default
+                "bool": (lambda v: _u(1 if v else 0), False)}
         return _arr([
             _obj([(c["id"], fmts[c["kind"]][0](e.get(c["name"], fmts[c["kind"]][1])))
                   for c in node["fields"]])

@@ -120,6 +120,9 @@ internal static class Driver
     private static string Leaf(string kind, object v) => kind switch
     {
         "u" => U(Convert.ToUInt64(v, CultureInfo.InvariantCulture)),
+        // §4.4 boolean: the unsigned value it is on the wire — u1/u0. Converted rather
+        // than cast, so a raw (non-normalized) numeric value would render as itself.
+        "bool" => U(Convert.ToUInt64(v, CultureInfo.InvariantCulture)),
         "s" => S(Convert.ToInt64(v, CultureInfo.InvariantCulture)),
         "fp32" => F32(Convert.ToSingle(v, CultureInfo.InvariantCulture)),
         "fp64" => F64(Convert.ToDouble(v, CultureInfo.InvariantCulture)),
@@ -154,12 +157,14 @@ internal static class Driver
             {
                 // Fixed-count numeric/fp array, materialized to its full N in memory:
                 // every element emitted, no trailing trim (that only elides on the wire).
-                var arr = (Array)value;
+                // IList, not Array: the backend emits `T[]` for a numeric element type
+                // but `List<bool>` for a boolean one, and both implement IList.
+                var arr = (System.Collections.IList)value;
                 var sb = new StringBuilder("[");
-                for (int i = 0; i < arr.Length; i++)
+                for (int i = 0; i < arr.Count; i++)
                 {
                     if (i > 0) sb.Append(',');
-                    sb.Append(Leaf(node.Elem, arr.GetValue(i)));
+                    sb.Append(Leaf(node.Elem, arr[i]));
                 }
                 return sb.Append(']').ToString();
             }

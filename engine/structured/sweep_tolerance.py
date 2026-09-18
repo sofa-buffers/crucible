@@ -18,7 +18,28 @@ The axis is testable because a sweep vector carries an **absolute** expectation
 (`expect="accept"`), not merely "the drivers agree" — so a family-wide over-rejection
 is conformance-red here while being agreement-green everywhere else.
 
-**Scope: the sequence-end half.** Class 5b names two tolerance families. The
+**Scope: the sequence-end half and the boolean half.** Class 5b names two tolerance
+families of its own, and CORELIB_PLAN §4.4 adds a third that belongs here for exactly the
+same reason — it is a rule about a value a decoder must ACCEPT and NORMALIZE, which no
+agreement oracle can see:
+
+  > **Canonical on encode, tolerant on decode.** An encoder **MUST** write `true` as `1`.
+  > A decoder **MUST** read **every value other than `0`** as `true`: such a value is
+  > **not** `INVALID` (§5.2), it is normalized away, and a re-encode emits `1` — the same
+  > bargain §4.1.2 strikes for a non-minimal varint.
+
+The boolean is also the one integer-backed leaf type with **no width bound** (MESSAGE_SPEC
+§1): `u8 = 256` is `INVALID` under §7.1, `boolean = 256` is a legal spelling of `true`. A
+port that binds a boolean to its storage width — the single most likely way to get this
+wrong — rejects there, or truncates 256 to 0 and decodes `false`. Both are caught here,
+the first as a verdict split, the second by the `same:` twin.
+
+Until 2026-09-18 `schema/probe.sofab.yaml` declared no boolean at all, so neither half was
+reachable by any vector in any corpus. AUDIT_v3 carries an open "no dedicated boolean read
+function" finding for ten of the twelve ports, which is precisely a rule with no
+implementation — and every gate here was green.
+
+The other family: the
 non-minimal varint family — at a field header, a `fixlen_word` and an element count —
 is already swept exhaustively by `sweep_varint` (WP-03), which carries `expect="accept"`
 and the same reasoning; duplicating it here would only give a second place for the two
@@ -62,7 +83,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from gen import (  # noqa: E402
-    varint, WT_SEQ_BEG, WT_SEQ_END, hdr, scalar_u,
+    varint, WT_SEQ_BEG, WT_SEQ_END, WT_U, WT_ARR_U, hdr, scalar_u, arr_u,
 )
 from sweep_positions import (  # noqa: E402
     POSITIONS, STRUCT_CHILDREN, UNION_SEQ_POSITION, UNION_MEMBER_POSITIONS,
@@ -79,6 +100,9 @@ MARKER = scalar_u(0, 1)
 
 ALL_SEQ_POSITIONS = [p for p in POSITIONS
                      if p.cat in ("seq_struct", "seq_wrapper", "seq_swrapper")]
+
+# every §4.4 boolean the schema declares — scalar and array, at all four positions
+BOOL_POSITIONS = [p for p in POSITIONS if p.cat in ("scalar_bool", "arr_bool")]
 
 
 def seq_end(id_):
@@ -159,6 +183,91 @@ def emit(out_dir):
         add(f"{tag}_end_varint_over_64bit",
             frame(b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x02"), "reject")
 
+    # ---- the §4.4 boolean pass, at every boolean position the schema declares ----
+    for p in BOOL_POSITIONS:
+        tag = p.tag()
+        is_arr = p.cat == "arr_bool"
+
+        def put(v):
+            """The boolean field carrying the raw wire value `v` at this position.
+
+            For the array position the value goes into element 0 and the remaining
+            elements stay canonical, so the count (the array's length) is identical to
+            the control and the ONLY difference is the spelling of one element."""
+            if is_arr:
+                return place(p.path, arr_u(p.fid, [v, 1, 0, 1, 1]))
+            return place(p.path, scalar_u(p.fid, v))
+
+        def put_raw(raw):
+            """The same field with the value varint spelled by hand (non-minimally)."""
+            if is_arr:
+                body = hdr(p.fid, WT_ARR_U) + varint(5) + raw + b"\x01\x00\x01\x01"
+            else:
+                body = hdr(p.fid, WT_U) + raw
+            return place(p.path, body)
+
+        # the control: `true` spelled canonically (1) — every vector below must
+        # re-encode to exactly these bytes
+        ctl = f"{tag}_bool_true_ctl.bin"
+        add(f"{tag}_bool_true_ctl", MARKER + put(1), "accept")
+
+        # --- TOLERANCE: every non-zero value IS `true` and normalizes to 1 --------
+        # The values are chosen so that each defeats one WAY of getting §4.4 wrong, and
+        # no two defeat the same way:
+        #   2          bit 0 clear   -> catches `v & 1` (which is what a raw value stored
+        #                               into a C++ `bool` degenerates to; found F-0064)
+        #   0xff       all 8 bits    -> passes `& 1` and every truncation: the control
+        #                               that proves a failure above is not "rejects big"
+        #   256        1 << 8        -> catches a u8-width destination (truncates to 0,
+        #                               i.e. `true` silently becomes `false`; found G-0042)
+        #   2^32       1 << 32       -> the same for a 32-bit accumulator
+        #   2^63       1 << 63       -> the same for a 64-bit one, and the sign bit: a port
+        #                               testing `v > 0` on a SIGNED accumulator reads false
+        #   2^64-1     every bit     -> the largest value a varint can denote at all
+        # None of them is INVALID (§4.4 lifts the width bound), and every one must
+        # re-encode to the control's bytes.
+        for name, v in (("two", 2), ("0xff", 0xFF), ("256_over_u8", 256),
+                        ("2p32_over_u32", 1 << 32), ("2p63_sign_bit", 1 << 63),
+                        ("u64_max", (1 << 64) - 1)):
+            add(f"{tag}_bool_{name}", MARKER + put(v), f"same:{ctl}")
+
+        # --- TOLERANCE: `1`, spelled non-minimally (§4.1.2 x §4.4) ----------------
+        # The two tolerance rules meet: a padded varint denoting 1 is still `true`, and
+        # the re-encode is minimal. `01` -> `81 00` -> `81 80 00`.
+        add(f"{tag}_bool_true_nonminimal", MARKER + put_raw(b"\x81\x00"), f"same:{ctl}")
+        add(f"{tag}_bool_true_nonminimal2", MARKER + put_raw(b"\x81\x80\x00"), f"same:{ctl}")
+
+        # --- TOLERANCE: `false`, written explicitly, is the omitted field ----------
+        # The §2 half of the same question: `false` is the declared default, so writing
+        # it is writing nothing. The twin is the SAME position with the field absent —
+        # `place(p.path, b"")`, not a bare MARKER, because what the enclosing scopes
+        # re-encode to is their own business: an all-default `nested` is omitted (§2)
+        # while a struct_array's last element stays framed even when empty (§5.1). Both
+        # vectors go through the identical scopes, so the twin holds at every position
+        # without this axis having to model either rule.
+        #
+        # An ARRAY element is the exception: a compact array's count IS its length
+        # (documentation#31), so element 0 = 0 is a real `false` that stays on the wire.
+        if is_arr:
+            fctl = f"{tag}_bool_false_elem_ctl.bin"
+            add(f"{tag}_bool_false_elem_ctl", MARKER + put(0), "accept")
+            add(f"{tag}_bool_false_elem_nonminimal", MARKER + put_raw(b"\x80\x00"),
+                f"same:{fctl}")
+        else:
+            fctl = f"{tag}_bool_false_absent_ctl.bin"
+            add(f"{tag}_bool_false_absent_ctl", MARKER + place(p.path, b""), "accept")
+            add(f"{tag}_bool_false_explicit", MARKER + put(0), f"same:{fctl}")
+            add(f"{tag}_bool_false_nonminimal", MARKER + put_raw(b"\x80\x00"), f"same:{fctl}")
+
+        # --- STRICTNESS: the one bound a boolean still carries ---------------------
+        # §4.1.3: a value varint wider than 64 bits is INVALID wherever it appears. The
+        # boolean lifts the WIDTH bound, not the format's own varint ceiling — without
+        # this the axis would only ever say "accept", and a decoder that accepted an
+        # 11-byte varint here would look conformant.
+        add(f"{tag}_bool_varint_over_64bit",
+            MARKER + put_raw(b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x02"),
+            "reject")
+
     for name, data, _ in vectors:
         with open(os.path.join(out_dir, name), "wb") as fh:
             fh.write(data)
@@ -195,6 +304,34 @@ def emit_union(out_dir):
     add("u_end_id_over_ID_MAX", seq_end(ID_MAX + 1), "reject")
     add("u_end_varint_over_64bit",
         b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x02", "reject")
+
+    # ---- §4.4 x §4.2: the boolean MEMBER (the fifth boolean position) -------------
+    # The one place the two rules meet. A member at its own default reduces to the
+    # OMITTED union (§4.2's identity loss: the option id cannot survive a round-trip),
+    # so here `false` in any spelling must re-encode to *nothing* — while `true` in any
+    # spelling must re-encode to this option id carrying 1. A port that normalizes the
+    # value but not the identity, or vice versa, fails exactly one of the two twins.
+    bm = next((p for p in UNION_MEMBER_POSITIONS if p.cat == "scalar_bool"), None)
+    if bm is not None:
+        def umember(body, name, expect):
+            vectors.append((f"{name}.bin",
+                            tag + hdr(u.fid, WT_SEQ_BEG) + body + END, expect))
+
+        tctl = "u_member_bool_true_ctl.bin"
+        umember(scalar_u(bm.fid, 1), "u_member_bool_true_ctl", "accept")
+        for nm, v in (("two", 2), ("0xff", 0xFF), ("256_over_u8", 256),
+                      ("2p63_sign_bit", 1 << 63), ("u64_max", (1 << 64) - 1)):
+            umember(scalar_u(bm.fid, v), f"u_member_bool_{nm}", f"same:{tctl}")
+        umember(hdr(bm.fid, WT_U) + b"\x81\x00", "u_member_bool_true_nonminimal",
+                f"same:{tctl}")
+        # the `false` half: the member's default, so the whole union is omitted. Its
+        # twin is the tag alone — which re-encodes to a NON-empty message, so the
+        # comparison still observes normalization (the axis rejects an empty twin).
+        fctl = "u_member_bool_false_ctl.bin"
+        vectors.append((fctl, tag, "accept"))
+        umember(scalar_u(bm.fid, 0), "u_member_bool_false_explicit", f"same:{fctl}")
+        umember(hdr(bm.fid, WT_U) + b"\x80\x00", "u_member_bool_false_nonminimal",
+                f"same:{fctl}")
 
     for name, data, _ in vectors:
         with open(os.path.join(out_dir, name), "wb") as fh:

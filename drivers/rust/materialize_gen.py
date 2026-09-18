@@ -66,6 +66,16 @@ fn mz_arr_u<T: core::fmt::Display>(out: &mut String, a: &[T]) {
     }
     let _ = write!(out, "]");
 }
+// §4.4: an array of boolean is an array of unsigned 0/1 on the wire (MESSAGE_SPEC
+// §4.7), so its elements render as u1/u0 exactly like any other unsigned array.
+fn mz_arr_bool(out: &mut String, a: &[bool]) {
+    use core::fmt::Write as _;
+    let _ = write!(out, "[");
+    for (i, v) in a.iter().enumerate() {
+        let _ = write!(out, "{}u{}", if i > 0 { "," } else { "" }, u8::from(*v));
+    }
+    let _ = write!(out, "]");
+}
 fn mz_arr_s<T: core::fmt::Display>(out: &mut String, a: &[T]) {
     use core::fmt::Write as _;
     let _ = write!(out, "[");
@@ -92,7 +102,8 @@ fn mz_arr_f64(out: &mut String, a: &[f64]) {
 }
 '''
 
-_ARR_FN = {"u": "mz_arr_u", "s": "mz_arr_s", "fp32": "mz_arr_f32", "fp64": "mz_arr_f64"}
+_ARR_FN = {"u": "mz_arr_u", "bool": "mz_arr_bool", "s": "mz_arr_s",
+           "fp32": "mz_arr_f32", "fp64": "mz_arr_f64"}
 
 
 def emit_value(node, path, out):
@@ -100,6 +111,9 @@ def emit_value(node, path, out):
     kind = node["kind"]
     if kind == "u":
         out.append('    let _ = write!(s, "u{}", ' + path + ');')
+    elif kind == "bool":
+        # §4.4 boolean: rendered as the unsigned value it is on the wire — `u1` / `u0`. A port whose storage is a real bool can only ever produce those two; one that kept a non-normalized raw value renders it as-is, which is exactly the divergence the form exists to surface.
+        out.append('    let _ = write!(s, "u{}", u8::from(' + path + '));')
     elif kind == "s":
         out.append('    let _ = write!(s, "s{}", ' + path + ');')
     elif kind == "fp32":

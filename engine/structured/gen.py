@@ -146,6 +146,12 @@ def encode(msg: dict) -> bytes:
     if msg.get("f64", 0.0) or _is_special(msg.get("f64")): nested += fp64(1, msg["f64"])
     if msg.get("str", ""):   nested += fstr(2, msg["str"])
     if msg.get("blob", b""): nested += fblob(3, msg["blob"])
+    # nested.flag (child id 9) — §4.4: a boolean is an unsigned integer, and `true`
+    # is CANONICALLY the value 1. The reference encoder therefore never writes any
+    # other spelling; the tolerant-decode half (every non-zero reads as true) is
+    # driven from sweep_tolerance.py, which writes the non-canonical spellings by
+    # hand and requires them to re-encode to exactly what this function emits.
+    if msg.get("nflag"): nested += scalar_u(9, 1)
     out += _framed(10, bytes(nested))
     # arrays struct (id 100) — each array omitted when empty, arrays.nested (id 10)
     # omitted when both fp arrays are, the whole frame omitted when everything is
@@ -177,9 +183,17 @@ def encode(msg: dict) -> bytes:
         body = b""
         if e.get("k", 0): body += scalar_u(0, e["k"])
         if e.get("v", ""): body += fstr(1, e["v"])
+        if e.get("f"):     body += scalar_u(2, 1)      # §4.4 boolean, canonical 1
         if body or i == len(selems) - 1:          # interior all-default -> gap
             sw += hdr(i, WT_SEQ_BEG) + body + bytes([WT_SEQ_END])
     out += _framed(202, bytes(sw))
+    # flag (id 203) / flag_array (id 204) — §4.4 booleans. `false` is the declared
+    # default and is omitted like every other default; `true` is the value 1. The
+    # array reuses the UNSIGNED array wire form (MESSAGE_SPEC §4.7) with 0/1 elements
+    # and, being a compact array, carries its length in the count word (no gaps).
+    if msg.get("flag"): out += scalar_u(203, 1)
+    flags = msg.get("flagarr")
+    if flags: out += arr_u(204, [1 if b else 0 for b in flags])
     return bytes(out)
 
 def _is_special(v):
@@ -355,6 +369,29 @@ def vectors():
     # run, so wire order survives. Appended at the end for the same numbering reason as
     # the two vectors above.
     out.append(("ba_maxlen_full", {"blobarr": [bytes([0x5A + i]) * 64 for i in range(5)]}))
+    # --- §4.4 booleans (2026-09-18) — the four positions the schema now declares ---
+    # These are the CANONICAL half: `true` is the value 1 at every position, so they
+    # pin what a conformant re-encode must look like and give the tolerance sweep its
+    # controls (sweep_tolerance.py writes `2`, `0xff`, 2^64-1 and a padded `1` at the
+    # same positions and requires the re-encode to equal these bytes). Appended at the
+    # END for the numbering reason stated above.
+    out.append(("bool_flag_true", {"flag": True}))                       # id 203, root scalar
+    out.append(("bool_nested_flag", {"nflag": True}))                    # nested (10) child 9
+    out.append(("bool_sw_elem", {"structarr": [{"k": 1, "f": True}]}))   # struct_array element field
+    out.append(("bool_arr_one", {"flagarr": [True]}))                    # count 1
+    out.append(("bool_arr_all_true", {"flagarr": [True] * 5}))           # count 5, all set
+    # A compact array's wire count IS its length (documentation#31), so an interior
+    # `false` is a real element and a trailing `false` is NOT trimmed — the boolean
+    # analogue of `cap_u8_trailing_zeros`, at the one element type whose false/zero
+    # distinction a port could collapse.
+    out.append(("bool_arr_mixed", {"flagarr": [True, False, True, False, True]}))
+    out.append(("bool_arr_trailing_false", {"flagarr": [True, False, False, False, False]}))
+    # every boolean position set at once, beside non-boolean values, so a port that
+    # binds the wrong slot shows it as a value divergence rather than a verdict one
+    out.append(("bool_combo_all", {"u8": 7, "flag": True, "nflag": True,
+                                   "str": "b", "flagarr": [True, True, False, True, True],
+                                   "structarr": [{"k": 2, "v": "x", "f": True},
+                                                 {"f": True}]}))
     return out
 
 # --- union message (schema/probe-union.sofab.yaml) — WP-02 ------------------
@@ -384,6 +421,10 @@ def encode_union(msg: dict) -> bytes:
             if v: choice += fstr(2, v)
         elif kind == "blob":
             if v: choice += fblob(3, v)
+        elif kind == "flag":
+            # §4.4 x §4.2: `true` is canonically 1; `false` IS the member's default, so
+            # it reduces to the omitted union exactly like every other default member.
+            if v: choice += scalar_u(4, 1)
         else: raise ValueError(f"unknown union member {kind!r}")
     if choice:
         out += hdr(1, WT_SEQ_BEG) + choice + bytes([WT_SEQ_END])
@@ -420,6 +461,13 @@ def union_vectors():
     out.append(("combo_tag_i32_trailer", {"tag": 5, "member": ("i32", 42), "trailer": 12}))
     out.append(("combo_tag_text", {"tag": 0xFFFFFFFF, "member": ("text", "Sofab ✓")}))
     out.append(("combo_tag_trailer_default", {"tag": 7, "member": None, "trailer": 200}))
+    # as_flag (boolean, id 4, 2026-09-18): only `true` has a wire form — `false` is the
+    # member's own default and reduces to the omitted union (the §4.2 identity loss),
+    # which `00_default` already pins. Appended at the END: the filenames are numbered
+    # by position, so inserting these beside their siblings would renumber every later
+    # vector.
+    out.append(("flag_true", {"member": ("flag", True)}))
+    out.append(("flag_true_tag_trailer", {"tag": 3, "member": ("flag", True), "trailer": 9}))
     return out
 
 

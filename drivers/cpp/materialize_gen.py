@@ -47,6 +47,8 @@ def _load_descriptor():
 # --- leaf emitters: append one materialized leaf for a member-access expr `acc` ---
 def _leaf(kind, acc):
     if kind == "u":      return f"_md_u(o, {acc});"
+    # §4.4 boolean: rendered as the unsigned value it is on the wire — `u1` / `u0`. A port whose storage is a real bool can only ever produce those two; one that kept a non-normalized raw value renders it as-is, which is exactly the divergence the form exists to surface.
+    if kind == "bool":   return f"_md_u(o, static_cast<unsigned long long>({acc} ? 1 : 0));"
     if kind == "s":      return f"_md_s(o, {acc});"
     if kind == "fp32":   return f"_md_f32(o, {acc});"
     if kind == "fp64":   return f"_md_f64(o, {acc});"
@@ -60,7 +62,7 @@ def _emit(node, acc, out, ind, depth):
     pad = "    " * ind
     kind = node["kind"]
 
-    if kind in ("u", "s", "fp32", "fp64", "string", "blob"):
+    if kind in ("u", "bool", "s", "fp32", "fp64", "string", "blob"):
         out.append(pad + _leaf(kind, acc))
         return
 
