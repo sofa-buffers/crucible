@@ -240,14 +240,30 @@ sofabgen_from_ci() {
 
     if [ -n "${SOFABGEN_RUN:-}" ]; then
         _run="$SOFABGEN_RUN"
+        _run_sha=""
     else
-        _run=$(curl -fsSL -H "$_ah" -H "$_aj" \
-            "$_api/actions/workflows/ci.yml/runs?branch=$GEN_BRANCH&status=success&per_page=1" 2>/dev/null \
-            | python3 -c 'import sys,json
+        # Pick the newest green run BY DATE, in the client. The endpoint is documented
+        # newest-first and behaves that way on every manual check, but on 2026-09-18 a
+        # `per_page=1` request answered with a run four weeks old and the gate built a
+        # month-stale generator against current corelibs — a break that reads like an
+        # upstream one and is not (crucible#183). Position is not a guarantee this
+        # script may rest on: the whole file exists so a run cannot lie about which
+        # versions it compared. Sorting a page costs one request of the same size.
+        _runs=$(curl -fsSL -H "$_ah" -H "$_aj" \
+            "$_api/actions/workflows/ci.yml/runs?branch=$GEN_BRANCH&status=success&per_page=50" 2>/dev/null)
+        _pick=$(printf '%s' "$_runs" | python3 -c 'import sys,json
 try: r=json.load(sys.stdin).get("workflow_runs",[])
 except Exception: r=[]
-print(r[0]["id"] if r else "")' 2>/dev/null)
-        [ -n "$_run" ] || { echo "==> tools/sofabgen: no green ci.yml run on generator@$GEN_BRANCH (token needs actions:read on sofa-buffers/generator)" >&2; return 1; }
+r=[x for x in r if x.get("conclusion")=="success" and x.get("created_at")]
+if r:
+    x=max(r,key=lambda v:v["created_at"])
+    print(x["id"], x["head_sha"], x["created_at"])' 2>/dev/null)
+        [ -n "$_pick" ] || { echo "==> tools/sofabgen: no green ci.yml run on generator@$GEN_BRANCH (token needs actions:read on sofa-buffers/generator)" >&2; return 1; }
+        _run=$(printf '%s' "$_pick" | cut -d' ' -f1)
+        _run_sha=$(printf '%s' "$_pick" | cut -d' ' -f2)
+        echo "==> tools/sofabgen: newest green generator@$GEN_BRANCH run is $_run ($(printf '%s' "$_pick" | cut -d' ' -f3), ${_run_sha}) of $(printf '%s' "$_runs" | python3 -c 'import sys,json
+try: print(len(json.load(sys.stdin).get("workflow_runs",[])))
+except Exception: print("?")' 2>/dev/null) considered" >&2
     fi
 
     _dl=$(curl -fsSL -H "$_ah" -H "$_aj" "$_api/actions/runs/$_run/artifacts?per_page=100" 2>/dev/null \
@@ -283,7 +299,36 @@ print(m[0]["archive_download_url"] if m else "")' 2>/dev/null)
     fi
     chmod +x "$_bin"
     mv "$_bin" "$SG"
-    echo "==> tools/sofabgen installed from CI run $_run ($("$SG" --version 2>/dev/null | head -1))" >&2
+    _ver=$("$SG" --version 2>/dev/null | head -1)
+    echo "==> tools/sofabgen installed from CI run $_run ($_ver)" >&2
+
+    # What landed must be what was chosen. The version embeds the commit
+    # (0.0.0-<timestamp>-<sha>), so this is checkable, and an unchecked install is how
+    # crucible#183 went unnoticed: the run printed the version it installed, and nothing
+    # said that version was four weeks old. A mismatch here is not recoverable by
+    # falling back to a release — it means the artifact did not come from the run this
+    # script selected — so it fails rather than returning non-zero.
+    if [ -n "$_run_sha" ]; then
+        case "$_ver" in
+            *"$(printf '%s' "$_run_sha" | cut -c1-12)"*) ;;
+            *) echo "error: tools/sofabgen is $_ver, which does not carry run $_run's commit $_run_sha — refusing to compare against a build this script did not choose (crucible#183)" >&2
+               exit 1 ;;
+        esac
+    fi
+
+    # Where the tip is. A tip whose CI is still running is legitimate and must not fail
+    # the run — that is the ordinary state for the minutes after a generator push — but
+    # it belongs in the log, so "installed X while main is at Y" is visible here instead
+    # of being reconstructed from a driver compile error three jobs later.
+    if [ "$GEN_BRANCH" = "main" ] && [ "${SOFABGEN_RUN:-}" = "" ]; then
+        _tip=$(curl -fsSL -H "$_ah" -H "$_aj" "$_api/commits/main" 2>/dev/null \
+            | python3 -c 'import sys,json
+try: print(json.load(sys.stdin)["sha"])
+except Exception: print("")' 2>/dev/null)
+        if [ -n "$_tip" ] && [ "$_tip" != "$_run_sha" ]; then
+            echo "==> tools/sofabgen NOTE: generator@main is at $(printf '%s' "$_tip" | cut -c1-8); the newest GREEN run is $(printf '%s' "$_run_sha" | cut -c1-8). Newer commits have no green CI yet." >&2
+        fi
+    fi
 }
 
 if [ "$SOFABGEN_VERSION" = "source" ] || [ "$SOFABGEN_VERSION" = "main" ]; then
