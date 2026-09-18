@@ -1,7 +1,7 @@
 # F-0063 — corelib-ts quiets an fp32 array's **signaling** NaN whenever the array does not fit the output buffer (the streaming encode path)
 
 **Status:** ✅ **fixed in corelib-ts `1c370a4`** — [corelib-ts#185](https://github.com/sofa-buffers/corelib-ts/issues/185), verified 2026-09-18; [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail, this file is the evidence.
-**Guard:** the encode gate (`scripts/run-encode.sh`), which replays `corpus/structured/083_arr_fp32_nan_bits.bin` at every `SOFAB_FLUSH` size — it went red on this finding and is green again with the fix, so a regression re-reds it on the next push. The four vectors in this folder are the minimized form, kept because the corpus input alone does not separate the mechanism from its neighbours.
+**Guard:** corpus/structured — `r0` is byte-for-byte `083_arr_fp32_nan_bits.bin`, already in that corpus, and the **encode gate** (`scripts/run-encode.sh`) is what catches this: it replays the corpus at every declared `SOFAB_FLUSH` size, which is the axis the defect lives on. The gate went red on this finding and is green again with the fix, so a regression re-reds it on the next push. The other three vectors here are controls that separate the mechanism from its neighbours; they are deliberately not promoted, since the corpus input alone is what the gate needs.
 **Issue:** [corelib-ts#185](https://github.com/sofa-buffers/corelib-ts/issues/185)
 
 **Found 2026-09-18** by the encode gate on the first full suite run after catching the
