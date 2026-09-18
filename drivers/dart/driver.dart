@@ -44,8 +44,10 @@ String _hex(Uint8List b) {
 //
 // Dart is the backend the contract's finish() rule was written for: ProbeDecoder's
 // finish() returns NULL where the others throw, so routing the verdict through it
-// would put a backend difference into the canonical line. It exposes `status`, so
-// the verdict comes from there.
+// would put a backend difference into the canonical line. The verdict is what the
+// last feed() returned instead — dart was the last backend still carrying a `status`
+// accessor beside feed, which §5.2.1 forbids ("no second place to ask"), and
+// generator#555 took it off.
 int _envInt(String name) => int.tryParse(Platform.environment[name] ?? '') ?? 0;
 
 final int _split = _envInt('SOFAB_SPLIT');
@@ -128,21 +130,25 @@ Uint8List _encodeVia(Probe m) {
 // (oracle/canonical.md: decode -> re-encode -> hex on COMPLETE).
 String canonical(Uint8List data) {
   final out = Probe();
-  final sofab.DecodeStatus st;
+  // `var`, not `final`: the chunked branch reassigns it once per fed chunk, because
+  // the verdict is the last feed()'s return value (§5.2.1, generator#555).
+  sofab.DecodeStatus st;
   try {
     if (_chunking) {
       // Chunked decode via the generated ProbeDecoder, taken ONLY when a chunking
       // variable is set — the default stays the one-shot tryDecode byte for byte,
       // which is what makes the gate meaningful: it then compares two genuinely
-      // different code paths. Verdict from `status`, never from finish().
+      // different code paths. Verdict from the last feed(), never from finish().
+      // A record with no chunks (a zero-length one) feeds nothing and keeps
+      // `complete`: zero bytes are the valid empty message.
       final d = Probe.decoder(out);
+      st = sofab.DecodeStatus.complete;
       for (final c in _chunksOf(data)) {
-        d.feed(c);
+        st = d.feed(c);
         // Scrub: the chunk is a copy the driver owns, so overwriting it after feed
         // exposes a decoder that borrowed instead of copying.
         if (_scrub) c.fillRange(0, c.length, 0xA5);
       }
-      st = d.status;
     } else {
       st = Probe.tryDecode(data, out);
     }
