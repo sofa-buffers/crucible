@@ -95,6 +95,13 @@ whose `DecodeStatus` is four-valued and carries a cap refusal faithfully. And it
 deletion — dart's `finish()` is built on the accessor and its doc sends the caller there, so
 it needs the restructuring the six got.
 
+**Fixed the same day** (`e243e25c`, 12:15, seven minutes before the issue closed), and as the
+restructuring rather than a deletion: `_st` gone, `feed` a plain forward, `finish()` re-asking
+the stream with a zero-length feed. Verified by regenerating the probe schema for all eleven
+backends — no `status` accessor anywhere. `drivers/dart/driver.dart` follows, the sixth and
+last driver to make this move, so the family is uniform again: the verdict is what `feed`
+returned, everywhere.
+
 **No corelib disagreed with another anywhere in the run.** Across seeds, regression,
 conformance, cross-encode, union, limits, the twelve sweep axes, the materialized oracle and
 both chunk-invariance gates: 0 divergences, 0 conformance failures, 0 chunk mismatches. The

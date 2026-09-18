@@ -1,6 +1,6 @@
 # G-0041 — the Dart backend still emits a `status` accessor beside `feed`, the one backend the IStream contract never reached (§5.2.1)
 
-**Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Status:** ✅ **fixed in sofabgen `e243e25c`** — [generator#555](https://github.com/sofa-buffers/generator/issues/555), verified 2026-09-18; [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail, this file is the evidence.
 **Guard:** none — a surface defect has no input that exposes it. The differential and materialized oracles are both structurally blind to it (an extra accessor produces no bytes); it is caught by reading generated code, and upstream by a backend test of the kind `TestTSClosedNameSet` already is for G-0040.
 **Issue:** [generator#555](https://github.com/sofa-buffers/generator/issues/555)
 
@@ -103,8 +103,31 @@ Removing `status` alone leaves a caller unable to tell "ended mid-field" from "r
 Dart needs the restructuring the six got — `finish()` asks the stream with a zero-length
 feed — adapted to its non-throwing shape.
 
+## Resolution (verified 2026-09-18)
+
+`e243e25c`, *"refactor(dart): the generated decoder asks the stream instead of remembering a
+status (#555)"* — landed 12:15, the same day the issue was filed. It is the restructuring
+this write-up said the fix would need, not a deletion: the `_st` field is gone, `feed` is a
+plain forward, and `finish()` re-asks the stream with a zero-length feed, which is exactly
+what #541 gave the six exception-shaped backends, adapted to dart's non-throwing shape.
+
+```dart
+sofab.DecodeStatus feed(List<int> chunk) => _d.feed(chunk);
+
+Probe get message => _out;
+
+/// … the outcome [feed] returned says which it was, or read [message] to get it anyway.
+Probe? finish() =>
+    _d.feed(const <int>[]) == sofab.DecodeStatus.complete ? _out : null;
+```
+
+The doc comment moved with it — it no longer sends the caller to an accessor, it sends them
+to what `feed` returned. Checked by regenerating `schema/probe.sofab.yaml` for **all eleven**
+backends at `e243e25c`: no `status` accessor anywhere, dart included.
+
 ## Crucible's side
 
-`drivers/dart/driver.dart:145` reads `d.status` and will follow this change; it is the one
-driver of the eleven chunked-capable ones still doing so. Nothing to do here until the
-backend lands, and nothing this repo can guard in the meantime.
+`drivers/dart/driver.dart` read `d.status` and was the last of the eleven chunked-capable
+drivers doing so; it now keeps what the last `feed` returned, initialised to `complete` so a
+zero-length record — which feeds nothing — still answers for the valid empty message. Same
+shape as the five drivers that made this move on the previous sofabgen build.
