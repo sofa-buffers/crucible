@@ -162,12 +162,12 @@ where the per-language work went:
 | c | `_decoder_init` + `_decoder_feed`; **no `status`** — the last feed's return is it | `to`, `stream` | no allocating encode, so the driver's **default** path is already `to` |
 | cpp ×4 | **no generated `decoder()`** — driven by hand, as `try_decode`'s own `IStreamInline` fed in pieces | `new`, `to`, `stream` | a bare `IStreamObject` would decode under different rules and report a try_decode-vs-feed difference as a chunk-invariance failure |
 | rust ×2 | `decoder()` → `feed`/`finish`; **no `status`** | `new`, `stream` | `finish()` feeds an empty chunk to probe end-of-input — what makes a truncated stream an error, not a half-filled value |
-| java, csharp | `decoder()` → `feed`, `status()`, `message()` | `new`, `to`, `stream` | |
-| dart | `decoder(out)` → `feed`, `status` | `new`, `to`, `stream` | the backend the "never `finish()`" rule exists for: it returns **null** where the others throw |
-| zig | `decoder(out, alloc)` → `feed`, `status()` | `new`, `stream` | **borrows** a payload arriving whole in one chunk and requires the chunk to outlive the message, so `SOFAB_CHUNK_SCRUB` is inapplicable (exit 3) |
-| typescript | `new ProbeDecoder()` → `feed`, `status` | `stream` only | no `encode()`, no `encodeTo()`; `OStream` cannot encode below its largest contiguous write, so small `SOFAB_FLUSH` sizes are inapplicable |
-| python ×2 | `Probe.decoder()` → `feed`, `status`, `message` | `new`, `stream` | **the one driver that scrubs**: `feed` takes any buffer and borrows it for the call only, so the chunks are `bytearray`s this driver overwrites after every `feed` — `SOFAB_CHUNK_SCRUB` runs here and passes. Pull-shaped until corelib-py#142 (2026-09-02) |
-| kotlin ×2 | `decoder()` → `feed`, `status`, `message` | `new`, `to`, `stream` | identical on both legs — the streaming surfaces live in `commonMain`, so the JVM and native rows differ only in the machine code under them |
+| java, csharp | `decoder()` → `feed`, `message()`; **no `status()`** — the last feed's return is it | `new`, `to`, `stream` | |
+| dart | `decoder(out)` → `feed`, `status` | `new`, `to`, `stream` | the backend the "never `finish()`" rule exists for: it returns **null** where the others throw — and the only one that still carries a `status` accessor beside `feed`, which §5.2.1 forbids (generator#555); its `finish()` is built on it |
+| zig | `decoder(out, alloc)` → `feed`; **no `status()`** | `new`, `stream` | **borrows** a payload arriving whole in one chunk and requires the chunk to outlive the message, so `SOFAB_CHUNK_SCRUB` is inapplicable (exit 3) |
+| typescript | `new ProbeDecoder()` → `feed`; **no `status`** | `stream` only | no `encode()`, no `encodeTo()`. Every declared flush size down to 1 now encodes (the driver keeps its exit-3 path for a `BufferFull` that a future shape could still raise) |
+| python ×2 | `Probe.decoder()` → `feed`, `message`; **no `status`** | `new`, `stream` | **the one driver that scrubs**: `feed` takes any buffer and borrows it for the call only, so the chunks are `bytearray`s this driver overwrites after every `feed` — `SOFAB_CHUNK_SCRUB` runs here and passes. Pull-shaped until corelib-py#142 (2026-09-02) |
+| kotlin ×2 | `decoder()` → `feed`, `message`; **no `status`** | `new`, `to`, `stream` | identical on both legs — the streaming surfaces live in `commonMain`, so the JVM and native rows differ only in the machine code under them |
 | go | **none** — corelib-go has no resumable decoder (decode side only; the encode axis landed 2026-08-16) | `new`, `to`, `stream` | declared `chunked_decode=none` in `meta`, so it is absent by record rather than by omission |
 
 Every participating driver **announces its configuration on stderr** when a variable is
@@ -291,8 +291,17 @@ the vacuous pass the gates' opt-in rosters guard against, one level down.
   sees both at build time; nothing else in this build did.
   **Fallible decode:** the generated `Probe.decode` throws `SofabError` on bad
   input (try/catch verdict). The driver reads the whole framed stream via
-  `readFileSync(0)` (Node stdin is async; the corpus fits in memory), fp32 bits
-  via `Float32Array`/`DataView` (NaN payloads may not round-trip, as in Python).
+  `readFileSync(0)` (Node stdin is async; the corpus fits in memory). **fp32 bits
+  come from the generated type's raw channel, and since the typed-array codegen
+  there are two of them:** a scalar `fp32` parks its four wire bytes in a sibling
+  field `<name>Fp32Raw` (populated on decode only for a NaN), while an fp32 *array*
+  has no such sibling — it materializes as a `Float32Array` whose buffer the decoder
+  fills with the 32-bit wire words, so a byte view over it is bit-exact for every
+  element. The materialized walk reads whichever applies; repacking the widened
+  double would quiet a signaling NaN (§6.5). **Scalar arrays are typed arrays**
+  (`Uint8Array` … `BigInt64Array`, `Float32Array`, `Float64Array`), so the walk
+  iterates them as `ArrayLike` — never `.map()`, whose typed-array flavour coerces a
+  returned string back to a number (`Uint8Array`) or throws (`BigInt64Array`).
   corelib-ts has swappable js/native/wasm kernels; the driver uses the default
   (js) — the native/wasm kernels are candidate future variants (like Python
   cython/pure). Coverage engine is Jazzer.js (`fuzz.ts`, devcontainer).
