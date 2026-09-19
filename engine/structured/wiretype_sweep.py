@@ -64,6 +64,20 @@ CONSTRUCTS = {
 }
 
 
+def _canonical_at_bool(p, cname, build):
+    """One axis, one rule. At a boolean position the unsigned constructs carry the
+    generic value 5 (or [5]), which is a perfectly legal `true` — but a NON-CANONICAL
+    one, so the §7.3 cell would also assert §4.4's normalization and go red on F-0064 /
+    G-0042. Both passes (probe and union) use the canonical spelling there instead; the
+    §4.4 rule is swept in full, at all five boolean positions and over six values, by
+    sweep_tolerance, which is where a failure belongs."""
+    if p.cat == "scalar_bool" and cname == "U":
+        return lambda fid: scalar_u(fid, 1)
+    if p.cat == "arr_bool" and cname == "ARR_U":
+        return lambda fid: arr_u(fid, [1])
+    return build
+
+
 def place(path, fid, body):
     """One field carrying `body` at (path, fid); enclosing sequences opened/closed.
     The rest of the probe message stays default (omitted) — a valid sparse message."""
@@ -94,18 +108,7 @@ def emit(out_dir):
             # consumed by the backends in generator#259; the cells are green on their own
             # now, so the axis covers the full construct product again.
             name = f"{p.tag()}_{cname}_{kind}.bin"
-            # One axis, one rule. At a boolean position the unsigned constructs carry
-            # the generic value 5 (or [5]), which is a perfectly legal `true` — but it
-            # is a NON-CANONICAL one, so this §7.3 cell would also assert §4.4's
-            # normalization and go red on F-0064 / G-0042. Use the canonical spelling
-            # here; the §4.4 rule is swept in full, at all five boolean positions and
-            # over six values, by sweep_tolerance, which is where a failure belongs.
-            b = build
-            if p.cat == "scalar_bool" and cname == "U":
-                b = lambda fid: scalar_u(fid, 1)
-            elif p.cat == "arr_bool" and cname == "ARR_U":
-                b = lambda fid: arr_u(fid, [1])
-            data = place(list(p.path), p.fid, b(p.fid))
+            data = place(list(p.path), p.fid, _canonical_at_bool(p, cname, build)(p.fid))
             with open(os.path.join(out_dir, name), "wb") as fh:
                 fh.write(data)
             vectors.append((name, data, "accept"))
@@ -193,7 +196,7 @@ def emit_union(out_dir):
         for cname, build in CONSTRUCTS.items():
             kind = "ctl" if cname == declared else "mism"
             name = f"u_{p.tag()}_{cname}_{kind}.bin"
-            data = place(list(p.path), p.fid, build(p.fid))
+            data = place(list(p.path), p.fid, _canonical_at_bool(p, cname, build)(p.fid))
             with open(os.path.join(out_dir, name), "wb") as fh:
                 fh.write(data)
             vectors.append((name, data, "accept"))

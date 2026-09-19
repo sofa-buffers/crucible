@@ -42,9 +42,14 @@ seventeen drivers implement the clause; three do not, in two different ways.
 | `r2_bool_u64_max.bin` | `d8 0c ff×9 01` | `A d80c01` | **`R invalid_msg`** | **`R invalid_msg`** | `A d80c01` ✓ |
 | `ctl0_bool_one.bin` | `d8 0c 01` | `A d80c01` | `A d80c01` ✓ | `A d80c01` ✓ | `A d80c01` ✓ |
 
-Both failures reproduce at **all four** boolean positions the schema declares — the root
-scalar (203), the struct child (`nested`/9) and the wrapper-element child
-(`struct_array`/…/2) identically; the array position (204) is G-0042's.
+Both failures reproduce at every scalar boolean position the schemas declare, identically:
+the root scalar (203), the struct child (`nested`/9), the wrapper-element child
+(`struct_array`/…/2), and the union member `as_flag` in `schema/probe-union.sofab.yaml`
+(`sweep_tolerance`'s union pass: 5 divergences, same camps). The array position (204) is
+G-0042's.
+
+The union pass is **not** reached by CI while this finding is open: `scripts/sweep.sh` exits
+on the red probe pass before it builds the union drivers. It was run by hand on 2026-09-19.
 
 ### The controls are the load-bearing half
 
