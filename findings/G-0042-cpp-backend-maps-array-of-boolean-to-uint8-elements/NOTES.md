@@ -1,7 +1,7 @@
 # G-0042 — the sofabgen C++ backend maps `array of boolean` to `uint8_t` elements, so an element is never normalized and a value above 255 silently decodes `true` as `false`
 
-**Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-**Guard:** the four vectors in this folder (`r0`, `r1` + two controls) and the §4.4 array vectors of `engine/structured/sweep_tolerance.py` (blocking axis, currently **RED**); not promoted to `corpus/regression` — promote with the fix.
+**Status:** ✅ **RESOLVED** 2026-09-19 by **[generator#581](https://github.com/sofa-buffers/generator/issues/581)** (`d408700e`, "a boolean decodes under §4.4, never as a one-byte integer"), which needed **[corelib-cpp#143](https://github.com/sofa-buffers/corelib-cpp/pull/143)** alongside it — the shared `sofab::` surface excluded `bool` from its integral span branch, so the generated container had no wire type to emit. Verified here against both.
+**Guard:** corpus/regression — the four vectors in this folder (`r0`, `r1` + two controls) promoted 2026-09-19 as `G0042_*`, plus the §4.4 array vectors of `engine/structured/sweep_tolerance.py` (blocking axis, now **GREEN**).
 **Issue:** [generator#581](https://github.com/sofa-buffers/generator/issues/581) (filed 2026-09-19)
 **Corelib:** F-0064 — the sibling defect on the scalar path, which is `corelib-c-cpp`'s (no boolean slot in the object layer, and `read_bool` performs no mapping)
 

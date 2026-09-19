@@ -1,7 +1,7 @@
 # F-0064 — `corelib-c-cpp` reads a `boolean` as a one-byte unsigned: a non-zero value is not normalized to `true`, and a value above 255 is rejected as `INVALID`
 
-**Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-**Guard:** the six vectors in this folder (`r0`–`r2` + three controls) and the §4.4 family of `engine/structured/sweep_tolerance.py` (blocking axis, currently **RED**); not promoted to `corpus/regression` — promote with the fix, so that gate starts green rather than red.
+**Status:** ✅ **RESOLVED** 2026-09-19 by **[corelib-c-cpp#172](https://github.com/sofa-buffers/corelib-c-cpp/issues/172)** — verified here the same day against `corelib-c-cpp@35f2df7` with `sofabgen 0.0.0-20260919224754-d408700eac19`: the tolerance sweep's 100 vectors run 0 divergence / 0 conformance failure (they were red on 3 of 17 drivers when filed).
+**Guard:** corpus/regression — the six vectors in this folder (`r0`–`r2` + three controls) promoted 2026-09-19 as `F0064_*`, plus the §4.4 family of `engine/structured/sweep_tolerance.py` (blocking axis, now **GREEN**).
 **Issue:** [corelib-c-cpp#172](https://github.com/sofa-buffers/corelib-c-cpp/issues/172) (filed 2026-09-19)
 **Sibling:** [G-0042](../G-0042-cpp-backend-maps-array-of-boolean-to-uint8-elements/NOTES.md) — the same clause on the array path, which *is* the generator's and carries its own write-up (so it gets a folder, not a `**Codegen:**` line: that line is for a codegen defect with no write-up of its own).
 
