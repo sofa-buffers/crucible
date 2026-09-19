@@ -144,6 +144,11 @@ static void read_stream_cfg()
     }
 }
 
+#ifndef CRUCIBLE_LIMIT_MODE
+// The streamed decode and its slicing exist only outside limit mode: limit mode feeds
+// the record in one bare `feed` (see decode_and_report), so compiling them there only
+// produces an unused-function warning.
+
 // How the record is cut on its way into the decoder. Never an empty chunk: k<=0,
 // k>=len and n>=len all mean one chunk holding the whole record, which is exactly
 // today's single feed. A zero-length record yields no chunks at all — the caller
@@ -212,6 +217,7 @@ static sofab::IStreamImpl::Result decode_streamed(const std::uint8_t *data,
     }
     return r;
 }
+#endif
 
 // Which generated call produces the `A <hex>` payload. All three must emit identical
 // bytes for one decoded value — the family is byte-canonical — and SOFAB_FLUSH must not

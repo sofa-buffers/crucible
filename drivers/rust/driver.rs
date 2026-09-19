@@ -165,6 +165,27 @@ fn decode_streamed(cfg: &StreamCfg, data: &[u8]) -> Result<Probe, DecodeError> {
     d.finish()
 }
 
+// `OStream::flush` is fallible on corelib-rs (`Result<usize>`, since corelib-rs#86) and
+// infallible on corelib-rs-no-std (a bare `usize`), and this file is one source for both.
+// This trait accepts either. A refused flush is reported like a refused `with_flush`:
+// exit 3, the backend cannot operate at this configuration.
+trait FlushOutcome {
+    fn or_exit(self);
+}
+
+impl FlushOutcome for usize {
+    fn or_exit(self) {}
+}
+
+impl<E: std::fmt::Debug> FlushOutcome for Result<usize, E> {
+    fn or_exit(self) {
+        if let Err(e) = self {
+            eprintln!("crucible-rust: OStream::flush refused: {:?}", e);
+            std::process::exit(3);
+        }
+    }
+}
+
 // Which generated call produces the `A <hex>` payload. Both surfaces must emit
 // identical bytes for one decoded value, and SOFAB_FLUSH must not change that: it hands
 // the OStream an n-byte buffer with a sink, so the encoder crosses a buffer boundary at
@@ -200,7 +221,7 @@ fn encode_via(cfg: &StreamCfg, m: &Probe) -> Vec<u8> {
             }
         };
         m.serialize(&mut os);
-        os.flush();
+        os.flush().or_exit();
     }
     out
 }
