@@ -14,6 +14,43 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-19 (night) — F-0064 + G-0042 closed on the family tip, and the C anchor learns `boolean`
+
+Verification round for the §4.4 boolean pair, prompted by triaging crucible#189. Both
+upstream tickets had closed the same day: **corelib-c-cpp#172** (F-0064, the scalar read)
+and **generator#581** (G-0042, `array of boolean` as `uint8_t`), the latter fixed by
+`d408700e` and needing **corelib-cpp#143** beside it — the shared `sofab::` surface
+excluded `bool` from its integral span branch, so the generated container had no wire type
+to emit at all.
+
+**Bootstrap is the whole story on the generator side.** The vendored sofabgen was
+`…20260919074829-7470127355ba` (07:48 UTC); the fix landed at 22:47 UTC. Running the sweep
+without re-bootstrapping would have reproduced the *old* defect and read as an open bug on
+a closed ticket. Re-bootstrapped to `0.0.0-20260919224754-d408700eac19`, every corelib at
+`main` (`corelib-c-cpp@35f2df7`, `corelib-cpp@45466d7`).
+
+Result on 17 drivers: `sweep_tolerance` 100 vectors, **0 divergence / 0 conformance
+failure** — it was red on 3 of 17 when the pair was filed. Both write-ups flipped to
+RESOLVED and their ten vectors promoted to `corpus/regression` as `F0064_*` / `G0042_*`
+(253 inputs, 0 divergences), which is what their `**Guard:**` lines had reserved.
+
+**The second oracle was blind here, and that is the finding of the round.** `materialize.sh`
+came back with 1904 divergences — not the family, but *our own anchor*: `5e1c6bf` added the
+`bool` kind to the descriptor and to nine language drivers, and missed `drivers/c/`. There
+`SOFAB_OBJECT_FIELDTYPE_BOOLEAN` fell into the `default:` arm of `md_value()` and the anchor
+printed `?` while the other sixteen drivers agreed on `u1` / `[u1,u1,u0,u1,u1]`.
+
+That is worse than a cosmetic gap, because C is the reference the comparator anchors on: a
+`?` at every boolean position makes the materialized oracle red *regardless* of what the
+corelibs do, so it could not have answered the one question it exists for — whether `256`
+silently decodes to `false`. Until it was fixed, the pair's verification rested on the
+round-trip sweep alone. `drivers/c/driver.c` now handles the scalar and `ARRAY_BOOLEAN`,
+reading each destination as bytes rather than through a `bool` lvalue (an object holding a
+value outside `{0,1}` has none as a `bool`, so reading it could not show whether the decode
+normalized — the same care crucible#189 asks of the shared-vector runners). After the fix:
+119 inputs × 17 drivers, 0 divergences, and the C anchor matches
+`engine/structured/materialize.py` 0/119. `audit_boolean.py` passes.
+
 ## 2026-09-19 (evening) — nightly 35429832255 triaged locally: quiet, nothing new
 
 The 2026-09-19 nightly fuzzed (Go engine: 19.1M execs in 7m31s, 131 new units; pacemaker 0
