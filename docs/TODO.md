@@ -992,6 +992,14 @@ here:
 
 ## Open — CI / infra
 
+- [ ] **`chunk_invariance.py`'s per-feed timeout aborts the whole pass on a fuzzed corpus.**
+      `CHUNK_FEED_TIMEOUT` defaults to 120 s per driver per chunking; py-pure at chunk size 1
+      over 21421 inputs exceeds it (2026-09-19), and the resulting `TimeoutExpired` ends the run,
+      so every driver after py-pure in roster order goes unchecked while the summary still
+      prints the ones before it. `CHUNK_FEED_TIMEOUT=1800` completes it. Either scale the default
+      with the corpus size, or report a timed-out driver as `[TIMEOUT]` and carry on with the
+      rest — the second is the one that cannot hide drivers.
+
 - [ ] **The Kotlin target has two of its four KMP legs.** `drivers/kotlin/` runs
       corelib-kotlin-mp on `jvm` and on `linuxX64` (2026-08-18). The corelib also builds
       for **`js` (IR, Node/browser)** and **`linuxArm64`**, and the JS leg is the

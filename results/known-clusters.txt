@@ -98,3 +98,13 @@ I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-
 # Delete this row when the fix lands; a return must then read as NEW.
 
 I:py-cython,py-pure | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,java,kotlin-jvm,kotlin-native,rust-nostd,rust-std,typescript,zig  # F-0062 / G-0039 — generated Python checks a blob-array element's maxlen after reading the payload; generator#377 (open)
+
+# G-0043 (generator#575, OPEN): generated Python ACCEPTS a header that contradicts the
+# declared type in three visitor scopes (a struct_array element, a wrapper-array field, a
+# scalar inside an element), so corelib-py READS what §7.3 says to skip. A read is capped
+# (-> L at the count word) and replayable (-> the reassembly buffer, sized MAX_FIELD_SPAN in
+# the one-shot decode, refuses a longer partial payload -> R). Both camps came out of nightly
+# 35320714690's corpus, re-clustered 2026-09-19. Delete both rows when the fix lands.
+I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,rust-nostd,rust-std,typescript,zig | I:java,kotlin-jvm,kotlin-native | reject:py-cython,py-pure  # G-0043 — mistyped wrapper element read, partial payload overflows the one-shot reassembly buffer
+I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,rust-nostd,rust-std,typescript,zig | I:java,kotlin-jvm,kotlin-native | L:py-cython,py-pure  # G-0043 — mistyped wrapper element read, receiver cap fires at its count word
+L:py-cython,py-pure | accept:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,java,kotlin-jvm,kotlin-native,rust-nostd,rust-std,typescript,zig  # G-0043 — the same read on a COMPLETE message: an over-cap mistyped field is capped instead of skipped
