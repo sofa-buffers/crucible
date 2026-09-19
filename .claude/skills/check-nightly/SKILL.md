@@ -1,13 +1,16 @@
 ---
 name: check-nightly
-description: Download the latest Crucible nightly fuzzing artifact (grown corpus, crashes, cluster report) and triage it locally — merge into corpus/interesting, re-cluster against results/known-clusters.txt with freshly built drivers, minimize and attribute anything new. Use when the user says "check nightly", "nightly checken", "look at the nightly", or asks what last night's fuzzing found.
+description: Download the latest Crucible nightly fuzzing artifact (grown corpus, crashes) and triage it locally — merge into corpus/interesting, re-cluster against results/known-clusters.txt with freshly built drivers, minimize and attribute anything new. Use when the user says "check nightly", "nightly checken", "look at the nightly", or asks what last night's fuzzing found.
 ---
 
 # Check the nightly
 
-`nightly.yml` fuzzes for ~45 min, grows `corpus/interesting`, clusters it against
-`results/known-clusters.txt` and uploads everything as an artifact. **The artifact is not
-the finding** — CI only says *"this camp is not in the baseline"*. Turning that into a
+`nightly.yml` fuzzes (the C pacemaker, then the Go engine at a quarter of its budget),
+grows `corpus/interesting`, clusters it against `results/known-clusters.txt` and uploads
+the corpus and `corpus/crashes/` as an artifact. The camp verdict lives **only in the run
+log** — the `results/CLUSTERS.md` inside the artifact is the checked-in copy, which the
+nightly does not rewrite. **The artifact is not the finding** — CI only says *"this camp
+is not in the baseline"*. Turning that into a
 finding (or into "already explained") is this procedure.
 
 What each file/gate *is* stays in its owner (`docs/CI.md`, `docs/ARCHITECTURE.md`,
@@ -21,23 +24,52 @@ gh run list --workflow nightly.yml --limit 5
 gh run view <run-id>                       # step status + annotations (the red continue-on-error steps)
 ```
 
-Then check whether this run was already triaged — the last analysed run id is stamped in
-the `results/known-clusters.txt` header and in `results/CLUSTERS.md` snapshots:
+Then check whether this run was already triaged — a triaged run id is recorded in its
+`docs/STATUS-LOG.md` entry (`**Nightly <run-id> (<date>) …**`) and, when it added camps, in
+the dated section comment of `results/known-clusters.txt`:
 
 ```sh
 grep -rn "<run-id>" results/ docs/ ; git log --oneline -5
+grep -n "^\*\*Nightly [0-9]" docs/STATUS-LOG.md | head -1   # the last triaged run
 ```
 
 If it is already recorded, say so and stop — don't re-triage silently.
 
+**Triaging the latest run covers the untriaged runs before it — except for their crashes.**
+`nightly.yml` caches `corpus/interesting` under a per-run key and restores the newest one, so
+the corpus compounds and the latest artifact holds every input any earlier run found.
+`corpus/crashes/` is **not** cached: a crash exists only in the artifact of the night it
+happened, and that artifact expires after 14 days (the log is kept longer). So grep the log
+of **every** run since the last triaged one, not just the latest.
+
 Read what CI already reported before spending a build (the log is huge; grep it):
 
 ```sh
-gh run view --job=<job-id> --log | grep -E "baseline:|NEW CAMP|CRASH|panic|total:" | tail -20
+gh run view <run-id> --log \
+  | grep -iE "baseline:|NEW CAMP|crash|panic|==ERROR|##\[error\]|SUMMARY|corpus/interesting:|\[go-fuzz\]" | tail -30
 ```
 
-That gives the fuzz yield (execs / new interesting), the Go-engine step, crash artifacts,
-and the camp verdict — often enough to know whether this is a 5-minute or a 2-hour session.
+Case-insensitive on purpose: libFuzzer reports in lower case (`crash-<sha>`, `==ERROR`,
+`crashes: N`), only the Go engine writes `CRASH`. That gives the fuzz yield (inputs after
+the pacemaker, the Go-engine lines), crash artifacts, and the camp verdict
+(`baseline: N/M camp(s) accounted for` or `*** N NEW CAMP(S)`) — often enough to know
+whether this is a 5-minute or a 2-hour session.
+
+**No verdict line is not a quiet night.** The Go-engine and cluster steps are
+`continue-on-error`, so a driver that fails to build turns them into a one-second no-op in a
+run that still reports green — and the log then simply lacks the `baseline:` line. That hid
+a broken Go driver build for 24 nights (2026-08-26 → 09-18): the C pacemaker fuzzed, nothing
+was ever clustered. Check the two steps actually ran:
+
+```sh
+gh api "repos/{owner}/{repo}/actions/runs/<run-id>/jobs" -q '.jobs[0].steps[]
+  | select(.name|test("Go coverage|Cluster"))
+  | "\(.name[0:30]) \(((.completed_at|fromdate)-(.started_at|fromdate)))s"'
+```
+
+Seconds instead of minutes = the step died; its `##[error]` line says why. A run whose
+cluster step died has no verdict to read — the local re-cluster in step 4 is then the first
+one that corpus gets.
 
 ## 1. Download the artifact
 
@@ -102,14 +134,13 @@ in a millisecond.
 
 ## 5. Triage the NEW camps — in this order
 
-**5a. Rule out the false alarm first.** Every baseline signature names *every* driver, so a
-**roster change invalidates all of them at once** and the run screams "N NEW CAMPS" with
-zero new root causes (2026-08-05: 9 "new" camps = 6 old rows plus two driver names, 3 known
-moves). Before triaging: diff the driver roster against the baseline's stamped roster; strip
-the added names from each new signature and check whether it matches an old row byte for
-byte. If that is all it is, **rebase the baseline** with a commit that says which rows moved
-and why — do not open findings. (Making the baseline survive a roster change is in
-`docs/TODO.md`.)
+**5a. Read a roster change correctly.** A driver added since the baseline was written no
+longer invalidates its rows: `oracle/cluster.py` matches each row on the drivers that row
+names (`camp_matches`), and prints the `# roster:` stamp difference only as context. What
+still reads NEW after a roster change is real movement by design — a driver the row names
+on the other side of the split, or a driver the row does not name sitting **alone** in a
+camp, agreeing with nobody. Triage those like any other camp; the new driver is the first
+suspect.
 
 **5b. Also cheap: a driver that merely *moved* camps** for a reason already on record
 (a fix that landed, a quarantine lifted). Check STATUS-LOG/FINDINGS for that driver before
@@ -163,19 +194,20 @@ A sanitizer hit is a second net, not the oracle — but it is never noise.
 
 ## 8. Record and report
 
-- New root cause → `findings/<id>/NOTES.md` + a row in `results/FINDINGS.md`, upstream issue
-  filed against the owning repo.
+- New root cause → `findings/<id>/NOTES.md`, upstream issue filed against the owning repo.
+  `results/FINDINGS.md` is **generated** from the write-ups — never edit it; regenerate:
+  `python3 scripts/gen-findings.py && python3 scripts/check-catalog.py`.
 - Camp explained (finding, legal divergence, benign soft axis) → add its signature to
   `results/known-clusters.txt`, with the reason.
 - A snapshot worth keeping → `results/CLUSTERS.md`; the session narrative and any decision →
   `docs/STATUS-LOG.md` (dated); anything left open → `docs/TODO.md`, with what was *eliminated*.
 - Never restate a fact across two of those files.
 
-Report back: run id + date, fuzz yield, corpus before → after, camps total / accounted /
+Report back: run id + date (and the runs covered since the last triage), fuzz yield, corpus before → after, camps total / accounted /
 new, what each new camp turned out to be, crashes, and the open queue. If nothing is new,
 say that plainly — a quiet nightly is the expected outcome and is a result.
 
 ## Timing
 
-Bootstrap + a full 15-driver build is minutes; a cluster run over ~9k inputs is ~10 min; the chunked pass is ~1 min per driver. Don't poll CI in a loop — differential
+Bootstrap + a full roster build is minutes; a cluster run over ~9k inputs is ~10 min; the chunked pass is ~1 min per driver. Don't poll CI in a loop — differential
 CI is ~8 min, the catalog job seconds.
