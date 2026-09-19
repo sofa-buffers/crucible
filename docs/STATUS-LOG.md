@@ -14,6 +14,21 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-19 (later) — G-0043 closed: generator#576 lands the same morning, verified on the main family
+
+generator#575 was fixed within hours by generator#576 (`7470127`, *"every visitor-handled
+position declines a header that contradicts its declared type"*), covering all three scopes the
+widened issue named. Pulled sofabgen `0.0.0-20260919074829-7470127355ba` from generator CI run
+35430323783 (sha256 verified); every corelib unchanged at `main`. All gates green on 17 drivers:
+the reproducers, the three nightly inputs, `wiretype_sweep` (471 vectors, 18 → 0), `sweep.sh`
+(12 axes + union pass), `corpus/regression` (now 243 with the four `G0043_*` files), chunk
+invariance over it, and seeds. The G-0043 rows are removed from `results/known-clusters.txt`, so
+a return reads as NEW.
+
+**Decision: verify against the CI artifact, not a local build.** A `go build` of `7470127` ran
+the standalone reproducer green while generator CI was still running, but the verdict was only
+taken on the binary bootstrap installs, because that is the one the nightly and the gates run.
+
 ## 2026-09-19 — nightly 35320714690 triaged locally: two Python camps, one codegen root cause (G-0043), and `wiretype_sweep` learns that a skip has no size
 
 The 2026-09-18 nightly fuzzed (89M execs, 47 new units, 0 crashes) but produced **no cluster

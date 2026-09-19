@@ -1,7 +1,7 @@
 # G-0043 — generated Python reads a header that contradicts the declared type instead of skipping it, in three visitor scopes (§7.3)
 
-**Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-**Guard:** wiretype_sweep — the size-graded mismatch family (`*_ARRbig_mism` / `*_ARRhdronly_mism` / `*_ARRpartial_mism`, at every position plus index 9 in each wrapper). The axis is blocking and **RED on py-cython and py-pure only** (18 divergences) until the fix lands. The reproducers here are not promoted to `corpus/regression`: promote them with the fix, so that gate starts green rather than red.
+**Status:** ✅ **fixed in sofabgen `7470127`** — [generator#575](https://github.com/sofa-buffers/generator/issues/575) via generator#576, verified 2026-09-19; [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail, this file is the evidence.
+**Guard:** wiretype_sweep — the size-graded mismatch family (`*_ARRbig_mism` / `*_ARRhdronly_mism` / `*_ARRpartial_mism`, at every position plus index 9 in each wrapper), blocking and green since the fix. The four reproducers are also in `corpus/regression` as `G0043_*`.
 **Issue:** [generator#575](https://github.com/sofa-buffers/generator/issues/575)
 
 **Found 2026-09-19** triaging nightly run 35320714690 (2026-09-18) locally, on the **main**
@@ -85,14 +85,14 @@ wrapper. 18 vectors diverge, all Python-only, in **three** scopes, not one:
 Root scalars and the `nested`/`arrays` structs are correct because they are on the destination
 table, whose route checks the tag; the string/blob wrapper elements are correct because their
 arm declines on subtype. generator#575 carries all three with a standalone reproducer
-(`rows.sofab.yaml` + `repro.py` in this folder: ten cases, seven wrong today, all `ok` with the
+(`rows.sofab.yaml` + `repro.py` in this folder: ten cases, seven wrong before the fix, all `ok` with the
 three-arm fix, round trip unchanged).
 
 ## Reproduce
 
 ```sh
 FAMILY_BRANCH=main ./scripts/bootstrap.sh
-python3 engine/structured/sweep_run.py wiretype_sweep        # 18 divergences, py-* only
+python3 engine/structured/sweep_run.py wiretype_sweep        # 18 divergences (py-* only) before 7470127, 0 after
 CLUSTER=1 CORPUS=findings/G-0043-python-mistyped-header-read-not-skipped ./scripts/run.sh
 ```
 
@@ -102,3 +102,22 @@ Standalone, against generated Python only:
 tools/sofabgen --lang python --in findings/G-0043-*/rows.sofab.yaml --out /tmp/g43
 PYTHONPATH=/tmp/g43 drivers/python/build/venv/bin/python findings/G-0043-*/repro.py
 ```
+
+## Resolution — verified 2026-09-19
+
+generator#576 (`7470127`, *"every visitor-handled position declines a header that contradicts
+its declared type"*) closed generator#575 the same morning it was filed, and covers all three
+scopes. Verified on the **main** family: every corelib at `main` (unchanged since the find),
+sofabgen `0.0.0-20260919074829-7470127355ba` from generator CI run 35430323783 (sha256
+verified), all 17 drivers:
+
+| check | before | after |
+|---|---|---|
+| `repro.py` on `rows.sofab.yaml`, Cython and pure engines | 7 of 10 wrong | 10 of 10 `ok` |
+| this folder's reproducers (`run.sh`) | 3 Python-only camps | 0 divergences |
+| the three nightly inputs (`76a83162…`, `984abe91…`, `3232056b…`) | 2 camps | 0 divergences |
+| `wiretype_sweep`, 471 vectors | 18 divergences | 0 divergences |
+| `corpus/regression` (239) · seeds | green | green |
+
+The reproducers are promoted to `corpus/regression` as `G0043_*`, and the three G-0043 rows
+are gone from `results/known-clusters.txt`, so a return reads as a NEW camp.
