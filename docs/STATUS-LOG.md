@@ -14,6 +14,22 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-19 (evening) — nightly 35429832255 triaged locally: quiet, nothing new
+
+The 2026-09-19 nightly fuzzed (Go engine: 19.1M execs in 7m31s, 131 new units; pacemaker 0
+crashes; no `corpus/crashes` uploaded) but again produced **no cluster verdict**: its
+differential step died building the dart driver on corelib-dart's `Inline*` destinations.
+It checked out `81ba8c7`; the fix, `235e422`, reached main after the run started. Same
+shape as 35320714690: a red `continue-on-error` step inside a green run.
+
+Re-done locally on the **main** family (every corelib at `main`, sofabgen
+`0.0.0-20260919074829-7470127355ba`, the G-0043 fix), all 17 drivers built. Corpus
+0 → 12694 (a fresh workspace, so the local corpus is exactly the artifact). `CLUSTER=1
+TIMEOUT=30`: 5135 agree, 7559 diverge, **one camp, accounted for** — the JVM
+`incomplete_value` split. `materialize.sh` over the grown corpus: 0 divergences, 12756
+warnings, every one `incomplete_value`; C anchor 0/111 against the reference. Chunk
+(`--modes chunk,scrub`) and encode invariance: 0 mismatches. No new camp, no crash, no finding.
+
 ## 2026-09-19 (later) — G-0043 closed: generator#576 lands the same morning, verified on the main family
 
 generator#575 was fixed within hours by generator#576 (`7470127`, *"every visitor-handled
