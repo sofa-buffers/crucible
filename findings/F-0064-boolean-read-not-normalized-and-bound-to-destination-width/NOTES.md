@@ -2,7 +2,7 @@
 
 **Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** the six vectors in this folder (`r0`–`r2` + three controls) and the §4.4 family of `engine/structured/sweep_tolerance.py` (blocking axis, currently **RED**); not promoted to `corpus/regression` — promote with the fix, so that gate starts green rather than red.
-**Issue:** not filed yet
+**Issue:** [corelib-c-cpp#172](https://github.com/sofa-buffers/corelib-c-cpp/issues/172) (filed 2026-09-19)
 **Sibling:** [G-0042](../G-0042-cpp-backend-maps-array-of-boolean-to-uint8-elements/NOTES.md) — the same clause on the array path, which *is* the generator's and carries its own write-up (so it gets a folder, not a `**Codegen:**` line: that line is for a codegen defect with no write-up of its own).
 
 **Found 2026-09-18** by the new §4.4 boolean family of the tolerance sweep, on the day

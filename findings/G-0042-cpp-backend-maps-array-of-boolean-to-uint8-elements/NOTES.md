@@ -2,7 +2,7 @@
 
 **Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
 **Guard:** the four vectors in this folder (`r0`, `r1` + two controls) and the §4.4 array vectors of `engine/structured/sweep_tolerance.py` (blocking axis, currently **RED**); not promoted to `corpus/regression` — promote with the fix.
-**Issue:** not filed yet
+**Issue:** [generator#581](https://github.com/sofa-buffers/generator/issues/581) (filed 2026-09-19)
 **Corelib:** F-0064 — the sibling defect on the scalar path, which is `corelib-c-cpp`'s (no boolean slot in the object layer, and `read_bool` performs no mapping)
 
 **Found 2026-09-18**, with F-0064, by the new §4.4 boolean family of the tolerance sweep.
@@ -52,12 +52,27 @@ sees an array of unsigned integers and nothing more, and `corelib-cpp`'s own `re
 its behaviour from the destination type it is handed. Handed `uint8_t`, it faithfully
 stores the wire value; handed `bool` it normalizes (which is exactly what the scalar path
 proves). Per CLAUDE.md's triage question the fix needs knowledge only the schema has, so
-this is the **generator**'s: emit `std::vector<bool>` / `InlineVector<bool, N>` (or keep the
-byte storage and normalize on write into it), matching the scalar path.
+this is the **generator**'s to start.
 
-`corelib-cpp` is **not** implicated: no corelib finding is needed for the array path here.
-The `c` / `cpp-c-cpp` columns above are F-0064 leaking into the same vectors, not a second
-generator defect.
+**`std::vector<bool>` is not the fix** (corrected 2026-09-19, before filing). The byte
+storage is deliberate and documented at `generators/cpp/helpers.go:282-297` (`7470127`): the
+member must be the decode destination with one addressable byte per element, and
+`std::vector<bool>` is bit-packed. corelib-c-cpp binds the destination's address and fills it
+later during `feed`; corelib-cpp resumes a chunk-split field into the same destination.
+Neither C++ corelib offers a boolean-array read today (a `bool` element static-asserts in
+both). So the fix keeps the bytes and has two routes, both in generator#581:
+
+1. **generator only:** read into a `uint64_t` staging array and normalize afterwards. That is
+   immediate for corelib-cpp, whose `readArray` fills in the call, and awkward for
+   corelib-c-cpp, where the staging buffer must live in the object until the field completes.
+   It costs 8× the storage.
+2. **with a corelib API (cleaner):** a normalizing boolean-array element store in both C++
+   corelibs (`raw != 0` into the byte, no width check), which the backend asks for. This is
+   the array half of §4.4's "dedicated boolean read/write functions" and implicates
+   corelib-cpp too, not only corelib-c-cpp (#172 records its array store).
+
+The `c` / `cpp-c-cpp` columns above are F-0064 leaking into the same vectors (the C element
+store rejects `256` at `istream.c:723`), not a second generator defect.
 
 ## Reproducing
 
