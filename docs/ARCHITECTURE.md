@@ -362,6 +362,12 @@ the vacuous pass the gates' opt-in rosters guard against, one level down.
   AOT Dart has no `dart:mirrors` — the rust/cpp/zig camp. Dart type care: fp32 stored
   as a 64-bit `double` is repacked to the 32-bit pattern, fp64 printed as two uint32
   halves, and **u64** (signed 64-bit `int`) is reinterpreted unsigned via `BigInt`.
+  Since generator#570 strings, blobs and numeric arrays decode into corelib-dart's
+  inline destinations (`InlineString` / `InlineBytes` / `Inline*Array`, of which only
+  the first `length` entries are in use), and a boolean-array element is an `int`, not
+  a `bool`. The walker's helpers take either representation. A string is dumped from
+  the UTF-8 bytes the decoder stored, and a boolean-array element prints its raw value
+  (`u<n>`), so a decoder that fails to normalize to 0/1 shows up in the dump.
   Coverage engine is a placeholder (`fuzz.dart`, not built by `build.sh`): Dart has no
   first-party libFuzzer, and the intended dart:ffi + C-libFuzzer path (like Zig) is
   unresolved (PLAN §14).
