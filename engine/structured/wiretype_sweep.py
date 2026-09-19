@@ -31,6 +31,7 @@ encoder) so an encoding change cannot silently desync this suite.
 Usage: python3 engine/structured/wiretype_sweep.py [out_dir]
        (default corpus/wiretype-sweep)
 """
+import dataclasses
 import os
 import struct
 import sys
@@ -38,8 +39,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from gen import (
-    WT_SEQ_BEG, WT_SEQ_END, FL_FP32, FL_FP64, FL_STRING, FL_BLOB,
-    hdr, scalar_u, scalar_s, fixlen, arr_u, arr_s, arr_fp,
+    WT_SEQ_BEG, WT_SEQ_END, WT_ARR_U, WT_ARR_S, FL_FP32, FL_FP64, FL_STRING, FL_BLOB,
+    hdr, varint, scalar_u, scalar_s, fixlen, arr_u, arr_s, arr_fp,
 )
 from sweep_positions import POSITIONS, CAT_TO_CONSTRUCT  # noqa: E402  (the ONE model)
 
@@ -97,7 +98,66 @@ def emit(out_dir):
             with open(os.path.join(out_dir, name), "wb") as fh:
                 fh.write(data)
             vectors.append((name, data, "accept"))
+    for name, data, expect in _sized_mismatches():
+        with open(os.path.join(out_dir, name), "wb") as fh:
+            fh.write(data)
+        vectors.append((name, data, expect))
     return vectors
+
+
+# --- the skip does not depend on the size of what is skipped ------------------
+# Every mismatch above carries a one-element body, and that hid G-0043: generated
+# Python ACCEPTED a mistyped element in an array-of-struct wrapper, so the corelib
+# READ it -- harmless at one element, and only the size makes a read observable. A
+# read is capped (the receiver's max_dyn_array_count) and, when the message ends
+# inside it, held in the reassembly buffer, which generated Python sizes to the
+# largest value the schema can carry. A skip is neither (MESSAGE_SPEC §7.3,
+# CORELIB_PLAN §6.7.2: "neither materializes nor validates ... and is never
+# capped"). So the same mismatch is placed again at three sizes, at every position:
+#
+#   big      COMPLETE, 70000 elements: above both default cap tiers (65536 and
+#            16384, generator ARCHITECTURE §9.5) -> accept, as the small one does
+#   hdronly  the count word announces 1886575 elements and the message ends there:
+#            a skip is still waiting for bytes -> INCOMPLETE, never L
+#   partial  1024 of 1100 elements, then the message ends: far above any value the
+#            probe schema can carry in one piece -> INCOMPLETE, never a refusal
+#
+# plus the three again at an index ABOVE each wrapper's schema count (§7.3 wins
+# against the index bound too; the nightly isolates sat at ids 9 and 1378). The
+# body is a native integer array because only it carries a count ahead of its
+# payload; an unsigned one everywhere except where that is the declared type.
+BIG_COUNT = 70000
+HDRONLY_COUNT = 1886575
+PARTIAL = (1100, 1024)
+WRAPPERS = {200, 201, 202}
+OVER_INDEX = 9  # every probe wrapper declares count 5
+
+
+def _mismatched_array(p, count, present):
+    wt = WT_ARR_S if CAT_TO_CONSTRUCT[p.cat] == "ARR_U" else WT_ARR_U
+    return hdr(p.fid, wt) + varint(count) + b"\x01" * present
+
+
+def _open(path):
+    return b"".join(hdr(q, WT_SEQ_BEG) for q in path)
+
+
+def _sized_mismatches():
+    positions = list(POSITIONS)
+    for p in POSITIONS:
+        if p.path and p.path[-1] in WRAPPERS and p.fid == 0:
+            positions.append(dataclasses.replace(p, fid=OVER_INDEX))
+    out = []
+    for p in positions:
+        path = list(p.path)
+        tag = p.tag()
+        out.append((f"{tag}_ARRbig_mism.bin",
+                    place(path, p.fid, _mismatched_array(p, BIG_COUNT, BIG_COUNT)), "accept"))
+        out.append((f"{tag}_ARRhdronly_mism.bin",
+                    _open(path) + _mismatched_array(p, HDRONLY_COUNT, 0), "not_reject"))
+        out.append((f"{tag}_ARRpartial_mism.bin",
+                    _open(path) + _mismatched_array(p, *PARTIAL), "not_reject"))
+    return out
 
 
 # --- union pass (schema/probe-union.sofab.yaml) ------------------------------

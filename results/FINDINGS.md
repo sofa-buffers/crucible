@@ -125,5 +125,6 @@ Chronology and decisions are **not** here — they are in
 | **G-0039 (= F-0062)** | [the generator side of F-0062 — the Python backend emits the `blob_array` wrapper element's `maxlen` check *after* `d.bytes()` instead of at the `fixlen_word`, the one site of five in `message.py` that does not use `fixlen_len()`](../findings/F-0062-py-blob-array-element-maxlen-checked-after-payload/NOTES.md) | [generator#377](https://github.com/sofa-buffers/generator/issues/377) | 🔴 |
 | **G-0040** | [generated TypeScript exposes `decodeFrom` / `decodeInto` (two names §6.1.1 forbids)](../findings/G-0040-typescript-backend-emits-decodefrom-and-decodeinto/NOTES.md) | [generator#384](https://github.com/sofa-buffers/generator/issues/384) | ✅ |
 | **G-0041** | [the Dart backend still emits a `status` accessor beside `feed`, the one backend the IStream contract never reached (§5.2.1)](../findings/G-0041-dart-backend-still-emits-a-status-accessor/NOTES.md) | [generator#555](https://github.com/sofa-buffers/generator/issues/555) | ✅ |
+| **G-0043** | [generated Python reads a header that contradicts the declared type instead of skipping it, in three visitor scopes (§7.3)](../findings/G-0043-python-mistyped-header-read-not-skipped/NOTES.md) | [generator#575](https://github.com/sofa-buffers/generator/issues/575) | 🔴 |
 
-**104 entries — 100 resolved, 2 open, 2 by-design/withdrawn.**
+**105 entries — 100 resolved, 3 open, 2 by-design/withdrawn.**

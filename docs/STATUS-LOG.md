@@ -14,6 +14,49 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-19 — nightly 35320714690 triaged locally: two Python camps, one codegen root cause (G-0043), and `wiretype_sweep` learns that a skip has no size
+
+The 2026-09-18 nightly fuzzed (89M execs, 47 new units, 0 crashes) but produced **no cluster
+verdict**: its differential step died building the go driver on `sofab.WithPassThrough`, which
+`eac69af` fixed on main after the run. The job still read green, because the fuzz steps are
+`continue-on-error` — a red step inside a green run, so read the step list, not the badge.
+Re-done locally on the **main** family (every corelib at `main`, sofabgen
+`0.0.0-20260918231252-6b375bfb7b1a`), with the dart walker fix cherry-picked so the roster
+builds: corpus 19847 → 21421, three camps, one known (the JVM `incomplete_value` split), **two
+new**, both py-cython + py-pure against the other fifteen.
+
+**Both were regressions, and both were one codegen defect.** Each isolate puts a
+non-sequence header directly inside `struct_array`'s wrapper (id 9 `ARRAY_SIGNED`, id 1378
+`ARRAY_UNSIGNED`): a mistyped element that MESSAGE_SPEC §7.3 says to skip. Generated Python's
+`on_field` accepted it, so corelib-py read it: the receiver cap fired at the count word (`L`), or
+the partial payload overflowed the one-shot reassembly buffer, sized to the schema's largest
+readable value (`R`). The inputs had sat in the corpus since August; the move onto corelib-py's
+destination table (generator#561) is what turned them red. Filed as
+[generator#575](https://github.com/sofa-buffers/generator/issues/575), written up as G-0043.
+
+**Decision: the attribution went through three owners before it settled, and each wrong answer
+is recorded in the write-up.** The first pass read the stack traces (`_visit_varints`,
+`_retain`) and blamed corelib-py; corelib-py's own tests then showed the refusal was its
+specified behaviour, and the reassembly-buffer contract pointed at the generator's sizing; only
+decoding the carry byte for byte (one array's partial payload, not a header run) and patching
+the generated `on_field` alone settled it. The rule the CLAUDE.md attribution section gives —
+*which layer had the information to reject* — was the one that worked: whether a header
+contradicts the schema is schema knowledge.
+
+**Decision: close the gap in the sweep, not only in the regression corpus.** `wiretype_sweep`
+placed every mismatch with a one-element body, and a small read is indistinguishable from a
+skip — so the axis was green over exactly this defect. It now carries the same mismatch at three
+sizes at every position (complete at 70000 entries, above both default cap tiers; truncated at a
+count word of 1886575; truncated 1024 into 1100 entries), plus index 9 in each wrapper: **363 →
+471 vectors**. That found more than the nightly did — the same accept-instead-of-skip at the
+wrapper-array **fields** in the root scope and at a **scalar inside a struct element**, 18
+divergences, all Python-only. generator#575 was widened to all three scopes before anyone read
+it. The axis is blocking and stays red until the fix lands, the F-0064 precedent.
+
+The chunk-invariance pass over the fuzzed corpus also showed that `CHUNK_FEED_TIMEOUT=120` is
+too short for py-pure at chunk size 1 over 21k inputs: the run aborts and every driver after it
+goes unchecked. `CHUNK_FEED_TIMEOUT=1800` completed it. Recorded in `docs/TODO.md`.
+
 ## 2026-09-18 — the TypeScript backend moved to typed arrays, the status accessor left five drivers, and the flush path lost a signaling NaN
 
 Pulled again (every corelib to `origin/main`, `tools/sofabgen` to run 35319313674,

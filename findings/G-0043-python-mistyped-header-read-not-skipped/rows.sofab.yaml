@@ -1,0 +1,13 @@
+version: 1
+messages:
+  table:
+    summary: One array of structs, nothing else.
+    payload:
+      rows:
+        id: 0
+        type: array
+        items:
+          type: struct
+          count: 4
+          fields:
+            k: { id: 0, type: u32 }
