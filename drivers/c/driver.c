@@ -132,6 +132,13 @@ static void md_value(FILE *o, const sofab_object_descr_t *info,
         fprintf(o, "u%llu", (unsigned long long)md_rdu(p, f->element_size)); break;
     case SOFAB_OBJECT_FIELDTYPE_SIGNED:
         fprintf(o, "s%lld", (long long)md_rds(p, f->element_size)); break;
+    case SOFAB_OBJECT_FIELDTYPE_BOOLEAN:
+        /* §4.4: two-valued, so the materialized form is u1/u0 — a decode has already
+         * normalized every non-zero spelling away (that is the rule under test). Read
+         * the destination as bytes, never as a `bool` lvalue: a `bool` object holding a
+         * value outside {0,1} has no value at all, so reading it could not tell us
+         * whether the decode normalized. */
+        fprintf(o, "u%u", md_rdu(p, f->element_size) ? 1u : 0u); break;
     case SOFAB_OBJECT_FIELDTYPE_FP32:
         { uint32_t b; memcpy(&b, p, 4); fprintf(o, "f%08x", b); } break;
     case SOFAB_OBJECT_FIELDTYPE_FP64:
@@ -145,15 +152,22 @@ static void md_value(FILE *o, const sofab_object_descr_t *info,
         fprintf(o, "b%zu:", n); md_hex(o, p, n);
         } break;
     case SOFAB_OBJECT_FIELDTYPE_ARRAY_UNSIGNED:
+    case SOFAB_OBJECT_FIELDTYPE_ARRAY_BOOLEAN:
     case SOFAB_OBJECT_FIELDTYPE_ARRAY_SIGNED: {
         unsigned es = f->element_size;
         size_t cnt = md_array_len(f, base, es ? f->size / es : 0);
         int sg = (f->type == SOFAB_OBJECT_FIELDTYPE_ARRAY_SIGNED);
+        /* an array of boolean is an array of unsigned 0/1 (MESSAGE_SPEC §4.7), each
+         * element normalized on the same rule as the scalar above */
+        int bl = (f->type == SOFAB_OBJECT_FIELDTYPE_ARRAY_BOOLEAN);
         fputc('[', o);
         for (size_t i = 0; i < cnt; i++) {
             if (i) fputc(',', o);
             if (sg) fprintf(o, "s%lld", (long long)md_rds(p + i * es, es));
-            else    fprintf(o, "u%llu", (unsigned long long)md_rdu(p + i * es, es));
+            else {
+                unsigned long long v = (unsigned long long)md_rdu(p + i * es, es);
+                fprintf(o, "u%llu", bl ? (v ? 1ULL : 0ULL) : v);
+            }
         }
         fputc(']', o);
         } break;
