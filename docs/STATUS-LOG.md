@@ -34,11 +34,32 @@ failure** — it was red on 3 of 17 when the pair was filed. Both write-ups flip
 RESOLVED and their ten vectors promoted to `corpus/regression` as `F0064_*` / `G0042_*`
 (253 inputs, 0 divergences), which is what their `**Guard:**` lines had reserved.
 
+This also closes a red `main`: replay 35441456504 (`405f9332`, 2026-09-19 11:56) failed the
+sweep gate with those same 24 divergences — `c` emitting the raw `0207` where the other
+sixteen emit `0107`, and answering `invalid_msg` to `256`. That is F-0064 itself, so `main`
+was red by design from the moment the axis went blocking until the upstream fix landed.
+
 **The second oracle was blind here, and that is the finding of the round.** `materialize.sh`
-came back with 1904 divergences — not the family, but *our own anchor*: `5e1c6bf` added the
-`bool` kind to the descriptor and to nine language drivers, and missed `drivers/c/`. There
-`SOFAB_OBJECT_FIELDTYPE_BOOLEAN` fell into the `default:` arm of `md_value()` and the anchor
-printed `?` while the other sixteen drivers agreed on `u1` / `[u1,u1,u0,u1,u1]`.
+came back with 1904 divergences — not the family, but *our own anchor*: `drivers/c/` printed
+`?` at every boolean position while the other sixteen drivers agreed on `u1` /
+`[u1,u1,u0,u1,u1]`.
+
+**The gap was opened by the generator fix, not by a driver that lagged behind** — first
+attributed here to `5e1c6bf` (which added the `bool` kind to the descriptor and nine language
+drivers) and corrected the same night. That commit was complete for its moment: the other
+drivers read the *JSON* descriptor and did need the new kind, while C reads the **C object
+descriptor** out of generated code, and sofabgen then still emitted a boolean field as
+`SOFAB_OBJECT_FIELDTYPE_UNSIGNED`. The anchor took the unsigned arm and was correct. The
+proof is in CI: run 35441456504 (`405f9332`, the old generator) has `materialize` at 119
+inputs / 0 divergences — with `5e1c6bf` already in. generator#581's fix `d408700e` switched
+the emitted field type to `SOFAB_OBJECT_FIELDTYPE_BOOLEAN` (visible in its golden
+`tests/matrix/testdata/golden/c/scalars.c`), and *that* is what dropped the anchor into the
+`default:` arm of `md_value()`.
+
+So the lesson is not "a driver was forgotten" but: **a generator change can silently widen
+the descriptor's vocabulary, and the C anchor is the one consumer that learns it from
+generated code rather than from the JSON descriptor.** A new `SOFAB_OBJECT_FIELDTYPE_*` is a
+Crucible-side task even when no Crucible commit touched the kind.
 
 That is worse than a cosmetic gap, because C is the reference the comparator anchors on: a
 `?` at every boolean position makes the materialized oracle red *regardless* of what the
