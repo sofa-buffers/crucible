@@ -14,6 +14,27 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-20 — the nightly cron moves off the top of the hour
+
+Noticed while waiting for the 2026-09-20 run: the nightly has not been running at night
+for weeks. The cause is not configuration drift — `0 3 * * *` had stood unchanged since
+`55cb93d` created the workflow on 2026-07-15, and `docs/CI.md` matched it. GitHub's
+shared scheduler simply dispatches the run late, and by a margin that moves on its own:
++2.5 h in late July, back to +0.6 h from 2026-08-15 to 2026-08-26, then +4.5 h through
+September, with two outliers on 2026-08-27/28 that landed at 13:17 and 14:41 UTC. Same
+YAML throughout.
+
+**Decision:** set the cron to `37 2 * * *`. The top of the hour is the most contended
+slot in that queue, so an odd minute is the one lever available; it is a mitigation with
+no guarantee attached, and the comment in the workflow says so rather than implying the
+run is now punctual. `CI.md` records the delay as a property of the nightly, because two
+things follow from it that matter when reading a run: the wall-clock start says nothing
+about the fuzz budget, and the run bootstraps the family at whatever `main` was when it
+*started* — which is exactly how 35320714690 and 35429832255 both died on a dart driver
+that `235e422` had already fixed.
+
+No finding, no corpus change. The 2026-09-19 run remains the last triaged one.
+
 ## 2026-09-19 (night) — F-0064 + G-0042 closed on the family tip, and the C anchor learns `boolean`
 
 Verification round for the §4.4 boolean pair, prompted by triaging crucible#189. Both

@@ -15,7 +15,11 @@ name: nightly
 
 on:
   schedule:
-    - cron: '0 3 * * *'   # 03:00 UTC daily
+    - cron: '37 2 * * *'  # 02:37 UTC daily — deliberately off the top of the hour,
+                          # which is the most congested slot in GitHub's shared
+                          # schedule queue. The trigger time is a request, not a
+                          # promise: this job has been dispatched anywhere from
+                          # +0.5 h to +11 h late on an unchanged cron.
   workflow_dispatch:
     inputs:
       fuzz_time:

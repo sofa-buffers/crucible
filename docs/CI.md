@@ -8,7 +8,7 @@ as the corelibs churn. See PLAN §10/§12.
 |---|---|---|---|
 | [`image.yml`](../.github/workflows/image.yml) | `.devcontainer/Dockerfile` change · manual | — | build the 14-toolchain image (incl. the Dart SDK and the Kotlin toolchain — Gradle, kotlinc and Kotlin/Native), push to GHCR |
 | [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | the catalog + participation checks, then build all drivers and run the eight **green** gates + the two streaming gates |
-| [`nightly.yml`](../.github/workflows/nightly.yml) | 03:00 UTC daily · manual | no | fuzz → grow corpus → cluster → upload artifacts |
+| [`nightly.yml`](../.github/workflows/nightly.yml) | 02:37 UTC daily (dispatched late; see below) · manual | no | fuzz → grow corpus → cluster → upload artifacts |
 
 ## The image (`image.yml`) — the linchpin
 
@@ -87,6 +87,15 @@ coverage **compounds** night over night.
 Non-blocking by design: a fresh divergence is expected signal, not a build break —
 triage stays human (the corelibs are other repos; cross-repo auto-filing is a later
 step). `FUZZ_TIME` (default 1800s) is overridable via manual dispatch.
+
+**The cron time is a request, not a promise.** Scheduled runs queue on GitHub's
+shared scheduler and are dispatched under load, so "nightly" regularly arrives in the
+morning: on an unchanged `0 3 * * *` the job started between +0.5 h and +4.5 h late
+depending on the week, with two outliers past +10 h. The cron therefore sits at `:37`
+rather than the top of the hour, which is the most contended slot — a mitigation, not
+a fix. Two consequences when reading a run: its wall-clock start says nothing about
+the fuzz budget (that is `FUZZ_TIME`), and it bootstraps the family at whatever `main`
+was when it *started*, so a fix that lands during the run is not in it.
 
 ## Follow-ups
 
