@@ -35,6 +35,58 @@ that `235e422` had already fixed.
 
 No finding, no corpus change. The 2026-09-19 run remains the last triaged one.
 
+## 2026-09-21 — nightly 35571124194 triaged: two phantoms, one stale finding, nothing new
+
+The scheduled nightly **did not run on 2026-09-20** — no failed run, no cancelled run,
+nothing dispatched, on an active workflow with an unchanged cron. A missing nightly raises
+no red CI, so the fuzzing coverage simply stopped and only surfaced because someone looked.
+The cron was nudged from 02:37 to 02:42 (`9af57ba`), which is a cheap move further from the
+congested slot and explicitly **not** a fix — `10cba6d` had already moved it off the hour for
+the same reason, and 09-20 was skipped anyway. Noticing an absent run is the real gap and is
+not addressed.
+
+Run 35571124194 was then dispatched by hand: 48 min, clean (no red `continue-on-error` step,
+unlike the two runs before it), 21.6M execs at ~50k/s, 40 new interesting inputs, **no
+crashes**. It is the first run to see the family after the 22 merges of 09-20/09-21 — both new
+shared vector blocks, corelib-py's boolean read kind, and generator `cb28dc5e`.
+
+Local corpus 21421 → 21919. CI reported `1/2 accounted for` + 1 NEW CAMP; locally, against the
+larger union, **3 camps: 1 accounted for, 2 reported NEW**. Both resolve to nothing:
+
+* **`TIMEOUT: py-pure` (1 input, 393 B) — phantom.** The accused input replays alone in
+  0.33–0.82 s and, fed through the comparator on its own, reports `1 agree, 0 diverge`. A
+  scheduling stall inside a 21919-input run, exactly the failure mode `results/CLUSTERS.md`
+  documents and the reason the nightly moved to `TIMEOUT=30`. Not added to the baseline: the
+  camp is a property of the machine, not of a driver, and baselining it would mute a real
+  hang later.
+* **`I:… | I:java | I:kotlin-jvm,kotlin-native` (7 inputs) — benign, and now baselined.** Same
+  soft axis as the existing row: the verdict is unanimous `I`, and only the `incomplete_value`
+  payload differs (`policy.yaml:32`). The existing row covers the case where java and the two
+  Kotlin legs hand back the *same* payload; these seven inputs are the case where they hand
+  back different ones (`e30c03010101` vs `e30c050101010000`).
+
+**The find of the round was not in the fuzzing.** The second baseline row stopped matching
+because **F-0062 has been fixed since 2026-08-22** — `generator#377` closed a month ago and
+nothing here noticed: the write-up still said 🔴 OPEN, and its five vectors had never been
+promoted, though the Guard line reserved exactly that for the fix. Verified before flipping:
+`r0` no longer diverges (only a control shows the benign java/kotlin split), and the camp is
+absent from the 21919-input run that previously carried it. Now RESOLVED, vectors promoted as
+`F0062_*`, and the stale baseline row replaced rather than deleted.
+
+Both extra oracles are clean. `materialize.sh` over the grown corpus: 21919 × 17, **0
+divergences**, 19431 `incomplete_value` warnings, C anchor 0/119 against the reference — the
+boolean fix from 09-20 holds across a fuzzed corpus. Chunk invariance over the 498 newly added
+inputs (`--modes chunk,scrub`): **16 drivers, 0 mismatches**. Over the *whole* 21919 corpus the
+pass gets 7 drivers deep and then hits the harness's 120 s per-call budget on `py-cython`; that
+is runtime at this corpus size, not a hang, and it is recorded as "not run to completion"
+rather than as a pass. Sizing that budget for a 20k+ corpus is open.
+
+Method note, recorded because it cost a run: the first chunked pass was started while a
+`run.sh` replay was still building, and the linker lost `drivers/cpp/build/c-cpp/*.o`
+mid-relink — `exit=1`, no comparison, and a "0 mismatches" line that meant nothing. The
+concurrency warning in the check-nightly skill and in CLAUDE.md is about exactly this, and it
+applies to two of *my own* runs, not just to other jobs.
+
 ## 2026-09-19 (night) — F-0064 + G-0042 closed on the family tip, and the C anchor learns `boolean`
 
 Verification round for the §4.4 boolean pair, prompted by triaging crucible#189. Both

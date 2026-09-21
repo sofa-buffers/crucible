@@ -97,4 +97,4 @@ I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-
 # (it named zig too) and a different field, so this does not resurrect it.
 # Delete this row when the fix lands; a return must then read as NEW.
 
-I:py-cython,py-pure | reject:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,java,kotlin-jvm,kotlin-native,rust-nostd,rust-std,typescript,zig  # F-0062 / G-0039 — generated Python checks a blob-array element's maxlen after reading the payload; generator#377 (open)
+I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescript,zig | I:java | I:kotlin-jvm,kotlin-native  # benign, same soft axis as the row above — the verdict is unanimous I; here java and the two Kotlin legs each hand back an incomplete_value payload and the two payloads differ (policy incomplete_value: soft). The row above covers the case where they agree; this one the case where they do not.

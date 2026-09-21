@@ -393,6 +393,22 @@ here:
       re-running the measurement rather than reading the ticket. Treat a closed upstream issue as a
       reason to re-measure, never as a substitute for it.
 
+- [ ] **The chunked pass has a per-call time budget that a 20k-input corpus outgrows.**
+      `--modes chunk,scrub` over the whole of `corpus/interesting` (21919 inputs x 7 chunkings)
+      gets seven drivers deep and then dies on `py-cython` with a 120 s `TimeoutExpired` from the
+      harness's own subprocess call, not from a hang: the same driver completes the same modes
+      over the 498-input slice in seconds. Measured 2026-09-21. So the whole-corpus chunked pass
+      currently reports neither green nor red for the last ten drivers, which is worse than
+      either. Either raise/scale the per-call budget with corpus size, or make the routine pass
+      run over the nightly's *new* inputs and keep the whole-corpus run as an explicit slow gate.
+
+- [ ] **A nightly that never starts is invisible.** 2026-09-20 was skipped entirely — nothing
+      dispatched on an active workflow with an unchanged cron, so there was no failed run to be
+      red. The fuzzing coverage stopped and nothing said so; it surfaced only because someone ran
+      `/check-nightly` by hand. `9af57ba` nudged the cron to 02:42, which does not address this.
+      A cheap watch would be a job that fails when the newest `nightly.yml` run is older than
+      ~30 h.
+
 - [ ] **The split sweep does not scale to a fuzzed corpus, and that is a real gap.**
       `SOFAB_SPLIT` is swept over every interior `k`, so its cost is O(maxlen) *per driver*: over
       `corpus/seeds` (maxlen 40) that is 311 runs and unnoticeable; over `corpus/interesting`
