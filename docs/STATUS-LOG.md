@@ -75,11 +75,17 @@ absent from the 21919-input run that previously carried it. Now RESOLVED, vector
 
 Both extra oracles are clean. `materialize.sh` over the grown corpus: 21919 × 17, **0
 divergences**, 19431 `incomplete_value` warnings, C anchor 0/119 against the reference — the
-boolean fix from 09-20 holds across a fuzzed corpus. Chunk invariance over the 498 newly added
-inputs (`--modes chunk,scrub`): **16 drivers, 0 mismatches**. Over the *whole* 21919 corpus the
-pass gets 7 drivers deep and then hits the harness's 120 s per-call budget on `py-cython`; that
-is runtime at this corpus size, not a hang, and it is recorded as "not run to completion"
-rather than as a pass. Sizing that budget for a 20k+ corpus is open.
+boolean fix from 09-20 holds across a fuzzed corpus. Chunk invariance (`--modes chunk,scrub`)
+over the **whole** 21919-input corpus: **16 drivers, 0 mismatches**.
+
+That last one needed `CHUNK_FEED_TIMEOUT=1800`. At the default it dies on `py-cython` after 7
+drivers, which was first read here as a budget the corpus had outgrown — wrongly:
+`oracle/chunk_invariance.py:61-67` already documents that the cap is per *driver run over the
+whole corpus*, states the same arithmetic (measured 2026-08-18), and makes it overridable for
+exactly this case. Raising it, every driver completes. What is genuinely missing is the link
+between the two: the failure is a bare `subprocess.TimeoutExpired` naming neither the variable
+nor the corpus size, so it reads like a hang and leaves ten drivers reporting neither green nor
+red. Recorded in TODO as a diagnostics gap rather than a capacity one.
 
 Method note, recorded because it cost a run: the first chunked pass was started while a
 `run.sh` replay was still building, and the linker lost `drivers/cpp/build/c-cpp/*.o`
