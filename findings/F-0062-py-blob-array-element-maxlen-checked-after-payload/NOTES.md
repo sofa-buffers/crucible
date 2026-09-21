@@ -1,7 +1,7 @@
 # F-0062 — generated Python checks a **blob-array element**'s `maxlen` after reading the payload, so an over-`maxlen` element that is also truncated is reported `INCOMPLETE`
 
-**Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
-**Guard:** the five vectors in this folder (`r0` + four controls); not yet promoted to `corpus/regression` — promote with the fix, so the gate starts green rather than red.
+**Status:** ✅ **RESOLVED** by **[generator#377](https://github.com/sofa-buffers/generator/issues/377)** (closed 2026-08-22). Verified 2026-09-21 against the `main` family with `sofabgen 0.0.0-20260920075919-cb28dc5e7007`: `r0` no longer diverges, and the camp this finding owned is absent from a 21919-input cluster run that previously carried it. The status flip is a month late — the fix landed upstream and nothing here noticed, which is how the stale row surfaced (docs/STATUS-LOG.md, 2026-09-21).
+**Guard:** corpus/regression — the five vectors in this folder (`r0` + four controls) promoted 2026-09-21 as `F0062_*`, which is what this line reserved for the fix.
 **Issue:** [generator#377](https://github.com/sofa-buffers/generator/issues/377)
 **Codegen:** G-0039 | [generator#377](https://github.com/sofa-buffers/generator/issues/377) | the generator side of F-0062 — the Python backend emits the `blob_array` wrapper element's `maxlen` check *after* `d.bytes()` instead of at the `fixlen_word`, the one site of five in `message.py` that does not use `fixlen_len()`
 
