@@ -112,7 +112,10 @@ case "$VARIANT" in
         echo "==> [kotlin/jvm] kotlinc (driver + generated, against the corelib jar)" >&2
         CLASSES="$OUT/classes"
         mkdir -p "$CLASSES"
-        kotlinc -nowarn -classpath "$JAR" -d "$CLASSES" "$@" >&2
+        # -jvm-target matches the corelib's pinned target (17): generated code calls the
+        # corelib's `inline` Seq helpers (generator#587), and kotlinc refuses to inline
+        # JVM-17 bytecode into the 1.8 bytecode it emits by default.
+        kotlinc -nowarn -jvm-target 17 -classpath "$JAR" -d "$CLASSES" "$@" >&2
         # kotlin-stdlib is on kotlinc's compile classpath implicitly but not on the
         # runtime one; ship the compiler's own copy so the wrapper needs no Gradle.
         STDLIB=$(dirname "$(command -v kotlinc)")/../lib/kotlin-stdlib.jar
