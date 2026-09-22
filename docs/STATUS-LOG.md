@@ -14,6 +14,28 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-22 (later) — nightly 35702107666 triaged locally: CI's verdict was blind, the local one is quiet
+
+The scheduled run fuzzed normally — libFuzzer 128.6M execs at ~71k/s with 524 new units,
+the Go engine 45.6M execs with 14 new inputs, **no crashes** — but its cluster step never
+produced a verdict: it bootstrapped the family 75 minutes after generator#592 merged, and
+`kotlin-jvm` failed to compile (`cannot inline bytecode built with JVM target 17`), the
+break the entry below fixed in `drivers/kotlin/build.sh`. The artifact was therefore only a
+corpus, and the whole verdict had to be produced here. A nightly on a family that moved
+under it goes blind the same way until Crucible catches up; nothing flags that except the
+red `continue-on-error` annotation.
+
+Same family as the run: every corelib at the tip bootstrap reported unchanged, sofabgen
+`0.0.0-20260922064217-1c88f418d2be`. Local corpus 21919 → 22432 (+513 of CI's 13556).
+Against `results/known-clusters.txt` with the fixed driver set (17): **2 camps, 2/2
+accounted for, no new camp** — both are the known `incomplete_value` soft axis (unanimous
+`I`, java and the Kotlin legs handing back different payloads). Roster unchanged against the
+baseline stamp, so no roster-change false alarm to rule out. Chunk invariance
+(`--modes chunk,scrub`, `CHUNK_FEED_TIMEOUT=1800`) over all 22432 inputs: **16 drivers, 0
+mismatches**; encode invariance over the same corpus: **17 drivers, 0 mismatches**.
+`materialize.sh` over `corpus/structured` was already green in the entry below (anchor
+0/119). Nothing to file, baseline untouched.
+
 ## 2026-09-22 — generator#587 lands; crucible#192's family-copies gate
 
 **Refresh.** Re-bootstrapped on `main` after generator#587 closed (generator#592): sofabgen
