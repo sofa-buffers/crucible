@@ -140,9 +140,13 @@ def read(rel):
 
 
 def tracked_sources():
-    out = subprocess.run(["git", "-C", ROOT, "ls-files", *SCOPE],
-                         capture_output=True, text=True, check=True).stdout.split()
-    return [f for f in out if f.endswith(SOURCE_EXT) and f != SELF]
+    # safe.directory: the CI container runs as a different uid than the one that checked
+    # the repo out, and git then refuses the repository ("dubious ownership").
+    run = subprocess.run(["git", "-c", f"safe.directory={ROOT}", "-C", ROOT, "ls-files", *SCOPE],
+                         capture_output=True, text=True)
+    if run.returncode != 0:
+        sys.exit(f"git ls-files failed ({run.returncode}): {run.stderr.strip()}")
+    return [f for f in run.stdout.split() if f.endswith(SOURCE_EXT) and f != SELF]
 
 
 def entry_for(path):
