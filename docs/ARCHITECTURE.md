@@ -381,7 +381,10 @@ the vacuous pass the gates' opt-in rosters guard against, one level down.
   Gradle build** (`./gradlew jvmJar` / `linuxX64MainKlibrary`), rebuilt whenever the
   vendored sources are newer than the artifact — the stale-jar rule `drivers/java`
   learned from F-0016 — while the *driver* is compiled straight with `kotlinc` /
-  `kotlinc-native`, no build system of its own. `kotlinc-native` is **not** part of the
+  `kotlinc-native`, no build system of its own. The JVM `kotlinc` call passes
+  `-jvm-target 17`, the target the corelib's Gradle build pins: generated code calls the
+  corelib's `inline` `Seq` helpers, and kotlinc will not inline 17 bytecode into its
+  default 1.8 output. `kotlinc-native` is **not** part of the
   standalone `kotlinc`; it comes from the Kotlin/Native distribution under
   `KONAN_DATA_DIR`, which the image carries and Gradle would otherwise fetch mid-gate.
   **Status-returning single-pass decode:** the generated
