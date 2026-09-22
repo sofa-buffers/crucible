@@ -31,7 +31,7 @@ changes (or on manual dispatch), with layer caching via `type=gha`.
 
 ## The replay gate (`replay.yml`) — blocking
 
-Two jobs. **`catalog`** runs first and needs no drivers at all. It carries two checks: `scripts/driver-audit.sh`, the per-driver participation ledger (every roster entry must declare what the gates need to place it), and `check-catalog.py`, which asserts that
+Two jobs. **`catalog`** runs first and needs no drivers at all. It carries three checks: `scripts/driver-audit.sh`, the per-driver participation ledger (every roster entry must declare what the gates need to place it), the static half of `scripts/check-family-copies.py` (every copy of family logic listed with a verdict, every materialized walker naming every schema kind), and `check-catalog.py`, which asserts that
 `results/FINDINGS.md` and its write-ups declare the same state:
 
 ```sh
@@ -49,11 +49,13 @@ sync demonstrably did not.
 
 **`differential`** bootstraps the corelibs (their `main` tips) + sofabgen, builds every
 replay driver, and runs the **green** oracles in sequence; any divergence fails the
-job. All ten, in the order the workflow runs them:
+job. All ten, in the order the workflow runs them, with the full family-copies check
+right after the seed build (while the generated code is still the probe's):
 
 ```sh
 ./scripts/bootstrap.sh   # always: latest sofabgen CI build (checksum-verified) + corelibs, both @ FAMILY_BRANCH
 ./scripts/run.sh                            # seed differential            (corpus/seeds)
+python3 scripts/check-family-copies.py      # C anchor tags + generated code reaches the corelib layer
 CORPUS=corpus/regression ./scripts/run.sh   # resolved-findings gate       (corpus/regression)
 CORPUS=corpus/conformance ./scripts/run.sh  # §2/§3 canonicality seeds     (corpus/conformance)
 REGEN=0 ./scripts/cross-encode.sh           # cross-encode / structured    (corpus/structured)

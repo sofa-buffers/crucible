@@ -49,6 +49,13 @@ IFS=$_oldifs
 TIMEOUT_ARG=""
 [ -n "${TIMEOUT:-}" ] && TIMEOUT_ARG="--timeout $TIMEOUT"
 
+# Before the differential: an anchor that prints `?` has not learned a field-type tag,
+# and every dump it produces then disagrees with the roster — a red differential that
+# says nothing about the family (crucible#190/#192). Fail on that first, by name.
+C_BIN=$("$ROOT/scripts/roster.sh" list | awk '$1 == "c" { print $5 }')
+echo "==> [materialize] C anchor vocabulary (no \`?\` = every field-type tag known)" >&2
+python3 "$ROOT/engine/structured/materialize.py" --anchor-vocab "$ROOT/$C_BIN"
+
 echo "==> [materialize] differential over $(ls "$CORPUS" | grep -vc -e gitkeep -e '\.md$') input(s) — SOFAB_MATERIALIZE=1" >&2
 # The comparator inherits the environment, so the drivers see SOFAB_MATERIALIZE and
 # the descriptor path (drivers that consume the generated table read the latter;
@@ -62,6 +69,5 @@ SOFAB_MATERIALIZE=1 SOFAB_MATERIALIZE_SCHEMA="$ROOT/oracle/materialized-schema.j
 # is agreement-green. Anchor it by checking the schema-agnostic C driver against the
 # reference over corpus/structured (the value space the reference is defined on):
 # C == reference AND all == C  ⟹  all == reference. Fails (set -e) on any mismatch.
-C_BIN=$("$ROOT/scripts/roster.sh" list | awk '$1 == "c" { print $5 }')
 echo "==> [materialize] conformance: C anchor vs the reference (engine/structured/materialize.py)" >&2
 python3 "$ROOT/engine/structured/materialize.py" --driver "$ROOT/$C_BIN"
