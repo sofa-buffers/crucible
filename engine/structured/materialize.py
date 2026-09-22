@@ -178,14 +178,16 @@ def main():
     if len(sys.argv) >= 3 and sys.argv[1] == "--driver":
         _check_driver(sys.argv[2])
         return
+    if len(sys.argv) >= 3 and sys.argv[1] == "--anchor-vocab":
+        _check_anchor_vocab(sys.argv[2])
+        return
     for i, (name, msg) in enumerate(vectors()):
         print(f"{i:03d}_{name}\tA {materialize(msg)}")
 
 
-def _check_driver(driver_bin):
-    """Run a driver binary with SOFAB_MATERIALIZE=1 over corpus/structured and diff
-    every line against the reference. This is the per-driver acceptance gate for the
-    materialized rollout: 0 mismatches == the driver reproduces the form exactly."""
+def _run_driver(driver_bin):
+    """Run a driver binary with SOFAB_MATERIALIZE=1 over corpus/structured; return its
+    output lines and the vectors they answer, or exit when the line count is off."""
     import struct
     import subprocess
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -205,6 +207,37 @@ def _check_driver(driver_bin):
         if out.stderr:
             print("  stderr:", out.stderr.decode("utf-8", "replace")[-400:])
         sys.exit(1)
+    return lines, vecs
+
+
+# `?` is outside the materialized grammar (oracle/materialized.md: payloads are hex), and
+# the C anchor prints it only from md_value()'s `default:` arm — a field-type tag it has
+# not learned. That is the anchor being behind, not the family diverging, and it has to
+# read as that: generator#581's new BOOLEAN tag once surfaced as 1904 divergences
+# (crucible#190). scripts/check-family-copies.py catches the same thing statically.
+ANCHOR_UNKNOWN = "?"
+
+
+def _check_anchor_vocab(driver_bin):
+    """Fail, with its own message, when the C anchor printed ANCHOR_UNKNOWN anywhere."""
+    lines, vecs = _run_driver(driver_bin)
+    behind = [f"{i:03d}_{name}" for i, (name, _) in enumerate(vecs)
+              if ANCHOR_UNKNOWN in lines[i]]
+    if behind:
+        print(f"ANCHOR BEHIND: the C anchor printed `{ANCHOR_UNKNOWN}` for {len(behind)}/"
+              f"{len(vecs)} input(s) (first: {behind[0]}) — md_value() in drivers/c/driver.c "
+              f"has no case for a SOFAB_OBJECT_FIELDTYPE_* the generated descriptor uses. "
+              f"This is NOT a family divergence: teach the anchor the tag, then re-run.")
+        sys.exit(1)
+    print(f"OK: C anchor vocabulary — no `{ANCHOR_UNKNOWN}` in {len(vecs)} dumps — {driver_bin}")
+    sys.exit(0)
+
+
+def _check_driver(driver_bin):
+    """Run a driver binary with SOFAB_MATERIALIZE=1 over corpus/structured and diff
+    every line against the reference. This is the per-driver acceptance gate for the
+    materialized rollout: 0 mismatches == the driver reproduces the form exactly."""
+    lines, vecs = _run_driver(driver_bin)
     bad = 0
     for i, (name, msg) in enumerate(vecs):
         exp = "A " + materialize(msg)

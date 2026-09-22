@@ -14,6 +14,52 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-22 — generator#587 lands; crucible#192's family-copies gate
+
+**Refresh.** Re-bootstrapped on `main` after generator#587 closed (generator#592): sofabgen
+`0.0.0-20260920075919-cb28dc5e7007` → `0.0.0-20260922064217-1c88f418d2be`, nine corelibs
+advanced (cs, java, kotlin-mp, py, rs, rs-no-std, ts, zig with the new wrapper-array
+helpers; c-cpp only `start.sh`), documentation `382159e` → `c5cb2d8` (a bench row, no
+normative change). One break: **kotlin-jvm stopped compiling** — generated code now calls
+corelib-kotlin-mp's `inline` `Seq.reserveElem`, built for JVM 17, and `kotlinc` refuses to
+inline that into its default 1.8 output. `drivers/kotlin/build.sh` now passes
+`-jvm-target 17`, the corelib's own pinned target. Crucible-side, not a corelib defect.
+After it, every replay gate is green locally in `replay.yml` order: seeds, regression,
+conformance, cross-encode, union, limits, sweep (0/0), materialize (119 × 17, anchor 0/119),
+chunked ×2 and encode — 0 divergences, 0 mismatches.
+
+**crucible#192 audited.** The question was whether Crucible keeps private copies of logic
+the family now owns. Answer, item by item:
+
+- *Driver decode destinations (item 1):* no driver owns a container — every grow/append hit
+  is an output byte accumulator, a chunk split or JSON parsing. The generated probe code of
+  all 17 roster drivers reaches its corelib's layer (`placeElem`/`reserveElem`/`checkIndex`,
+  `*Seq`/`MessageSeq`, C's descriptor transcoder), at least once per wrapper field.
+- *C anchor (item 2):* `md_value()` covers all 13 `SOFAB_OBJECT_FIELDTYPE_*` tags today;
+  its `default:` still prints `?`.
+- *Materialized walkers (item 3):* ten walkers plus the reference name all 11 schema kinds.
+- *Test-local stand-ins (item 4):* corelib-rs's `sequence_growth` test already delegates to
+  `seq::reserve_elem` since corelib-rs#110 — nothing left to re-point.
+
+**Decision: a standing gate, not a sweep** (the issue's point — item 2's drift happened
+after the last review). `scripts/check-family-copies.py` holds the inventory *as its data*
+(one owner, no YAML dependency, the `check-catalog.py` shape) and asserts four things:
+signature hits vs inventory both ways, anchor tag coverage read from the vendored
+`object.h`, walker kind coverage read from `materialized-schema.json`, and generated code
+calling the corelib layer per roster driver. The static half runs in the `catalog` job; the
+full run sits right after the seed `run.sh`, because limit mode, the union suite and the
+sweeps rebuild against other schemas. Mutation-checked: seven planted drifts (a dropped
+anchor case, a new `enum` kind, a driver-defined `place_elem`, go bypassing its collectors,
+a stale entry, an unlisted zigzag coder, a new roster row) each fail by name. Known limit,
+stated in ARCHITECTURE: signature-based, so a copy spelled unlike any signature passes
+(e.g. the mutator's `vread`). `findings/` is out of scope — frozen reproducers.
+
+**Decision: `?` from the anchor is its own failure.** `materialize.sh` now runs
+`materialize.py --anchor-vocab` *before* the differential: `?` is outside the materialized
+grammar, so any occurrence means the anchor is behind, and it reports `ANCHOR BEHIND`
+instead of the 1904-divergence red of crucible#190. Checked against a wrapper that renders
+`u1` as `?` (11/119 flagged, exit 1) and against the real anchor (0/119).
+
 ## 2026-09-20 — the nightly cron moves off the top of the hour
 
 Noticed while waiting for the 2026-09-20 run: the nightly has not been running at night

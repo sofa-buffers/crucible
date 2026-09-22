@@ -51,6 +51,12 @@ jobs:
       - name: Driver participation ledger
         run: ./scripts/driver-audit.sh
 
+      # crucible#192: every place Crucible reimplements family logic is listed with a
+      # verdict, and every materialized-value walker names every schema kind. The half
+      # that needs vendor/ and built drivers runs after the seed differential below.
+      - name: Family copies (static half)
+        run: python3 scripts/check-family-copies.py --static
+
   differential:
     runs-on: ubuntu-latest
     container:
@@ -72,6 +78,13 @@ jobs:
 
       - name: Differential over seeds (the green gate)
         run: ./scripts/run.sh
+
+      # Right after the seed build, while every driver's generated code is the probe's:
+      # limit mode, the union suite and the sweeps rebuild against other schemas. Asserts
+      # the C anchor has a case for every corelib-c-cpp field-type tag and that each
+      # driver's generated code reaches its corelib's collector layer (generator#587).
+      - name: Family copies (anchor tags + generated code reaches the corelib)
+        run: python3 scripts/check-family-copies.py
 
       # Reproducers for findings that are already fixed: a divergence here means a
       # resolved bug came back. See corpus/regression/README.md.
