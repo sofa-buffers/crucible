@@ -94,14 +94,14 @@ allow:
       sequences nested deeper than its bound, where full-depth profiles omit them.
       Divergent bytes, same value — legal per the constrained-profile allowance.
     spec: >-
-      CORELIB_PLAN §6 "How deep the hold-back reaches (normative)" — the
-      FIXLEN_MAX/ARRAY_MAX-style constrained-profile allowance; MESSAGE_SPEC §2
-      requires every decoder to accept and normalize the resulting frames. The
-      clause is in documentation `main` (verified 2026-08-17 at dd2866b); it was
-      cited here as living on the POC omit-all-default-sequences branch, which it
-      no longer does. Unchanged in substance: an implementation that can allocate
-      MUST hold back to full MAX_DEPTH, a heap-free profile MAY bound the run and
-      MUST document the bound.
+      CORELIB_PLAN §6.0.1 "Lazy framing" is the mechanism (an implementation that
+      can allocate MUST hold back to full MAX_DEPTH; a heap-free profile MAY bound
+      the pending run and frame eagerly beyond it); §6.2.2 "What a profile may vary"
+      is the allowance and the duty — this is the "hold-back depth below MAX_DEPTH"
+      row, severity byte divergence, and the profile's README MUST state the bound
+      it chose (§9.7). MESSAGE_SPEC §2 requires every decoder to accept and
+      normalize the resulting non-canonical frames. Re-verified 2026-09-23 at
+      documentation main@c5cb2d86 — unchanged since the 2026-08-17 dd2866b reading.
 
   - id: c-embedded-nul-string-projection
     applies_to: [findings/F-0018-c-embedded-nul-string-truncation/embedded_nul.bin]  # probe, nested.str = "A\0B" (41 00 42)
@@ -116,8 +116,9 @@ allow:
       is inherent to the C-string convenience, not a decode loss. The lossless path is the
       byte/length (visitor) API. By design, not a bug — see findings/F-0018.
     spec: >-
-      MESSAGE_SPEC §8 + CORELIB_PLAN §6.4 "Embedded U+0000 is allowed" — re-read
-      2026-08-17 at documentation main@dd2866b. The note this entry once proposed was
+      MESSAGE_SPEC §8 + CORELIB_PLAN §6.4 "Embedded U+0000 is allowed" — re-verified
+      2026-09-23 at documentation main@c5cb2d86, unchanged since the 2026-08-17
+      dd2866b reading. The note this entry once proposed was
       adopted, but deliberately as a NON-NORMATIVE interop note: NUL is valid UTF-8 and a
       validator MUST NOT reject it, the corelib API is length-delimited, and
       "NUL-terminated consumers truncate at the first NUL — producers targeting such
@@ -136,15 +137,31 @@ allow:
 # target is every impl emitting I. Genuinely malformed bytes remain INVALID (R).
 notes:
   truncated_input: SPECIFIED as INCOMPLETE — MESSAGE_SPEC §7; verifies F-0001
-  malformed_input: INVALID — MESSAGE_SPEC §7 (unknown wire-type, >64-bit varint,
-    count/length over max, MAX_DEPTH, stray sequence-end)
+  malformed_input: >-
+    INVALID — CORELIB_PLAN §5.2.2 is the single, referenced-never-restated list (not
+    MESSAGE_SPEC §7, which only names the outcome). Re-verified 2026-09-23 at
+    documentation main@c5cb2d86. Its ten conditions: a varint longer than 10 bytes or
+    with a payload bit at position >=64 (§4.1.3); an id/length/count above its format
+    ceiling (§6.2); a reserved fixlen subtype 0x4-0x7 (§4.6); an fp32/fp64 fixlen whose
+    declared length is not exactly 4/8 (§4.6); a fixlen ARRAY whose fixlen_word subtype
+    is not fp32/fp64 (§4.8, §4.8.1 — crucible#173, no axis emits this yet); nesting past
+    MAX_DEPTH (§4.9); a sequence-end marker with no open sequence (§4.9); an element
+    count above the declared schema count (MESSAGE_SPEC §7.1); an invalid-UTF-8 string
+    payload that IS READ with the strict check on (§6.4); and, on a reduced profile
+    only, a field whose wire type that build does not carry (§6.2.2 type loss —
+    crucible#176, dormant on the current roster, which builds no reduced profile).
+    Two conditions are deliberately NOT on this list, and never fold into
+    malformed_input: a non-minimal varint (§4.1.2, normalized away, not an error) and a
+    receiver-cap rejection (§6.2.1 — its own LimitExceeded category, see limit_exceeded
+    below).
   limit_exceeded: >-
     A configured receiver-side decode cap (max_dyn_array_count / max_dyn_string_len /
     max_dyn_blob_len, generator#102) on a schema-UNBOUNDED field. This is a POLICY
     rejection, a category distinct from INVALID: the bytes are well-formed and decode
     under a looser/unset cap. Surfaced as the `L` verdict (limit mode only). SPEC
     BASIS: NORMATIVE since CORELIB_PLAN §6.2.1 "Receiver-side technical limits" —
-    verified 2026-08-17 at documentation main@dd2866b. It names these three caps,
+    re-verified 2026-09-23 at documentation main@c5cb2d86, unchanged since the
+    2026-08-17 dd2866b reading. It names these three caps,
     calls them configuration rather than schema, states that exceeding one MUST NOT be
     reported as InvalidMessage nor folded into the INVALID outcome, forbids applying
     them to a field the schema already bounds, and gives the condition its own error
@@ -153,3 +170,11 @@ notes:
     failure, and conformance testing therefore compares implementations configured
     identically — which is what limit mode does. This note previously read "SPEC HOLE
     to file upstream"; the hole is closed.
+    Two clauses added since: (1) §6.2.1 "a skipped field is never capped" — a
+    max_dyn_* limit MUST NOT be applied to a field the decoder skips per MESSAGE_SPEC
+    §7.3, so a decode that steps over an over-cap field it never reads stays COMPLETE,
+    not LimitExceeded. (2) §6.3 gives InvalidArgument a third, distinct meaning
+    alongside InvalidMessage and LimitExceeded: a destination too short for the value
+    handed to it (§6.6.3), told apart from a schema-bound violation (InvalidMessage)
+    and a receiver-cap rejection (LimitExceeded) on every aggregate surface — see
+    oracle/canonical.md's `argument` class (crucible#175).
