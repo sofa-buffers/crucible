@@ -715,15 +715,32 @@ here:
       because the other fourteen drivers do not recognise the variable and would exit 0
       having ignored it. Proving the refusal instead of assuming it is per-driver work,
       filed as its own item below. Original note follows.
-- [ ] **The limits gate is one driver short until generator#545 lands.** `typescript` declares
-      the `limits` tag and cannot be built in limit mode: the TS backend emits
+- [x] **DONE 2026-09-23 — `typescript` builds and runs in limit mode; the gate is whole
+      again.** generator#545 was closed as a duplicate of generator#550 ("typescript:
+      generated code imports `ArrayTarget`, which corelib-ts has never had"), and #550 was
+      fixed by generator#554 (merged: "every native array is a typed array, filled and
+      written whole"). Re-measured rather than trusted on the ticket (this file's own rule,
+      set by the zig/#293 story below): `LIMITS=8 sh drivers/ts/build.sh` now compiles and
+      type-checks clean, the built driver decodes the empty message correctly (`A `), and
+      `scripts/roster.sh build limits` lists `typescript` in the heap roster without error.
+      Nothing on Crucible's side needed a change. Original note below.
+      ~~The limits gate is one driver short until generator#545 lands.~~ `typescript`
+      declares the `limits` tag and cannot be built in limit mode: the TS backend emits
       `Visitor.arrayBulk` / `ArrayTarget`, which corelib-ts has never had
       (generator#545, filed 2026-09-15). The gate now fails loudly on that build rather than
       comparing a reduced roster in silence, so the red is the honest state — but it is red,
       and it stays red until the generator drops the arm or corelib-ts grows the hook.
       `csharp`, `zig`, `dart` and `kotlin` (both legs) were verified to build clean in limit
       mode on 2026-09-15, so nothing else is hiding behind it.
-- [ ] **Only one driver proves §6.7 chunk lifetime; the rest merely do not contradict it.**
+- [x] **DONE 2026-09-23 — every driver but the declared exception now proves it.** Swept the
+      whole roster's driver sources for the actual post-`feed` overwrite (not just the
+      `SOFAB_CHUNK_SCRUB` flag being read, which every driver already did): `c`, `rust`,
+      `java`, `csharp`, `cpp`, `dart`, `typescript` and `kotlin` all fill the fed chunk with
+      `0xA5` once `feed` returns, alongside `python` (already known). Only `zig` still
+      declines, by declaration, for the reason already given below. So the axis is asserted
+      family-wide except the one driver that structurally cannot honour it, not merely
+      "unasserted everywhere but one". Original note below.
+      ~~Only one driver proves §6.7 chunk lifetime; the rest merely do not contradict it.~~
       `SOFAB_CHUNK_SCRUB` overwrites each fed chunk after `feed` returns, which catches a
       decoder that kept a window into it. Since 2026-09-15 `python` runs it and passes; `zig`
       declines by declaration (it borrows a whole-chunk payload deliberately). Every other
