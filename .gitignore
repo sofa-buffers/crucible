@@ -12,8 +12,10 @@
 # Fuzzing artifacts
 /corpus/interesting/*
 /corpus/crashes/*
+/corpus/stream/*
 !/corpus/interesting/.gitkeep
 !/corpus/crashes/.gitkeep
+!/corpus/stream/.gitkeep
 # libFuzzer per-job logs (fuzz.sh with -jobs writes these to the repo root)
 /fuzz-*.log
 # Coredumps from a crashing driver/pacemaker

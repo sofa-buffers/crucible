@@ -75,6 +75,24 @@ jobs:
         continue-on-error: true
         run: FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz-go.sh
 
+      # Streaming engines (crucible#178). Nothing above ever exercises feed/finish
+      # — every fuzz front-end above calls the one-shot decode, so the streaming
+      # path is only ever REPLAYED, over a corpus the block path grew. These steer
+      # on the same two engines' chunk-invariance check instead of on coverage
+      # over a crash, so a divergence they find is a value/verdict mismatch, not
+      # a memory fault (see drivers/c/driver.c's CRUCIBLE_FUZZ_STREAM front-end and
+      # drivers/go/fuzz_test.go's FuzzProbeStream). A quarter of the block-path
+      # engine's own budget each, same as the Go engine above; non-blocking for
+      # the same reason: a violation here is a crash finding, reported via the
+      # artifact upload below, and must not fail the nightly.
+      - name: Fuzz — C streaming engine (feed/finish path)
+        continue-on-error: true
+        run: FUZZ_STREAM=1 FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz.sh
+
+      - name: Fuzz — Go streaming engine (feed/finish path)
+        continue-on-error: true
+        run: FUZZ_TARGET=FuzzProbeStream FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz-go.sh
+
       # Clusters the grown corpus and diffs every camp against results/known-clusters.txt.
       # A camp is in that file only once it is EXPLAINED (a catalogued finding, a legal
       # divergence, a benign soft axis), so anything else turns this step red — in an
