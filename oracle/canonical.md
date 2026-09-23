@@ -37,7 +37,7 @@ groups, and the comparator treats them differently:
 |---|---|---|
 | `invalid_msg` | **expected** | the `INVALID` outcome; what a decode reject is |
 | `limit_exceeded` | **expected** (limit mode) | §6.2.1's receiver cap, its own code and its own `L` verdict |
-| `argument`, `buffer_full`, `other` | **allowed but reported** | §6.3 permits language-specific conditions "as long as the baseline meanings are preserved", so these are legal — but on the **decode** path they mean a generated layer erred where the family cleanly rejects, which is the F-0003 / F-0008 shape. Surfaced as a warning, never silently equal |
+| `argument`, `buffer_full`, `other` | **allowed but reported** | §6.3 permits language-specific conditions "as long as the baseline meanings are preserved", so these are legal — but `argument` on the **decode** path is one of *two* distinct shapes. Historically it meant a generated layer erred where the family cleanly rejects (the F-0003 / F-0008 codegen-defect shape). Since §6.3 grew a third refusal tier, it can *also* mean the spec's own **`InvalidArgument`**: a destination too short for the value handed over (§6.6.3), told apart from a schema-bound violation (`InvalidMessage`) and a receiver-cap rejection (`LimitExceeded`). That second shape is legitimate, not a defect, and is where the fixed-capacity profiles in the roster (`c`, `cpp-c-cpp`, `cpp-fixed`, `rust-nostd`) can produce it on a decode. Either way it is surfaced as a warning, never silently equal — the two shapes are told apart by which profile emitted it and what the destination actually was, not by the class name alone |
 | `usage` | **FORBIDDEN** | §6.3 abolishes the category. A driver emitting it reports a corelib carrying a code the spec says cannot exist |
 
 **Why this is checked per line and not by comparing drivers.** The `reject_class` axis
@@ -157,14 +157,23 @@ encode-equivalent — i.e. they differ only in something the wire cannot represe
 the wire and are non-findings, so the masking is benign. Genuinely different
 decoded values encode differently and are caught.
 
-Float/NaN note: a decoder that materializes fp32 through a 64-bit double (Python,
-TypeScript) may not preserve a NaN *payload* across decode→re-encode; this is a
-known per-language limit, harmless for current seeds.
+Float/NaN note: CORELIB_PLAN §6.5 makes bit-exact decode→re-encode of a signaling
+NaN a **MUST**, at both the scalar `fp32` and the array-element position, for every
+implementation including a double-only target (Python, TypeScript) — a widened
+double destroys the sNaN payload the instant it passes through, so a double-only
+port **MUST** provide a raw-wire-bytes path rather than round-tripping the widened
+value. This is not a tolerable per-language limit; a NaN-payload mismatch is a
+§6.5 violation, and this oracle's own decode→re-encode→hex form (above) would
+surface it as an `accept_value` divergence like any other wrong re-encode. It is
+`scripts/materialize.sh`'s corpus, `corpus/structured` (`f32_snan`,
+`arr_fp32_nan_bits`), not this oracle's default sweep, that actually exercises the
+sNaN vectors — `run.sh` does not read `corpus/structured` at all, so a defect here
+is invisible to the round-trip gate purely because the vector never reaches it, not
+because the comparison is structurally blind. `materialize.sh` additionally checks
+the decoded **value** against a schema-driven reference (not just driver-vs-driver
+agreement), which is what actually caught this class (docs/TODO.md, DONE
+2026-08-02) and is a standing blocking gate.
 
-## Reject classes
-
-Coarse taxonomy so the comparator can tell "rejected for the same reason" from
-"rejected differently". Phase 2: the class comparison is **soft** (a mismatch is a
-warning, not a failure — see `policy.yaml`); the verdict (which of `A`/`I`/`R`)
-is always **hard**. `encode` failing after a successful decode (it should not,
-given a worst-case buffer) is reported as a reject class too.
+`encode` failing after a successful decode (it should not, given a worst-case
+buffer) is reported as a reject class too, via the same per-line taxonomy defined
+above — see "The reject classes, and which of them may legally appear".
