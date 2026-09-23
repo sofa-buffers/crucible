@@ -14,6 +14,46 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-23 — crucible#177: the roster builds clean again, resolved upstream not here
+
+A fresh-worktree build found the roster broken: `go`, `rust-std`/`rust-nostd` and `cpp`
+each failed compiling their **generated** code against the vendored corelib mains, three
+independent API-shape mismatches (a `Visitor` interface change, `feed`'s return type
+gaining `Status`, and `readArray`/`StringSeq`/`BlobSeq` arity changes). Traced to the
+root cause and posted as evidence on crucible#177: `scripts/bootstrap.sh` correctly picks
+the *newest green* `generator@main` CI run, but at that point the newest green run was
+from 2026-08-22 (`0ca1f000`) — a month stale, because `generator@main`'s CI had not gone
+green since. Bootstrap's own selection logic was re-verified live against the same API
+query and is not at fault.
+
+Re-running the same build hours later, `generator@main` had shipped a new green CI run
+(`35823855381`, 2026-09-23T05:47:10Z, `a8a0bb3f`) carrying the matching generated-code
+changes — the roster now builds clean, all **17** drivers, with no change on Crucible's
+side: nothing in `drivers/*/meta`, build flags, or driver sources needed fixing. The
+break and its resolution were both entirely upstream, matching the issue's own framing
+that this class of API movement is `sofabgen`'s to absorb, not this repo's.
+
+**Completed #177's remaining checklist against this state:**
+- `run.sh` over `corpus/regression` (258×17, 0 divergences, 24 soft warnings / 16
+  allowed — all pre-existing, catalogued rows, nothing new), `corpus/structured`
+  (119×17, 0 divergences, 0 warnings), `corpus/conformance` (8×17, 0 divergences).
+- `materialize.sh`: C-anchor vocabulary clean (no `?` in 119 dumps), 119×17 differential
+  0 divergences, C anchor vs. the schema-driven reference 0/119 mismatches.
+- `scripts/run-chunked.sh --modes chunk`: 0 mismatches across the 16 participating
+  drivers (`go` absent by design, no resumable decoder).
+- `scripts/run-encode.sh`: 0 mismatches across all 17 drivers, every declared surface.
+
+**The family state this roster now pins:** `sofabgen 0.0.0-20260923054707-a8a0bb3f`
+(generator run `35823855381`) against `corelib-c-cpp@3e90be8`, `corelib-cpp@5ec3fc2`,
+`corelib-cs@26d2790`, `corelib-dart@b78eedb`, `corelib-go@27814af`,
+`corelib-java@18aec63`, `corelib-kotlin-mp@8189575`, `corelib-py@1d87b23`,
+`corelib-rs@17adb94`, `corelib-rs-no-std@ade110f`, `corelib-ts@0615f80`,
+`corelib-zig@7caab5a`. Every corelib is further along than the heads crucible#177
+originally named (e.g. `corelib-go` `bdd5f8b`→`27814af`, `corelib-rs`
+`36e7719`→`17adb94`, `corelib-cpp` `0c8dbee`→`5ec3fc2`) — this is a later point on the
+same post-`c837108` wave, not the original one, and a divergence found on these heads is
+a statement about *this* later point.
+
 ## 2026-09-22 (later) — nightly 35702107666 triaged locally: CI's verdict was blind, the local one is quiet
 
 The scheduled run fuzzed normally — libFuzzer 128.6M execs at ~71k/s with 524 new units,
