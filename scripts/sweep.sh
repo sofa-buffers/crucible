@@ -40,6 +40,20 @@ CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
 echo "==> [sweep] blocking axes: repeated-id (§7.4) + over-bound (§7.1) + reserved-subtype (§4.6) + truncation (§7) + malform×truncate (§5.2) + wiretype (§7.3) + varint (§2 canonicality) + empty-frame (§2 omission) + framing/ceilings (§5.2/§6.2) + unknown-sequence (§5.2/§4.9) + repeated-element-id (§7.4×§5.1) + tolerance (§7.2 class 5b)" >&2
 python3 "$SWEEP" sweep_repeated_id sweep_overbound sweep_reserved_subtype sweep_truncation sweep_malform_truncate wiretype_sweep sweep_varint sweep_empty_frame sweep_framing sweep_unknown_seq sweep_repeated_elem sweep_tolerance
 
+# --- sweep_fixlen_array_subtype (§4.8.1 step 3 / §5.2.2), REPORT-ONLY ---------
+# crucible#173. Follows ground rule 4 (docs/TODO.md): a new axis blocks only once it
+# is green over the full roster, or every divergence it surfaces is catalogued.
+# Neither is established yet — the full blocking roster does not currently BUILD at
+# all: `go`, `rust-std`/`rust-nostd` and `cpp` each fail against the vendored corelib
+# mains with a distinct generated-code/corelib API mismatch (crucible#177, the
+# post-c837108 family bump). Verified in isolation instead: all 148 vectors pass
+# conformance against the `c` driver alone (the one that does build), matching the
+# already-blocking sibling axis (`sweep_reserved_subtype`, the 0x4-0x7 reserved range
+# at the same wire position). Promote to the blocking call above once crucible#177
+# lands and a full-roster run confirms agreement + conformance across every driver.
+echo "==> [sweep] fixlen-array string/blob-subtype (§4.8.1/§5.2.2, REPORT-ONLY — crucible#173, pending crucible#177's roster rebuild for full verification)" >&2
+python3 "$SWEEP" sweep_fixlen_array_subtype || echo "==> [sweep] fixlen-array-subtype axis reported failures above — NOT gating (report-only, see crucible#173)" >&2
+
 # --- all three former report-only probe axes are BLOCKING since 2026-08-02 ----
 # sweep_framing (WP-04), sweep_unknown_seq and sweep_repeated_elem were report-only
 # under ground rule 4 — a new axis blocks only once green, or once every divergence it

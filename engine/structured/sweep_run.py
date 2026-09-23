@@ -36,7 +36,8 @@ from oracle.comparator import run_driver, parse  # noqa: E402
 from oracle import roster  # noqa: E402
 
 AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserved_subtype",
-        "sweep_truncation", "sweep_malform_truncate", "sweep_varint", "sweep_empty_frame", "sweep_tolerance"]
+        "sweep_truncation", "sweep_malform_truncate", "sweep_varint", "sweep_empty_frame",
+        "sweep_tolerance", "sweep_fixlen_array_subtype"]
 
 # `sweep_varint` (WP-03, §2 varint canonicality) is blocking and now **fully
 # conformance-asserting**. It used to be agreement-only for its non-minimal vectors
@@ -55,6 +56,11 @@ AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserve
 UNION_AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound",
               "sweep_reserved_subtype", "sweep_truncation", "sweep_empty_frame",
               "sweep_tolerance"]
+# sweep_fixlen_array_subtype (crucible#173) has an emit_union too, but is not in this
+# list yet: the union pass is invoked as one blocking `--union` call (scripts/sweep.sh)
+# with no per-axis report-only split the way the probe pass has, and this axis has not
+# been verified against the union roster at all (crucible#177 blocks even the probe
+# roster from building). Add it here once both are true.
 
 # The driver roster, read from drivers/roster — the one place it is stated. Built by
 # ./scripts/run.sh already.
