@@ -153,6 +153,28 @@ blb 2×9, 0 divergences. rust-std gained the `L` arm behind a `limit` cargo feat
 (`drivers/rust/build.sh` enables it for the std variant only; rs-no-std's `Error`
 has no `LimitExceeded`).
 
+### Profile variations, §6.2.2 (as built)
+
+CORELIB_PLAN §6.2.2 is the single registry of what a footprint build may trade
+away, at four severities: *byte divergence* (hold-back depth / lazy-sequence
+trio), *receive limit* (`FIXLEN_MAX`/`ARRAY_MAX` at 65,535, or a 32-bit scalar
+width), *validation divergence* (`SOFAB_STRICT_UTF8` OFF or compiled out), and
+*type loss* (`fp64`, fixlen, array or sequence support disabled). **The roster
+builds none of them.** Every entry in `drivers/roster` is a full, unvaried
+build — the four C++ configurations vary the *corelib* (two implementations ×
+`allow_dynamic`), not a footprint trade from this table, and the fixed-capacity
+profiles (`c`, `cpp-c-cpp`, `rust-nostd`) are `ID_MAX`/32-bit-scalar profiles
+that §6.2 permits outright, never a §6.2.2 *selected* variation. This is why
+`oracle/policy.yaml`'s §6.2.2 `allow:` entries are all **dormant** — the
+*byte-divergence* row (lazy hold-back depth) and the *type-loss* /
+*validation-divergence* rows crucible#176 added — none can fire on the current
+roster, and this is the fact that would need noticing (and the dormant entries
+scoped to a real corpus) the day a reduced-profile build joins it. §6.2.2's own
+gate requires the README to state any variation taken (§9.7); a build that
+diverges from the full profile without stating it is not a legal §6.2.2
+divergence, it is an undocumented incompatibility — `oracle/policy.yaml`'s
+`allow:` entries exist only for the stated, documented case.
+
 ### Per-language driver notes (as built)
 
 **The streaming axes, per backend.** Every driver honours the two ENCODE variables; every driver except `go` also honours the three DECODE ones

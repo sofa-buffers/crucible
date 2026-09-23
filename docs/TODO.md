@@ -87,15 +87,24 @@ here:
   Both were checked on the **value**, not on agreement alone (c / go / rust-nostd read out
   individually — C object API, heap and fixed-capacity profiles), because a family-wide wrong
   answer is invisible to a differential oracle.
-- [ ] **Lazy-depth divergence sweep** (POC CORELIB_PLAN §6): the bounded hold-back
-  (`SOFAB_LAZY_SEQ_DEPTH` = 8 in corelib-c-cpp; rs-no-std likewise) only becomes observable with
-  all-default sequence chains nested deeper than 8 — `probe` nests 3. A dedicated deep schema + suite
-  would pin the legal non-canonical frames (policy carve-out
+- [ ] **Lazy-depth divergence sweep** (CORELIB_PLAN §6.0.1 mechanism / §6.2.2 the
+  "hold-back depth below `MAX_DEPTH`" variation, severity *byte divergence*): the bounded
+  hold-back (`SOFAB_LAZY_SEQ_DEPTH` = 8 in corelib-c-cpp; rs-no-std likewise) only becomes
+  observable with all-default sequence chains nested deeper than 8 — `probe` nests 3. A
+  dedicated deep schema + suite would pin the legal non-canonical frames (policy carve-out
   `bounded-lazy-seq-depth-noncanonical-frames` is already in `oracle/policy.yaml`, dormant).
-- [ ] **WP-10 Part B phase 2** — an opt-in `STRICT_UTF8=OFF` suite (env-gated build variant + per-profile-class
-  `policy.yaml` allowances citing §8): deferred as a non-default-config follow-up; needs the gen#85
-  Unicode-string config audit first. Phase-1 reachability audit is done (byte-container profiles OFF-capable
-  → raw bytes; audit table was in improvements.md WP-10, mirrored in git history).
+  §6.2.2's README duty (§9.7) means this is only a *legal* divergence for a profile whose
+  README states the bound it chose — an unbounded-hold-back profile that never says so would
+  be an undocumented incompatibility, not a §6.2.2 variation, and the carve-out would not
+  cover it.
+- [ ] **WP-10 Part B phase 2** — an opt-in `STRICT_UTF8=OFF` suite (env-gated build variant +
+  per-profile-class `policy.yaml` allowances citing §6.4 + §6.2.2 the "`SOFAB_STRICT_UTF8` OFF
+  or compiled out" variation, severity *validation divergence*): deferred as a non-default-config
+  follow-up; needs the gen#85 Unicode-string config audit first. Phase-1 reachability audit is
+  done (byte-container profiles OFF-capable → raw bytes; audit table was in improvements.md
+  WP-10, mirrored in git history). Same README duty as above: a build shipping `STRICT_UTF8`
+  OFF without its README saying so is not covered by the dormant `allow:` entry crucible#176
+  added — the entry names the documented case only.
 
 
 ---
