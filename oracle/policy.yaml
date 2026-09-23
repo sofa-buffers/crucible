@@ -129,6 +129,51 @@ allow:
       prohibition does not reach this case. The entry therefore stands as a by-design
       divergence, not as a pending spec question.
 
+  # DORMANT — see crucible#176. §6.2.2 is the single registry of what a footprint build
+  # may vary; these next two entries pre-register two of its four severities so the
+  # first hit on a reduced-profile build is recognized as legal instead of filed as a
+  # finding. Neither can fire today: the roster builds no reduced profile at all
+  # (docs/ARCHITECTURE.md, "Profile variations, §6.2.2 (as built)") — every entry in
+  # drivers/roster is a full, unvaried build. If a reduced profile joins the roster,
+  # scope `applies_to` to its corpus and verify its README states the variation and the
+  # numbers it chose (§9.7) before treating a divergence it produces as covered here —
+  # an undocumented departure from the full profile is not a legal §6.2.2 divergence,
+  # it is an incompatibility.
+  - id: reduced-profile-type-loss
+    applies_to: []          # dormant — no roster entry disables a wire type (see reason)
+    axis: verdict
+    reason: >-
+      A profile that compiles out `fp64`, fixlen, array or sequence support cannot skip
+      an unrecognized field carrying that wire type — the code that steps over the
+      construct is exactly the code the switch removed — so it reports `INVALID` (R)
+      where a full build skips the field per MESSAGE_SPEC §7.3 and stays `COMPLETE`
+      (A/I). A verdict split against such a profile, on an input whose only offending
+      field is one the reduced profile does not carry, is legal per §6.2.2 rather than
+      a conformance bug.
+    spec: >-
+      CORELIB_PLAN §6.2.2 "What a profile may vary" — the `fp64`/fixlen/array/sequence
+      row, severity **type loss**, the widest of the four because it reaches fields the
+      build never reads at all. §5.2.2's INVALID list carries the matching row ("a field
+      whose wire type this build does not carry — on a reduced profile only"). Verified
+      2026-09-23 at documentation main@c5cb2d86.
+
+  - id: reduced-profile-validation-divergence
+    applies_to: []          # dormant — no roster entry ships SOFAB_STRICT_UTF8 OFF (see reason)
+    axis: verdict
+    reason: >-
+      A profile built with `SOFAB_STRICT_UTF8` OFF (or compiled out) accepts a `string`
+      payload that is not valid UTF-8, where a strict-check profile rejects the same
+      bytes as `INVALID` (R). The disagreement is about the *verdict* on identical,
+      well-formed bytes, not about the decoded value — legal per §6.2.2 between a
+      strict and a non-strict profile, distinct from WP-10 Part B phase 2's own
+      opt-in-suite item in docs/TODO.md, which would *exercise* this row rather than
+      merely name it.
+    spec: >-
+      CORELIB_PLAN §6.2.2 "What a profile may vary" — the `SOFAB_STRICT_UTF8` row,
+      severity **validation divergence**. §6.4 remains the normative UTF-8 clause (ON
+      by default; OFF pinned to raw-or-reject, never lossy). Verified 2026-09-23 at
+      documentation main@c5cb2d86.
+
 # PLAN §8 is now RESOLVED. The open question was: is decoding of truncated input
 # specified (one correct outcome) or undefined? MESSAGE_SPEC §7 (finish-less
 # three-valued decode) settles it: truncated input is INCOMPLETE — a distinct,
