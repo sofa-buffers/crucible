@@ -2,12 +2,17 @@
  * Crucible C driver — the coverage PACEMAKER for the SofaBuffers differential
  * fuzzer.
  *
- * One decode core, two front-ends:
+ * One decode core, three front-ends:
  *   - default build (gcc/clang): persistent replay driver speaking the protocol
  *     in drivers/common/CONTRACT.md — reads length-prefixed inputs on stdin,
  *     emits one canonical line each on stdout.
  *   - -DCRUCIBLE_LIBFUZZER (clang -fsanitize=fuzzer): LLVMFuzzerTestOneInput,
- *     the coverage-guided pacemaker; exercises the same core, no stdout.
+ *     the block-path coverage-guided pacemaker; exercises the same core, no
+ *     stdout.
+ *   - -DCRUCIBLE_LIBFUZZER -DCRUCIBLE_FUZZ_STREAM: a second LLVMFuzzerTestOneInput
+ *     that steers on the STREAMING (feed/finish) path instead (crucible#178) —
+ *     see the comment above decode_chunked() and the one above that
+ *     LLVMFuzzerTestOneInput for the input layout and the chunk-invariance oracle.
  *
  * Canonical form: see oracle/canonical.md.
  */
@@ -306,11 +311,17 @@ static void read_stream_cfg(void)
     }
 }
 
-/* Feed the record in the configured pieces through ONE decoder. Never an empty
- * chunk: k<=0, k>=len and n>=len all mean one chunk holding the whole record, which
+/* Feed the record in the given pieces through ONE decoder. Never an empty chunk:
+ * k<=0, k>=len and n>=len all mean one chunk holding the whole record, which
  * matters twice over here -- it is today's single feed, and sofab_istream_feed
- * asserts datalen>0. Returns the last feed's verdict. */
-static sofab_ret_t decode_streamed(message_probe_t *m, const uint8_t *buf, size_t len)
+ * asserts datalen>0. Returns the last feed's verdict.
+ *
+ * Takes its settings as arguments rather than reading g_cfg, so both the replay
+ * front-end (which reads them from the environment) and the streaming fuzz
+ * front-end (which reads them from the fuzz input, crucible#178) share one
+ * implementation. */
+static sofab_ret_t decode_chunked(message_probe_t *m, const uint8_t *buf, size_t len,
+                                  long split, long chunk, int scrub)
 {
     message_probe_decoder_t d;
     sofab_ret_t r = SOFAB_RET_OK;
@@ -319,18 +330,18 @@ static sofab_ret_t decode_streamed(message_probe_t *m, const uint8_t *buf, size_
 
     message_probe_decoder_init(&d, m);
 
-    if (g_cfg.chunk > 0)                                   step = (size_t)g_cfg.chunk;
-    else if (g_cfg.split > 0 && (size_t)g_cfg.split < len) step = (size_t)g_cfg.split;
-    else                                                   step = len;
+    if (chunk > 0)                                   step = (size_t)chunk;
+    else if (split > 0 && (size_t)split < len)       step = (size_t)split;
+    else                                              step = len;
 
     off = 0;
     while (off < len)
     {
         size_t n = len - off < step ? len - off : step;
-        /* SOFAB_SPLIT is two chunks, not fixed-size: after the first cut, the rest
-         * goes in one piece. */
-        if (g_cfg.chunk <= 0 && off > 0) n = len - off;
-        if (g_cfg.scrub && n <= sizeof(scratch))
+        /* A two-way split is two chunks, not fixed-size: after the first cut, the
+         * rest goes in one piece. */
+        if (chunk <= 0 && off > 0) n = len - off;
+        if (scrub && n <= sizeof(scratch))
         {
             /* Scrub needs a buffer the driver owns: feed it, then overwrite. A
              * decoder that borrowed from the chunk rather than copying out of it
@@ -420,7 +431,7 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
          * also what makes the gate meaningful: it then compares two genuinely
          * different code paths rather than one against itself. */
         sofab_ret_t r = (g_cfg.split || g_cfg.chunk || g_cfg.scrub)
-                            ? decode_streamed(&m, buf, len)
+                            ? decode_chunked(&m, buf, len, g_cfg.split, g_cfg.chunk, g_cfg.scrub)
                             : message_probe_decode(&m, buf, len);
         if (r == SOFAB_RET_INCOMPLETE)
         {
@@ -468,8 +479,9 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
 #ifdef CRUCIBLE_LIBFUZZER
 #include "sofab_mutator.h"   /* engine/mutator: grammar-aware mutation ops */
 
-/* Coverage pacemaker front-end. Exercise the decode core; sanitizers catch
- * memory faults, the differential path catches disagreement. No output. */
+#ifndef CRUCIBLE_FUZZ_STREAM
+/* Block-path coverage pacemaker front-end. Exercise the decode core; sanitizers
+ * catch memory faults, the differential path catches disagreement. No output. */
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
     message_probe_t m;
@@ -477,6 +489,108 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     if (size > 0) (void)message_probe_decode(&m, data, size); /* see decode_and_report */
     return 0;
 }
+#else
+/* Streaming (feed/finish) coverage pacemaker front-end (crucible#178). Nothing
+ * else steers a fuzzer on this path: every other front-end calls the one-shot
+ * decode, so feed/finish is only ever REPLAYED, over a corpus the block path
+ * grew. This is a second, independent target rather than a mode of the first
+ * one, because libFuzzer's coverage counters are per-binary and mixing the two
+ * paths in one target would blur which one the fuzzer is actually steering on.
+ *
+ * Input layout: a fixed 3-byte header in front of the message,
+ * [mode][param_lo][param_hi], mirroring the two replay axes (CONTRACT.md
+ * "Decode side") exactly so a violation this finds reproduces directly against
+ * the replay driver:
+ *   mode&1==0 -> split = param   (SOFAB_SPLIT=param: two chunks, [0,param) then
+ *                                 the rest)
+ *   mode&1==1 -> chunk = param   (SOFAB_CHUNK=param: fixed-size chunks)
+ * The other 7 bits of mode are reserved and ignored, so a mutation of them is
+ * harmless. param==0 or param>=len means one chunk holding the whole record,
+ * same as an unset SOFAB_SPLIT/SOFAB_CHUNK (decode_chunked's own rule).
+ *
+ * This does not merely feed the streaming path and hope a sanitizer trips --
+ * every streaming defect found so far (F-0058, F-0060, F-0061, crucible#130)
+ * was a VALUE or VERDICT mismatch, not a memory fault, and nothing but this
+ * oracle would notice one. So each input is decoded twice, one-shot and
+ * chunked per the header, and the run aborts if the two disagree: on the
+ * verdict class (A / I / R <class>), or, when both accept, on the re-encoded
+ * bytes. That is exactly the invariant run-chunked.sh checks over the replay
+ * driver (CONTRACT.md: "an intra-driver invariant"); this is the fuzz-time
+ * form of the same check. The chunked decode always scrubs each fed buffer
+ * after the corelib returns from it (0xA5), so a decoder that borrowed from a
+ * chunk instead of copying out of it is caught the same way SOFAB_CHUNK_SCRUB
+ * catches it in the replay driver. */
+#define STREAM_HDR 3
+
+/* Classify one decode outcome into the verdict class the differential
+ * comparator would see (oracle/canonical.md): "A", "I" or "R <class>". Fills
+ * *used (encoded length) only for "A" -- decode_and_report's re-encode step,
+ * duplicated here rather than shared because that function owns writing to a
+ * FILE*, not producing a comparable value. */
+static void stream_verdict(sofab_ret_t r, const message_probe_t *m,
+                           char *cls, size_t clscap,
+                           uint8_t *enc, size_t enccap, size_t *used)
+{
+    *used = 0;
+    if (r == SOFAB_RET_INCOMPLETE) { snprintf(cls, clscap, "I"); return; }
+    if (r != SOFAB_RET_OK) { snprintf(cls, clscap, "R %s", reject_class(r)); return; }
+    sofab_ret_t er = message_probe_encode(m, enc, enccap, used);
+    if (er != SOFAB_RET_OK) { snprintf(cls, clscap, "R %s", reject_class(er)); *used = 0; return; }
+    snprintf(cls, clscap, "A");
+}
+
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+{
+    if (size <= STREAM_HDR) return 0;
+    const uint8_t *msg = data + STREAM_HDR;
+    size_t len = size - STREAM_HDR;
+    if (len == 0) return 0;   /* CONTRACT rule 4: a length-0 record is never fed */
+
+    long param = (long)((unsigned)data[1] | ((unsigned)data[2] << 8));
+    long split = (data[0] & 1) ? 0 : param;
+    long chunk = (data[0] & 1) ? param : 0;
+
+    message_probe_t a, b;
+    message_probe_init(&a);
+    message_probe_init(&b);
+    sofab_ret_t ra = message_probe_decode(&a, msg, len);
+    sofab_ret_t rb = decode_chunked(&b, msg, len, split, chunk, /*scrub=*/1);
+
+    char cls_a[16], cls_b[16];
+    uint8_t enc_a[MESSAGE_PROBE_MAX_SIZE], enc_b[MESSAGE_PROBE_MAX_SIZE];
+    size_t used_a, used_b;
+    stream_verdict(ra, &a, cls_a, sizeof(cls_a), enc_a, sizeof(enc_a), &used_a);
+    stream_verdict(rb, &b, cls_b, sizeof(cls_b), enc_b, sizeof(enc_b), &used_b);
+
+    int mismatch = strcmp(cls_a, cls_b) != 0;
+    if (!mismatch && strcmp(cls_a, "A") == 0)
+        mismatch = used_a != used_b || memcmp(enc_a, enc_b, used_a) != 0;
+
+    if (mismatch)
+    {
+        fprintf(stderr, "crucible-c: CHUNK INVARIANCE VIOLATION -- mode=%s param=%ld "
+                        "len=%zu one-shot=[%s] chunked=[%s]\n",
+                (data[0] & 1) ? "chunk" : "split", param, len, cls_a, cls_b);
+        if (strcmp(cls_a, "A") == 0)
+        {
+            fputs("crucible-c:   one-shot hex: ", stderr);
+            for (size_t k = 0; k < used_a; k++) fprintf(stderr, "%02x", enc_a[k]);
+            fputc('\n', stderr);
+        }
+        if (strcmp(cls_b, "A") == 0)
+        {
+            fputs("crucible-c:   chunked  hex: ", stderr);
+            for (size_t k = 0; k < used_b; k++) fprintf(stderr, "%02x", enc_b[k]);
+            fputc('\n', stderr);
+        }
+        fprintf(stderr, "crucible-c:   replay: strip the %d-byte header, then "
+                        "SOFAB_%s=%ld over the remaining %zu-byte message\n",
+                STREAM_HDR, (data[0] & 1) ? "CHUNK" : "SPLIT", param, len);
+        abort();
+    }
+    return 0;
+}
+#endif /* CRUCIBLE_FUZZ_STREAM */
 
 /* Build with -DCRUCIBLE_NO_CUSTOM_MUTATOR to fall back to libFuzzer's byte-level
  * mutator (the A/B baseline for the coverage check in DESIGN.md). */
@@ -485,6 +599,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
  * for the structure-aware ops (keeps libFuzzer's generic power; see DESIGN.md). */
 size_t LLVMFuzzerMutate(uint8_t *data, size_t size, size_t max_size);
 
+#ifndef CRUCIBLE_FUZZ_STREAM
 /* Structure-aware custom mutator (engine/mutator/DESIGN.md). libFuzzer picks it
  * up automatically when present. Deterministic in `seed`; ~40% of the time it
  * defers to the byte-level mutator, otherwise it applies one grammar-aware op
@@ -498,6 +613,44 @@ size_t LLVMFuzzerCustomMutator(uint8_t *data, size_t size, size_t max_size,
         return LLVMFuzzerMutate(data, size, max_size);
     return sofab_grammar_mutate(data, size, max_size, &rng);
 }
+#else
+/* Header-aware structure-aware mutator: mutates EITHER the 3-byte
+ * mode/param header OR the message, never both in the same call, so the
+ * grammar-aware ops below always see a clean message and never corrupt the
+ * cut position by treating it as wire bytes. Falls back to the whole-buffer
+ * generic mutator whenever there isn't room for a header, which is always a
+ * valid (if header-oblivious) mutation to hand back. */
+size_t LLVMFuzzerCustomMutator(uint8_t *data, size_t size, size_t max_size,
+                               unsigned int seed)
+{
+    uint32_t rng = (uint32_t)seed ^ 0x9e3779b9u;
+    if (size < STREAM_HDR || max_size < STREAM_HDR)
+        return LLVMFuzzerMutate(data, size, max_size);
+
+    rng = rng * 1103515245u + 12345u;
+    if ((rng & 7) == 0)   /* ~1/8: re-roll the header only, message untouched */
+    {
+        size_t msg_len = size - STREAM_HDR;
+        rng = rng * 1103515245u + 12345u;
+        data[0] = (uint8_t)rng;   /* mode: bit 0; the rest is reserved */
+        rng = rng * 1103515245u + 12345u;
+        uint32_t param = (rng & 1)
+            ? (rng % 16) + 1                                /* small: near-boundary cuts */
+            : (msg_len > 0 ? (uint32_t)(rng % msg_len) : 0); /* anywhere inside the message */
+        data[1] = (uint8_t)param;
+        data[2] = (uint8_t)(param >> 8);
+        return size;
+    }
+    /* Otherwise: mutate the message only, header untouched. Same ~37.5%
+     * generic / else structure-aware split as the block pacemaker. */
+    size_t msg_size = size - STREAM_HDR;
+    size_t msg_max = max_size - STREAM_HDR;
+    size_t new_len = ((rng & 7) < 3)
+        ? LLVMFuzzerMutate(data + STREAM_HDR, msg_size, msg_max)
+        : sofab_grammar_mutate(data + STREAM_HDR, msg_size, msg_max, &rng);
+    return STREAM_HDR + new_len;
+}
+#endif /* CRUCIBLE_FUZZ_STREAM */
 #endif /* CRUCIBLE_NO_CUSTOM_MUTATOR */
 #else
 /* Persistent replay front-end (drivers/common/CONTRACT.md). */

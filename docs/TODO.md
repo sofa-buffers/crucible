@@ -435,6 +435,29 @@ here:
       grows `corpus/interesting`; running `--modes chunk,scrub` over it there costs about a minute
       per driver and is where the yield is.
 
+- [x] **No coverage engine fuzzed the streaming decode path — DONE 2026-09-23 (crucible#178).**
+      Every fuzz front-end called the one-shot decode, so `feed`/`finish` was only ever *replayed*
+      over a corpus the block path grew — not a substitute for the item above, which replays the
+      block-grown corpus through the streaming axes; this one grows a corpus *for* the streaming
+      path. `c` (`FUZZ_STREAM=1 ./scripts/fuzz.sh`, its own `corpus/stream/`) and `go`
+      (`FUZZ_TARGET=FuzzProbeStream ./scripts/fuzz-go.sh`) each now have a second steering target
+      that decodes one-shot and chunked and fails on a verdict-class or re-encoded-bytes mismatch —
+      the fuzz-time form of `run-chunked.sh`'s own intra-driver invariant, not a crash-only target,
+      since every streaming defect found so far (F-0058, F-0060, F-0061, crucible#130) was a value
+      or verdict mismatch. Wired into `nightly.yml`, `continue-on-error`, same shape as the Go
+      block-path engine. See `docs/STATUS-LOG.md` 2026-09-23 for the design and what was verified.
+
+- [ ] **Teach the go REPLAY driver the chunked axis.** Found while planning crucible#178:
+      `drivers/go/meta` still declares `chunked_decode=none` and `docs/ARCHITECTURE.md`'s
+      streaming table repeats it, but that is now stale — `corelib-go` gained a resumable push
+      decoder (`sofab.Decoder.Feed`) since the declaration was written, and crucible#178's new
+      `FuzzProbeStream` fuzz target already uses it directly. The **replay** driver
+      (`drivers/go/driver.go`) still doesn't: teach it `SOFAB_SPLIT`/`SOFAB_CHUNK`/
+      `SOFAB_CHUNK_SCRUB` via `Feed`, flip `meta` to `chunked_decode=push`, add `go` to
+      `scripts/run-chunked.sh`'s roster, and update the streaming table row in
+      `docs/ARCHITECTURE.md`. Until this lands, go's streaming path is checked only by
+      `FuzzProbeStream`'s own in-fuzzer oracle, not by `run-chunked.sh`'s gate.
+
 - [x] **Put `zig` back in `scripts/run-chunked.sh` — DONE 2026-08-04.** The story is worth keeping,
       because it is the case *for* re-measuring: generator#293 was fixed and closed, and the
       reassembly path really was repaired — but re-running the axis gave **25 → 14 mismatches, not

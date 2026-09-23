@@ -54,6 +54,77 @@ originally named (e.g. `corelib-go` `bdd5f8b`→`27814af`, `corelib-rs`
 same post-`c837108` wave, not the original one, and a divergence found on these heads is
 a statement about *this* later point.
 
+## 2026-09-23 (later) — crucible#178: streaming (feed/finish) steering engines for c and go
+
+Implemented the plan posted on crucible#178: nothing previously fuzzed the STREAMING
+decode path — every coverage engine called the one-shot decode, so `feed`/`finish` was
+only ever *replayed*, over a corpus the block path grew. Now `c` and `go` each have a
+second, independent steering target for it.
+
+**Found while planning, before any code changed:** `drivers/go/meta` still declares
+`chunked_decode=none` and `docs/ARCHITECTURE.md`'s streaming table says the same — that
+record is stale. `corelib-go` has gained a resumable push decoder
+(`sofab.Decoder.Feed`, `vendor/corelib-go/istream.go`) since that declaration was
+written, and the generated `drivers/go/message/probe.go`'s `DecodeProbeFrom` already
+uses it. Teaching the go **replay** driver the chunked axes from it (flipping `meta` to
+`push`, joining `run-chunked.sh`) is real work and is left for a separate issue — this
+session only used `Feed` directly inside the new fuzz target, which needed no change to
+the replay driver or its `meta`.
+
+**Design, both engines:**
+- The chunk cut position comes from the fuzz input itself and means exactly what the
+  replay driver's own axes mean: `mode&1==0` → `SOFAB_SPLIT=param` (two chunks), `==1`
+  → `SOFAB_CHUNK=param` (fixed-size chunks). A violation either engine finds therefore
+  reproduces directly against the replay driver with that variable — verified by hand
+  for both (a deliberately sabotaged `decode_chunked`/`decodeProbeChunked` was caught
+  within a handful of executions and its printed recipe replayed the exact same
+  mismatch through the ordinary replay driver).
+- Neither target is crash-only. Every streaming defect found so far (F-0058, F-0060,
+  F-0061, crucible#130) was a value or verdict mismatch, not a memory fault, so each
+  target decodes its input twice — one-shot and chunked — and fails (C: `abort()`; Go:
+  `t.Fatalf`) on a verdict-class or re-encoded-bytes mismatch. This is the same
+  intra-driver invariant `run-chunked.sh` checks over the replay driver
+  (`drivers/common/CONTRACT.md`: "an intra-driver invariant"); these are its fuzz-time
+  form. Each fed chunk is scrubbed (`0xA5`) after the corelib returns from it, so a
+  decoder that borrowed rather than copied is caught too.
+- **c** (`drivers/c/driver.c`, `-DCRUCIBLE_FUZZ_STREAM`): the cut position is a 3-byte
+  `[mode][param_lo][param_hi]` header in front of the message. The existing structure-
+  aware custom mutator (`engine/mutator/`) is unchanged; `driver.c` wraps it so the
+  header and the message are mutated separately, never both in one call, or the
+  grammar-aware ops would read the header as wire bytes. `decode_streamed` was
+  refactored into `decode_chunked(m, buf, len, split, chunk, scrub)` — settings as
+  arguments instead of the replay driver's `g_cfg` globals — so the replay driver and
+  the new fuzz target share one implementation rather than risking two that drift.
+  `scripts/fuzz.sh` gained `FUZZ_STREAM=1`, its own corpus `corpus/stream/`
+  (header-prefixed, never shared), and a harvest step that strips the header before
+  merging into `corpus/interesting/` by content hash.
+- **go** (`drivers/go/fuzz_test.go`, `FuzzProbeStream`): the cut position is two further
+  Go fuzz arguments (`mode uint8`, `param uint16`) rather than a header — Go's fuzzer
+  mutates typed arguments independently, so `data` stays a clean message and no header
+  scheme was needed. `scripts/fuzz-go.sh` gained `FUZZ_TARGET` (default `FuzzProbe`).
+  **Gotcha caught before it could break the existing engine:** `-fuzz` is a *regex*, so
+  an unanchored `-fuzz=FuzzProbe` also matches `FuzzProbeStream` once it exists, and
+  `go test` refuses to run with more than one match — the anchor (`^FuzzProbe$`) had to
+  land even for the unchanged default target, in the same change, or the nightly's
+  existing Go engine breaks the moment this merges. `gocorpus.py` gained a
+  `decode --first-bytes` mode tolerant of `FuzzProbeStream`'s multi-argument corpus
+  entries (Go itself writes the trailing scalar args as `byte('\x7f')`/`uint8(1)` —
+  both forms are now parsed); the original strict single-argument `decode` is
+  unchanged and still what `FuzzProbe` uses.
+- CI: `nightly.yml` runs both new engines after the existing two, `continue-on-error`,
+  at a quarter of the block-path budget each — same non-blocking shape as the Go
+  engine, since a violation here is a crash finding for a human to triage, not a build
+  break.
+
+Verified locally (devcontainer): all four C build combinations
+(block/stream × with/without the custom mutator) compile; short fuzzing runs of every
+target find nothing on the current tree; harvested inputs contain no header/corpus-text
+leakage into `corpus/interesting/` (spot-checked, and swept programmatically for the Go
+side); `go vet` clean; a deliberately sabotaged chunked-decode helper is caught by both
+oracles within seconds and its printed replay recipe reproduces the exact mismatch
+through the ordinary replay driver. Not run in CI yet — that happens on the next
+scheduled `nightly`.
+
 ## 2026-09-22 (later) — nightly 35702107666 triaged locally: CI's verdict was blind, the local one is quiet
 
 The scheduled run fuzzed normally — libFuzzer 128.6M execs at ~71k/s with 524 new units,
