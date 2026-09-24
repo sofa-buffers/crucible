@@ -14,6 +14,33 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-24 — nightly 35834392940 triaged: quiet, and a full local bootstrap+fuzz+triage round agrees
+
+**Nightly 35834392940** (2026-09-23, schedule, green, 48m43s): CI's own clustering already
+reported `baseline: 2/2 camp(s) accounted for` in the job log — no new camp — and the
+uploaded artifact's `corpus/crashes/` is empty (0 crashes). Downloaded and spot-checked
+rather than trusted on the log line: `corpus/interesting` in the artifact is 13686 inputs.
+
+**Independently, earlier the same session:** a full cold bootstrap (`scripts/bootstrap.sh`,
+all 12 corelibs @ `main`, sofabgen `0.0.0-20260923071324-be58fcd65e3e`) + the complete
+`replay.yml` gate set (all 11 differential/chunked/encode steps + catalog) + all four
+steering engines run for 2h each (C block, C stream, Go block, Go stream — 715 984 505
+executions total, 0 crashes) + a local cluster pass over the resulting 2723-input corpus
+against `results/known-clusters.txt`: **also `2/2 camp(s) accounted for`, no new camp.**
+Same two known rows both times (the `incomplete_value` soft axis — java + both Kotlin legs
+handing back what they'd already read on an incomplete stream, unanimous `I` verdict).
+Two independent corpora, two independent triage passes, same clean answer.
+
+**The 2026-09-24 nightly had not started as of this triage** (07:20 UTC, ~4.5h past the
+02:42 cron) — a live instance of the gap crucible#202 describes (a nightly that never
+starts is invisible; the cron has been measured up to +11h late historically, so this is
+evidence, not yet a confirmed skip). Not manually re-triggered — that's a decision for
+whoever owns the cadence, not something to do silently mid-triage.
+
+Nothing new to record in `results/known-clusters.txt` or `results/CLUSTERS.md`. Local
+`corpus/interesting`/`corpus/crashes` from this session's fuzzing are in a throwaway
+worktree (gitignored either way) and were not merged anywhere persistent.
+
 ## 2026-09-23 — crucible#177: the roster builds clean again, resolved upstream not here
 
 A fresh-worktree build found the roster broken: `go`, `rust-std`/`rust-nostd` and `cpp`
