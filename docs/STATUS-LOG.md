@@ -55,6 +55,20 @@ suite was adapted in four places, each to the new rule:
   `i32_zero`, `text_empty`, `blob_empty`) — they were retired before because they collapsed to
   the default message; the existing 18 files are byte-identical.
 
+**Mutation probe, and what it found in the first version of these tests.** The union sweeps
+were run against the *pre-#608* sofabgen (`aa3609f3`, the product type) to see whether the
+adapted tests would notice the old behaviour. They mostly did not: after the adaptation
+`sweep_tolerance` and `sweep_empty_frame` stayed **green** against the old generator, because
+`same:` compares two re-encodes and the old generator drops a held option at its default from
+the vector *and* its twin alike. The one rule the change is about — a held option other than
+`default_id` is written at its default — was asserted nowhere. Fixed with a new runner
+expectation, **`identity`** (accept, and re-encode to exactly the input bytes), applied to the
+canonical union vectors. Result: old generator **11 conformance failures** (`sweep_repeated_id`
+6, `sweep_empty_frame` 4, `sweep_tolerance` 1), current generator **0**. The mutation also
+exposed a vector bug that had been latent since 2026-09-18: `sweep_empty_frame`'s
+`u_member_id4_default` fell into the blob branch for the boolean member (an empty blob at a
+boolean id, a §7.3 skip) instead of `as_flag = 0`; it only ever asserted `accept`.
+
 **Not covered (open).** `probe-union` has only leaf options, so §7.4.1's struct-option cases
 (continue the same option, restart at its default after a switch) are not reachable through this
 schema; generator's `check_union.py` carries them. The materialized oracle still has no union kind

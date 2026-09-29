@@ -296,7 +296,7 @@ def emit_union(out_dir):
         vectors.append((f"{name}.bin", tag + hdr(u.fid, WT_SEQ_BEG) + member + end_bytes, expect))
 
     ctl = "u_end_canonical_ctl.bin"
-    add("u_end_canonical_ctl", END, "accept")
+    add("u_end_canonical_ctl", END, "identity")
     add("u_end_id_small", seq_end(3), f"same:{ctl}")
     add("u_end_id_at_ID_MAX", seq_end(ID_MAX), f"same:{ctl}")
     add("u_end_id0_nonminimal", seq_end_nonminimal(1), f"same:{ctl}")
@@ -320,7 +320,7 @@ def emit_union(out_dir):
                             tag + hdr(u.fid, WT_SEQ_BEG) + body + END, expect))
 
         tctl = "u_member_bool_true_ctl.bin"
-        umember(scalar_u(bm.fid, 1), "u_member_bool_true_ctl", "accept")
+        umember(scalar_u(bm.fid, 1), "u_member_bool_true_ctl", "identity")
         for nm, v in (("two", 2), ("0xff", 0xFF), ("256_over_u8", 256),
                       ("2p63_sign_bit", 1 << 63), ("u64_max", (1 << 64) - 1)):
             umember(scalar_u(bm.fid, v), f"u_member_bool_{nm}", f"same:{tctl}")
@@ -331,7 +331,10 @@ def emit_union(out_dir):
         # byte string, hence not a separate vector). The non-minimal spelling must
         # normalize to it; the omitted union (tag alone) is a different value now.
         fctl = "u_member_bool_false_ctl.bin"
-        umember(scalar_u(bm.fid, 0), "u_member_bool_false_ctl", "accept")
+        # `identity`, not `accept`: the twin comparison alone cannot tell a generator that
+        # writes this frame from one that drops it, because the padded spelling would be
+        # dropped with it. Only "re-encodes to its own bytes" pins the held option.
+        umember(scalar_u(bm.fid, 0), "u_member_bool_false_ctl", "identity")
         umember(hdr(bm.fid, WT_U) + b"\x80\x00", "u_member_bool_false_nonminimal",
                 f"same:{fctl}")
 

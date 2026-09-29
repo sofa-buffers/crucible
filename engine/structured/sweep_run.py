@@ -13,6 +13,11 @@ independent things the plain differential cannot:
      differential-only oracle, and exactly the gap a "must reject" sweep exists to
      catch.
 
+`expect="identity"` marks a vector that is already the canonical form: it must be
+accepted and re-encode to exactly its own bytes. `same:<twin>` compares two re-encodes;
+`identity` compares one against the input, so it also catches a rule both spellings break
+the same way.
+
 (For `merge` / `replace` / `lastwins` the required *value* is intricate to recompute
 here, so those are checked as `accept` + agreement; their semantic correctness is
 asserted in the finding write-ups. Only the accept-vs-reject conformance is machine
@@ -114,6 +119,20 @@ def run_axis(name, emitter="emit"):
         # a prefix of a valid message is A (complete) or I (incomplete), never R
         elif exp == "not_reject" and v == "R":
             conformance.append((fn, "prefix of a valid message emitted R (INVALID)"))
+        # `identity` — the vector IS the canonical form: accept AND re-encode to exactly
+        # the input bytes. This pins a rule where the twin approach cannot: `same:` only
+        # compares two re-encodes, so a rule that both sides violate the same way (a
+        # held union option at its default, which a generator may drop from BOTH the
+        # spelling and its twin) stays green. Comparing against the input itself has no
+        # twin to be dropped with.
+        elif exp == "identity":
+            if v != "A":
+                conformance.append((fn, f"expected A (canonical, must round-trip), all {len(DRIVERS)} emit {v}"))
+            elif next(iter(pays.values())) != corpus[i][1].hex():
+                conformance.append(
+                    (fn, "canonical input did NOT round-trip — re-encode "
+                         f"{next(iter(pays.values())) or '(empty)'} != input {corpus[i][1].hex()}")
+                )
         # `same:<twin>` — accept AND normalize: a non-canonical but well-formed input
         # must decode to the value its canonical twin denotes and re-encode to the same
         # bytes. This is the half that accept-vs-reject cannot see: a family that
