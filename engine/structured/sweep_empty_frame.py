@@ -178,14 +178,15 @@ def emit_union(out_dir):
     vectors.append(("u_frame_only.bin", empty_seq(u.fid), "accept"))
     # each option carried explicitly at its own default. `default_id` (the first member)
     # is the union's default: the whole union is omitted, so it MUST re-encode like the
-    # empty frame. Any other id is the held option: it MUST survive the re-encode.
+    # empty frame. Any other id is the held option: it MUST survive the re-encode, byte
+    # for byte (`identity` -- the vector is already the canonical written form).
     default_fid = UNION_MEMBER_POSITIONS[0].fid
     for p in UNION_MEMBER_POSITIONS:
-        if p.cat == "scalar_u":  member = scalar_u(p.fid, 0)
+        if p.cat in ("scalar_u", "scalar_bool"):  member = scalar_u(p.fid, 0)
         elif p.cat == "scalar_s": member = scalar_s(p.fid, 0)
         elif p.cat == "str":      member = fstr(p.fid, "")
         else:                     member = fblob(p.fid, b"")
-        expect = "same:u_empty_frame.bin" if p.fid == default_fid else "accept"
+        expect = "same:u_empty_frame.bin" if p.fid == default_fid else "identity"
         vectors.append((f"u_member_id{p.fid}_default.bin",
                         tag + hdr(u.fid, WT_SEQ_BEG) + member + END, expect))
         # a padded spelling of a non-default option's default must normalize to the

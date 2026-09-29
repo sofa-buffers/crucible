@@ -185,8 +185,10 @@ def emit_union(out_dir):
     uid = UNION_SEQ_POSITION.fid
 
     def twin(name, body):
-        """The canonical single-option message: emitted as its own control vector."""
-        vectors.append((f"{name}.bin", place((uid,), body), "accept"))
+        """The canonical single-option message, emitted as its own control vector. It is
+        `identity`: it must re-encode to itself, so a generator that drops the held option
+        (as_flag=false, say) cannot pass by dropping it from the vector and its twin alike."""
+        vectors.append((f"{name}.bin", place((uid,), body), "identity"))
         return f"same:{name}.bin"
 
     # 1) each member repeated twice with two values -> the last one
