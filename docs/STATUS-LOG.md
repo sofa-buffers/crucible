@@ -14,6 +14,19 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-29 — nightly 36546281225 triaged: one camp, F-0018 at a new position
+
+CI: green, `baseline: 1/1 camp(s) accounted for`, 0 crashes. Locally (artifact merged into
+`corpus/interesting`: 22432 -> 24440; sofabgen `f8d3ecc3`, the first build with generator#608,
+pinned with `SOFABGEN_RUN=36590535888` because `bootstrap.sh` otherwise falls back to the newest
+*green* tip, which was the pre-#608 `aa3609f3`): 24440 inputs, 3 camps, 2 known, **1 new** —
+a single input (`381da1be…`, 14 B). Decoded: `string_array[4] = "\0\x0est"`, an embedded
+U+0000 in a wrapper-array string element. `c` re-encodes an empty element; the other 16 keep
+the four bytes. That is **F-0018** (allowed, `policy.yaml` `c-embedded-nul-string-projection`),
+not a new root cause. Two differences from the original reproducer, both recorded in the row:
+the position (a string_array element, not `nested.str`) and the set — only `c` projects here,
+`cpp-c-cpp` preserves. Added to `results/known-clusters.txt`; no new finding, no upstream issue.
+
 ## 2026-09-29 — generator#608 (tagged unions, generator#613 @ `f8d3ecc3`): the union tests follow the new rule
 
 **What changed upstream.** A schema `union` now holds exactly one option in every backend

@@ -98,3 +98,16 @@ I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-
 # Delete this row when the fix lands; a return must then read as NEW.
 
 I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescript,zig | I:java | I:kotlin-jvm,kotlin-native  # benign, same soft axis as the row above — the verdict is unanimous I; here java and the two Kotlin legs each hand back an incomplete_value payload and the two payloads differ (policy incomplete_value: soft). The row above covers the case where they agree; this one the case where they do not.
+
+# --- added 2026-09-29, nightly 36546281225 ------------------------------------------
+# F-0018 at a second position, not a new defect: an embedded U+0000 inside a STRING_ARRAY
+# ELEMENT (`string_array[4] = "\0\x0est"`). The C driver stores the element as a
+# NUL-terminated char[] and projects it to the first NUL (re-encodes an empty element);
+# every length-carrying profile preserves it, and here that includes cpp-c-cpp, which
+# projected only the object-API `str` field in the original F-0018 reproducer. Legal per
+# oracle/policy.yaml (c-embedded-nul-string-projection); MESSAGE_SPEC permits embedded
+# U+0000 in a string and allows a NUL-terminated profile to project. Delete this row if the
+# C driver ever gains a length for string elements; a change in WHICH driver projects must
+# read as NEW.
+
+accept:c | accept:cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,java,kotlin-jvm,kotlin-native,py-cython,py-pure,rust-nostd,rust-std,typescript,zig  # F-0018 — embedded NUL in a string_array element; the C projection to first-NUL (allowed, policy c-embedded-nul-string-projection)
