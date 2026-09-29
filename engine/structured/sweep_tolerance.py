@@ -306,11 +306,13 @@ def emit_union(out_dir):
         b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x02", "reject")
 
     # ---- §4.4 x §4.2: the boolean MEMBER (the fifth boolean position) -------------
-    # The one place the two rules meet. A member at its own default reduces to the
-    # OMITTED union (§4.2's identity loss: the option id cannot survive a round-trip),
-    # so here `false` in any spelling must re-encode to *nothing* — while `true` in any
-    # spelling must re-encode to this option id carrying 1. A port that normalizes the
-    # value but not the identity, or vice versa, fails exactly one of the two twins.
+    # The one place the two rules meet. Since MESSAGE_SPEC §2 (spec PR #97, generator#608)
+    # a HELD option other than `default_id` is written even at its own default, so a
+    # member `false` is no longer folded into the omitted union: the frame carrying
+    # `as_flag = 0` IS the canonical form, and `false` in any spelling must re-encode to
+    # exactly that, while `true` in any spelling must re-encode to this option id
+    # carrying 1. A port that normalizes the value but not the identity, or vice versa,
+    # fails exactly one of the two twins.
     bm = next((p for p in UNION_MEMBER_POSITIONS if p.cat == "scalar_bool"), None)
     if bm is not None:
         def umember(body, name, expect):
@@ -324,12 +326,12 @@ def emit_union(out_dir):
             umember(scalar_u(bm.fid, v), f"u_member_bool_{nm}", f"same:{tctl}")
         umember(hdr(bm.fid, WT_U) + b"\x81\x00", "u_member_bool_true_nonminimal",
                 f"same:{tctl}")
-        # the `false` half: the member's default, so the whole union is omitted. Its
-        # twin is the tag alone — which re-encodes to a NON-empty message, so the
-        # comparison still observes normalization (the axis rejects an empty twin).
+        # the `false` half: the held option at its own default is still written, so its
+        # canonical twin is the frame with `as_flag = 0` (an explicit `false` is that same
+        # byte string, hence not a separate vector). The non-minimal spelling must
+        # normalize to it; the omitted union (tag alone) is a different value now.
         fctl = "u_member_bool_false_ctl.bin"
-        vectors.append((fctl, tag, "accept"))
-        umember(scalar_u(bm.fid, 0), "u_member_bool_false_explicit", f"same:{fctl}")
+        umember(scalar_u(bm.fid, 0), "u_member_bool_false_ctl", "accept")
         umember(hdr(bm.fid, WT_U) + b"\x80\x00", "u_member_bool_false_nonminimal",
                 f"same:{fctl}")
 

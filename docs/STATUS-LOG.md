@@ -14,6 +14,39 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-29 — generator#608 (tagged unions, generator#613 @ `f8d3ecc3`): the union tests follow the new rule
+
+**What changed upstream.** A schema `union` now holds exactly one option in every backend
+(MESSAGE_SPEC §2/§4.2/§7.4.1, documentation#97). Encode writes the held option even at its own
+default unless it is `default_id`; decode keeps the last correctly-typed option, and several
+children in one frame are not `INVALID`.
+
+**Decision: assert the value, not only agreement.** Against the new sofabgen the union
+differential (`run-union.sh`, 11 seeds × 17 drivers) stayed green without any change — the
+whole roster moved together, so agreement could not see the change. What did fail was the one
+place that pinned a *value*: `sweep_tolerance`'s `as_flag = false` twins, which still expected
+the old "member at its default folds into the omitted union" (2 conformance failures). The
+suite was adapted in four places, each to the new rule:
+
+- `sweep_tolerance` (union pass): the canonical `false` twin is now the written `as_flag = 0`
+  frame; the non-minimal spelling must normalize to it. The redundant explicit-`false` vector
+  is gone (it is that same byte string).
+- `sweep_repeated_id` (union pass): "two members merge" was the old rule and was checked only
+  for agreement. It is now 21 vectors with `same:` twins — last option wins in both orders,
+  within one frame and across a re-opened frame; a mistyped or unknown id after a held option
+  never switches it.
+- `sweep_empty_frame` (union pass): `default_id` at its default must re-encode like the empty
+  frame; a padded `as_i32 = 0` must normalize to the written form.
+- `gen.py` (the reference encoder) + `corpus/structured-union`: only `default_id` at its
+  default is omitted. Five vectors were added at the END (`flag_false`, `flag_false_tag_trailer`,
+  `i32_zero`, `text_empty`, `blob_empty`) — they were retired before because they collapsed to
+  the default message; the existing 18 files are byte-identical.
+
+**Not covered (open).** `probe-union` has only leaf options, so §7.4.1's struct-option cases
+(continue the same option, restart at its default after a switch) are not reachable through this
+schema; generator's `check_union.py` carries them. The materialized oracle still has no union kind
+(TODO WP-02 Part B).
+
 ## 2026-09-24 — nightly 35834392940 triaged: quiet, and a full local bootstrap+fuzz+triage round agrees
 
 **Nightly 35834392940** (2026-09-23, schedule, green, 48m43s): CI's own clustering already
