@@ -164,10 +164,29 @@ def _emit_element_struct(em, fields, elem_expr):
     em.stmt("b.write('}');")
 
 
+def _emit_union(em, node, expr):
+    # A union holds exactly one option (MESSAGE_SPEC §4.2): `{<held id>:<value>}`. The held
+    # option is read from the generated `which` tag, never by probing each option for a
+    # non-default value — an option held at its own default is still the held one, and the
+    # per-option getters return a default for every option that is not held.
+    em.stmt("b.write('{');")
+    em.stmt(f"switch ({expr}.which) {{")
+    for opt in node["options"]:
+        em.stmt(f"  case {opt['id']}:")
+        inner = _Indent(em, 2)
+        inner.stmt(f"b.write('{opt['id']}:');")
+        _emit_node(inner, opt, expr)
+        inner.stmt("break;")
+    em.stmt("}")
+    em.stmt("b.write('}');")
+
+
 def _emit_node(em, node, parent_expr):
     kind = node["kind"]
     expr = f'{parent_expr}.{node["name"]}'
-    if kind == "struct":
+    if kind == "union":
+        _emit_union(em, node, expr)
+    elif kind == "struct":
         _emit_struct(em, node["fields"], expr)
     elif kind == "array":
         _emit_array(em, node["elem"], expr)

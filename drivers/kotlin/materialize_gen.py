@@ -173,10 +173,28 @@ def _emit_struct_wrapper(em, fields, expr):
     em.stmt('b.append("]")')
 
 
+def _emit_union(em, options, expr):
+    # A union holds exactly one option (MESSAGE_SPEC §4.2): dispatch on the generated
+    # `which` tag and print only the held option. Testing each option for a non-default
+    # value instead would lose "held at its own default" (`{4:u0}` vs `{0:u0}`).
+    em.stmt(f"when ({expr}.which) {{")
+    for opt in options:
+        em.stmt(f'    {opt["id"]} -> {{')
+        inner = _Indent(em, 2)
+        inner.stmt(f'b.append("{{{opt["id"]}:")')
+        _emit_node(inner, opt, expr)
+        inner.stmt('b.append("}")')
+        em.stmt("    }")
+    em.stmt("    else -> {}")
+    em.stmt("}")
+
+
 def _emit_node(em, node, parent_expr):
     kind = node["kind"]
     expr = f'{parent_expr}.{node["name"]}'
-    if kind == "struct":
+    if kind == "union":
+        _emit_union(em, node["options"], expr)
+    elif kind == "struct":
         _emit_struct(em, node["fields"], expr)
     elif kind == "array":
         _emit_array(em, node["elem"], expr)
