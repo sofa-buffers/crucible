@@ -121,6 +121,9 @@ def _walk(node, msg, path):
     kind = node["kind"]
     if kind == "struct":
         return _obj([(c["id"], _walk(c, msg, path + (c["name"],))) for c in node["fields"]])
+    if kind == "union":
+        # gen.py's union messages carry the held option as msg["member"] = (kind, value)
+        return _union_held(msg)
     key = _MSG_KEY[path]
     if kind == "u":      return _u(msg.get(key, 0))
     # §4.4: a boolean is two-valued, so the materialized form is u1/u0 — a decode has
@@ -180,16 +183,19 @@ _UNION_OPTION = {"u16": (0, lambda v: _u(v)), "i32": (1, lambda v: _s(v)),
                  "flag": (4, lambda v: _u(1 if v else 0))}
 
 
-def union_materialize(msg):
-    """The materialized value (no 'A ' prefix) of a gen.py union message."""
+def _union_held(msg):
+    """The `{<held id>:<value>}` of a gen.py union message's member."""
     member = msg.get("member")
     if member is None:
-        held = _obj([(0, _u(0))])
-    else:
-        kind, v = member
-        oid, fmt = _UNION_OPTION[kind]
-        held = _obj([(oid, fmt(v))])
-    return _obj([(0, _u(msg.get("tag", 0))), (1, held), (2, _u(msg.get("trailer", 0)))])
+        return _obj([(0, _u(0))])
+    kind, v = member
+    oid, fmt = _UNION_OPTION[kind]
+    return _obj([(oid, fmt(v))])
+
+
+def union_materialize(msg):
+    """The materialized value (no 'A ' prefix) of a gen.py union message."""
+    return _obj([(0, _u(msg.get("tag", 0))), (1, _union_held(msg)), (2, _u(msg.get("trailer", 0)))])
 
 
 def union_vectors():

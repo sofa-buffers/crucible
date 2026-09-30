@@ -39,10 +39,15 @@ here:
   generator's `grid`), a `$ref`-split union type (one `$defs` union at two `default_id`s), and a
   union under `MAX_DEPTH`. The **streaming** engines (`FUZZ_STREAM`, the Go engines) do not take a
   schema, so the union engine is block-path only: a feed/finish fuzz of the union code is open.
-- [ ] **WP-02 Part B** — union *materialized* (element-access) oracle: the C anchor materializes a union
-  out-of-the-box (form `{opt_id:value}` per member), but the 6 runtime + 6 generated walkers need the
-  `union` descriptor node + a `materialize.py` union reference (~12 walkers across 10 langs). Part A
-  (union cross-encode) is green and gated.
+- [~] **WP-02 Part B** — union *materialized* (element-access) oracle: **DONE 2026-09-30 for `probe-union`**
+  (leaf options): the `union` node in all 17 walkers, the C anchor, a union reference over gen.py's messages,
+  `SCHEMA=… materialize.sh`, a CI step. What stays open is the **deep** schema
+  (`probe-union-deep`): its `list` / `grid` (an array of unions, an array of arrays of unions) need a new
+  descriptor kind in every walker and in the anchor's un-sized-holder emptiness test
+  (`md_slot_empty` walks a union as a struct); its `enum` and `bitfield` options need those kinds (no walker
+  has them, in a union or out of one); `$defs` / `$ref` and an omitted `default_id` need resolving in
+  `schema.py`. The part of the deep schema expressible with today's kinds (struct, nested union, union in a
+  struct, array and blob options) is the next step.
 - [x] **WP-05 completion** — DONE 2026-07-27 (see the dated entry above).
 - [x] **WP-08(c) — DONE 2026-08-17: measured, and the family is correct in every cell.** The
   vectors this item asked for now exist — `def_arr` (`array of u32`, `default: [7, 9]`) in

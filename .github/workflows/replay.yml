@@ -146,6 +146,13 @@ jobs:
       - name: Materialized-value differential over the resolved-findings corpus
         run: CORPUS=corpus/regression ./scripts/materialize.sh
 
+      # The same oracle over a UNION schema: every walker reports the HELD option through the
+      # generated API (`{<id>:<value>}`), which the round trip cannot see (an API whose tag names
+      # one option while the encoder writes another re-encodes identically). The value table is
+      # derived from the schema, so this rebuilds the roster against probe-union.
+      - name: Materialized-value differential over a union schema
+        run: SCHEMA=schema/probe-union.sofab.yaml ./scripts/materialize.sh
+
       # The two STREAMING axes (crucible#132). Both are intra-driver invariants — a
       # driver against itself — so unlike every gate above they need no second
       # implementation and drivers opt in one at a time via SOFAB_SPLIT_DRIVERS /
