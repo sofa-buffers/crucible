@@ -1,8 +1,9 @@
 # G-0044 — the sofabgen Dart backend decodes `array of boolean` into raw integers: a non-zero element other than `1` is not normalized to `true`
 
-**Status:** 🔴 **OPEN** — filed 2026-09-29; [`results/FINDINGS.md`](../../results/FINDINGS.md) owns the state, this file is the evidence.
+**Status:** ✅ **RESOLVED** 2026-09-30 by **[generator#616](https://github.com/sofa-buffers/generator/issues/616)** (closed the day after it was filed), which needed a corelib change — verified here against `sofabgen 0.0.0-20260930053019-415c6cf6ab5f` with `corelib-dart@ed78b11`: the materialized differential over `corpus/regression` (261 inputs × 17 drivers, including the three vectors below) shows 0 divergence, and the generated field is now `InlineInt64Array(5, range: sofab.ElemRange.boolean)`. — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns the state, this file is the evidence.
+**Guard:** corpus/regression — the vectors in this folder promoted 2026-09-30 as `G0044_*`, **and** a materialized-value pass over that corpus (`replay.yml`: `CORPUS=corpus/regression ./scripts/materialize.sh`). The second half is what makes the first one a guard: `run.sh` compares the re-encode, which was already correct.
 **Issue:** [generator#616](https://github.com/sofa-buffers/generator/issues/616) (filed 2026-09-29)
-**Corelib:** none owns the defect. The open question on the corelib side (no dedicated boolean *read* function in `corelib-dart`, §4.4) is separate and is not part of this finding.
+**Corelib:** `corelib-dart` `702400d` — *"hold a boolean array's elements as 0/1 on decode (`ElemRange.boolean`)"*. The fix was a pair: the corelib gained the destination range, the generator asks for it. The separate question of a dedicated boolean *read* function in `corelib-dart` (§4.4) is not part of this finding.
 
 **Found 2026-09-29** by the materialized-value oracle over the merged nightly corpus
 (24 440 inputs, nightly 36546281225): 7 inputs, all on field 204 (`flag_array`), all `dart`
@@ -47,8 +48,15 @@ is what isolates Dart.
 
 - The §4.4 family of `sweep_tolerance` asserts `same:` re-encode equality; Dart re-encodes
   correctly, so it passes.
-- `materialize.sh` defaults to `corpus/structured`, whose boolean arrays hold only `0`/`1`.
-  The defect needs a non-canonical element, which only the fuzzed corpus carries.
+- `materialize.sh` defaulted to `corpus/structured`, whose boolean arrays hold only `0`/`1`.
+  The defect needs a non-canonical element, which only the fuzzed corpus carried — found by the
+  nightly's merged corpus, not by any gate.
 
-Once fixed, the two vectors belong in `corpus/regression` and a non-canonical boolean-array
-element belongs in the materialized gate's corpus.
+## Resolution and guard
+
+Both sides moved within a day: `corelib-dart@702400d` added `ElemRange.boolean` (an array target
+that holds its elements as `0`/`1`), and the generator emits it for a boolean array. The three
+reproducers are now `corpus/regression/G0044_*` (`r0` element `2`, `r1` five elements
+`[48,0,0,48,48]`, and the `1` control). Because the round trip was never the problem, the guard is
+the materialized pass over that corpus, added to `replay.yml` beside the existing one over
+`corpus/structured`.

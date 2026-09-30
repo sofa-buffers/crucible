@@ -126,6 +126,13 @@ jobs:
       - name: Materialized-value differential (element-access oracle)
         run: ./scripts/materialize.sh
 
+      # The same oracle over the resolved-findings corpus. The default corpus above holds
+      # canonical values only, so a decode that keeps a non-canonical element raw (G-0044: a
+      # boolean array element 2 held as 2) re-encodes correctly and is invisible to every
+      # round-trip gate; only the decoded-value dump sees it.
+      - name: Materialized-value differential over the resolved-findings corpus
+        run: CORPUS=corpus/regression ./scripts/materialize.sh
+
       # The two STREAMING axes (crucible#132). Both are intra-driver invariants — a
       # driver against itself — so unlike every gate above they need no second
       # implementation and drivers opt in one at a time via SOFAB_SPLIT_DRIVERS /
