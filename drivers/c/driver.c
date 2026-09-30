@@ -74,6 +74,7 @@ static void md_hex(FILE *o, const uint8_t *b, size_t n)
 static void md_value(FILE *o, const sofab_object_descr_t *info,
                      const sofab_object_descr_field_t *f, const uint8_t *base);
 static void md_obj(FILE *o, const sofab_object_descr_t *info, const uint8_t *base);
+static void md_union(FILE *o, const sofab_object_descr_t *info, const uint8_t *base);
 
 /* An element slot is "empty" (its type default) — the fallback length projection for
  * an **un-sized** wrapper holder, which carries no used-count and can therefore only
@@ -214,12 +215,34 @@ static void md_value(FILE *o, const sofab_object_descr_t *info,
                 md_value(o, nested, &nested->field_list[i], p);
             }
             fputc(']', o);
-        } else {                   /* a struct/union: recurse as an object */
+        } else if (nested->fixed_seq & SOFAB_OBJECT_UNION) {   /* a union: the HELD option only */
+            md_union(o, nested, p);
+        } else {                   /* a struct: recurse as an object */
             md_obj(o, nested, p);
         }
         } break;
     default: fputc('?', o); break;
     }
+}
+
+/* A union holds exactly ONE option (MESSAGE_SPEC §4.2, generator#608). Since the tagged-union
+ * rewrite its options share storage (a C union behind a `which` tag), so walking the descriptor
+ * like a struct would print every option out of the same bytes. The materialized form is
+ * `{<held id>:<value>}`: the held option only, read through the tag the generated API reads.
+ * A `which` that names no option prints `{}` -- a visible failure, never a guessed value. */
+static void md_union(FILE *o, const sofab_object_descr_t *info, const uint8_t *base)
+{
+    sofab_object_descr_id_t which;
+    memcpy(&which, base, sizeof which);          /* the tag is at offset 0 (object.h) */
+    fputc('{', o);
+    for (size_t i = 0; i < info->field_count; i++) {
+        const sofab_object_descr_field_t *f = &info->field_list[i];
+        if (f->id != which) continue;
+        fprintf(o, "%u:", (unsigned)f->id);
+        md_value(o, info, f, base);
+        break;
+    }
+    fputc('}', o);
 }
 
 static void md_obj(FILE *o, const sofab_object_descr_t *info, const uint8_t *base)

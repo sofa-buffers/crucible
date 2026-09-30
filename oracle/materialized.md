@@ -54,8 +54,9 @@ One line per input, `\n`-terminated, produced only for a COMPLETE (`A`) decode:
 
 ```
 line    := "A" SP value
-value   := obj | u | s | fp32 | fp64 | text | blob | arr
+value   := obj | uni | u | s | fp32 | fp64 | text | blob | arr
 obj     := "{" [ field *( ";" field ) ] "}"     ; a struct/message — fields in ASCENDING id order
+uni     := "{" field "}"                         ; a union — EXACTLY ONE field: the HELD option
 field   := id ":" value                          ; id = decimal field id in this scope
 u       := "u" 1*DIGIT                            ; unsigned integer, decimal
 s       := "s" [ "-" ] 1*DIGIT                    ; signed integer, decimal (leading "-" if negative)
@@ -98,6 +99,20 @@ Rules that make it byte-reproducible across 13 languages:
   walker:** a port that kept a *non-normalized* wire value prints it as-is (`u2` for the
   input `2`), which is how F-0064 surfaced. A walker that emitted `1 if v else 0` would
   have hidden exactly the defect the form exists to expose.
+
+- **A `union` emits exactly one field: the held option**, `{<id>:<value>}`, where `<id>` is the
+  option id and `<value>` is that option's value in its own kind (a leaf, a struct, an array, a
+  nested union). A union *always* holds one option (MESSAGE_SPEC §4.2): a fresh one holds
+  `default_id` at that option's default, so the all-default union of `schema/probe-union.sofab.yaml`
+  is `{0:u0}`, never `{}`. The walker reads the option **through the generated API** (`which`
+  plus the getter, the tag of a tagged union, the variant a native `enum` holds) — never by
+  re-encoding and never by testing every option for a non-default value. That is what this form
+  sees and the round trip cannot: an API that reports one held option while the encoder writes
+  another, or a `which` that names an option whose value was discarded. Since generator#608 a
+  held option other than `default_id` at its own default is still *held*: a union set to
+  `as_flag = false` is `{4:u0}`, not `{0:u0}`. The options of a union share storage in C, so a
+  walker that printed every option would print one option out of another's bytes. A `which`
+  that names no option prints `{}` (a visible failure).
 
 Example — the all-defaults `probe` (schema `schema/probe.sofab.yaml`):
 

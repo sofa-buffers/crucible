@@ -193,7 +193,10 @@ def main():
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.abspath(os.path.join(here, "..", ".."))
     built = sys.argv[2] if len(sys.argv) >= 3 else None
-    if built and os.path.basename(built) != "probe.sofab.yaml":
+# A descriptor named by SOFAB_MATERIALIZE_SCHEMA wins over the stub: scripts/materialize.sh sets it
+# to a table derived from $SCHEMA (engine/structured/schema.py --schema), which is how a
+# non-probe schema (the union suites) gets a real walker instead of a compile-only stub.
+    if built and os.path.basename(built) != "probe.sofab.yaml" and not os.environ.get("SOFAB_MATERIALIZE_SCHEMA"):
         src = _STUB
         if len(sys.argv) >= 2:
             with open(sys.argv[1], "w") as f:
