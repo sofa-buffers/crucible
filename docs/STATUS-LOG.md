@@ -14,6 +14,41 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-30 — bootstrap: a generator build whose CI is still running aborts the run (decision reversed)
+
+**What happened.** The replay job on main for the merge of crucible#223 failed in the union sweeps with
+eleven conformance failures — exactly the signature of the pre-generator#608 sofabgen from the mutation
+probe. Its log: the bootstrap had installed generator run `36159022412` (`aa3609f3`, 2026-09-25) while
+generator@main was at `5896b165` and runs from that morning existed. The same walk-back had already
+happened twice locally in the same session (a bootstrap that installed `aa3609f3` while a newer green build
+existed). The next two replay runs on main, minutes later, were green, so they got a generator with #608;
+which build each installed I did not read from the log.
+
+**Cause, as far as it is known.** `bootstrap.sh` took the newest of a *list* of successful runs
+(`ci.yml/runs?branch=main&status=success&per_page=50`, sorted by date in the client). The client-side sort
+was already there because a `per_page=1` answer had once been four weeks old (crucible#183). It cannot help
+when the list itself lacks the newest runs; a later query of the same URL returned them (and still lacks run `36590535888`, the
+`f8d3ecc3` build that a bootstrap earlier the same day had chosen from it). I have not
+established why the list was short (a lagging index is the guess, not a finding). The list is a search-index
+answer and this script must not rest on it.
+
+**Decision (reverses an earlier one).** The old comment in `bootstrap.sh` said a generator tip whose CI is
+still running "is legitimate and must not fail the run". That is the second route to the same stale
+toolchain: the run fell through to the newest older green build. It now **aborts** (exit 1): the newest build
+is minutes away, and comparing a fresh family against an older generator is the mismatch this repo exists to
+avoid. The rule (`scripts/sofabgen_pick.py`) walks the generator's **commits** from the tip and asks about
+each; a run in progress, or a fresh tip whose CI has not started (under 30 minutes), aborts; a red commit is
+skipped to the newest green ancestor, and the log says so. Overrides: `SOFABGEN_ALLOW_RUNNING=1` walks past
+it, `SOFABGEN_RUN=<id>` pins. `scripts/check-sofabgen-pick.py` states 14 cases offline (a running or queued
+tip, a re-run in progress, a red or cancelled tip, a fresh tip without a run, a PR run of the same sha, no
+green build at all) and is a step of the fast `catalog` job.
+
+**Cost, stated.** A replay or nightly job that starts while the generator's CI is running now fails at
+bootstrap instead of testing an older generator; re-run it. Verified locally: the live API answers with the
+generator tip, the real script installs it, and a stubbed `RUNNING` / `FRESH` picker makes the script exit 1
+without touching `tools/sofabgen`. **Not verified:** that the replay and nightly workflows behave as intended
+on a real running-CI window; the first time will show in a job log.
+
 ## 2026-09-30 — union tests reviewed and deepened: a second union schema, a canon axis, a union fuzz engine
 
 **Review of what the union tests could not see** (after generator#608). `probe-union` has five
