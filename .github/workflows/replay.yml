@@ -57,6 +57,13 @@ jobs:
       - name: Family copies (static half)
         run: python3 scripts/check-family-copies.py --static
 
+      # The rule that decides which generator build bootstrap.sh installs, tested offline
+      # (no network, no token): it aborts on a generator commit whose CI is still running
+      # instead of silently installing an older build, and walks the generator's commits
+      # rather than trusting a list of runs.
+      - name: Which sofabgen the bootstrap installs (offline rule)
+        run: python3 scripts/check-sofabgen-pick.py
+
   differential:
     runs-on: ubuntu-latest
     container:
