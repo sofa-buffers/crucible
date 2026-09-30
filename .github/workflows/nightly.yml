@@ -67,7 +67,9 @@ jobs:
       - name: Restore interesting corpus (union)
         uses: actions/cache@v6
         with:
-          path: corpus/interesting-union
+          path: |
+            corpus/interesting-union
+            corpus/stream-union
           key: crucible-unioncorpus-${{ github.run_id }}
           restore-keys: crucible-unioncorpus-
 
@@ -114,6 +116,18 @@ jobs:
         continue-on-error: true
         run: |
           FUZZ_SCHEMA=schema/probe-union-deep.sofab.yaml FUZZ_CORPUS=corpus/interesting-union \
+          FUZZ_SEEDS=corpus/union-deep \
+          FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz.sh
+
+      # The same union schema through the STREAMING target (feed/finish with a chunk or split
+      # header): the decode path a real consumer uses, and the one a union's option switch
+      # most plausibly breaks across a chunk boundary. The Go engines stay probe-only (their
+      # fuzz front-end is generated for the probe message). Harvest goes to the union corpus.
+      - name: Fuzz — union streaming engine (deep union schema, feed/finish path)
+        continue-on-error: true
+        run: |
+          FUZZ_STREAM=1 FUZZ_SCHEMA=schema/probe-union-deep.sofab.yaml \
+          FUZZ_CORPUS=corpus/interesting-union FUZZ_STREAM_CORPUS=corpus/stream-union \
           FUZZ_SEEDS=corpus/union-deep \
           FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz.sh
 

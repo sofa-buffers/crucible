@@ -34,6 +34,12 @@ What the schema makes observable (schema/probe-union-deep.sofab.yaml, one field 
   list    an array of unions (last-element rule, interior gaps, re-opened element)
   sparse  non-contiguous option ids, default_id not the lowest
   holder  a union inside a struct
+  grid    an array of arrays of unions
+  refa/b/c  one $defs union at three sites (default_id 1, 0, omitted)
+  chain   union -> struct option -> union -> struct option -> union -> struct option, the
+          path MAX_DEPTH is swept through
+  choice also carries a bitfield, a blob and a wrapper array of blobs; the `list` element
+  carries a blob, a wrapper array of strings and a compact array
 
 Usage: python3 engine/structured/sweep_union_deep.py [out_dir]   (default corpus/union-deep)
        writes the vectors as .bin files, for the differential / chunked / encode passes.
@@ -63,6 +69,11 @@ def LIST(b=b""): return seq(4, b)          # list (wrapper array of unions)
 def SPARSE(b=b""): return seq(5, b)        # sparse
 def HOLDER(b=b""): return seq(6, b)        # holder
 def TRAILER(v):  return scalar_u(7, v)
+def GRID(b=b""): return seq(8, b)          # grid (array of arrays of unions)
+def REFA(b=b""): return seq(9, b)          # $defs union, default_id 1
+def REFB(b=b""): return seq(10, b)         # $defs union, default_id 0
+def CHAIN(b=b""): return seq(11, b)        # six declared frames deep
+def REFC(b=b""): return seq(12, b)         # $defs union, default_id omitted (= lowest id, 0)
 
 # choice options
 def num(v):      return scalar_u(0, v)                 # u16, default 5, = default_id
@@ -74,6 +85,9 @@ def vals(xs):    return arr_u(3, xs)                   # u16[4], compact array
 def names(*ss):  return seq(4, b"".join(fstr(i, s) for i, s in enumerate(ss)))
 def enm(v):      return scalar_s(5, v)                 # enum {A0,B1,C2}, default 1
 def flt(v):      return fp32(6, v)                     # fp32, default 1.5
+def flags(v):    return scalar_u(7, v)                 # bitfield {r pos0, w pos1 = true}: default 2, u8
+def raw(b):      return fblob(8, b)                    # blob maxlen 4
+def blobs(*bs):  return seq(9, b"".join(fblob(i, x) for i, x in enumerate(bs)))  # blob[2], maxlen 4
 
 OMIT = "d_omit_ctl.bin"      # the message whose union fields are all omitted: TAG(5) alone
 
@@ -239,6 +253,132 @@ def emit_union_deep(out_dir=None):
     k7 = canon("k_ctl_a4", TAG() + HOLDER(hu(scalar_u(0, 4))))
     twin("k_struct_and_union_reopened",
          TAG() + HOLDER(hu(fstr(1, "x"))) + HOLDER(hu(scalar_u(0, 4))), k7)
+
+    # ---- N. bitfield, enum width, blob and wrapper-array-of-blob options --------------------
+    canon("n_flags_default_written", TAG() + CH(flags(2)))            # bit 1 set = its default, written
+    canon("n_flags_zero_written", TAG() + CH(flags(0)))
+    canon("n_flags_1", TAG() + CH(flags(1)))
+    canon("n_flags_255_undeclared_bits_kept", TAG() + CH(flags(255)))  # the bound is the WIDTH, nothing is masked
+    add("n_flags_256_over_the_declared_width", TAG() + CH(flags(256)), "reject")
+    twin("n_flags_then_num", TAG() + CH(flags(1) + num(3)), num3)
+    canon("n_enum_127_inside_width_outside_the_values", TAG() + CH(enm(127)))  # not a closed set
+    canon("n_enum_minus_1", TAG() + CH(enm(-1)))
+    add("n_enum_128_over_the_declared_width", TAG() + CH(enm(128)), "reject")
+    raw_e = canon("n_raw_empty_held", TAG() + CH(raw(b"")))
+    canon("n_raw_abcd", TAG() + CH(raw(b"abcd")))
+    add("n_raw_over_maxlen", TAG() + CH(raw(b"abcde")), "reject")
+    raw_cd = canon("n_raw_cd", TAG() + CH(raw(b"cd")))
+    twin("n_raw_repeated_is_replaced", TAG() + CH(raw(b"ab") + raw(b"cd")), raw_cd)
+    twin("n_raw_away_and_back_restarts_empty", TAG() + CH(raw(b"ab") + num(3) + raw(b"")), raw_e)
+    bl_e = canon("n_blobs_held_empty", TAG() + CH(blobs()))
+    canon("n_blobs_x", TAG() + CH(blobs(b"x")))
+    canon("n_blobs_empty_blob_is_the_last_element", TAG() + CH(blobs(b"")))
+    bl_gap = canon("n_blobs_gap_y", TAG() + CH(seq(9, fblob(1, b"y"))))
+    twin("n_blobs_reopened_is_replaced", TAG() + CH(blobs(b"x") + seq(9, fblob(1, b"y"))), bl_gap)
+    twin("n_blobs_away_and_back_restarts_empty", TAG() + CH(blobs(b"x") + num(3) + blobs()), bl_e)
+    add("n_blobs_element_over_maxlen", TAG() + CH(blobs(b"abcde")), "reject")
+
+    # ---- O. blob / wrapper-array / compact-array options INSIDE an array-of-unions element ---
+    def lr(b):  return fblob(3, b)                 # option r (blob maxlen 4)
+    def lws(*ss): return seq(4, b"".join(fstr(i, x) for i, x in enumerate(ss)))   # option ws (string[2])
+    def lns(xs):  return arr_u(5, xs)              # option ns (u8[4], compact)
+    canon("o_r_empty_held", TAG() + LIST(el(0, lr(b""))))
+    canon("o_r_ab", TAG() + LIST(el(0, lr(b"ab"))))
+    canon("o_ws_held_empty", TAG() + LIST(el(0, lws())))
+    canon("o_ws_a", TAG() + LIST(el(0, lws("a"))))
+    canon("o_ns_held_empty", TAG() + LIST(el(0, lns([]))))
+    canon("o_ns_1_2", TAG() + LIST(el(0, lns([1, 2]))))
+    ns1 = canon("o_ctl_ns_1", TAG() + LIST(el(0, lns([1]))))
+    twin("o_r_then_ns_last_wins", TAG() + LIST(el(0, lr(b"ab") + lns([1]))), ns1)
+    wsb = canon("o_ctl_ws_gap_b", TAG() + LIST(el(0, seq(4, fstr(1, "b")))))
+    twin("o_ws_away_and_back_restarts_empty",
+         TAG() + LIST(el(0, lws("a") + li(3) + seq(4, fstr(1, "b")))), wsb)
+    add("o_ns_over_count", TAG() + LIST(el(0, lns([1, 2, 3, 4, 5]))), "reject")
+    add("o_r_over_maxlen", TAG() + LIST(el(0, lr(b"abcde"))), "reject")
+
+    # ---- P. an array of arrays of unions (grid: count 2 x count 2, default_id 1 = hi = 4) -----
+    def cell(c, b=b""): return seq(c, b)          # a union element of a row
+    def row(r, *cells): return seq(r, b"".join(cells))
+    def lo(v): return scalar_u(0, v)
+    def hi(v): return scalar_u(1, v)
+    twin("p_empty_grid_omits", TAG() + GRID(), omit)
+    canon("p_cell_lo3", TAG() + GRID(row(0, cell(0, lo(3)))))
+    canon("p_cell_lo0_held_written", TAG() + GRID(row(0, cell(0, lo(0)))))
+    cdef = canon("p_cell_at_default_is_framed", TAG() + GRID(row(0, cell(0))))
+    twin("p_cell_hi4_explicit_is_default", TAG() + GRID(row(0, cell(0, hi(4)))), cdef)
+    canon("p_two_cells", TAG() + GRID(row(0, cell(0, lo(1)), cell(1, hi(9)))))
+    row1 = canon("p_row1_only_row0_is_a_gap", TAG() + GRID(row(1, cell(0, lo(3)))))
+    twin("p_empty_interior_row_is_a_gap", TAG() + GRID(seq(0) + row(1, cell(0, lo(3)))), row1)
+    g9 = canon("p_gap_cell_hi9", TAG() + GRID(row(0, cell(1, hi(9)))))
+    twin("p_row_reopened_is_replaced", TAG() + GRID(row(0, cell(0, lo(1))) + row(0, cell(1, hi(9)))), g9)
+    g9b = canon("p_ctl_cell_hi9", TAG() + GRID(row(0, cell(0, hi(9)))))
+    twin("p_cell_two_options_last_wins", TAG() + GRID(row(0, cell(0, lo(1) + hi(9)))), g9b)
+    g2 = canon("p_ctl_row1_lo2", TAG() + GRID(row(1, cell(0, lo(2)))))
+    twin("p_grid_reopened_is_replaced", TAG() + GRID(row(0, cell(0, lo(1)))) + GRID(row(1, cell(0, lo(2)))), g2)
+
+    # ---- Q. one $defs union at three sites: one type per effective default_id ---------------
+    # refa: default_id 1 (name, default "")   refb: default_id 0 (num, default 5)
+    # refc: default_id omitted = lowest id = 0, so it must behave exactly like refb
+    twin("q_refa_default_id_name_empty_omits", TAG() + REFA(fstr(1, "")), omit)
+    canon("q_refa_num5_written", TAG() + REFA(scalar_u(0, 5)))         # held, != default_id, at ITS default
+    canon("q_refa_num0_written", TAG() + REFA(scalar_u(0, 0)))
+    qpt = canon("q_refa_pt_held", TAG() + REFA(seq(2)))
+    twin("q_refa_pt_x7_explicit_is_default", TAG() + REFA(seq(2, scalar_s(0, 7))), qpt)
+    canon("q_refa_name_x", TAG() + REFA(fstr(1, "x")))
+    add("q_refa_name_over_maxlen", TAG() + REFA(fstr(1, "abcde")), "reject")
+    twin("q_refb_default_id_num5_omits", TAG() + REFB(scalar_u(0, 5)), omit)
+    canon("q_refb_name_empty_written", TAG() + REFB(fstr(1, "")))      # refa omits this, refb must write it
+    canon("q_refb_pt_held", TAG() + REFB(seq(2)))
+    twin("q_refc_default_id_omitted_means_lowest_num5_omits", TAG() + REFC(scalar_u(0, 5)), omit)
+    canon("q_refc_name_empty_written", TAG() + REFC(fstr(1, "")))
+
+    # ---- R. the declared chain, and MAX_DEPTH swept THROUGH it -----------------------------
+    canon("r_chain_a_3", TAG() + CHAIN(scalar_u(0, 3)))
+    twin("r_chain_a_zero_is_default_id_at_default", TAG() + CHAIN(scalar_u(0, 0)), omit)
+    c_s = canon("r_chain_s_held_empty", TAG() + CHAIN(seq(1)))
+    twin("r_chain_inner_a_default_leaves_s_empty", TAG() + CHAIN(seq(1, seq(0, scalar_u(0, 0)))), c_s)
+    canon("r_chain_middle_s_held", TAG() + CHAIN(seq(1, seq(0, seq(1)))))
+    deep_empty = canon("r_chain_innermost_s_held",
+                       TAG() + CHAIN(seq(1, seq(0, seq(1, seq(0, seq(1)))))))
+    deep_full = canon("r_chain_full_leaf7",
+                      TAG() + CHAIN(seq(1, seq(0, seq(1, seq(0, seq(1, scalar_u(0, 7))))))))
+    twin("r_chain_leaf_zero_is_default",
+         TAG() + CHAIN(seq(1, seq(0, seq(1, seq(0, seq(1, scalar_u(0, 0))))))), deep_empty)
+    twin("r_chain_away_and_back_restarts", TAG() + CHAIN(seq(1, seq(0, scalar_u(0, 4)) ) + scalar_u(0, 3) + seq(1)), c_s)
+    twin("r_chain_reopened_continues",
+         TAG() + CHAIN(seq(1, seq(0, scalar_u(0, 4)))) + CHAIN(seq(1, seq(0, seq(1, seq(0, seq(1, scalar_u(0, 7))))))),
+         deep_full)
+
+    # MAX_DEPTH (255) is a WIRE limit, not a schema one: an unknown sequence may nest
+    # arbitrarily inside a known one. A declared frame and a skipped subtree use different
+    # counters (F-0050; F-0055 was a scope stack sized from the schema). Nest unknown id 50
+    # inside the innermost scope of four different declared paths, to exactly 255 (legal)
+    # and 256 (INVALID, even when every sequence is closed), closed and truncated.
+    def unk(k, closed):
+        return hdr(50, WT_SEQ_BEG) * k + (END * k if closed else b"")
+
+    def open_path(frames):
+        return b"".join(hdr(f, WT_SEQ_BEG) for f in frames)
+
+    paths = [
+        # (name, declared frames, the canonical twin once the skipped subtree is dropped)
+        ("chain_innermost", (11, 1, 0, 1, 0, 1), deep_empty),
+        ("choice_union_frame", (1,), omit),
+        ("choice_struct_option", (1, 1), p_empty),
+        ("list_element_struct_option", (4, 0, 2), last_default),
+    ]
+    for pname, frames, ref in paths:
+        d = len(frames)
+        for total, closed in ((255, True), (255, False), (256, True), (256, False)):
+            body = open_path(frames) + unk(total - d, closed) + (END * d if closed else b"")
+            data = TAG() + body
+            name = f"s_depth_{total}_{'closed' if closed else 'truncated'}_via_{pname}"
+            if total == 255 and closed:
+                twin(name, data, ref)                      # accepted, and the skipped nest vanishes
+            elif total == 255:
+                add(name, data, "not_reject")              # a prefix of a valid message: A or I
+            else:
+                add(name, data, "reject")                  # 256 opens: INVALID, closed or not
 
     # ---- L. schema-bound violations inside an option -----------------------------------
     add("l_array_option_over_count", TAG() + CH(vals([1, 2, 3, 4, 5])), "reject")
