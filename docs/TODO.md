@@ -34,6 +34,11 @@ The 2026-07-22 coverage-audit backlog is cleared: WP-01/02A/03/04/05/06/07/08/09
 #88,#94,#90,#91,#93,#95,#96,#97,#98,#99,#92). Surfaced findings **F-0027..F-0032** (+ spec hole
 documentation#24), 10 upstream issues. `docs/improvements.md` is retired; the **deferred residue** lives
 here:
+- [ ] **Union depth — what `probe-union-deep` still does not reach** (2026-09-30): a `bitfield` option, a
+  blob option and a blob/wrapper array *inside* a union element, an array-of-array of unions (the
+  generator's `grid`), a `$ref`-split union type (one `$defs` union at two `default_id`s), and a
+  union under `MAX_DEPTH`. The **streaming** engines (`FUZZ_STREAM`, the Go engines) do not take a
+  schema, so the union engine is block-path only: a feed/finish fuzz of the union code is open.
 - [ ] **WP-02 Part B** — union *materialized* (element-access) oracle: the C anchor materializes a union
   out-of-the-box (form `{opt_id:value}` per member), but the 6 runtime + 6 generated walkers need the
   `union` descriptor node + a `materialize.py` union reference (~12 walkers across 10 langs). Part A

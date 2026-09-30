@@ -60,7 +60,7 @@ AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound", "sweep_reserve
 # rebuilds back to probe after (the SCHEMA-switch discipline, ground rule 3).
 UNION_AXES = ["wiretype_sweep", "sweep_repeated_id", "sweep_overbound",
               "sweep_reserved_subtype", "sweep_truncation", "sweep_empty_frame",
-              "sweep_tolerance"]
+              "sweep_tolerance", "sweep_union_canon"]
 # sweep_fixlen_array_subtype (crucible#173) has an emit_union too, but is not in this
 # list yet: the union pass is invoked as one blocking `--union` call (scripts/sweep.sh)
 # with no per-axis report-only split the way the probe pass has, and this axis has not
@@ -166,16 +166,27 @@ def run_axis(name, emitter="emit"):
     return len(corpus), divergences, conformance, soft
 
 
+# The deep union pass: one axis, over schema/probe-union-deep.sofab.yaml (struct / array /
+# nested / sparse / array-of-union / union-in-struct options that probe-union cannot reach).
+DEEP_AXES = ["sweep_union_deep"]
+
+
 def main():
     args = sys.argv[1:]
     union = "--union" in args
     if union:
         args.remove("--union")
-    emitter = "emit_union" if union else "emit"
-    axes = args or (UNION_AXES if union else AXES)
+    deep = "--union-deep" in args
+    if deep:
+        args.remove("--union-deep")
+    emitter = "emit_union_deep" if deep else ("emit_union" if union else "emit")
+    axes = args or (DEEP_AXES if deep else (UNION_AXES if union else AXES))
     if union:
         print("[sweep] union pass (schema/probe-union.sofab.yaml) — drivers must be "
               "built against probe-union (scripts/sweep.sh does this)")
+    if deep:
+        print("[sweep] deep union pass (schema/probe-union-deep.sofab.yaml) — drivers must be "
+              "built against probe-union-deep (scripts/run-union-deep.sh does this)")
     total_div = total_conf = 0
     for name in axes:
         n, div, conf, soft = run_axis(name, emitter)
