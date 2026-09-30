@@ -94,8 +94,10 @@ const _MATERIALIZE = process.env.SOFAB_MATERIALIZE === "1";
 interface SchemaNode {
   id: number;
   name: string;
-  kind: "u" | "bool" | "s" | "fp32" | "fp64" | "string" | "blob" | "struct" | "array" | "wrapper" | "struct_wrapper";
+  kind: "u" | "bool" | "s" | "fp32" | "fp64" | "string" | "blob" | "struct" | "array" | "wrapper" | "struct_wrapper" | "union";
   fields?: SchemaNode[];
+  options?: SchemaNode[];
+  default_id?: number;
   elem?: "u" | "bool" | "s" | "fp32" | "fp64" | "string" | "blob";
   count?: number;
 }
@@ -192,6 +194,16 @@ function walk(node: SchemaNode, value: unknown, raw?: unknown): string {
       // for that child the lookup simply finds nothing and the array case supplies it.
       return "{" + node.fields!.map((c) =>
         c.id + ":" + walk(c, v[c.name], v[c.name + "Fp32Raw"])).join(";") + "}";
+    }
+    case "union": {
+      // A union holds exactly one option (§4.2): read the held id through the public
+      // `which` accessor and walk only that option's getter. Testing every option for
+      // a non-default value would lose a held option sitting at its own default.
+      const v = value as Record<string, unknown>;
+      const id = v.which as number;
+      const o = node.options!.find((c) => c.id === id);
+      if (!o) throw new Error("union holds unknown option id " + id);
+      return "{" + o.id + ":" + walk(o, v[o.name], v[o.name + "Fp32Raw"]) + "}";
     }
     case "array":
     case "wrapper": {

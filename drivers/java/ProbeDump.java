@@ -136,9 +136,42 @@ public final class ProbeDump {
                 sb.append(']');
                 return sb.toString();
             }
+            case "union":
+                return walkUnion(node, value);
             default:
                 throw new IllegalStateException("unhandled descriptor kind: " + kind);
         }
+    }
+
+    /** A union holds exactly one option: {<held id>:<value>}. The held option is read
+     *  through the generated tag accessor `which()` and that option's getter, never by
+     *  testing every option for a non-default value -- a held option sitting at its own
+     *  default is still held (`{4:u0}`), and a fresh union holds `default_id` (`{0:u0}`). */
+    private static String walkUnion(Map<String, Object> node, Object value) {
+        try {
+            long held = ((Number) value.getClass().getMethod("which").invoke(value)).longValue();
+            for (Object o : optionsOf(node)) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> opt = (Map<String, Object>) o;
+                if (asLong(opt.get("id")) != held) continue;
+                // getter = "get" + CamelCase(schema name): as_u16 -> getAsU16
+                StringBuilder g = new StringBuilder("get");
+                for (String part : ((String) opt.get("name")).split("_")) {
+                    if (part.isEmpty()) continue;
+                    g.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+                }
+                Object v = value.getClass().getMethod(g.toString()).invoke(value);
+                return "{" + held + ":" + walk(opt, v) + "}";
+            }
+            throw new IllegalStateException("union which()=" + held + " names no descriptor option");
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("union access failed on " + value.getClass(), e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> optionsOf(Map<String, Object> node) {
+        return (List<Object>) node.get("options");
     }
 
     private static String walkStruct(List<Object> fields, Object value) {

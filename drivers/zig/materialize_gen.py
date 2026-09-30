@@ -179,12 +179,36 @@ def _emit_struct_wrapper(em, fields, expr):
     em.lit("]")
 
 
+def _emit_union(em, node, expr):
+    """A union: {<held option id>:<value>}. Walked through the tag (a switch on the
+    active variant of the tagged union), never by testing the options for a
+    non-default value: an option held at its own default is still the held one."""
+    n = em._loop
+    em._loop += 1
+    cap = f"_u{n}"
+    em.lit("{")
+    em.raw(f"    switch ({expr}) {{")
+    for opt in node["options"]:
+        em.raw(f'        .{opt["name"]} => |{cap}| {{')
+        em.lit(f'{opt["id"]}:')
+        _emit_value(em, opt, cap)
+        em.raw("        },")
+    em.raw("    }")
+    em.lit("}")
+
+
 def _emit_node(em, node, parent_expr):
     """Walk one descriptor node, appending its access expression to parent_expr."""
+    _emit_value(em, node, f'{parent_expr}.{node["name"]}')
+
+
+def _emit_value(em, node, expr):
+    """Emit the value of `node`, whose Zig access expression is already `expr`."""
     kind = node["kind"]
-    expr = f'{parent_expr}.{node["name"]}'
     if kind == "struct":
         _emit_struct(em, node["fields"], expr)
+    elif kind == "union":
+        _emit_union(em, node, expr)
     elif kind == "array":
         _emit_array(em, node["elem"], expr)
     elif kind == "wrapper":

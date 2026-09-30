@@ -106,8 +106,21 @@ _ARR_FN = {"u": "mz_arr_u", "bool": "mz_arr_bool", "s": "mz_arr_s",
            "fp32": "mz_arr_f32", "fp64": "mz_arr_f64"}
 
 
-def emit_value(node, path, out):
-    """Append Rust statements that write the VALUE at access-path `path` (no id prefix)."""
+# Path prefix under which the driver reaches the generated types: the std variant has
+# `mod message` in main.rs, the no_std one re-exports them from the lib crate at the root
+# (only `Probe` is imported by the preamble, so a union's enum is named by full path).
+_MOD = "message::"
+
+
+def _camel(name):
+    return "".join(p[:1].upper() + p[1:] for p in name.split("_"))
+
+
+def emit_value(node, path, out, ty="Probe"):
+    """Append Rust statements that write the VALUE at access-path `path` (no id prefix).
+
+    `ty` is the generated Rust type of `node` (the generator names a nested type
+    <parent><Field>); a union's enum type and its variants derive from it."""
     kind = node["kind"]
     if kind == "u":
         out.append('    let _ = write!(s, "u{}", ' + path + ');')
@@ -130,8 +143,22 @@ def emit_value(node, path, out):
             if j > 0:
                 out.append('    let _ = write!(s, ";");')
             out.append('    let _ = write!(s, "' + str(f["id"]) + ':");')
-            emit_value(f, path + "." + f["name"], out)
+            emit_value(f, path + "." + f["name"], out, ty + _camel(f["name"]))
         out.append('    let _ = write!(s, "}}");')
+    elif kind == "union":
+        # A union holds exactly ONE option: walk it through the native enum's variant (the
+        # tag), never by testing every option for a non-default value -- a held option at
+        # its own default is still held and must print. Shape: {<held id>:<value>}.
+        out.append("    match &" + path + " {")
+        for o in node["options"]:
+            out.append("        " + _MOD + ty + "::" + _camel(o["name"]) + "(mzv) => {")
+            out.append('            let _ = write!(s, "{{' + str(o["id"]) + ':");')
+            inner = []
+            emit_value(o, "(*mzv)", inner, ty + _camel(o["name"]))
+            out.extend("        " + ln for ln in inner)
+            out.append('            let _ = write!(s, "}}");')
+            out.append("        }")
+        out.append("    }")
     elif kind == "array":
         out.append("    " + _ARR_FN[node["elem"]] + "(s, &" + path + "[..]);")
     elif kind == "wrapper":
@@ -209,6 +236,9 @@ def main():
     )
     with open(schema) as f:
         desc = json.load(f)
+    global _MOD
+    if len(sys.argv) >= 2 and os.path.exists(os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])), "lib.rs")):
+        _MOD = "sofabuffers_generated::"
     src = generate(desc)
     if len(sys.argv) >= 2:
         with open(sys.argv[1], "w") as f:

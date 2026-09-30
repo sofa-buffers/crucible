@@ -235,6 +235,8 @@ type schemaNode struct {
 	Elem   string       `json:"elem"`
 	Count  int          `json:"count"`
 	Fields []schemaNode `json:"fields"`
+	// Options is a union's option list (kind "union"), sorted by option id.
+	Options []schemaNode `json:"options"`
 }
 
 // schemaDoc is the top of the descriptor: { "message": ..., "fields": [node,...] }.
@@ -326,6 +328,17 @@ func fieldByTag(v reflect.Value, name string) reflect.Value {
 	panic("materialize: no struct field with json tag " + name)
 }
 
+// pascal turns a schema name (as_u16) into the generated Go accessor name (AsU16).
+func pascal(name string) string {
+	var b strings.Builder
+	for _, p := range strings.Split(name, "_") {
+		if p != "" {
+			b.WriteString(strings.ToUpper(p[:1]) + p[1:])
+		}
+	}
+	return b.String()
+}
+
 // walk renders one descriptor node against its reflected value (oracle/materialized.md).
 func walk(n *schemaNode, v reflect.Value) string {
 	switch n.Kind {
@@ -336,6 +349,23 @@ func walk(n *schemaNode, v reflect.Value) string {
 			parts[i] = fmt.Sprintf("%d:%s", c.ID, walk(c, fieldByTag(v, c.Name)))
 		}
 		return "{" + strings.Join(parts, ";") + "}"
+	case "union":
+		// A union holds exactly one option, so it is walked through the tag —
+		// Which() names the held option, its getter yields the value. Testing every
+		// option for a non-default value would print `{}` for a held-at-default one.
+		id := int(v.Addr().MethodByName("Which").Call(nil)[0].Uint())
+		for i := range n.Options {
+			c := &n.Options[i]
+			if c.ID != id {
+				continue
+			}
+			g := v.Addr().MethodByName(pascal(c.Name)).Call(nil)[0]
+			if g.Kind() == reflect.Ptr {
+				g = g.Elem()
+			}
+			return fmt.Sprintf("{%d:%s}", c.ID, walk(c, g))
+		}
+		panic(fmt.Sprintf("materialize: union holds unknown option id %d", id))
 	case "array":
 		// `count: N` numeric/fp array: emit exactly the elements the container holds.
 		// `count` is a CAPACITY, not a length (MESSAGE_SPEC §3): "a decoder

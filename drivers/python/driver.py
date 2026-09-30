@@ -69,6 +69,12 @@ def _walk(node, value) -> str:
         return "{" + ";".join(
             f"{c['id']}:{_walk(c, getattr(value, c['name']))}" for c in node["fields"]
         ) + "}"
+    if kind == "union":
+        # A union holds exactly ONE option: walk the one the tag names (the public
+        # `which`), never by testing each option for a non-default value — a held option
+        # at its own default is still held ({4:u0}, not {0:u0}).
+        o = next(o for o in node["options"] if o["id"] == value.which)
+        return "{" + f"{o['id']}:{_walk(o, getattr(value, o['name']))}" + "}"
     if kind == "struct_wrapper":
         # a wrapper whose elements are struct sequences (WP-05): each element is a
         # generated object — an obj walk per element, container length as-is

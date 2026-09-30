@@ -85,6 +85,12 @@ internal static class Driver
             n.Fields = new List<SchemaNode>();
             foreach (var c in fs.EnumerateArray()) n.Fields.Add(ParseNode(c));
         }
+        // union: the options (ordinary nodes, sorted by id) share the Fields slot.
+        if (e.TryGetProperty("options", out var os))
+        {
+            n.Fields = new List<SchemaNode>();
+            foreach (var c in os.EnumerateArray()) n.Fields.Add(ParseNode(c));
+        }
         return n;
     }
 
@@ -142,6 +148,12 @@ internal static class Driver
         if (f != null) { declared = f.FieldType; return f.GetValue(obj); }
         var p = t.GetProperty(name);
         if (p != null) { declared = p.PropertyType; return p.GetValue(obj); }
+        // A union's option accessors are PascalCase (as_u16 -> AsU16): match ignoring
+        // case and underscores.
+        string flat = name.Replace("_", "");
+        foreach (var q in t.GetProperties())
+            if (string.Equals(q.Name, flat, StringComparison.OrdinalIgnoreCase))
+            { declared = q.PropertyType; return q.GetValue(obj); }
         throw new MissingMemberException(t.Name, name);
     }
 
@@ -153,6 +165,18 @@ internal static class Driver
         {
             case "struct":
                 return WalkStruct(node.Fields, value);
+            case "union":
+            {
+                // Exactly one option is held, so read the tag (Which) and emit only that
+                // option; testing every option for a non-default value would lose a held
+                // option that sits at its own default.
+                int which = Convert.ToInt32(GetMember(value, "Which", out _), CultureInfo.InvariantCulture);
+                SchemaNode opt = node.Fields.Find(o => o.Id == which)
+                    ?? throw new InvalidOperationException("union tag " + which + " names no option");
+                object ov = GetMember(value, opt.Name, out Type ot);
+                if (opt.Kind == "struct" && ov == null) ov = Activator.CreateInstance(ot);
+                return "{" + which.ToString(CultureInfo.InvariantCulture) + ":" + Walk(opt, ov) + "}";
+            }
             case "array":
             {
                 // Fixed-count numeric/fp array, materialized to its full N in memory:
