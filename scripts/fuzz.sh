@@ -22,6 +22,12 @@
 #   FUZZ_TIME=<seconds>   wall-clock budget (default 120)
 #   FUZZ_JOBS=<n>         parallel libFuzzer jobs (default 1)
 #   FUZZ_STREAM=1         build+run the streaming target instead of the block one
+#   FUZZ_SCHEMA=<file>    fuzz another schema (default schema/probe.sofab.yaml). The message must
+#                         be keyed `probe`, like schema/probe-union*.sofab.yaml. Block path only.
+#   FUZZ_CORPUS=<dir>     the writable corpus (default corpus/interesting). A union schema needs
+#                         its OWN corpus: its inputs are bytes shaped for that schema, and the
+#                         probe roster would replay them as noise.
+#   FUZZ_SEEDS=<dir>      the read-only seed dir (default corpus/seeds)
 #   CC=clang              needs a libFuzzer-capable clang (devcontainer)
 set -eu
 
@@ -34,12 +40,18 @@ FUZZ_JOBS="${FUZZ_JOBS:-1}"
 STREAM="${FUZZ_STREAM:-0}"
 
 GEN="$ROOT/drivers/c/fuzz-gen"
-INTERESTING="$ROOT/corpus/interesting"
+INTERESTING="${FUZZ_CORPUS:-$ROOT/corpus/interesting}"
+SCHEMA_FILE="${FUZZ_SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
 CRASH="$ROOT/corpus/crashes"
 
 [ -x "$SOFABGEN" ] || { echo "missing $SOFABGEN — run scripts/bootstrap.sh" >&2; exit 1; }
 if ! command -v "$CC" >/dev/null || ! "$CC" --version 2>/dev/null | grep -qi clang; then
     echo "error: the pacemaker needs a libFuzzer-capable clang (set CC=clang; use the devcontainer)." >&2
+    exit 1
+fi
+
+if [ "$STREAM" = "1" ] && [ -n "${FUZZ_SCHEMA:-}" ]; then
+    echo "error: FUZZ_SCHEMA is block-path only (the streaming seeds and harvest are probe-shaped)." >&2
     exit 1
 fi
 
@@ -59,7 +71,7 @@ fi
 
 echo "==> [$TAG] generating C types from schema" >&2
 rm -rf "$GEN"; mkdir -p "$GEN" "$INTERESTING" "$CORP" "$CRASH" "$ROOT/drivers/c/build"
-"$SOFABGEN" --lang c --in "$ROOT/schema/probe.sofab.yaml" --out "$GEN" >&2
+"$SOFABGEN" --lang c --in "$SCHEMA_FILE" --out "$GEN" >&2
 
 echo "==> [$TAG] building libFuzzer target (clang: fuzzer+ASan+UBSan)" >&2
 # shellcheck disable=SC2086
@@ -123,7 +135,7 @@ print(f"==> [pacemaker-stream] {n} seed(s) prepared", file=sys.stderr)
 PY
     SEED_ARGS="$TMPSEEDS"
 else
-    SEED_ARGS="$ROOT/corpus/seeds"
+    SEED_ARGS="${FUZZ_SEEDS:-$ROOT/corpus/seeds}"
 fi
 
 echo "==> [$TAG] fuzzing ${FUZZ_TIME}s (corpus: $(basename "$CORP"))" >&2
@@ -197,6 +209,6 @@ PY
     done
     echo "==> [pacemaker-stream] corpus/stream: $(ls "$CORP" | grep -vc gitkeep) inputs; corpus/interesting: $(ls "$INTERESTING" | grep -vc gitkeep) inputs" >&2
 else
-    echo "==> [pacemaker] corpus/interesting: $(ls "$INTERESTING" | grep -vc gitkeep) inputs; crashes: $(ls "$CRASH" | grep -vc gitkeep)" >&2
+    echo "==> [pacemaker] corpus/$(basename "$INTERESTING"): $(ls "$INTERESTING" | grep -vc gitkeep) inputs; crashes: $(ls "$CRASH" | grep -vc gitkeep)" >&2
 fi
 echo "==> next: CORPUS=corpus/interesting ./scripts/run.sh   # differential over the grown corpus" >&2

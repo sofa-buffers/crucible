@@ -1,0 +1,18 @@
+# Accounted-for cluster camps of the UNION engine -- the baseline `oracle/cluster.py --baseline`
+# diffs the nightly's union corpus against (corpus/interesting-union, roster built against
+# schema/probe-union-deep.sofab.yaml).
+#
+# It is a separate file from results/known-clusters.txt because a camp signature is a
+# (driver-set, verdict) partition over ONE roster build: the same partition means something
+# different under another schema, and the two corpora are not replayed against each other.
+# The rules of results/known-clusters.txt apply unchanged: a camp belongs here ONLY once it is
+# explained, a FIXED camp is deleted rather than kept, and a driver moving between camps is
+# real movement. Format: <signature>  # <label>
+
+# --- added 2026-09-30, first local union fuzz (90 s, 976 650 execs, 653 inputs) ---------
+# The same benign soft axis as the first row of results/known-clusters.txt: the verdict is
+# unanimous I (an incomplete message), and java and both Kotlin legs hand back the value
+# they had already read while the other fourteen drivers hand back nothing (policy
+# incomplete_value: soft). 445 of the 653 inputs; no other camp -- no verdict split and no
+# accept-value split over a corpus that reaches struct, array, nested and sparse options.
+I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-std,typescript,zig | I:java,kotlin-jvm,kotlin-native  # benign — java and both Kotlin legs emit an incomplete_value payload on I; the verdict is unanimous (policy incomplete_value: soft)
