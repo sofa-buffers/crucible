@@ -87,20 +87,22 @@ class _Indent:
         self._pad = "    " * depth
 
     def stmt(self, s):
-        self._em.lines.append("    " + self._pad + s)
+        self._em.stmt(self._pad + s)
 
     def fresh(self):
         return self._em.fresh()
 
 
 def _emit_leaf(em, kind, expr):
-    if kind == "u":
+    if kind in ("u", "bitfield"):
+        # bitfield: the generated field is the ULong word, so it prints like a u.
         # The generated type is unsigned, so toString() is the unsigned decimal.
         em.stmt(f'b.append("u").append({expr}.toString())')
     elif kind == "bool":
         # §4.4 boolean: rendered as the unsigned value it is on the wire — `u1` / `u0`. A port whose storage is a real bool can only ever produce those two; one that kept a non-normalized raw value renders it as-is, which is exactly the divergence the form exists to surface.
         em.stmt(f'b.append(if ({expr}) "u1" else "u0")')
-    elif kind == "s":
+    elif kind in ("s", "enum"):
+        # enum: the generated field is the plain Int (any value inside the declared width).
         em.stmt(f'b.append("s").append({expr}.toString())')
     elif kind == "fp32":
         em.stmt(f"_f32(b, {expr})")
@@ -177,23 +179,42 @@ def _emit_union(em, options, expr):
     # A union holds exactly one option (MESSAGE_SPEC §4.2): dispatch on the generated
     # `which` tag and print only the held option. Testing each option for a non-default
     # value instead would lose "held at its own default" (`{4:u0}` vs `{0:u0}`).
+    # `expr` is any path (field, array element, option of an outer union), so unions
+    # nest without the generated class names ever being spelled out.
     em.stmt(f"when ({expr}.which) {{")
     for opt in options:
         em.stmt(f'    {opt["id"]} -> {{')
         inner = _Indent(em, 2)
         inner.stmt(f'b.append("{{{opt["id"]}:")')
-        _emit_node(inner, opt, expr)
+        _emit_value(inner, opt, f'{expr}.{opt["name"]}')
         inner.stmt('b.append("}")')
         em.stmt("    }")
     em.stmt("    else -> {}")
     em.stmt("}")
 
 
+def _emit_node_wrapper(em, item, expr):
+    # Dynamic wrapper array whose elements are unions or further wrapper arrays: the
+    # container's actual elements in index order (no fill-to-N), each walked via `item`.
+    i = em.fresh()
+    em.stmt('b.append("[")')
+    em.stmt(f"for ({i} in 0 until {expr}.size) {{")
+    em.stmt(f'    if ({i} != 0) b.append(",")')
+    _emit_value(_Indent(em, 1), item, f"{expr}[{i}]")
+    em.stmt("}")
+    em.stmt('b.append("]")')
+
+
 def _emit_node(em, node, parent_expr):
+    _emit_value(em, node, f'{parent_expr}.{node["name"]}')
+
+
+def _emit_value(em, node, expr):
     kind = node["kind"]
-    expr = f'{parent_expr}.{node["name"]}'
     if kind == "union":
         _emit_union(em, node["options"], expr)
+    elif kind == "node_wrapper":
+        _emit_node_wrapper(em, node["item"], expr)
     elif kind == "struct":
         _emit_struct(em, node["fields"], expr)
     elif kind == "array":

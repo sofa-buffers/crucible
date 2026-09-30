@@ -203,7 +203,35 @@ def union_vectors():
     return uv()
 
 
+def _check_anchor_vocab_dir(driver_bin, corpus_dir):
+    """Fail, with its own message, when the C anchor printed ANCHOR_UNKNOWN for any input of
+    CORPUS_DIR. The union schemas other than probe-union have no reference, so this is the only
+    way to tell "the anchor is behind" from "the family diverges" there."""
+    import struct
+    import subprocess
+    files = sorted(f for f in os.listdir(corpus_dir) if f.endswith(".bin"))
+    stream = b"".join(struct.pack("<I", os.path.getsize(os.path.join(corpus_dir, f)))
+                      + open(os.path.join(corpus_dir, f), "rb").read() for f in files)
+    env = {**os.environ, "SOFAB_MATERIALIZE": "1"}
+    out = subprocess.run([driver_bin], input=stream, capture_output=True, env=env)
+    lines = out.stdout.decode("utf-8", "replace").splitlines()
+    if len(lines) != len(files):
+        print(f"FAIL: driver emitted {len(lines)} lines for {len(files)} inputs")
+        sys.exit(1)
+    behind = [f for f, l in zip(files, lines) if l.startswith("A") and ANCHOR_UNKNOWN in l]
+    if behind:
+        print(f"ANCHOR BEHIND: the C anchor printed `{ANCHOR_UNKNOWN}` for {len(behind)}/{len(files)} "
+              f"input(s) (first: {behind[0]}) -- md_value() has no case for a field-type tag the "
+              f"generated descriptor uses. Teach the anchor the tag, then re-run.")
+        sys.exit(1)
+    print(f"OK: C anchor vocabulary -- no `{ANCHOR_UNKNOWN}` in {len(files)} dumps of {corpus_dir} -- {driver_bin}")
+    sys.exit(0)
+
+
 def main():
+    if len(sys.argv) >= 4 and sys.argv[1] == "--anchor-vocab-dir":
+        _check_anchor_vocab_dir(sys.argv[2], sys.argv[3])
+        return
     if len(sys.argv) >= 3 and sys.argv[1] == "--driver-union":
         _check_driver(sys.argv[2], union=True)
         return

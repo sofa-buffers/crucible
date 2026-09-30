@@ -68,14 +68,17 @@ class _Emitter:
 
 
 def _emit_leaf(em, kind, expr):
-    if kind == "u":
+    if kind in ("u", "bitfield"):
+        # bitfield: the generated API exposes the raw word as an int, printed as `u`.
         em.stmt(f"b.write('u'); b.write(_u({expr}));")
     elif kind == "bool":
         # §4.4 boolean: rendered as the unsigned value it is on the wire — `u1` / `u0`. A port whose storage is a real bool can only ever produce those two; one that kept a non-normalized raw value renders it as-is, which is exactly the divergence the form exists to surface.
         # A scalar is a `bool`; a boolean array element is an `int` since generator#570 (its
         # destination is an `InlineInt64Array`), so the helper takes either.
         em.stmt(f"_bool(b, {expr});")
-    elif kind == "s":
+    elif kind in ("s", "enum"):
+        # enum: the generated API exposes the declared-width integer (the named members are
+        # int constants), so it prints exactly like `s` — also outside the named values.
         em.stmt(f"b.write('s'); b.write({expr}.toString());")
     elif kind == "fp32":
         # CORELIB_PLAN §6.5: Dart has no fp32 value type, so `expr` is already a widened
@@ -182,8 +185,13 @@ def _emit_union(em, node, expr):
 
 
 def _emit_node(em, node, parent_expr):
+    _emit_value(em, node, f'{parent_expr}.{_dart_name(node["name"])}')
+
+
+def _emit_value(em, node, expr):
+    # `expr` is the full access path of the value; array/wrapper elements (nameless
+    # nodes) are walked through here too.
     kind = node["kind"]
-    expr = f'{parent_expr}.{node["name"]}'
     if kind == "union":
         _emit_union(em, node, expr)
     elif kind == "struct":
@@ -194,8 +202,40 @@ def _emit_node(em, node, parent_expr):
         _emit_wrapper(em, node["elem"], expr)
     elif kind == "struct_wrapper":
         _emit_struct_wrapper(em, node["fields"], expr)
+    elif kind == "node_wrapper":
+        _emit_node_wrapper(em, node["item"], expr)
     else:
         _emit_leaf(em, kind, expr)
+
+
+def _emit_node_wrapper(em, item, expr):
+    # Dynamic wrapper array of unions / of further wrapper arrays: the container's actual
+    # elements in index order, no fill-to-count (same rule as _emit_wrapper).
+    i = em.fresh()
+    em.stmt("b.write('[');")
+    em.stmt(f"for (var {i} = 0; {i} < {expr}.length; {i}++) {{")
+    em.stmt(f"  if ({i} != 0) b.write(',');")
+    _emit_value(_Indent(em, 1), item, f"{expr}[{i}]")
+    em.stmt("}")
+    em.stmt("b.write(']');")
+
+
+# sofabgen appends `_` to a member name that would clash in Dart (`num`, `e`, ...). Rather
+# than duplicate its list, read which `<name>_` getters the generated message.dart declares.
+_ESCAPED = set()
+
+
+def _load_escaped(message_dart):
+    import re
+    try:
+        with open(message_dart, "r", encoding="utf-8") as f:
+            _ESCAPED.update(re.findall(r"\bget (\w+)_ ", f.read()))
+    except OSError:
+        pass
+
+
+def _dart_name(name):
+    return name + "_" if name in _ESCAPED else name
 
 
 class _Indent:
@@ -207,7 +247,7 @@ class _Indent:
         self._pad = "  " * depth
 
     def stmt(self, s):
-        self._em.lines.append("  " + self._pad + s)
+        self._em.stmt(self._pad + s)
 
     def fresh(self):
         return self._em.fresh()
@@ -334,6 +374,7 @@ def main():
         src, path = _STUB, "stub (non-probe schema)"
     else:
         desc, path = _load_descriptor()
+        _load_escaped(os.path.join(os.path.dirname(os.path.abspath(out_path)), "message.dart"))
         src = generate(desc)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(src)

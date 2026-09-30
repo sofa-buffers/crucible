@@ -116,18 +116,45 @@ def _camel(name):
     return "".join(p[:1].upper() + p[1:] for p in name.split("_"))
 
 
+# Union fields declared through `oneof: { $ref: "#/$defs/union/X" }` are generated as a
+# SHARED type named Union<X>Default<DefaultOptionCamel>, not <parent><Field>; the descriptor
+# has the ref resolved, so the ref name is read back from the schema source ($SCHEMA).
+_REFS = {}
+
+
+def _load_refs(schema_path):
+    import re
+    try:
+        with open(schema_path) as f:
+            txt = f.read()
+    except OSError:
+        return
+    for m in re.finditer(r"^\s*(\w+):[^\n]*\$ref:\s*[\"']#/\$defs/union/(\w+)[\"']", txt, re.M):
+        _REFS[m.group(1)] = m.group(2)
+
+
+def _field_ty(parent_ty, f):
+    """Generated Rust type name of field/option `f` declared under type `parent_ty`."""
+    if f["kind"] == "union" and f["name"] in _REFS:
+        dflt = [o for o in f["options"] if o["id"] == f["default_id"]][0]
+        return "Union" + _camel(_REFS[f["name"]]) + "Default" + _camel(dflt["name"])
+    return parent_ty + _camel(f["name"])
+
+
 def emit_value(node, path, out, ty="Probe"):
     """Append Rust statements that write the VALUE at access-path `path` (no id prefix).
 
     `ty` is the generated Rust type of `node` (the generator names a nested type
     <parent><Field>); a union's enum type and its variants derive from it."""
     kind = node["kind"]
-    if kind == "u":
+    if kind in ("u", "bitfield"):
+        # bitfield: the native unsigned word, printed like `u`.
         out.append('    let _ = write!(s, "u{}", ' + path + ');')
     elif kind == "bool":
         # §4.4 boolean: rendered as the unsigned value it is on the wire — `u1` / `u0`. A port whose storage is a real bool can only ever produce those two; one that kept a non-normalized raw value renders it as-is, which is exactly the divergence the form exists to surface.
         out.append('    let _ = write!(s, "u{}", u8::from(' + path + '));')
-    elif kind == "s":
+    elif kind in ("s", "enum"):
+        # enum: the native signed integer holds the declared-width value, printed like `s`.
         out.append('    let _ = write!(s, "s{}", ' + path + ');')
     elif kind == "fp32":
         out.append('    let _ = write!(s, "f{:08x}", ' + path + '.to_bits());')
@@ -143,7 +170,7 @@ def emit_value(node, path, out, ty="Probe"):
             if j > 0:
                 out.append('    let _ = write!(s, ";");')
             out.append('    let _ = write!(s, "' + str(f["id"]) + ':");')
-            emit_value(f, path + "." + f["name"], out, ty + _camel(f["name"]))
+            emit_value(f, path + "." + f["name"], out, _field_ty(ty, f))
         out.append('    let _ = write!(s, "}}");')
     elif kind == "union":
         # A union holds exactly ONE option: walk it through the native enum's variant (the
@@ -154,7 +181,7 @@ def emit_value(node, path, out, ty="Probe"):
             out.append("        " + _MOD + ty + "::" + _camel(o["name"]) + "(mzv) => {")
             out.append('            let _ = write!(s, "{{' + str(o["id"]) + ':");')
             inner = []
-            emit_value(o, "(*mzv)", inner, ty + _camel(o["name"]))
+            emit_value(o, "(*mzv)", inner, _field_ty(ty, o))
             out.extend("        " + ln for ln in inner)
             out.append('            let _ = write!(s, "}}");')
             out.append("        }")
@@ -177,6 +204,17 @@ def emit_value(node, path, out, ty="Probe"):
         out.append('        if i > 0 { let _ = write!(s, ","); }')
         inner = []
         emit_value({"kind": "struct", "fields": node["fields"]}, "x", inner)
+        out.extend("    " + ln for ln in inner)
+        out.append("    }")
+        out.append('    let _ = write!(s, "]");')
+    elif kind == "node_wrapper":
+        # dynamic wrapper array (Vec) whose elements are walked through `item`; the element
+        # type is <parent><Field>Elem, one more `Elem` per nesting level.
+        out.append('    let _ = write!(s, "[");')
+        out.append("    for (i, x) in " + path + ".iter().enumerate() {")
+        out.append('        if i > 0 { let _ = write!(s, ","); }')
+        inner = []
+        emit_value(node["item"], "x", inner, ty + "Elem")
         out.extend("    " + ln for ln in inner)
         out.append("    }")
         out.append('    let _ = write!(s, "]");')
@@ -239,6 +277,9 @@ def main():
     global _MOD
     if len(sys.argv) >= 2 and os.path.exists(os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])), "lib.rs")):
         _MOD = "sofabuffers_generated::"
+    sp = os.environ.get("SCHEMA")
+    if sp:
+        _load_refs(sp if os.path.isabs(sp) else os.path.join(root, sp))
     src = generate(desc)
     if len(sys.argv) >= 2:
         with open(sys.argv[1], "w") as f:

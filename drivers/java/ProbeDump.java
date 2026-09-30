@@ -72,7 +72,10 @@ public final class ProbeDump {
             case "bool":
                 return bool(value);
             case "s":
+            case "enum":      // stored as a plain long: the integer, signed
                 return s(value);
+            case "bitfield":  // stored as a plain long word: unsigned
+                return u(value);
             case "fp32":
                 return f32(value);
             case "fp64":
@@ -132,6 +135,21 @@ public final class ProbeDump {
                 for (int i = 0; i < list.size(); i++) {
                     if (i > 0) sb.append(',');
                     sb.append(walkStruct(fieldsOf(node), list.get(i)));
+                }
+                sb.append(']');
+                return sb.toString();
+            }
+            case "node_wrapper": {
+                // Dynamic array whose elements are unions or further wrappers: walk the
+                // container's actual elements through `item`, nothing padded to `count`.
+                @SuppressWarnings("unchecked")
+                Map<String, Object> item = (Map<String, Object>) node.get("item");
+                List<?> list = (List<?>) value;
+                StringBuilder sb = new StringBuilder();
+                sb.append('[');
+                for (int i = 0; i < list.size(); i++) {
+                    if (i > 0) sb.append(',');
+                    sb.append(walk(item, list.get(i)));
                 }
                 sb.append(']');
                 return sb.toString();
