@@ -14,6 +14,53 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-30 — union coverage completed: bitfield/enum width, blobs, grid, `$ref` splits, MAX_DEPTH, streaming fuzz
+
+**What was still open** (TODO "Union depth"): a bitfield option, a blob option and blob/array options
+inside an array-of-unions element, an array of arrays of unions, one `$defs` union at two `default_id`s,
+a union near `MAX_DEPTH`, and a union streaming fuzz.
+
+**Added to `probe-union-deep`** (152 -> **238 vectors**: 89 `identity`, 79 `same:`, 53 `not_reject`, 17
+`reject`), each expectation derived from MESSAGE_SPEC, none from an implementation:
+- `choice` gains a **bitfield** option (default bit 1 = 2; declared width u8, so 255 is valid and 256 INVALID,
+  nothing masked), a **blob** and a **wrapper array of blobs**; an enum at 127 (outside the values, inside
+  the width: valid) and 128 (INVALID).
+- the `list` element gains a **blob**, a **wrapper array of strings** and a **compact array**.
+- `grid`: an **array of arrays of unions** (the last-element rule at both levels, a re-opened row and a
+  re-opened grid are replaced whole).
+- `refa` / `refb` / `refc`: **one `$defs` union at three sites** (`default_id` 1, 0 and omitted = lowest id).
+  A backend that shares one type and ignores `default_id` gets one site wrong; the same value (`name = ""`,
+  `num = 5`) is omitted at one site and written at another.
+- `chain`: **union -> struct option -> union -> struct option -> union -> struct option**, six declared frames,
+  and **`MAX_DEPTH` swept through it**: an unknown sequence nested to exactly 255 (accepted, and it re-encodes
+  to the twin without it) and 256 (INVALID even when every sequence is closed), closed and truncated, through
+  four declared paths (the chain, a bare union frame, a struct option, an array-of-unions element's option).
+  F-0050 showed a declared scope and a skipped subtree use different depth counters; F-0055 was a scope stack
+  sized from the schema. A union frame is now on both sides of that.
+- the streaming target takes a schema too (`FUZZ_STREAM=1` with `FUZZ_SCHEMA`, `FUZZ_STREAM_CORPUS`), so the
+  union code is fuzzed through feed/finish as well; the nightly runs it. The Go engines stay probe-only.
+
+**Result** (sofabgen `ba496587`, corelib-dart `ed78b11`, corelib-kotlin-mp `3cf2a6e`): 238 vectors x 17
+drivers, 0 divergences, 0 conformance failures, chunk 17/17 and encode 17/17 with 0 mismatches; the union
+sweeps including the canon axis green; 980 union inputs (block plus streaming fuzz, 90 s each,
+976 650 + 656 857 executions, 0 crashes) cluster into one camp, the benign `incomplete_value` axis, already in
+`results/known-clusters-union.txt`. **No defect found in any backend or corelib.** Everything the new vectors
+assert held on the first run, which is why the next paragraph matters.
+
+**Mutation check, and its limit.** Against the pre-#608 sofabgen the extended schema is not a usable
+baseline: the old generator does not produce one consistent wrong answer for these constructions but a
+different one per backend, so 221 of the 238 vectors already *diverge* between the 15 drivers that build it
+(476 divergences in the differential; `typescript` and `dart` do not build at all), and the conformance check,
+which runs only on agreement, is never reached. That is evidence the vectors are not vacuous — the new
+generator agrees on all of them, the old one on 17 — but it is **not** the clean "uniformly wrong, only the
+conformance oracle sees it" result of the earlier, smaller schema (34 conformance failures). The `MAX_DEPTH`
+vectors in particular have no old-generator failure to show; their strength is argued from F-0050/F-0055, not
+measured here.
+
+**Still open:** the union kind of the materialized oracle (WP-02 Part B) — the C anchor walks a union as a
+struct, which was right before generator#608 (options side by side) and is wrong now (options overlap) — and
+the Go streaming/block engines on a union schema.
+
 ## 2026-09-30 — bootstrap: a generator build whose CI is still running aborts the run (decision reversed)
 
 **What happened.** The replay job on main for the merge of crucible#223 failed in the union sweeps with

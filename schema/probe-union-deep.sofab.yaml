@@ -8,6 +8,15 @@
 #
 # Every field below exists to make one rule observable; the rule is named beside it.
 version: 1
+$defs:
+  union:
+    # One $defs union at THREE sites with two effective default_ids: the generator splits it
+    # into one type per effective default_id (an omitted default_id means the lowest option
+    # id). A backend that shares one type and ignores default_id gets one site wrong.
+    Shape:
+      num:  { id: 0, type: u16, default: 5 }
+      name: { id: 1, type: string, maxlen: 4 }
+      pt:   { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 } } }
 messages:
   probe:
     summary: A message exercising every union shape the two-option probe-union cannot.
@@ -36,6 +45,13 @@ messages:
           # still written.
           e:     { id: 5, type: enum, enum: { A: 0, B: 1, C: 2 }, default: 1 }
           f:     { id: 6, type: fp32, default: 1.5 }
+          # a bitfield with a non-zero default (bit 1 set = 2). Its bound is the declared
+          # width, u8 (MESSAGE_SPEC §1): 255 is valid, 256 is INVALID, and nothing is masked.
+          flags: { id: 7, type: bitfield, bits: { r: { pos: 0 }, w: { pos: 1, default: true } } }
+          # blob options: held-and-empty is the explicit empty form, and the maxlen bound
+          # is schema-only knowledge.
+          raw:   { id: 8, type: blob, maxlen: 4 }
+          blobs: { id: 9, type: array, items: { type: blob, count: 2, maxlen: 4 } }
 
       # default_id is a STRUCT option: the default union is that option, all-default.
       dflt:
@@ -69,6 +85,10 @@ messages:
             i: { id: 0, type: i32 }
             s: { id: 1, type: string, maxlen: 8 }
             p: { id: 2, type: struct, fields: { q: { id: 0, type: u8, default: 9 } } }
+            # array-shaped and blob options INSIDE an element of an array of unions
+            r:  { id: 3, type: blob, maxlen: 4 }
+            ws: { id: 4, type: array, items: { type: string, count: 2, maxlen: 4 } }
+            ns: { id: 5, type: array, items: { type: u8, count: 4 } }
 
       # non-contiguous option ids, default_id not the lowest: ids 4..6 and 8+ name no option.
       sparse:
@@ -89,3 +109,47 @@ messages:
           n: { id: 1, type: u8 }
 
       trailer: { id: 7, type: u8 }
+
+      # an array of arrays of unions: a wrapper inside a wrapper, the last-element rule at
+      # both levels, and a union element two array levels down
+      grid:
+        id: 8
+        type: array
+        items:
+          type: array
+          count: 2
+          items: { type: union, count: 2, default_id: 1, oneof: { lo: { id: 0, type: u8 }, hi: { id: 1, type: u32, default: 4 } } }
+
+      # the $defs union at three sites: default_id 1 (name), 0 (num), and omitted (= 0)
+      refa: { id: 9,  type: union, default_id: 1, oneof: { $ref: "#/$defs/union/Shape" } }
+      refb: { id: 10, type: union, default_id: 0, oneof: { $ref: "#/$defs/union/Shape" } }
+      refc: { id: 12, type: union, oneof: { $ref: "#/$defs/union/Shape" } }
+
+      # union -> struct option -> union -> struct option -> union -> struct option: six
+      # declared frames deep. Wire depth is bounded by MAX_DEPTH (255), not by this schema:
+      # an unknown sequence may nest arbitrarily inside the innermost option (F-0050, F-0055:
+      # the declared counter and the skipped-subtree counter are different counters).
+      chain:
+        id: 11
+        type: union
+        oneof:
+          a: { id: 0, type: u8 }
+          s:
+            id: 1
+            type: struct
+            fields:
+              u:
+                id: 0
+                type: union
+                oneof:
+                  a: { id: 0, type: u8 }
+                  s:
+                    id: 1
+                    type: struct
+                    fields:
+                      u:
+                        id: 0
+                        type: union
+                        oneof:
+                          a: { id: 0, type: u8 }
+                          s: { id: 1, type: struct, fields: { leaf: { id: 0, type: u8 } } }

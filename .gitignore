@@ -19,6 +19,8 @@
 # the union engine's own corpus (scripts/fuzz.sh FUZZ_CORPUS): bytes shaped for probe-union-deep
 /corpus/interesting-union/*
 !/corpus/interesting-union/.gitkeep
+/corpus/stream-union/*
+!/corpus/stream-union/.gitkeep
 # libFuzzer per-job logs (fuzz.sh with -jobs writes these to the repo root)
 /fuzz-*.log
 # Coredumps from a crashing driver/pacemaker
