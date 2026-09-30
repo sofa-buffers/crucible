@@ -39,8 +39,9 @@ The sweep also pins the §2 *consequence* vectors:
 
 The union pass (WP-01 pattern) adds the §4.2 corners: an empty union frame (→
 `default_id`, re-encode omits) and every option carried **explicitly at its own
-default** — including the non-`default_id` options, whose §4.2 identity loss
-(the option id cannot survive the round-trip) previously had no wire vector.
+default**. `default_id` at its default is the omitted union; every other option is
+the *held* option and is written even at its default (MESSAGE_SPEC §2, generator#608),
+so its option id survives the round-trip.
 
 Agreement is the oracle for the *normalization* half: the runner machine-checks
 accept-vs-reject conformance plus the 13-way canonical-hex agreement, so a driver
@@ -56,7 +57,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from gen import WT_SEQ_BEG, WT_SEQ_END, hdr, arr_u, arr_s, arr_fp, scalar_u, scalar_s, \
+from gen import WT_S, WT_SEQ_BEG, WT_SEQ_END, hdr, arr_u, arr_s, arr_fp, scalar_u, scalar_s, \
     fstr, fblob, FL_FP32, FL_FP64  # noqa: E402
 from sweep_positions import (  # noqa: E402
     POSITIONS, ARRAY_POSITIONS, UNION_SEQ_POSITION, UNION_MEMBER_POSITIONS,
@@ -175,16 +176,25 @@ def emit_union(out_dir):
     vectors.append(("u_empty_frame.bin", tag + empty_seq(u.fid), "accept"))
     # frame-only: decodes to the all-default message → re-encode = 0 bytes
     vectors.append(("u_frame_only.bin", empty_seq(u.fid), "accept"))
-    # each option carried explicitly at its own default — for id != default_id this
-    # is the §4.2 identity loss on the wire: it MUST decode as default_id's value
-    # and the option id MUST NOT survive the re-encode.
+    # each option carried explicitly at its own default. `default_id` (the first member)
+    # is the union's default: the whole union is omitted, so it MUST re-encode like the
+    # empty frame. Any other id is the held option: it MUST survive the re-encode, byte
+    # for byte (`identity` -- the vector is already the canonical written form).
+    default_fid = UNION_MEMBER_POSITIONS[0].fid
     for p in UNION_MEMBER_POSITIONS:
-        if p.cat == "scalar_u":  member = scalar_u(p.fid, 0)
+        if p.cat in ("scalar_u", "scalar_bool"):  member = scalar_u(p.fid, 0)
         elif p.cat == "scalar_s": member = scalar_s(p.fid, 0)
         elif p.cat == "str":      member = fstr(p.fid, "")
         else:                     member = fblob(p.fid, b"")
+        expect = "same:u_empty_frame.bin" if p.fid == default_fid else "identity"
         vectors.append((f"u_member_id{p.fid}_default.bin",
-                        tag + hdr(u.fid, WT_SEQ_BEG) + member + END, "accept"))
+                        tag + hdr(u.fid, WT_SEQ_BEG) + member + END, expect))
+        # a padded spelling of a non-default option's default must normalize to the
+        # canonical written form (the twin is itself the canonical member frame).
+        if p.cat == "scalar_s" and p.fid != default_fid:
+            vectors.append((f"u_member_id{p.fid}_default_padded.bin",
+                            tag + hdr(u.fid, WT_SEQ_BEG) + hdr(p.fid, WT_S) + b"\x80\x00" + END,
+                            f"same:u_member_id{p.fid}_default.bin"))
     _write(out_dir, vectors)
     return vectors
 

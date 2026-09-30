@@ -14,6 +14,66 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-29 — nightly 36546281225 triaged: one camp, F-0018 at a new position
+
+CI: green, `baseline: 1/1 camp(s) accounted for`, 0 crashes. Locally (artifact merged into
+`corpus/interesting`: 22432 -> 24440; sofabgen `f8d3ecc3`, the first build with generator#608,
+pinned with `SOFABGEN_RUN=36590535888` because `bootstrap.sh` otherwise falls back to the newest
+*green* tip, which was the pre-#608 `aa3609f3`): 24440 inputs, 3 camps, 2 known, **1 new** —
+a single input (`381da1be…`, 14 B). Decoded: `string_array[4] = "\0\x0est"`, an embedded
+U+0000 in a wrapper-array string element. `c` re-encodes an empty element; the other 16 keep
+the four bytes. That is **F-0018** (allowed, `policy.yaml` `c-embedded-nul-string-projection`),
+not a new root cause. Two differences from the original reproducer, both recorded in the row:
+the position (a string_array element, not `nested.str`) and the set — only `c` projects here,
+`cpp-c-cpp` preserves. Added to `results/known-clusters.txt`; no new finding, no upstream issue.
+
+## 2026-09-29 — generator#608 (tagged unions, generator#613 @ `f8d3ecc3`): the union tests follow the new rule
+
+**What changed upstream.** A schema `union` now holds exactly one option in every backend
+(MESSAGE_SPEC §2/§4.2/§7.4.1, documentation#97). Encode writes the held option even at its own
+default unless it is `default_id`; decode keeps the last correctly-typed option, and several
+children in one frame are not `INVALID`.
+
+**Decision: assert the value, not only agreement.** Against the new sofabgen the union
+differential (`run-union.sh`, 11 seeds × 17 drivers) stayed green without any change — the
+whole roster moved together, so agreement could not see the change. What did fail was the one
+place that pinned a *value*: `sweep_tolerance`'s `as_flag = false` twins, which still expected
+the old "member at its default folds into the omitted union" (2 conformance failures). The
+suite was adapted in four places, each to the new rule:
+
+- `sweep_tolerance` (union pass): the canonical `false` twin is now the written `as_flag = 0`
+  frame; the non-minimal spelling must normalize to it. The redundant explicit-`false` vector
+  is gone (it is that same byte string).
+- `sweep_repeated_id` (union pass): "two members merge" was the old rule and was checked only
+  for agreement. It is now 21 vectors with `same:` twins — last option wins in both orders,
+  within one frame and across a re-opened frame; a mistyped or unknown id after a held option
+  never switches it.
+- `sweep_empty_frame` (union pass): `default_id` at its default must re-encode like the empty
+  frame; a padded `as_i32 = 0` must normalize to the written form.
+- `gen.py` (the reference encoder) + `corpus/structured-union`: only `default_id` at its
+  default is omitted. Five vectors were added at the END (`flag_false`, `flag_false_tag_trailer`,
+  `i32_zero`, `text_empty`, `blob_empty`) — they were retired before because they collapsed to
+  the default message; the existing 18 files are byte-identical.
+
+**Mutation probe, and what it found in the first version of these tests.** The union sweeps
+were run against the *pre-#608* sofabgen (`aa3609f3`, the product type) to see whether the
+adapted tests would notice the old behaviour. They mostly did not: after the adaptation
+`sweep_tolerance` and `sweep_empty_frame` stayed **green** against the old generator, because
+`same:` compares two re-encodes and the old generator drops a held option at its default from
+the vector *and* its twin alike. The one rule the change is about — a held option other than
+`default_id` is written at its default — was asserted nowhere. Fixed with a new runner
+expectation, **`identity`** (accept, and re-encode to exactly the input bytes), applied to the
+canonical union vectors. Result: old generator **11 conformance failures** (`sweep_repeated_id`
+6, `sweep_empty_frame` 4, `sweep_tolerance` 1), current generator **0**. The mutation also
+exposed a vector bug that had been latent since 2026-09-18: `sweep_empty_frame`'s
+`u_member_id4_default` fell into the blob branch for the boolean member (an empty blob at a
+boolean id, a §7.3 skip) instead of `as_flag = 0`; it only ever asserted `accept`.
+
+**Not covered (open).** `probe-union` has only leaf options, so §7.4.1's struct-option cases
+(continue the same option, restart at its default after a switch) are not reachable through this
+schema; generator's `check_union.py` carries them. The materialized oracle still has no union kind
+(TODO WP-02 Part B).
+
 ## 2026-09-24 — nightly 35834392940 triaged: quiet, and a full local bootstrap+fuzz+triage round agrees
 
 **Nightly 35834392940** (2026-09-23, schedule, green, 48m43s): CI's own clustering already

@@ -400,12 +400,14 @@ def vectors():
 # option: as_u16=0 (WT_U), as_i32=1 (WT_S), as_text=2 (fixlen string maxlen16),
 # as_blob=3 (fixlen blob maxlen8). A default union (default_id carrying that
 # option's default) is canonically OMITTED (§2/§4.2 — absence yields the same
-# value); a member at its own default reduces to the same omission (the §4.2
-# identity loss: the option id cannot survive a round-trip).
+# value). Any OTHER held option is written even at its own default (MESSAGE_SPEC §2,
+# generator#608): the frame's presence is what selects it. Here default_id = 0
+# (`as_u16`), so only `u16 == 0` collapses to the omitted union.
 def encode_union(msg: dict) -> bytes:
     """msg: {'tag': int, 'member': (kind, value)|None, 'trailer': int}. kind in
-    {'u16','i32','text','blob'}; member=None or a member at its default → the union
-    is omitted (§2). tag/trailer are omitted when default (sparse-canonical)."""
+    {'u16','i32','text','blob','flag'}; member=None or `default_id` (u16) at its default
+    → the union is omitted (§2). Every other member is written, even at its default.
+    tag/trailer are omitted when default (sparse-canonical)."""
     out = bytearray()
     if msg.get("tag"):
         out += scalar_u(0, msg["tag"])
@@ -416,15 +418,15 @@ def encode_union(msg: dict) -> bytes:
         if kind == "u16":
             if v: choice += scalar_u(0, v)
         elif kind == "i32":
-            if v: choice += scalar_s(1, v)
+            choice += scalar_s(1, v)
         elif kind == "text":
-            if v: choice += fstr(2, v)
+            choice += fstr(2, v)
         elif kind == "blob":
-            if v: choice += fblob(3, v)
+            choice += fblob(3, v)
         elif kind == "flag":
-            # §4.4 x §4.2: `true` is canonically 1; `false` IS the member's default, so
-            # it reduces to the omitted union exactly like every other default member.
-            if v: choice += scalar_u(4, 1)
+            # §4.4 x §4.2: `true` is canonically 1, `false` 0; the held option is written
+            # either way (it is not `default_id`).
+            choice += scalar_u(4, 1 if v else 0)
         else: raise ValueError(f"unknown union member {kind!r}")
     if choice:
         out += hdr(1, WT_SEQ_BEG) + choice + bytes([WT_SEQ_END])
@@ -439,17 +441,16 @@ def union_vectors():
     re-encoded hex (the cross-encode invariant)."""
     out = []
     out.append(("00_default", {}))                        # default union → omitted (§2), 0 bytes
-    # as_u16 (u16): 1 / max. NB "u16_zero" and "text_empty" are retired: a member at
-    # its own default reduces to the omitted union (§2/§4.2 identity loss), making
-    # their wire byte-identical to 00_default; their explicit non-canonical wire
-    # forms are swept by sweep_empty_frame.py's union pass instead.
+    # as_u16 (u16, = default_id): 1 / max. NB "u16_zero" stays retired: `default_id` at
+    # its own default IS the omitted union, byte-identical to 00_default. The other
+    # options at their defaults are written (generator#608) and are pinned at the END
+    # of this list, so the position-numbered filenames above do not shift.
     for tag, v in (("one", 1), ("max", 0xFFFF)):
         out.append((f"u16_{tag}", {"member": ("u16", v)}))
     # as_i32 (i32): min / -1 / 1 / max
     for tag, v in (("min", -2**31), ("neg1", -1), ("one", 1), ("max", 2**31 - 1)):
         out.append((f"i32_{tag}", {"member": ("i32", v)}))
-    # as_text (string maxlen16): ascii / unicode / exactly-maxlen16 ("" is retired —
-    # see the NB above)
+    # as_text (string maxlen16): ascii / unicode / exactly-maxlen16 ("" is at the END)
     out.append(("text_ascii", {"member": ("text", "hello")}))
     out.append(("text_unicode", {"member": ("text", "äöü\U0001F600")}))
     out.append(("text_max16", {"member": ("text", "x" * 16)}))
@@ -461,13 +462,19 @@ def union_vectors():
     out.append(("combo_tag_i32_trailer", {"tag": 5, "member": ("i32", 42), "trailer": 12}))
     out.append(("combo_tag_text", {"tag": 0xFFFFFFFF, "member": ("text", "Sofab ✓")}))
     out.append(("combo_tag_trailer_default", {"tag": 7, "member": None, "trailer": 200}))
-    # as_flag (boolean, id 4, 2026-09-18): only `true` has a wire form — `false` is the
-    # member's own default and reduces to the omitted union (the §4.2 identity loss),
-    # which `00_default` already pins. Appended at the END: the filenames are numbered
-    # by position, so inserting these beside their siblings would renumber every later
-    # vector.
+    # as_flag (boolean, id 4, 2026-09-18). Appended at the END: the filenames are
+    # numbered by position, so inserting these beside their siblings would renumber
+    # every later vector.
     out.append(("flag_true", {"member": ("flag", True)}))
     out.append(("flag_true_tag_trailer", {"tag": 3, "member": ("flag", True), "trailer": 9}))
+    # A held option other than `default_id` at its OWN default is written (MESSAGE_SPEC §2,
+    # generator#608): the frame carries the option, zero/empty, and it must survive the
+    # round-trip. Before, each of these collapsed to 00_default.
+    out.append(("flag_false", {"member": ("flag", False)}))
+    out.append(("flag_false_tag_trailer", {"tag": 3, "member": ("flag", False), "trailer": 9}))
+    out.append(("i32_zero", {"member": ("i32", 0)}))
+    out.append(("text_empty", {"member": ("text", "")}))
+    out.append(("blob_empty", {"member": ("blob", b"")}))
     return out
 
 
