@@ -66,6 +66,7 @@ REGEN=0 ./scripts/cross-encode.sh           # cross-encode / structured    (corp
 ./scripts/materialize.sh                    # materialized-value oracle    (corpus/structured)
 CORPUS=corpus/regression ./scripts/materialize.sh   # ...and over the findings corpus (values the round trip cannot see)
 SCHEMA=schema/probe-union.sofab.yaml ./scripts/materialize.sh   # ...and over a union schema (the HELD option, read through the API)
+SCHEMA=schema/probe-union-deep.sofab.yaml CORPUS=corpus/union-deep ./scripts/materialize.sh   # ...and the deep one (238 inputs)
 ./scripts/run-chunked.sh                    # chunk invariance   (roster derived from meta)
 CORPUS=corpus/regression ./scripts/run-chunked.sh --modes chunk   # ...and over the findings corpus
 ./scripts/run-encode.sh                     # encode invariance  (roster derived from meta)

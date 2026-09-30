@@ -14,6 +14,45 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-30 — the materialized oracle reaches the deep union schema (WP-02 Part B completed)
+
+**What was open.** The previous entry stopped at `probe-union`'s five leaf options. The deep schema adds
+struct, array, blob and nested-union options, a union inside a struct, `enum` and `bitfield` options, arrays
+of unions and of arrays of unions, and `$defs` unions at several `default_id`s.
+
+**What it took.** `schema.py` resolves `$ref` unions and an omitted `default_id` (the lowest option id) and
+gains three kinds: `enum` and `bitfield` (their own leaf kinds, because most languages hold them as a native
+type that a walker must convert) and `node_wrapper` (a wrapper array whose item is a nameless node: a union, or
+another array). The C anchor needed **no change** — its descriptor walk already handled every one of them, and
+the dumps of the interesting vectors read right by eye (an interior gap in an array of unions is the default
+union, `[{0:s3},{2:{0:u9}},{0:s4}]`). The ten language walkers were extended by ten agents in parallel, each
+held to its own walker and driver build and to three checks: the deep dump, the two earlier union dumps, the
+probe gate. Two of the five generated walkers had a real bug only nesting exposed: an `_Indent` helper that
+reached into the emitter's line list and crashed for a union inside a union option (Dart and Kotlin); the type
+names were the hard part of the generated ones (Rust: parent type plus CamelCase field name, `$ref` unions read
+back from the schema YAML; Dart: the escaped member names read from the generated `message.dart`).
+
+**Result** (sofabgen `ba496587`): `corpus/union-deep` (238) x 17 drivers, **0 divergences**, the C anchor free
+of `?`; `probe-union` (23, 11), the probe gate (119) and `corpus/regression` (261) unchanged;
+`check-family-copies.py` full green. **No generator or corelib defect found** in any of the eleven generated
+APIs: they agree on the held option, on the length of an array of unions and on the default element of a gap.
+
+**`materialize.sh` is schema-aware about its reference.** The union reference is defined on gen.py's messages
+(probe-union's shape), so for any other union schema the anchor-vocabulary check runs over the corpus and the
+log says, in words, that agreement plus the C anchor is the whole oracle. That is a real limit: a bug every
+driver shares would be invisible. A mutation shows the gate is not blind to the class: a Go walker that pads an
+array of unions to `count` (the removed fill-to-N) leaves the round trip **identical** to C and differs on **175
+of the 238** lines.
+
+**Caveats.** The agents' reports (no `which`/value inconsistency anywhere) are verified only as far as the gates
+above. Java and both Kotlin legs print `I <hex>` where the anchor prints `I`: the known soft `incomplete_value`
+axis, which the comparator reports as a warning, not a divergence (135 warnings on the deep corpus, as on the
+round-trip one). The Rust `$ref` naming is a heuristic on the generator's current scheme; a rename breaks the
+build, it does not go wrong quietly. One of the agents (C++) re-delivered its identical final report more than a
+dozen times; the content never changed and nothing was lost, but the task was already gone when I went to stop it.
+
+**Still open, by design:** an independent reference for the deep schema.
+
 ## 2026-09-30 — the materialized oracle learns the union (WP-02 Part B, leaf options)
 
 **The gap.** The TODO said the C anchor "materializes a union out of the box". That was true before

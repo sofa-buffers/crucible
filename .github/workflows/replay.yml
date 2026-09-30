@@ -153,6 +153,14 @@ jobs:
       - name: Materialized-value differential over a union schema
         run: SCHEMA=schema/probe-union.sofab.yaml ./scripts/materialize.sh
 
+      # ...and over the DEEP union schema: struct / array / blob / nested-union options, a union in
+      # a struct, enum and bitfield options, arrays of unions and of arrays of unions, `$defs`
+      # unions. There is no independent reference for it (the union reference is defined on
+      # probe-union's messages), so agreement among the 17 drivers, anchored by the C descriptor
+      # walk, is the whole oracle here; the log says so.
+      - name: Materialized-value differential over the deep union schema
+        run: SCHEMA=schema/probe-union-deep.sofab.yaml CORPUS=corpus/union-deep ./scripts/materialize.sh
+
       # The two STREAMING axes (crucible#132). Both are intra-driver invariants — a
       # driver against itself — so unlike every gate above they need no second
       # implementation and drivers opt in one at a time via SOFAB_SPLIT_DRIVERS /
