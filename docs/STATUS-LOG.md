@@ -14,6 +14,49 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-30 — union tests reviewed and deepened: a second union schema, a canon axis, a union fuzz engine
+
+**Review of what the union tests could not see** (after generator#608). `probe-union` has five
+*leaf* options and one `default_id` (0), so everything in MESSAGE_SPEC §2/§4.2/§7.4.1 that needs a
+struct, array or nested option — a held option written as an empty frame, "the same option
+continues", "away and back restarts at its OWN default" — ran nowhere. No fuzz engine, no chunked
+pass and no encode pass reached a union at all (they all run `probe`, which has none), and the
+reference encoder `gen.py` was checked against nothing.
+
+**Added.**
+- `schema/probe-union-deep.sofab.yaml` + `sweep_union_deep.py` + `scripts/run-union-deep.sh`: a
+  struct option with a non-zero member default, an empty struct option, array options, enum/fp32
+  options with non-zero defaults, a non-zero `default_id` option default, a struct `default_id`,
+  a union of union, an array of unions, non-contiguous option ids and a union in a struct. 152
+  vectors whose expectation is derived from the spec (`identity` / `same:` / `not_reject` /
+  `reject`); four passes — differential, conformance, chunk, encode — in `replay.yml`.
+- `sweep_union_canon.py`: the 23 vectors of `gen.py` as `identity` (the reference encoder is now
+  pinned to the roster).
+- A union fuzz engine: `fuzz.sh` takes `FUZZ_SCHEMA` / `FUZZ_CORPUS` / `FUZZ_SEEDS`; `nightly.yml`
+  fuzzes `probe-union-deep` into `corpus/interesting-union` and clusters it against
+  `results/known-clusters-union.txt`. The union cache key deliberately does not start with
+  `crucible-corpus-`: the probe corpus restores by that prefix and would take a union cache.
+
+**Result against the current family** (sofabgen `f8d3ecc3`): 152 vectors × 17 drivers, 0
+divergences, 0 conformance failures; chunk 17/17 and encode 17/17 with 0 mismatches; the union
+sweeps including the canon axis green. Local union fuzz, 90 s: 976 650 executions, 0 crashes,
+653 inputs, one camp — the benign `incomplete_value` axis. **No defect found in any backend or
+corelib.** One vector of mine was wrong (a twin with `y=5` for an input that decodes to `y=2`) and
+was fixed; every driver had agreed with the spec.
+
+**Mutation check** against the pre-#608 sofabgen (`aa3609f3`): `probe-union` sweeps **16**
+conformance failures (`sweep_repeated_id` 6, `sweep_empty_frame` 4, `sweep_tolerance` 1,
+`sweep_union_canon` 5); the deep suite **34** (15 drivers, 0 divergences — the whole roster is
+uniformly wrong, which only the conformance oracle can see). The failing vectors are exactly the
+#608 rules: an empty struct option held, "away and back" restarting at the option default,
+`default_id` re-selected at its default. The old generator also does not build the deep schema for
+`typescript` (a wrapper-array option in a union is emitted without its field) or `dart` (an enum
+option named `e` shadows the encoder variable); those two were left out of the deep mutation
+roster. Both are pre-#608 defects that the tagged-union rewrite removed.
+
+**Still open**, in `TODO.md`: a bitfield/blob option, an array-of-array of unions, a `$ref`-split
+union type, the streaming (feed/finish) union fuzz, and the union kind of the materialized oracle.
+
 ## 2026-09-29 — nightly 36546281225 triaged: one camp, F-0018 at a new position
 
 CI: green, `baseline: 1/1 camp(s) accounted for`, 0 crashes. Locally (artifact merged into

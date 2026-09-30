@@ -1,0 +1,91 @@
+# Crucible deep union probe — the union shapes schema/probe-union.sofab.yaml cannot
+# reach. That schema has five LEAF options and one default_id (0), so everything in
+# MESSAGE_SPEC §2 / §4.2 / §7.4.1 that needs a struct, array or nested option — a held
+# option written as an empty frame, "the same option continues", "away and back restarts
+# at its own default" — ran nowhere in this repo. Keyed `probe` so generated type names
+# stay stable and the schema-agnostic round-trip drivers need no changes (as
+# probe-union does).
+#
+# Every field below exists to make one rule observable; the rule is named beside it.
+version: 1
+messages:
+  probe:
+    summary: A message exercising every union shape the two-option probe-union cannot.
+    payload:
+      tag: { id: 0, type: u32 }
+
+      # The main union. default_id 0 is `num` with a NON-ZERO option default (5): the
+      # default_id option at its own default is omitted, at 0 it is NOT (0 != 5).
+      choice:
+        id: 1
+        type: union
+        default_id: 0
+        oneof:
+          num:   { id: 0, type: u16, default: 5 }
+          # struct option with a non-zero member default: "away and back restarts at the
+          # option's OWN default" is only observable when that default is not 0.
+          pt:    { id: 1, type: struct, fields: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } } }
+          # an empty struct: a pure signal, valid under the schema. Held, it is a present
+          # frame with no child, and it can only ever be sent that way.
+          stop:  { id: 2, type: struct, fields: {} }
+          # array options: held-and-empty is the explicit empty form, and a repeated
+          # array option is REPLACED (§7.4), never merged.
+          vals:  { id: 3, type: array, items: { type: u16, count: 4 } }
+          names: { id: 4, type: array, items: { type: string, count: 2, maxlen: 4 } }
+          # non-zero option defaults on non-integer leaves: held at its default it is
+          # still written.
+          e:     { id: 5, type: enum, enum: { A: 0, B: 1, C: 2 }, default: 1 }
+          f:     { id: 6, type: fp32, default: 1.5 }
+
+      # default_id is a STRUCT option: the default union is that option, all-default.
+      dflt:
+        id: 2
+        type: union
+        default_id: 1
+        oneof:
+          a:  { id: 0, type: u8 }
+          pt: { id: 1, type: struct, fields: { q: { id: 0, type: u8, default: 9 } } }
+
+      # union of union: the default_id option is itself a union, which keeps `end`, so a
+      # union at its default is dropped as a whole even from inside another union.
+      nested:
+        id: 3
+        type: union
+        default_id: 1
+        oneof:
+          flag:  { id: 0, type: boolean }
+          inner: { id: 1, type: union, default_id: 1, oneof: { a: { id: 0, type: i8 }, b: { id: 1, type: fp64, default: 2.5 } } }
+
+      # array of unions, default_id on a struct option: the element is a union at the
+      # last position (always framed) or an interior gap.
+      list:
+        id: 4
+        type: array
+        items:
+          type: union
+          count: 3
+          default_id: 2
+          oneof:
+            i: { id: 0, type: i32 }
+            s: { id: 1, type: string, maxlen: 8 }
+            p: { id: 2, type: struct, fields: { q: { id: 0, type: u8, default: 9 } } }
+
+      # non-contiguous option ids, default_id not the lowest: ids 4..6 and 8+ name no option.
+      sparse:
+        id: 5
+        type: union
+        default_id: 7
+        oneof:
+          a: { id: 3, type: u8 }
+          b: { id: 7, type: string, maxlen: 4 }
+
+      # a union inside a struct: a held non-default_id option makes the struct itself
+      # non-default, so the struct frame must exist.
+      holder:
+        id: 6
+        type: struct
+        fields:
+          u: { id: 0, type: union, default_id: 0, oneof: { a: { id: 0, type: u8 }, b: { id: 1, type: string, maxlen: 4 } } }
+          n: { id: 1, type: u8 }
+
+      trailer: { id: 7, type: u8 }
