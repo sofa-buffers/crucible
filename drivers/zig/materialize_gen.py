@@ -91,12 +91,14 @@ def _zig_str(s):
 
 # --- leaf emitters: `expr` is the Zig value-access expression ------------------
 def _emit_leaf(em, kind, expr):
-    if kind == "u":
+    if kind in ("u", "bitfield"):
+        # a bitfield is held as its plain unsigned word
         em.stmt(f'try out.print("u{{d}}", .{{{expr}}});')
     elif kind == "bool":
         # §4.4 boolean: rendered as the unsigned value it is on the wire — `u1` / `u0`. A port whose storage is a real bool can only ever produce those two; one that kept a non-normalized raw value renders it as-is, which is exactly the divergence the form exists to surface.
         em.stmt(f'try out.print("u{{d}}", .{{@as(u8, if ({expr}) 1 else 0)}});')
-    elif kind == "s":
+    elif kind in ("s", "enum"):
+        # an enum is held as its plain signed integer (no native Zig enum)
         em.stmt(f'try out.print("s{{d}}", .{{{expr}}});')
     elif kind == "fp32":
         em.stmt(f"try matFp32(out, {expr});")
@@ -179,6 +181,20 @@ def _emit_struct_wrapper(em, fields, expr):
     em.lit("]")
 
 
+def _emit_node_wrapper(em, item, expr):
+    """A slice whose elements are any other nameless node (a union, or another
+    node_wrapper slice): the container's actual elements, each walked via `item`."""
+    n = em._loop
+    em._loop += 1
+    e, i = f'_e{n}', f'_i{n}'
+    em.lit('[')
+    em.raw(f'    for ({expr}, 0..) |{e}, {i}| {{')
+    em.raw(f'        if ({i} != 0) try out.writeAll(",");')
+    _emit_value(em, item, e)
+    em.raw('    }')
+    em.lit(']')
+
+
 def _emit_union(em, node, expr):
     """A union: {<held option id>:<value>}. Walked through the tag (a switch on the
     active variant of the tagged union), never by testing the options for a
@@ -190,6 +206,8 @@ def _emit_union(em, node, expr):
     em.raw(f"    switch ({expr}) {{")
     for opt in node["options"]:
         em.raw(f'        .{opt["name"]} => |{cap}| {{')
+        if opt["kind"] == "struct" and not opt["fields"]:
+            em.raw(f"            _ = {cap};")  # an empty struct reads nothing
         em.lit(f'{opt["id"]}:')
         _emit_value(em, opt, cap)
         em.raw("        },")
@@ -215,6 +233,8 @@ def _emit_value(em, node, expr):
         _emit_wrapper(em, node["elem"], expr)
     elif kind == "struct_wrapper":
         _emit_struct_wrapper(em, node["fields"], expr)
+    elif kind == "node_wrapper":
+        _emit_node_wrapper(em, node["item"], expr)
     else:
         _emit_leaf(em, kind, expr)
 

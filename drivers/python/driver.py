@@ -46,15 +46,24 @@ def _b(bb): bb = bytes(bb); return f"b{len(bb)}:{bb.hex()}"
 # so a native bool renders as u1/u0 — while a port that kept the RAW wire value (a
 # non-normalized `2`) renders `u2`, which is the divergence this form exists to surface.
 def _bool(v): return f"u{int(v)}"
+# enum / bitfield arrive as IntEnum / IntFlag: int() hands over the plain integer
+# (also for values outside the named members), printed like `s` / `u`.
+def _enum(v): return f"s{int(v)}"
+def _bits(v): return f"u{int(v)}"
 
 _LEAF = {"u": _u, "bool": _bool, "s": _s, "fp32": _f32, "fp64": _f64,
-         "string": _t, "blob": _b}
+         "string": _t, "blob": _b, "enum": _enum, "bitfield": _bits}
 
 
 def _load_schema():
     path = os.environ.get("SOFAB_MATERIALIZE_SCHEMA") or "oracle/materialized-schema.json"
     with open(path) as fh:
         return json.load(fh)
+
+
+def _attr(obj, name):
+    # the generated dataclass suffixes a field name that shadows a builtin (`list` -> `list_`)
+    return getattr(obj, name if hasattr(obj, name) else name + "_")
 
 
 _SCHEMA = _load_schema() if _MATERIALIZE else None
@@ -67,22 +76,26 @@ def _walk(node, value) -> str:
     kind = node["kind"]
     if kind == "struct":
         return "{" + ";".join(
-            f"{c['id']}:{_walk(c, getattr(value, c['name']))}" for c in node["fields"]
+            f"{c['id']}:{_walk(c, _attr(value, c['name']))}" for c in node["fields"]
         ) + "}"
     if kind == "union":
         # A union holds exactly ONE option: walk the one the tag names (the public
         # `which`), never by testing each option for a non-default value — a held option
         # at its own default is still held ({4:u0}, not {0:u0}).
         o = next(o for o in node["options"] if o["id"] == value.which)
-        return "{" + f"{o['id']}:{_walk(o, getattr(value, o['name']))}" + "}"
+        return "{" + f"{o['id']}:{_walk(o, _attr(value, o['name']))}" + "}"
     if kind == "struct_wrapper":
         # a wrapper whose elements are struct sequences (WP-05): each element is a
         # generated object — an obj walk per element, container length as-is
         return "[" + ",".join(
             "{" + ";".join(
-                f"{c['id']}:{_walk(c, getattr(e, c['name']))}" for c in node["fields"]
+                f"{c['id']}:{_walk(c, _attr(e, c['name']))}" for c in node["fields"]
             ) + "}" for e in value
         ) + "]"
+    if kind == "node_wrapper":
+        # dynamic array whose elements are walked through `item` (a union, or another
+        # node_wrapper); the container's own length, nothing padded to `count`
+        return "[" + ",".join(_walk(node["item"], e) for e in value) + "]"
     if kind == "array" or kind == "wrapper":
         enc = _LEAF[node["elem"]]
         return "[" + ",".join(enc(x) for x in value) + "]"
@@ -92,7 +105,7 @@ def _walk(node, value) -> str:
 def _materialize(m) -> str:
     # The top message is a struct-like list of fields; value = the decoded Probe.
     return "{" + ";".join(
-        f"{f['id']}:{_walk(f, getattr(m, f['name']))}" for f in _SCHEMA["fields"]
+        f"{f['id']}:{_walk(f, _attr(m, f['name']))}" for f in _SCHEMA["fields"]
     ) + "}"
 
 # Exception class name -> the canonical reject class (oracle/canonical.md).

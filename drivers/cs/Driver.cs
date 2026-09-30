@@ -53,6 +53,7 @@ internal static class Driver
         public string Elem;
         public int Count;
         public List<SchemaNode> Fields;
+        public SchemaNode Item;   // node_wrapper: the (nameless) element node
     }
 
     // The generated message descriptor's top-level fields, loaded only in
@@ -74,7 +75,7 @@ internal static class Driver
     {
         var n = new SchemaNode
         {
-            Id = e.GetProperty("id").GetInt32(),
+            Id = e.TryGetProperty("id", out var idp) ? idp.GetInt32() : 0,
             Kind = e.GetProperty("kind").GetString(),
         };
         if (e.TryGetProperty("name", out var nm)) n.Name = nm.GetString();
@@ -85,6 +86,7 @@ internal static class Driver
             n.Fields = new List<SchemaNode>();
             foreach (var c in fs.EnumerateArray()) n.Fields.Add(ParseNode(c));
         }
+        if (e.TryGetProperty("item", out var it)) n.Item = ParseNode(it);
         // union: the options (ordinary nodes, sorted by id) share the Fields slot.
         if (e.TryGetProperty("options", out var os))
         {
@@ -129,6 +131,10 @@ internal static class Driver
         // §4.4 boolean: the unsigned value it is on the wire — u1/u0. Converted rather
         // than cast, so a raw (non-normalized) numeric value would render as itself.
         "bool" => U(Convert.ToUInt64(v, CultureInfo.InvariantCulture)),
+        // enum / bitfield: the integer value, like s / u (the generated API holds a
+        // native enum / [Flags] type; Convert reads its underlying integer).
+        "enum" => S(Convert.ToInt64(v, CultureInfo.InvariantCulture)),
+        "bitfield" => U(Convert.ToUInt64(v, CultureInfo.InvariantCulture)),
         "s" => S(Convert.ToInt64(v, CultureInfo.InvariantCulture)),
         "fp32" => F32(Convert.ToSingle(v, CultureInfo.InvariantCulture)),
         "fp64" => F64(Convert.ToDouble(v, CultureInfo.InvariantCulture)),
@@ -203,6 +209,19 @@ internal static class Driver
                 {
                     if (i > 0) sb.Append(',');
                     sb.Append(Leaf(node.Elem, list[i]));
+                }
+                return sb.Append(']').ToString();
+            }
+            case "node_wrapper":
+            {
+                // Dynamic array whose elements are walked through the item node (a union
+                // or another node_wrapper); container length as-is, nothing padded.
+                var list = (System.Collections.IList)value;
+                var sb = new StringBuilder("[");
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append(Walk(node.Item, list[i]));
                 }
                 return sb.Append(']').ToString();
             }

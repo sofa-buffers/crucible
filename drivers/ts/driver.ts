@@ -94,12 +94,14 @@ const _MATERIALIZE = process.env.SOFAB_MATERIALIZE === "1";
 interface SchemaNode {
   id: number;
   name: string;
-  kind: "u" | "bool" | "s" | "fp32" | "fp64" | "string" | "blob" | "struct" | "array" | "wrapper" | "struct_wrapper" | "union";
+  kind: "u" | "bool" | "s" | "fp32" | "fp64" | "string" | "blob" | "struct" | "array" | "wrapper" | "struct_wrapper" | "union"
+    | "enum" | "bitfield" | "node_wrapper";
   fields?: SchemaNode[];
   options?: SchemaNode[];
   default_id?: number;
   elem?: "u" | "bool" | "s" | "fp32" | "fp64" | "string" | "blob";
   count?: number;
+  item?: SchemaNode;   // node_wrapper: the (nameless) element node
 }
 interface SchemaDescriptor { message: string; fields: SchemaNode[]; }
 
@@ -161,12 +163,16 @@ function _b(bytes: Uint8Array): string {
 // kind). u/s are number|bigint (bigint for 64-bit) → decimal via toString().
 function formatLeaf(kind: string, v: unknown, raw?: unknown, off = 0): string {
   switch (kind) {
+    case "bitfield":
     case "u": return "u" + (v as number | bigint).toString();
     // §4.4 boolean: the unsigned value it is on the wire — u1/u0. `Number(v)` rather
     // than a ternary on purpose: a generated `boolean` yields 1/0, and a port that
     // handed back a non-normalized raw number renders that number, which is the
     // divergence the materialized form exists to surface.
     case "bool": return "u" + Number(v as boolean | number).toString();
+    // enum / bitfield: a generated numeric TS enum — the runtime value is already the
+    // integer (outside the named members too), so they print exactly like s / u.
+    case "enum":
     case "s": return "s" + (v as number | bigint).toString();
     case "fp32":
       // Prefer the raw wire bytes when the generated type captured them (NaN only);
@@ -223,6 +229,15 @@ function walk(node: SchemaNode, value: unknown, raw?: unknown): string {
         : raw;
       const out: string[] = [];
       for (let i = 0; i < arr.length; i++) out.push(formatLeaf(node.elem!, arr[i], bits, i * 4));
+      return "[" + out.join(",") + "]";
+    }
+    case "node_wrapper": {
+      // A dynamic wrapper array whose elements are themselves nodes (a union, or a
+      // further node_wrapper): walk each ACTUAL element through `item`; nothing is
+      // padded to `count`.
+      const a = value as unknown[];
+      const out: string[] = [];
+      for (let i = 0; i < a.length; i++) out.push(walk(node.item!, a[i]));
       return "[" + out.join(",") + "]";
     }
     case "struct_wrapper":

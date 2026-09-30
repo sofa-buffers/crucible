@@ -237,6 +237,8 @@ type schemaNode struct {
 	Fields []schemaNode `json:"fields"`
 	// Options is a union's option list (kind "union"), sorted by option id.
 	Options []schemaNode `json:"options"`
+	// Item is a node_wrapper's nameless element node (a union or another node_wrapper).
+	Item *schemaNode `json:"item"`
 }
 
 // schemaDoc is the top of the descriptor: { "message": ..., "fields": [node,...] }.
@@ -291,8 +293,12 @@ func mLeaf(kind string, v reflect.Value) string {
 			return "u1"
 		}
 		return "u0"
-	case "s":
+	case "s", "enum":
+		// enum: the generated type is a named signed integer; print its integer value
+		// (a value outside the named members must still come through).
 		return fmt.Sprintf("s%d", v.Int())
+	case "bitfield":
+		return fmt.Sprintf("u%d", v.Uint())
 	case "fp32":
 		// NOT v.Float(): reflect widens a float32 field to float64, and the
 		// fp32 -> fp64 widening SETS the quiet bit, destroying a signaling NaN
@@ -353,6 +359,12 @@ func walk(n *schemaNode, v reflect.Value) string {
 		// A union holds exactly one option, so it is walked through the tag —
 		// Which() names the held option, its getter yields the value. Testing every
 		// option for a non-default value would print `{}` for a held-at-default one.
+		if !v.CanAddr() {
+			// A getter may hand a nested union back by value; the methods need a pointer.
+			p := reflect.New(v.Type())
+			p.Elem().Set(v)
+			v = p.Elem()
+		}
 		id := int(v.Addr().MethodByName("Which").Call(nil)[0].Uint())
 		for i := range n.Options {
 			c := &n.Options[i]
@@ -384,6 +396,14 @@ func walk(n *schemaNode, v reflect.Value) string {
 		out := make([]string, v.Len())
 		for i := range out {
 			out[i] = mLeaf(n.Elem, v.Index(i))
+		}
+		return "[" + strings.Join(out, ",") + "]"
+	case "node_wrapper":
+		// Dynamic wrapper array of unions / of wrapper arrays: the container's actual
+		// elements in index order, each walked through the item node.
+		out := make([]string, v.Len())
+		for i := range out {
+			out[i] = walk(n.Item, v.Index(i))
 		}
 		return "[" + strings.Join(out, ",") + "]"
 	case "struct_wrapper":

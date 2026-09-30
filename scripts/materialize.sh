@@ -27,9 +27,13 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # A non-probe schema (the union suites) is walked from a table derived from THAT schema. The
 # default stays schema/probe.sofab.yaml with the committed oracle/materialized-schema.json.
 UNION_MODE=0
+UNION_REF=0      # engine/structured/materialize.py has a reference for probe-union's messages only
 case "${SCHEMA:-}" in
     ""|*/probe.sofab.yaml|probe.sofab.yaml) ;;
     *) UNION_MODE=1 ;;
+esac
+case "${SCHEMA:-}" in
+    */probe-union.sofab.yaml|probe-union.sofab.yaml) UNION_REF=1 ;;
 esac
 if [ "$UNION_MODE" = "1" ]; then
     CORPUS="${CORPUS:-$ROOT/corpus/structured-union}"
@@ -82,8 +86,10 @@ TIMEOUT_ARG=""
 # says nothing about the family (crucible#190/#192). Fail on that first, by name.
 C_BIN=$("$ROOT/scripts/roster.sh" list | awk '$1 == "c" { print $5 }')
 echo "==> [materialize] C anchor vocabulary (no \`?\` = every field-type tag known)" >&2
-if [ "$UNION_MODE" = "1" ]; then
+if [ "$UNION_MODE" = "1" ] && [ "$UNION_REF" = "1" ]; then
     python3 "$ROOT/engine/structured/materialize.py" --anchor-vocab-union "$ROOT/$C_BIN"
+elif [ "$UNION_MODE" = "1" ]; then
+    python3 "$ROOT/engine/structured/materialize.py" --anchor-vocab-dir "$ROOT/$C_BIN" "$CORPUS"
 else
     python3 "$ROOT/engine/structured/materialize.py" --anchor-vocab "$ROOT/$C_BIN"
 fi
@@ -101,6 +107,12 @@ SOFAB_MATERIALIZE=1 SOFAB_MATERIALIZE_SCHEMA="$MAT_SCHEMA_JSON" \
 # is agreement-green. Anchor it by checking the schema-agnostic C driver against the
 # reference over corpus/structured (the value space the reference is defined on):
 # C == reference AND all == C  ⟹  all == reference. Fails (set -e) on any mismatch.
+if [ "$UNION_MODE" = "1" ] && [ "$UNION_REF" = "0" ]; then
+    # No reference exists for this schema: agreement among the 17 drivers, anchored by the C
+    # descriptor walk, is the whole oracle. Said here so a green run is not read as more.
+    echo "==> [materialize] conformance: no reference for $(basename "$SCHEMA") -- agreement + the C anchor only" >&2
+    exit 0
+fi
 echo "==> [materialize] conformance: C anchor vs the reference (engine/structured/materialize.py)" >&2
 if [ "$UNION_MODE" = "1" ]; then
     # the union reference is defined on corpus/structured-union (gen.py's union messages)

@@ -54,6 +54,9 @@ def _leaf(kind, acc):
     if kind == "fp64":   return f"_md_f64(o, {acc});"
     if kind == "string": return f"_md_str(o, {acc});"
     if kind == "blob":   return f"_md_blob(o, {acc});"
+    # enum prints its signed integer, bitfield its unsigned word; both are read as the underlying integer, so a value outside the named members still comes through.
+    if kind == "enum":     return f"_md_s(o, static_cast<long long>({acc}));"
+    if kind == "bitfield": return f"_md_u(o, static_cast<unsigned long long>({acc}));"
     raise ValueError(f"not a leaf kind: {kind!r}")
 
 
@@ -62,7 +65,7 @@ def _emit(node, acc, out, ind, depth):
     pad = "    " * ind
     kind = node["kind"]
 
-    if kind in ("u", "bool", "s", "fp32", "fp64", "string", "blob"):
+    if kind in ("u", "bool", "s", "fp32", "fp64", "string", "blob", "enum", "bitfield"):
         out.append(pad + _leaf(kind, acc))
         return
 
@@ -92,7 +95,7 @@ def _emit(node, acc, out, ind, depth):
         out.append(pad + "o.push_back('}');")
         return
 
-    if kind in ("array", "wrapper", "struct_wrapper"):
+    if kind in ("array", "wrapper", "struct_wrapper", "node_wrapper"):
         # All are containers exposing .size()/operator[]. Numeric/fp arrays are
         # std::array<T,N> (always N elements); wrapper arrays are the dynamic
         # container (its length is itself the signal); a struct_wrapper's elements
@@ -105,6 +108,9 @@ def _emit(node, acc, out, ind, depth):
         if kind == "struct_wrapper":
             elem_node = {"kind": "struct", "fields": node["fields"]}
             _emit(elem_node, f"{acc}[{iv}]", out, ind + 1, depth + 1)
+        elif kind == "node_wrapper":
+            # elements are unions or further wrapper arrays: recurse through the item node
+            _emit(node["item"], f"{acc}[{iv}]", out, ind + 1, depth + 1)
         else:
             _emit_elem(node["elem"], f"{acc}[{iv}]", out, ind + 1, depth + 1)
         out.append(pad + "}")
