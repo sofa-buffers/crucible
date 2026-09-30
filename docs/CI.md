@@ -60,6 +60,7 @@ CORPUS=corpus/regression ./scripts/run.sh   # resolved-findings gate       (corp
 CORPUS=corpus/conformance ./scripts/run.sh  # §2/§3 canonicality seeds     (corpus/conformance)
 REGEN=0 ./scripts/cross-encode.sh           # cross-encode / structured    (corpus/structured)
 ./scripts/run-union.sh                      # union suite                  (corpus/union)
+./scripts/run-union-deep.sh                 # deep union suite: differential + conformance + chunk + encode (corpus/union-deep)
 ./scripts/run-limits.sh                     # limit mode                   (corpus/limits)
 ./scripts/sweep.sh                          # structural sweep, 12 blocking axes
 ./scripts/materialize.sh                    # materialized-value oracle    (corpus/structured)
@@ -85,6 +86,14 @@ The C pacemaker (libFuzzer + the structure-aware mutator, `engine/mutator/`) gro
 auto-clustered by root cause. Crashes, the interesting corpus, and
 `results/CLUSTERS.md` are uploaded as artifacts. The corpus is `actions/cache`d so
 coverage **compounds** night over night.
+
+A **union engine** runs the same pacemaker on `schema/probe-union-deep.sofab.yaml`
+(`FUZZ_SCHEMA` / `FUZZ_CORPUS` / `FUZZ_SEEDS` of `scripts/fuzz.sh`), seeded from
+`corpus/union-deep`, into its **own** corpus `corpus/interesting-union`. Every other engine fuzzes
+`probe`, which has no union, so without it the union code of every backend was reached only by
+hand-written vectors. That corpus has its own cache (its key deliberately does **not** start with
+`crucible-corpus-`, which would match the probe corpus's restore prefix), is clustered against a
+roster built for the union schema, and has its own baseline, `results/known-clusters-union.txt`.
 
 Non-blocking by design: a fresh divergence is expected signal, not a build break —
 triage stays human (the corelibs are other repos; cross-repo auto-filing is a later

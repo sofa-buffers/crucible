@@ -61,6 +61,16 @@ jobs:
           key: crucible-corpus-${{ github.run_id }}
           restore-keys: crucible-corpus-
 
+      # The union engine's own corpus. Its key deliberately does NOT begin with
+      # `crucible-corpus-`: the step above restores by that prefix, and a union cache would
+      # match it and land union-shaped bytes in the probe corpus.
+      - name: Restore interesting corpus (union)
+        uses: actions/cache@v6
+        with:
+          path: corpus/interesting-union
+          key: crucible-unioncorpus-${{ github.run_id }}
+          restore-keys: crucible-unioncorpus-
+
       - name: Fuzz — grow the corpus (C pacemaker + structure-aware mutator)
         run: FUZZ_TIME=${{ github.event.inputs.fuzz_time || '1800' }} ./scripts/fuzz.sh
 
@@ -93,6 +103,20 @@ jobs:
         continue-on-error: true
         run: FUZZ_TARGET=FuzzProbeStream FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz-go.sh
 
+      # Union engine. Every engine above fuzzes schema/probe.sofab.yaml, which has NO union,
+      # so the union code of every backend was only ever hit by hand-written vectors and
+      # sweeps. This steers the same C pacemaker on schema/probe-union-deep.sofab.yaml (struct,
+      # array and nested options, a struct default_id, an array of unions, a union in a
+      # struct), seeded from corpus/union-deep, into its OWN corpus -- those bytes are shaped
+      # for that schema and would only be noise to the probe roster. Block path only.
+      # Non-blocking, like every engine here.
+      - name: Fuzz — union engine (deep union schema)
+        continue-on-error: true
+        run: |
+          FUZZ_SCHEMA=schema/probe-union-deep.sofab.yaml FUZZ_CORPUS=corpus/interesting-union \
+          FUZZ_SEEDS=corpus/union-deep \
+          FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz.sh
+
       # Clusters the grown corpus and diffs every camp against results/known-clusters.txt.
       # A camp is in that file only once it is EXPLAINED (a catalogued finding, a legal
       # divergence, a benign soft axis), so anything else turns this step red — in an
@@ -115,6 +139,16 @@ jobs:
           CLUSTER=1 TIMEOUT=30 CORPUS=corpus/interesting BASELINE=results/known-clusters.txt \
             ./scripts/run.sh
 
+      # The union corpus is clustered against ITS roster build (the deep schema) and its own
+      # baseline. Run after the probe cluster step: it rebuilds every driver against the
+      # union schema and leaves them that way, which nothing after it depends on.
+      - name: Cluster union divergences (non-blocking; red on an unexplained camp)
+        continue-on-error: true
+        run: |
+          SCHEMA=schema/probe-union-deep.sofab.yaml CLUSTER=1 TIMEOUT=30 \
+          CORPUS=corpus/interesting-union BASELINE=results/known-clusters-union.txt \
+            ./scripts/run.sh
+
       - name: Upload findings artifacts
         if: always()
         uses: actions/upload-artifact@v7
@@ -123,6 +157,7 @@ jobs:
           path: |
             corpus/crashes/
             corpus/interesting/
+            corpus/interesting-union/
             results/CLUSTERS.md
           if-no-files-found: ignore
           retention-days: 14

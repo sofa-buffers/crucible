@@ -106,6 +106,12 @@ jobs:
       - name: Union suite (probe-union schema)
         run: ./scripts/run-union.sh
 
+      # The union shapes probe-union cannot reach: struct / array / nested / sparse options,
+      # a struct default_id, an array of unions, a union in a struct. Four passes on one
+      # schema (differential, conformance, chunk, encode), so four driver builds.
+      - name: Deep union suite (probe-union-deep schema)
+        run: ./scripts/run-union-deep.sh
+
       - name: Limit mode (receiver-side caps)
         run: ./scripts/run-limits.sh
 
