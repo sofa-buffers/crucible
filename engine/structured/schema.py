@@ -22,10 +22,19 @@ drivers/reference consume). Kinds:
   struct  { fields: [...] }        a nested struct/message scope
   union   { default_id, options: [...] }   a sequence carrying at most one child;
                                            the active option's id selects it (§4.2)
+  enum                             an `enum`: an integer on the wire (signed, zigzag) but its OWN
+                                   kind here, because most languages hold it as a native enum type
+                                   and the walker must print the integer (`s<value>`)
+  bitfield                         a `bitfield`: an unsigned integer (`u<value>`); its own kind for
+                                   the same reason (a native flags type, not a number)
   array   { elem: u|s|fp32|fp64, count }   an inline fixed-count numeric/fp array
   wrapper { elem: string|blob, count }     a dynamic index-keyed element sequence
   struct_wrapper { count, fields: [...] }  a wrapper whose elements are struct
                                            sequences (array-of-struct, §5.2)
+  node_wrapper { count, item: <node> }     a wrapper whose elements are any OTHER nameless node:
+                                           a union (array of unions) or an array (array of arrays).
+                                           A walker emits the container's actual elements in index
+                                           order, each through `item`
 
 Usage: python3 engine/structured/schema.py [--json [out]] [--schema path]
 """
@@ -47,7 +56,21 @@ _SCALAR = {
     # see the kind list above. `array of boolean` reuses the unsigned array wire form
     # (MESSAGE_SPEC §4.7), so `elem` becomes "bool" and the array node is unchanged.
     "boolean": "bool",
+    "enum": "enum", "bitfield": "bitfield",
 }
+
+# the schema's `$defs`, for resolving `{$ref: "#/$defs/union/Name"}` (set by descriptor())
+_ROOT = {}
+
+
+def _resolve(o):
+    """A `{$ref: "#/$defs/..."}` object becomes the definition it names; anything else is itself."""
+    if isinstance(o, dict) and set(o) == {"$ref"}:
+        node = _ROOT
+        for part in o["$ref"].lstrip("#/").split("/"):
+            node = node[part]
+        return node
+    return o
 
 
 def _field(name, spec):
@@ -64,25 +87,39 @@ def _field(name, spec):
         # when none is set. An option may be any field type, so each is a normal field
         # node (recursing for a nested struct/union); string/blob options also carry
         # their maxlen, which the over-bound sweep needs and a scalar node never has.
-        node["kind"] = "union"
-        node["default_id"] = spec["default_id"]
-        node["options"] = _union_options(spec["oneof"])
+        node.update(_union_node(spec))
     elif t == "array":
-        it = spec["items"]
-        et = it["type"]
-        count = it.get("count", 0)
-        if et in ("string", "blob"):        # a dynamic wrapper array (leaf elements)
-            node.update(kind="wrapper", elem=et, count=count)
-        elif et == "struct":                 # a wrapper of composite (struct) elements
-            # array-of-struct (§5.2): each element is itself a struct sequence. Modeled
-            # as a `struct_wrapper` node carrying the element struct's field tree, so a
-            # value walk can descend into every element's k/v (WP-05).
-            node.update(kind="struct_wrapper", count=count, fields=_fields(it["fields"]))
-        else:                                # an inline fixed-count numeric/fp array
-            node.update(kind="array", elem=_SCALAR[et], count=count)
+        node.update(_array_node(spec["items"]))
     else:
         raise ValueError(f"unhandled schema type {t!r} for field {name!r}")
     return node
+
+
+def _union_node(spec):
+    """The kind-specific part of a union node (a field's, or an array element's). `default_id`
+    omitted means the lowest option id (the generator's rule); `oneof` may be a `$ref`."""
+    options = _union_options(_resolve(spec["oneof"]))
+    default_id = spec.get("default_id", min(o["id"] for o in options))
+    return {"kind": "union", "default_id": default_id, "options": options}
+
+
+def _array_node(it):
+    """The kind-specific part of an array whose ELEMENT spec is `it`. `it.count` is this array's
+    capacity; when the element is itself an array, ITS element spec is `it.items`."""
+    et = it["type"]
+    count = it.get("count", 0)
+    if et in ("string", "blob"):            # a dynamic wrapper array (leaf elements)
+        return {"kind": "wrapper", "elem": et, "count": count}
+    if et == "struct":                       # a wrapper of composite (struct) elements
+        # array-of-struct (§5.2): each element is itself a struct sequence. Modeled
+        # as a `struct_wrapper` node carrying the element struct's field tree, so a
+        # value walk can descend into every element's k/v (WP-05).
+        return {"kind": "struct_wrapper", "count": count, "fields": _fields(it["fields"])}
+    if et == "union":                        # an array of unions: each element holds ONE option
+        return {"kind": "node_wrapper", "count": count, "item": _union_node(it)}
+    if et == "array":                        # an array of arrays
+        return {"kind": "node_wrapper", "count": count, "item": _array_node(it["items"])}
+    return {"kind": "array", "elem": _SCALAR[et], "count": count}   # an inline numeric/fp array
 
 
 def _fields(d):
@@ -104,6 +141,8 @@ def _union_options(d):
 def descriptor(path=SCHEMA):
     with open(path) as fh:
         y = yaml.safe_load(fh)
+    _ROOT.clear()
+    _ROOT.update({"$defs": y.get("$defs", {})})
     (mname, mspec), = y["messages"].items()   # the schema carries a single message
     return {"message": mname, "fields": _fields(mspec["payload"])}
 
