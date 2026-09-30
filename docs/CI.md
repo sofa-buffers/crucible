@@ -64,6 +64,7 @@ REGEN=0 ./scripts/cross-encode.sh           # cross-encode / structured    (corp
 ./scripts/run-limits.sh                     # limit mode                   (corpus/limits)
 ./scripts/sweep.sh                          # structural sweep, 12 blocking axes
 ./scripts/materialize.sh                    # materialized-value oracle    (corpus/structured)
+CORPUS=corpus/regression ./scripts/materialize.sh   # ...and over the findings corpus (values the round trip cannot see)
 ./scripts/run-chunked.sh                    # chunk invariance   (roster derived from meta)
 CORPUS=corpus/regression ./scripts/run-chunked.sh --modes chunk   # ...and over the findings corpus
 ./scripts/run-encode.sh                     # encode invariance  (roster derived from meta)
