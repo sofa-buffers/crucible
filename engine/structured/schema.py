@@ -27,7 +27,7 @@ drivers/reference consume). Kinds:
   struct_wrapper { count, fields: [...] }  a wrapper whose elements are struct
                                            sequences (array-of-struct, §5.2)
 
-Usage: python3 engine/structured/schema.py [--json [out]]
+Usage: python3 engine/structured/schema.py [--json [out]] [--schema path]
 """
 import json
 import os
@@ -109,12 +109,22 @@ def descriptor(path=SCHEMA):
 
 
 def main():
+    """schema.py [--json [OUT]] [--schema PATH]   (default schema: schema/probe.sofab.yaml)
+
+    `--json` with no OUT writes oracle/materialized-schema.json; `--schema` picks the schema
+    the descriptor is derived from. Without `--json` the descriptor goes to stdout."""
+    args = sys.argv[1:]
+    schema = SCHEMA
+    if "--schema" in args:
+        i = args.index("--schema")
+        schema = args[i + 1]
+        del args[i:i + 2]
     out = None
-    if len(sys.argv) >= 2 and sys.argv[1] == "--json":
-        out = sys.argv[2] if len(sys.argv) >= 3 else \
+    if args and args[0] == "--json":
+        out = args[1] if len(args) >= 2 else \
             os.path.join(os.path.dirname(os.path.abspath(__file__)),
                          "..", "..", "oracle", "materialized-schema.json")
-    s = json.dumps(descriptor(), indent=2)
+    s = json.dumps(descriptor(schema), indent=2)
     if out:
         with open(out, "w") as fh:
             fh.write(s + "\n")

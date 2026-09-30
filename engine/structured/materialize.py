@@ -171,7 +171,39 @@ def materialize(msg):
     return _obj([(f["id"], _walk(f, msg, (f["name"],))) for f in _DESC["fields"]])
 
 
+# --- the union probe (schema/probe-union.sofab.yaml) -------------------------------------
+# A union holds exactly ONE option (MESSAGE_SPEC §4.2, generator#608), so its materialized
+# value is `{<held id>:<value>}`. gen.py's union messages are {'tag','member':(kind,v)|None,
+# 'trailer'}; a missing member, or `u16` (the default_id option), holds option 0.
+_UNION_OPTION = {"u16": (0, lambda v: _u(v)), "i32": (1, lambda v: _s(v)),
+                 "text": (2, lambda v: _text(v)), "blob": (3, lambda v: _blob(v)),
+                 "flag": (4, lambda v: _u(1 if v else 0))}
+
+
+def union_materialize(msg):
+    """The materialized value (no 'A ' prefix) of a gen.py union message."""
+    member = msg.get("member")
+    if member is None:
+        held = _obj([(0, _u(0))])
+    else:
+        kind, v = member
+        oid, fmt = _UNION_OPTION[kind]
+        held = _obj([(oid, fmt(v))])
+    return _obj([(0, _u(msg.get("tag", 0))), (1, held), (2, _u(msg.get("trailer", 0)))])
+
+
+def union_vectors():
+    from gen import union_vectors as uv
+    return uv()
+
+
 def main():
+    if len(sys.argv) >= 3 and sys.argv[1] == "--driver-union":
+        _check_driver(sys.argv[2], union=True)
+        return
+    if len(sys.argv) >= 3 and sys.argv[1] == "--anchor-vocab-union":
+        _check_anchor_vocab(sys.argv[2], union=True)
+        return
     if len(sys.argv) >= 3 and sys.argv[1] == "--check":
         _check(sys.argv[2])
         return
@@ -185,13 +217,14 @@ def main():
         print(f"{i:03d}_{name}\tA {materialize(msg)}")
 
 
-def _run_driver(driver_bin):
-    """Run a driver binary with SOFAB_MATERIALIZE=1 over corpus/structured; return its
-    output lines and the vectors they answer, or exit when the line count is off."""
+def _run_driver(driver_bin, union=False):
+    """Run a driver binary with SOFAB_MATERIALIZE=1 over corpus/structured (or, with
+    union=True, corpus/structured-union); return its output lines and the vectors they
+    answer, or exit when the line count is off."""
     import struct
     import subprocess
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    cdir = os.path.join(root, "corpus", "structured")
+    cdir = os.path.join(root, "corpus", "structured-union" if union else "structured")
     files = sorted(f for f in os.listdir(cdir) if f.endswith(".bin"))
     stream = b""
     for f in files:
@@ -201,7 +234,7 @@ def _run_driver(driver_bin):
     env = {**os.environ, "SOFAB_MATERIALIZE": "1", "SOFAB_MATERIALIZE_SCHEMA": schema_json}
     out = subprocess.run([driver_bin], input=stream, capture_output=True, env=env)
     lines = out.stdout.decode("utf-8", "replace").splitlines()
-    vecs = vectors()
+    vecs = union_vectors() if union else vectors()
     if len(lines) != len(vecs):
         print(f"FAIL: driver emitted {len(lines)} lines for {len(vecs)} inputs")
         if out.stderr:
@@ -218,9 +251,9 @@ def _run_driver(driver_bin):
 ANCHOR_UNKNOWN = "?"
 
 
-def _check_anchor_vocab(driver_bin):
+def _check_anchor_vocab(driver_bin, union=False):
     """Fail, with its own message, when the C anchor printed ANCHOR_UNKNOWN anywhere."""
-    lines, vecs = _run_driver(driver_bin)
+    lines, vecs = _run_driver(driver_bin, union=union)
     behind = [f"{i:03d}_{name}" for i, (name, _) in enumerate(vecs)
               if ANCHOR_UNKNOWN in lines[i]]
     if behind:
@@ -233,14 +266,15 @@ def _check_anchor_vocab(driver_bin):
     sys.exit(0)
 
 
-def _check_driver(driver_bin):
-    """Run a driver binary with SOFAB_MATERIALIZE=1 over corpus/structured and diff
-    every line against the reference. This is the per-driver acceptance gate for the
-    materialized rollout: 0 mismatches == the driver reproduces the form exactly."""
-    lines, vecs = _run_driver(driver_bin)
+def _check_driver(driver_bin, union=False):
+    """Run a driver binary with SOFAB_MATERIALIZE=1 over corpus/structured (union=True:
+    corpus/structured-union) and diff every line against the reference. This is the
+    per-driver acceptance gate for the materialized rollout: 0 mismatches == the driver
+    reproduces the form exactly."""
+    lines, vecs = _run_driver(driver_bin, union=union)
     bad = 0
     for i, (name, msg) in enumerate(vecs):
-        exp = "A " + materialize(msg)
+        exp = "A " + (union_materialize(msg) if union else materialize(msg))
         if lines[i] != exp:
             bad += 1
             if bad <= 6:

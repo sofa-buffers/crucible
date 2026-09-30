@@ -254,7 +254,10 @@ def generate(desc):
 def main():
     out_path = sys.argv[1]
     schema = sys.argv[2] if len(sys.argv) >= 3 else "probe.sofab.yaml"
-    if os.path.basename(schema) != "probe.sofab.yaml":
+# A descriptor named by SOFAB_MATERIALIZE_SCHEMA wins over the stub: scripts/materialize.sh sets it
+# to a table derived from $SCHEMA (engine/structured/schema.py --schema), which is how a
+# non-probe schema (the union suites) gets a real walker instead of a compile-only stub.
+    if os.path.basename(schema) != "probe.sofab.yaml" and not os.environ.get("SOFAB_MATERIALIZE_SCHEMA"):
         src, path = _STUB, "stub (non-probe schema)"
     else:
         desc, path = _load_descriptor()
