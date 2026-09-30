@@ -201,7 +201,8 @@ def main():
                 camps.setdefault(v[:22] or "(empty)", []).append(dn)
             print(f"    DIVERGE {fn}: "
                   + " | ".join(f"[{outv}] {','.join(ds)}" for outv, ds in camps.items()))
-        for fn, msg in conf[:8]:
+        # SWEEP_ALL=1 prints every failure (a mutation probe wants the full list, not eight)
+        for fn, msg in conf[:(len(conf) if os.environ.get("SWEEP_ALL") else 8)]:
             print(f"    NONCONFORM {fn}: {msg}")
     print(f"\nTOTAL: {total_div} divergence(s), {total_conf} conformance failure(s)")
     return 1 if (total_div or total_conf) else 0

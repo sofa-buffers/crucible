@@ -89,7 +89,7 @@ auto-clustered by root cause. Crashes, the interesting corpus, and
 `results/CLUSTERS.md` are uploaded as artifacts. The corpus is `actions/cache`d so
 coverage **compounds** night over night.
 
-A **union engine** runs the same pacemaker on `schema/probe-union-deep.sofab.yaml`
+A **union engine** (block path and, separately, the feed/finish streaming target) runs the same pacemaker on `schema/probe-union-deep.sofab.yaml`
 (`FUZZ_SCHEMA` / `FUZZ_CORPUS` / `FUZZ_SEEDS` of `scripts/fuzz.sh`), seeded from
 `corpus/union-deep`, into its **own** corpus `corpus/interesting-union`. Every other engine fuzzes
 `probe`, which has no union, so without it the union code of every backend was reached only by

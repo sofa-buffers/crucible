@@ -23,11 +23,14 @@
 #   FUZZ_JOBS=<n>         parallel libFuzzer jobs (default 1)
 #   FUZZ_STREAM=1         build+run the streaming target instead of the block one
 #   FUZZ_SCHEMA=<file>    fuzz another schema (default schema/probe.sofab.yaml). The message must
-#                         be keyed `probe`, like schema/probe-union*.sofab.yaml. Block path only.
+#                         be keyed `probe`, like schema/probe-union*.sofab.yaml. Both targets.
 #   FUZZ_CORPUS=<dir>     the writable corpus (default corpus/interesting). A union schema needs
 #                         its OWN corpus: its inputs are bytes shaped for that schema, and the
 #                         probe roster would replay them as noise.
 #   FUZZ_SEEDS=<dir>      the read-only seed dir (default corpus/seeds)
+#   FUZZ_STREAM_CORPUS=<dir>  the streaming target's own writable corpus (default corpus/stream);
+#                         a union schema needs its OWN, like FUZZ_CORPUS: the header-prefixed
+#                         inputs are shaped for that schema.
 #   CC=clang              needs a libFuzzer-capable clang (devcontainer)
 set -eu
 
@@ -50,14 +53,9 @@ if ! command -v "$CC" >/dev/null || ! "$CC" --version 2>/dev/null | grep -qi cla
     exit 1
 fi
 
-if [ "$STREAM" = "1" ] && [ -n "${FUZZ_SCHEMA:-}" ]; then
-    echo "error: FUZZ_SCHEMA is block-path only (the streaming seeds and harvest are probe-shaped)." >&2
-    exit 1
-fi
-
 if [ "$STREAM" = "1" ]; then
     BIN="$ROOT/drivers/c/build/pacemaker-stream"
-    CORP="$ROOT/corpus/stream"
+    CORP="${FUZZ_STREAM_CORPUS:-$ROOT/corpus/stream}"
     ARTIFACT_PREFIX="$CRASH/stream-"
     STREAM_DEFINE="-DCRUCIBLE_FUZZ_STREAM"
     TAG="pacemaker-stream"
@@ -98,7 +96,7 @@ if [ "$STREAM" = "1" ]; then
     trap 'rm -rf "$TMPSEEDS"' EXIT
     echo "==> [pacemaker-stream] seeding (header-prefixed copies in a temp dir)" >&2
     # shellcheck disable=SC2086
-    python3 - "$TMPSEEDS" "$INTERESTING" "$ROOT/corpus/seeds" $FINDINGS <<'PY'
+    python3 - "$TMPSEEDS" "$INTERESTING" "${FUZZ_SEEDS:-$ROOT/corpus/seeds}" $FINDINGS <<'PY'
 import hashlib, os, sys
 
 outdir = sys.argv[1]
@@ -207,7 +205,7 @@ print(f"{path}: replay with {var}={param} over the {len(msg)}-byte "
       f"{path}.msg.bin", file=sys.stderr)
 PY
     done
-    echo "==> [pacemaker-stream] corpus/stream: $(ls "$CORP" | grep -vc gitkeep) inputs; corpus/interesting: $(ls "$INTERESTING" | grep -vc gitkeep) inputs" >&2
+    echo "==> [pacemaker-stream] corpus/$(basename "$CORP"): $(ls "$CORP" | grep -vc gitkeep) inputs; corpus/$(basename "$INTERESTING"): $(ls "$INTERESTING" | grep -vc gitkeep) inputs" >&2
 else
     echo "==> [pacemaker] corpus/$(basename "$INTERESTING"): $(ls "$INTERESTING" | grep -vc gitkeep) inputs; crashes: $(ls "$CRASH" | grep -vc gitkeep)" >&2
 fi
