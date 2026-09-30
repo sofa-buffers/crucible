@@ -196,6 +196,11 @@ def schema_kinds():
 
     doc = json.loads(read(MATERIALIZED_SCHEMA))
     walk(doc)
+    # `union` is a kind of the schema vocabulary (engine/structured/schema.py) that the probe
+    # descriptor above does not contain -- only schema/probe-union*.sofab.yaml does, and
+    # `materialize.sh` walks it with SCHEMA=... Without this, a walker could omit the kind and
+    # this gate would stay green; the union was the one kind no walker was required to name.
+    kinds.add("union")
     return kinds, doc
 
 

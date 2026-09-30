@@ -14,6 +14,51 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-09-30 — the materialized oracle learns the union (WP-02 Part B, leaf options)
+
+**The gap.** The TODO said the C anchor "materializes a union out of the box". That was true before
+generator#608, when a union was a struct of side-by-side options. Since the tagged-union rewrite the options
+share storage (a C union behind a `which` tag), so `md_value()` walking the descriptor like a struct would
+print every option out of the same bytes — and the other sixteen drivers had no union node at all (the
+generated walkers emitted a compile-only stub for any non-probe schema, so `materialize.sh` over a union
+schema compared empty strings). The round-trip oracle cannot stand in: a stale tag re-encodes identically.
+
+**The form.** A union is `{<held id>:<value>}` (oracle/materialized.md): one field, the held option, read
+through the generated API — the tag, the variant a native `enum` holds — never by re-encoding and never by
+testing every option for a non-default value. It always holds one option (`{0:u0}` fresh, `{4:u0}` for a held
+`as_flag = false`). A `which` that names no option prints `{}`.
+
+**Built.** `md_union` in the C anchor; a union reference over gen.py's messages
+(`materialize.py --driver-union`, independent of any implementation); `schema.py --schema PATH` (the old
+`--json` wrote to the path it was handed and always read the probe schema — while testing it I overwrote
+`schema/probe-union.sofab.yaml` with the probe descriptor and restored it from git); `materialize.sh` with
+`SCHEMA=<non-probe>` derives the table from that schema and exports it *before the roster build*, and the five
+generators take it instead of a stub; and the union node in the walkers of go, java, ts, cs, python (runtime)
+and rust, cpp (all four), zig, dart, kotlin (generated). Ten agents wrote those in parallel, one per language,
+each restricted to its own walker and its own driver build; each had to match the C anchor's dumps on both
+union corpora and keep the probe gate at 0/119 before handing back.
+
+**Result** (sofabgen `ba496587`): `corpus/structured-union` (23) and `corpus/union` (11) x 17 drivers, 0
+divergences, anchor == reference 23/23; the default probe gate unchanged (119 x 17) and over `corpus/regression`
+(261 x 17); `check-family-copies.py` full green. `check-family-copies.py` now also requires every walker to
+name the `union` kind — the probe descriptor has none, so the gate had never asked. Adding it flagged, at once,
+that the reference's own `_walk` did not name it; fixed.
+
+**Is it non-vacuous?** Mutation, on Go: the walker reports `default_id` as held whatever it is (a stale tag),
+the encoder untouched. The round trip of the mutated driver is **identical** to C's (same schema); the
+materialized dump differs on **19 of 23** lines. The clean walker differs on none.
+
+**What the agents reported, unverified beyond the gates above:** no `which`/value inconsistency and no
+generator or corelib defect in any of the eleven generated APIs. One caveat from the Rust walker: enum and
+variant names for a *nested* struct or union are derived (parent type + CamelCase field name) and only
+verified for the flat probe-union, which has no such option.
+
+**Not done (TODO WP-02 Part B, now `[~]`).** The deep schema. `list` / `grid` (arrays of unions) need a new
+descriptor kind in every walker and in the anchor's un-sized-holder emptiness test (`md_slot_empty` still
+walks a union as a struct); `enum` and `bitfield` options need those kinds (no walker has them, in a union or
+out of one); `$defs` / `$ref` and an omitted `default_id` need resolving in `schema.py`. The part expressible
+with today's kinds (struct option, nested union, union in a struct, array and blob options) is the next step.
+
 ## 2026-09-30 — bootstrap: a generator build whose CI is still running aborts the run (decision reversed)
 
 **What happened.** The replay job on main for the merge of crucible#223 failed in the union sweeps with
