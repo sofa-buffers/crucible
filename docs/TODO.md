@@ -44,15 +44,13 @@ here:
   (`fuzz-go.sh`, `FuzzProbeStream`) are generated for the probe message and stay probe-only, and a
   declared schema near `MAX_DEPTH` (the generator's `MaxNestingDepth` is 256, a 127-level chain) is not
   generated: wire depth is swept through a six-frame chain instead, which is where the counters differ.
-- [~] **WP-02 Part B** — union *materialized* (element-access) oracle: **DONE 2026-09-30 for `probe-union`**
-  (leaf options): the `union` node in all 17 walkers, the C anchor, a union reference over gen.py's messages,
-  `SCHEMA=… materialize.sh`, a CI step. What stays open is the **deep** schema
-  (`probe-union-deep`): its `list` / `grid` (an array of unions, an array of arrays of unions) need a new
-  descriptor kind in every walker and in the anchor's un-sized-holder emptiness test
-  (`md_slot_empty` walks a union as a struct); its `enum` and `bitfield` options need those kinds (no walker
-  has them, in a union or out of one); `$defs` / `$ref` and an omitted `default_id` need resolving in
-  `schema.py`. The part of the deep schema expressible with today's kinds (struct, nested union, union in a
-  struct, array and blob options) is the next step.
+- [x] **WP-02 Part B** — union *materialized* (element-access) oracle: **DONE 2026-09-30**, leaf options
+  (`probe-union`, with a reference) and the **deep schema** (`probe-union-deep`: struct / array / blob /
+  nested-union options, a union in a struct, enum and bitfield options, arrays of unions and of arrays of
+  unions, `$defs` unions). The `union` node and the `enum` / `bitfield` / `node_wrapper` kinds are in all 17
+  walkers and the C anchor; `SCHEMA=… materialize.sh` derives the table; two CI steps. What stays open: the
+  deep schema has **no independent reference** (agreement among the drivers plus the C anchor is the whole
+  oracle there), and Rust's type names for `$ref` unions are a heuristic on the generator's naming.
 - [x] **WP-05 completion** — DONE 2026-07-27 (see the dated entry above).
 - [x] **WP-08(c) — DONE 2026-08-17: measured, and the family is correct in every cell.** The
   vectors this item asked for now exist — `def_arr` (`array of u32`, `default: [7, 9]`) in

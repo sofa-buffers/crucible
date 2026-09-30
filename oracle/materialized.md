@@ -113,6 +113,17 @@ Rules that make it byte-reproducible across 13 languages:
   `as_flag = false` is `{4:u0}`, not `{0:u0}`. The options of a union share storage in C, so a
   walker that printed every option would print one option out of another's bytes. A `which`
   that names no option prints `{}` (a visible failure).
+- **An `enum` emits `s<value>` and a `bitfield` emits `u<value>`** — the integer, in the same
+  shape as any signed / unsigned leaf. They are their own descriptor kinds only because most
+  languages hold them as a native enum or flags type that a walker must convert. The bound is
+  the declared WIDTH, not the named members (MESSAGE_SPEC §1): an enum holds 127 or -1 and a
+  bitfield 255 without a declared bit, and the API must hand the integer back.
+- **An array whose elements are unions, or are themselves arrays** (`node_wrapper` in the
+  descriptor) emits `[` + the container's ACTUAL elements in index order + `]`, each element
+  through the item node: a union element prints its held option, an array element prints its
+  own `[...]`. Same rule as every wrapper: the length is the container's length, interior gaps
+  are default elements (a union at `default_id` at its default), and nothing is padded to
+  `count`.
 
 Example — the all-defaults `probe` (schema `schema/probe.sofab.yaml`):
 
