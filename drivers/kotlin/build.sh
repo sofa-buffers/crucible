@@ -60,9 +60,15 @@ gradle_build() {  # $1 = gradle task, $2 = the artifact it produces
 
 case "$VARIANT" in
     jvm)
-        JAR="$CORELIB/build/libs/corelib-kotlin-mp-jvm-0.1.0.jar"
-        gradle_build jvmJar "$JAR"
-        [ -f "$JAR" ] || { echo "corelib jvm jar not at $JAR" >&2; exit 1; }
+        # Gradle names the jar after the CORELIB's own version, which moves (0.1.0 -> 0.11.0
+        # broke this script in a clean checkout: the pinned name no longer existed, while a
+        # vendor/ that had ever built the old version kept a stale jar of that name and hid
+        # it). So never pin the name: take the newest jar Gradle produced.
+        _newest_jar() { ls -t "$CORELIB"/build/libs/corelib-kotlin-mp-jvm-*.jar 2>/dev/null | head -1; }
+        JAR=$(_newest_jar)
+        gradle_build jvmJar "${JAR:-$CORELIB/build/libs/corelib-kotlin-mp-jvm-none.jar}"
+        JAR=$(_newest_jar)
+        [ -n "$JAR" ] && [ -f "$JAR" ] || { echo "no corelib jvm jar under $CORELIB/build/libs/" >&2; exit 1; }
         ;;
     native)
         KLIB="$CORELIB/build/classes/kotlin/linuxX64/main/klib/corelib-kotlin-mp"
