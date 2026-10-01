@@ -14,6 +14,26 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-01 — the Go fuzz engines run on the union schema
+
+**The gap.** The union fuzz of the previous days steered only the C pacemaker. corelib-go's own decoder had
+never been steered on a union, and the Go streaming target (`FuzzProbeStream`) is the one that checks chunk
+invariance — re-encode of a one-shot against a chunked decode — which is where a union's option switch across a
+chunk boundary would show. Both engines were assumed probe-only because `fuzz-go.sh` regenerates the probe types.
+
+**What it took: little.** The Go fuzz targets call only `DecodeProbe`, `NewProbe` and `Encode`, which every schema
+keyed `probe` generates, so they were already schema-agnostic. `scripts/fuzz-go.sh` gained `FUZZ_SCHEMA` (exported
+as `SCHEMA` for `drivers/go/build.sh`) and `FUZZ_SEEDS`. **One trap:** Go keeps its fuzz corpus in
+`$GOCACHE/fuzz/<pkg>/<target>`, it accumulates across runs, and the harvest takes everything in it. A second
+schema would have harvested the first one's inputs into its own corpus and been seeded with them, so a
+`FUZZ_SCHEMA` run gets its own `GOCACHE` per schema (`drivers/go/.gocache-<schema>`, git-ignored). The nightly
+runs both targets after the C union engines, into the same `corpus/interesting-union`.
+
+**Local run** (deep union schema, 60 s each): block path 1 114 524 executions, 267 new inputs, PASS; streaming
+path 170 new inputs, PASS, no chunk-invariance violation, no crash. The default probe run is unchanged (PASS).
+Not verified: the two new nightly steps as a workflow run, and what a longer run finds — 60 s is a smoke test,
+not coverage of the Go decoder.
+
 ## 2026-09-30 — the materialized oracle reaches the deep union schema (WP-02 Part B completed)
 
 **What was open.** The previous entry stopped at `probe-union`'s five leaf options. The deep schema adds

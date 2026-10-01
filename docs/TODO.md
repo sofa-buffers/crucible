@@ -40,9 +40,9 @@ here:
   an array of arrays of unions (`grid`), one `$defs` union at three sites with two effective
   `default_id`s (`refa` / `refb` / `refc`), and a six-frame declared chain with `MAX_DEPTH` swept
   through it (255 legal, 256 INVALID, closed and truncated, via four declared paths). The **streaming**
-  union fuzz exists too (`FUZZ_STREAM=1` with `FUZZ_SCHEMA`). What stays open: the Go engines
-  (`fuzz-go.sh`, `FuzzProbeStream`) are generated for the probe message and stay probe-only, and a
-  declared schema near `MAX_DEPTH` (the generator's `MaxNestingDepth` is 256, a 127-level chain) is not
+  union fuzz exists too (`FUZZ_STREAM=1` with `FUZZ_SCHEMA`). The **Go engines** (`fuzz-go.sh`,
+  block and `FuzzProbeStream`) run on the union schema too (`FUZZ_SCHEMA`, a `GOCACHE` per schema). What
+  stays open: a declared schema near `MAX_DEPTH` (the generator's `MaxNestingDepth` is 256, a 127-level chain) is not
   generated: wire depth is swept through a six-frame chain instead, which is where the counters differ.
 - [x] **WP-02 Part B** — union *materialized* (element-access) oracle: **DONE 2026-09-30**, leaf options
   (`probe-union`, with a reference) and the **deep schema** (`probe-union-deep`: struct / array / blob /

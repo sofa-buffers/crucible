@@ -24,6 +24,13 @@
 #   FUZZ_TIME=<seconds>   wall-clock budget (default 120)
 #   CORPUS=<dir>          corpus to seed from and harvest into (default corpus/interesting)
 #   FUZZ_TARGET=<name>    fuzz target to run (default FuzzProbe; or FuzzProbeStream)
+#   FUZZ_SCHEMA=<file>    fuzz another schema (default schema/probe.sofab.yaml): the generated
+#                         `message` package is rebuilt from it. The message must be keyed `probe`
+#                         (schema/probe-union*.sofab.yaml are): the fuzz targets call only
+#                         DecodeProbe / NewProbe / Encode, which every such schema generates.
+#                         Use it with CORPUS= a corpus of that schema's own (corpus/interesting-union)
+#                         and FUZZ_SEEDS=corpus/union-deep.
+#   FUZZ_SEEDS=<dir>      the read-only seed dir (default corpus/seeds)
 set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -36,22 +43,32 @@ TARGET="${FUZZ_TARGET:-FuzzProbe}"
 STREAM=0
 [ "$TARGET" = "FuzzProbeStream" ] && STREAM=1
 SEEDDIR="$GODIR/testdata/fuzz/$TARGET"
+SEEDS_DIR="${FUZZ_SEEDS:-$ROOT/corpus/seeds}"
+
+if [ -n "${FUZZ_SCHEMA:-}" ]; then
+    SCHEMA="$FUZZ_SCHEMA"; export SCHEMA          # drivers/go/build.sh reads it
+    # Go keeps its fuzz corpus in $GOCACHE/fuzz/<pkg>/<target>, it accumulates across runs, and
+    # the harvest below takes EVERYTHING in it. A second schema would therefore harvest the first
+    # one's inputs into its own corpus (and be seeded with them). One cache per schema. It lives
+    # under drivers/go in a dot-directory, which the module ignores.
+    GOCACHE="$GODIR/.gocache-$(basename "$FUZZ_SCHEMA" .sofab.yaml)"; export GOCACHE
+fi
 
 command -v go >/dev/null || { echo "error: go not on PATH (use the devcontainer)" >&2; exit 1; }
 mkdir -p "$CORP" "$CRASH"
 
 # The generated `message` package must exist and match the current schema.
-echo "==> [go-fuzz] regenerating probe types + driver" >&2
+echo "==> [go-fuzz] regenerating probe types + driver${FUZZ_SCHEMA:+ from $(basename "$FUZZ_SCHEMA")}" >&2
 sh "$GODIR/build.sh" >/dev/null
 
 # --- seed: raw corpus -> Go's text format ----------------------------------
 # Named seed_<sha1> so that anything else left in testdata afterwards is, by
 # construction, an artifact Go wrote itself — i.e. a failing input.
-echo "==> [go-fuzz] seeding $TARGET from $(basename "$CORP") + seeds + findings" >&2
+echo "==> [go-fuzz] seeding $TARGET from $(basename "$CORP") + $(basename "$SEEDS_DIR") + findings" >&2
 rm -rf "$SEEDDIR"
 mkdir -p "$SEEDDIR"
 seeded=0
-for f in "$CORP"/* "$ROOT/corpus/seeds"/* "$ROOT"/findings/*/*.bin; do
+for f in "$CORP"/* "$SEEDS_DIR"/* "$ROOT"/findings/*/*.bin; do
     [ -f "$f" ] || continue
     case "$(basename "$f")" in .gitkeep|*.md) continue ;; esac
     h=$(sha1sum "$f" | cut -c1-16)

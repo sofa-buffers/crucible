@@ -121,8 +121,8 @@ jobs:
 
       # The same union schema through the STREAMING target (feed/finish with a chunk or split
       # header): the decode path a real consumer uses, and the one a union's option switch
-      # most plausibly breaks across a chunk boundary. The Go engines stay probe-only (their
-      # fuzz front-end is generated for the probe message). Harvest goes to the union corpus.
+      # most plausibly breaks across a chunk boundary. The Go engines run on the union
+      # schema in their own steps below. Harvest goes to the union corpus.
       - name: Fuzz — union streaming engine (deep union schema, feed/finish path)
         continue-on-error: true
         run: |
@@ -130,6 +130,25 @@ jobs:
           FUZZ_CORPUS=corpus/interesting-union FUZZ_STREAM_CORPUS=corpus/stream-union \
           FUZZ_SEEDS=corpus/union-deep \
           FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz.sh
+
+      # The Go engines on the union schema (scripts/fuzz-go.sh FUZZ_SCHEMA): steered by corelib-go's
+      # OWN decoder coverage, which the C pacemaker above never is, into the same union corpus. The
+      # streaming target checks chunk invariance on union decode (a re-encode that differs between
+      # one-shot and chunked decode is a failure, not a crash). Each schema has its own GOCACHE,
+      # because Go's fuzz cache is harvested whole. Non-blocking, like every engine here.
+      - name: Fuzz — union Go engine (deep union schema, block path)
+        continue-on-error: true
+        run: |
+          FUZZ_SCHEMA=schema/probe-union-deep.sofab.yaml CORPUS=corpus/interesting-union \
+          FUZZ_SEEDS=corpus/union-deep \
+          FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz-go.sh
+
+      - name: Fuzz — union Go streaming engine (deep union schema, feed/finish path)
+        continue-on-error: true
+        run: |
+          FUZZ_TARGET=FuzzProbeStream FUZZ_SCHEMA=schema/probe-union-deep.sofab.yaml \
+          CORPUS=corpus/interesting-union FUZZ_SEEDS=corpus/union-deep \
+          FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz-go.sh
 
       # Clusters the grown corpus and diffs every camp against results/known-clusters.txt.
       # A camp is in that file only once it is EXPLAINED (a catalogued finding, a legal
