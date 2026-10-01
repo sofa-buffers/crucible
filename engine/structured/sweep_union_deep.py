@@ -316,6 +316,22 @@ def emit_union_deep(out_dir=None):
     g2 = canon("p_ctl_row1_lo2", TAG() + GRID(row(1, cell(0, lo(2)))))
     twin("p_grid_reopened_is_replaced", TAG() + GRID(row(0, cell(0, lo(1)))) + GRID(row(1, cell(0, lo(2)))), g2)
 
+    # ---- P2. a mistyped element past the capacity is skipped (§7.3 wins over the §7 bound) ---
+    # G-0045: the C++ backends apply the nested-array bound before the wire-type skip. A skipped
+    # element is no element, so the frame stays what it was; a well-typed one at that index is INVALID.
+    twin("p_grid_mistyped_overindex_is_skipped", TAG() + GRID(scalar_s(6, 24)), omit)
+    twin("p_grid_mistyped_first_overindex_is_skipped", TAG() + GRID(scalar_s(2, 24)), omit)
+    twin("p_grid_mistyped_inrange_is_skipped", TAG() + GRID(scalar_s(0, 24)), omit)
+    add("p_grid_welltyped_overindex_rejects", TAG() + GRID(seq(2)), "reject")
+    twin("p_grid_row_mistyped_overindex_is_skipped", TAG() + GRID(row(0, scalar_s(2, 24))),
+         canon("p_ctl_grid_row_held_empty", TAG() + GRID(seq(0))))
+    add("p_grid_row_welltyped_overindex_rejects", TAG() + GRID(row(0, cell(2))), "reject")
+    twin("p_list_mistyped_overindex_is_skipped", TAG() + LIST(scalar_s(5, 24)), omit)
+    add("p_list_welltyped_overindex_rejects", TAG() + LIST(el(5)), "reject")
+    twin("p_names_mistyped_overindex_is_skipped", TAG() + CH(seq(4, scalar_u(5, 1))),
+         canon("p_ctl_names_held_empty", TAG() + CH(names())))
+    add("p_names_welltyped_overindex_rejects", TAG() + CH(names("a", "b", "c")), "reject")
+
     # ---- Q. one $defs union at three sites: one type per effective default_id ---------------
     # refa: default_id 1 (name, default "")   refb: default_id 0 (num, default 5)
     # refc: default_id omitted = lowest id = 0, so it must behave exactly like refb
