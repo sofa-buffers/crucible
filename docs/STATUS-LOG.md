@@ -14,6 +14,24 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-01 — G-0045 found by the first union nightly, filed and resolved the same day
+
+- Nightly 36829015200 (first run with the union steps) produced one new camp: the four C++
+  drivers reject a mistyped element past a nested array's capacity (`grid`), the other 13 skip it
+  (§7.3). Attribution: generated code (the bespoke element struct checks the bound before the wire
+  type; the one-level `list` uses corelib `MessageSeq` and is correct). Filed as generator#627,
+  fixed in `575c64bb` the same day. Write-up: G-0045.
+- `sweep_union_deep` gained ten vectors for it (grid, list, names; mistyped and well-typed past the
+  bound). They exposed a second manifestation the verdict-only camp had hidden: at an in-range index
+  the C++ drivers materialize an empty row for a mistyped element. Both are green on `575c64bb`.
+- Decision: the vectors went in live rather than held back until the fix; they were red only
+  between filing and the fix and were never pushed in that state.
+- The same sofabgen build also renamed generated API names (`message_probe__*` in C,
+  `Probe__Decode`/`Probe__MaxSize` in Go, `Probe__Decoder` in TypeScript; generator `7960a3e8`) and
+  split C output into `probe_sofab.{c,h}` + shared `sofab-defs.{c,h}` (`0c746f21`). The C, Go and TS
+  drivers and `scripts/fuzz.sh` were adapted; the C driver aliases the new names so it still builds
+  against older output.
+
 ## 2026-10-01 — the Go fuzz engines run on the union schema
 
 **The gap.** The union fuzz of the previous days steered only the C pacemaker. corelib-go's own decoder had

@@ -196,7 +196,7 @@ func encodeVia(m *msg.Probe) ([]byte, error) {
 	case "stream":
 		n := flushSize
 		if n == 0 {
-			n = msg.ProbeMaxSize
+			n = msg.Probe__MaxSize
 		}
 		var acc []byte
 		buf := make([]byte, n)
@@ -440,7 +440,7 @@ func materialize(m *msg.Probe) string {
 // canonical writes the canonical line for one candidate input
 // (oracle/canonical.md: decode -> re-encode -> hex).
 func canonical(w *bufio.Writer, data []byte) {
-	m, err := msg.DecodeProbe(data)
+	m, err := msg.Probe__Decode(data)
 	if err != nil {
 		if errors.Is(err, sofab.ErrIncomplete) {
 			// INCOMPLETE (MESSAGE_SPEC §7): decode ended mid-message — the third
