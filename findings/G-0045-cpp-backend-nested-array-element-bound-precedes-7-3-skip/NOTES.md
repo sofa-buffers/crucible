@@ -1,8 +1,8 @@
 # G-0045 — the sofabgen C++ backend applies the element-index bound of a nested array before the §7.3 wire-type skip
 
-**Status:** 🔴 **OPEN** — found 2026-10-01 by the first nightly with the union steps (run 36829015200); not yet filed upstream.
+**Status:** 🔴 **OPEN** — found 2026-10-01 by the first nightly with the union steps (run 36829015200); filed as generator#627.
 **Guard:** none — open; `sweep_union_deep` carries the vectors, and the reproducers in this folder become `corpus/regression/G0045_*` once the generator fix lands.
-**Issue:** not filed yet (generator, awaiting approval)
+**Issue:** [generator#627](https://github.com/sofa-buffers/generator/issues/627) (filed 2026-10-01)
 
 **Found 2026-10-01** by clustering the union corpus of nightly 36829015200: camp 2, 49 inputs,
 the four C++ drivers reject, the other 13 accept or report INCOMPLETE.
