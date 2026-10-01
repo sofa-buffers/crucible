@@ -17,7 +17,7 @@
 // "R invalid_msg"). COMPLETE returns normally (→ "A <hex>").
 import { readFileSync } from "node:fs";
 
-import { Probe, ProbeDecoder } from "./message";
+import { Probe, Probe__Decoder } from "./message";
 import { DecodeStatus, OStream, SofabError, SofabErrorCode } from "@sofa-buffers/corelib";
 
 // --- the streaming axes (drivers/common/CONTRACT.md, "The streaming axes") --------
@@ -334,7 +334,7 @@ function encodeBytes(m: Probe): Uint8Array {
 // chunks at all (a zero-length one) feeds nothing and keeps the initial COMPLETE: zero
 // bytes are the valid empty message.
 function canonicalChunked(data: Uint8Array): string {
-  const d = new ProbeDecoder();
+  const d = new Probe__Decoder();
   let st: DecodeStatus = DecodeStatus.Complete;
   try {
     for (const c of chunksOf(data)) {

@@ -1,7 +1,7 @@
 # G-0045 — the sofabgen C++ backend applies the element-index bound of a nested array before the §7.3 wire-type skip
 
-**Status:** 🔴 **OPEN** — found 2026-10-01 by the first nightly with the union steps (run 36829015200); filed as generator#627.
-**Guard:** none — open; `sweep_union_deep` carries the vectors (`p_grid_mistyped_*`, red until fixed), and the reproducers in this folder become `corpus/regression/G0045_*` once the generator fix lands.
+**Status:** ✅ **RESOLVED** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status and its resolution trail; this file is the evidence.
+**Guard:** corpus/regression — replayed by the resolved-findings gate on every push; a divergence there means this bug came back. The `p_*_overindex` vectors of `sweep_union_deep` guard the shape.
 **Issue:** [generator#627](https://github.com/sofa-buffers/generator/issues/627) (filed 2026-10-01)
 
 **Found 2026-10-01** by clustering the union corpus of nightly 36829015200: camp 2, 49 inputs,
@@ -52,3 +52,7 @@ skip correctly.
 
 Emit `MessageSeq` (or publish `elemWire`) for the element level of an array of arrays, so the
 wire-type check precedes the bound.
+
+## Resolution
+
+✅ **RESOLVED 2026-10-01** by [generator#627](https://github.com/sofa-buffers/generator/issues/627) (`575c64bb`, *"decide a nested row's wire type before its index bound"*), closed the day it was filed. Verified against sofabgen `0.0.0-20261001223534-575c64bb9050`: the deep union suite is 250 vectors, 17 drivers in agreement, 0 conformance failures, including both manifestations (the verdict at index >= capacity and the value at an in-range index). The four reproducers are now `corpus/regression/G0045_*`.

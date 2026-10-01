@@ -23,6 +23,20 @@
 
 #include "probe.h"   /* generated from schema/probe.sofab.yaml by build.sh */
 
+/* Newer sofabgen builds (generator 7960a3e8) separate the message name from the member with `__`.
+ * Alias the new spellings to the ones this driver is written in; nothing happens on an older build. */
+#ifdef MESSAGE_PROBE__MAX_SIZE
+#define MESSAGE_PROBE_MAX_SIZE      MESSAGE_PROBE__MAX_SIZE
+#define message_probe_decoder_t     message_probe__decoder_t
+#define message_probe_decoder_init  message_probe__decoder_init
+#define message_probe_decoder_feed  message_probe__decoder_feed
+#define message_probe_decode        message_probe__decode
+#define message_probe_encode        message_probe__encode
+#define message_probe_encode_to     message_probe__encode_to
+#define message_probe_init          message_probe__init
+#define _message_descr_message_probe message_probe__descr
+#endif
+
 /* Map a corelib return code to the canonical reject class (oracle/canonical.md). */
 static const char *reject_class(sofab_ret_t r)
 {
