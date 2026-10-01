@@ -27,6 +27,8 @@
 /core
 core.*
 
+# per-schema GOCACHE of scripts/fuzz-go.sh (FUZZ_SCHEMA)
+/drivers/go/.gocache-*/
 # Go native-fuzz corpus cache
 testdata/fuzz/
 
