@@ -1,7 +1,7 @@
 # G-0045 — the sofabgen C++ backend applies the element-index bound of a nested array before the §7.3 wire-type skip
 
 **Status:** 🔴 **OPEN** — found 2026-10-01 by the first nightly with the union steps (run 36829015200); filed as generator#627.
-**Guard:** none — open; `sweep_union_deep` carries the vectors, and the reproducers in this folder become `corpus/regression/G0045_*` once the generator fix lands.
+**Guard:** none — open; `sweep_union_deep` carries the vectors (`p_grid_mistyped_*`, red until fixed), and the reproducers in this folder become `corpus/regression/G0045_*` once the generator fix lands.
 **Issue:** [generator#627](https://github.com/sofa-buffers/generator/issues/627) (filed 2026-10-01)
 
 **Found 2026-10-01** by clustering the union corpus of nightly 36829015200: camp 2, 49 inputs,
@@ -19,11 +19,13 @@ corelibs; here it is broken in generated code.
 | input | meaning | 4 C++ drivers | other 13 |
 |---|---|---|---|
 | `r0_grid_mistyped_overindex.bin` `46 31 30 07` | `grid{ element 6 = signed scalar }` | **`R invalid_msg`** | accept (field skipped) |
-| `ctl0_grid_mistyped_inrange.bin` `46 01 30 07` | same, element index 0 | accept | accept |
+| `ctl0_grid_mistyped_inrange.bin` `46 01 30 07` | same, element index 0 | accept, **but writes `grid` back with an empty row 0 (`46 06 07 07`)** | accept, `grid` omitted |
 | `ctl1_grid_welltyped_overindex.bin` `46 16 07 07` | `grid{ element 2 = empty sequence }` | reject | reject (§7 bound, right) |
 | `ctl2_list_mistyped_overindex.bin` `26 2e 30 07` | the same shape at `list` (one level, cap 3) | accept | accept |
 
-Each rule alone is unanimous (ctl0, ctl1); the one-level array is correct everywhere (ctl2) —
+The in-range row (found by the `p_grid_mistyped_inrange_is_skipped` sweep vector, 2026-10-01) is a second
+manifestation: the bespoke element struct is entered for a mistyped element and materializes it, so the verdict
+agrees but the decoded value does not. Each rule alone is unanimous on the verdict (ctl1); the one-level array is correct everywhere (ctl2) —
 only the combination at the **nested** array splits the C++ family.
 
 ## Attribution: generated code
