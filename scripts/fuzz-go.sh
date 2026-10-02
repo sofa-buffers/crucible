@@ -27,7 +27,7 @@
 #   FUZZ_SCHEMA=<file>    fuzz another schema (default schema/probe.sofab.yaml): the generated
 #                         `message` package is rebuilt from it. The message must be keyed `probe`
 #                         (schema/probe-union*.sofab.yaml are): the fuzz targets call only
-#                         DecodeProbe / NewProbe / Encode, which every such schema generates.
+#                         Probe__Decode / Probe__New / Encode, which every such schema generates.
 #                         Use it with CORPUS= a corpus of that schema's own (corpus/interesting-union)
 #                         and FUZZ_SEEDS=corpus/union-deep.
 #   FUZZ_SEEDS=<dir>      the read-only seed dir (default corpus/seeds)

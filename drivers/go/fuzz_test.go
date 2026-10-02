@@ -20,7 +20,7 @@ func FuzzProbe(f *testing.F) {
 	f.Add([]byte{})
 	f.Add([]byte{0x00, 0x2a}) // u=42
 	f.Fuzz(func(t *testing.T, data []byte) {
-		_, _ = msg.DecodeProbe(data) // must not panic on any input
+		_, _ = msg.Probe__Decode(data) // must not panic on any input
 	})
 }
 
@@ -50,7 +50,7 @@ func FuzzProbeStream(f *testing.F) {
 		if len(data) == 0 {
 			return // CONTRACT rule 4: a length-0 record is not fed at all
 		}
-		want, wErr := msg.DecodeProbe(data)
+		want, wErr := msg.Probe__Decode(data)
 		got, gErr := decodeProbeChunked(data, mode, int(param))
 
 		wantCls, gotCls := verdictClass(wErr), verdictClass(gErr)
@@ -74,13 +74,13 @@ func FuzzProbeStream(f *testing.F) {
 	})
 }
 
-// decodeProbeChunked mirrors drivers/go/message/probe.go's DecodeProbeFrom, but
+// decodeProbeChunked mirrors drivers/go/message/probe.go's Probe__DecodeFrom, but
 // cuts at the fuzz-chosen boundary instead of at a fixed scratch-buffer size,
 // and scrubs each fed chunk afterward (0xA5) so a decoder that borrowed from a
 // chunk rather than copying out of it is caught here the same way
 // SOFAB_CHUNK_SCRUB catches it in the replay driver.
 func decodeProbeChunked(data []byte, mode uint8, param int) (*msg.Probe, error) {
-	m := msg.NewProbe()
+	m := msg.Probe__New()
 	d := sofab.NewDecoder(m)
 
 	step := len(data)
