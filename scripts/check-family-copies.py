@@ -127,6 +127,7 @@ GENERATED = {
     "dart":          (["drivers/dart/build/bin/message.dart"], SEQ),
     "kotlin-jvm":    (["drivers/kotlin/build/jvm/gen/src/main/kotlin/message/Probe.kt"], PLACE),
     "kotlin-native": (["drivers/kotlin/build/native/gen/src/main/kotlin/message/Probe.kt"], PLACE),
+    "kotlin-js":     (["drivers/kotlin/build/js/gen/src/main/kotlin/message/Probe.kt"], PLACE),
 }
 
 OBJECT_H = "vendor/corelib-c-cpp/src/include/sofab/object.h"
