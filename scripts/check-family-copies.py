@@ -247,8 +247,13 @@ def check_generated(errors):
     _, doc = schema_kinds()
     wrappers = json.dumps(doc).count('"kind": "wrapper"') + \
         json.dumps(doc).count('"kind": "struct_wrapper"')
-    roster = [ln.split()[0] for ln in read("drivers/roster").splitlines()
-              if ln.strip() and not ln.lstrip().startswith("#")]
+    rows = [ln.split() for ln in read("drivers/roster").splitlines()
+            if ln.strip() and not ln.lstrip().startswith("#")]
+    roster = [r[0] for r in rows]
+    # A quarantined driver (no `blocking` tag) is not built by the gates that run this
+    # check, so its generated code is legitimately absent there; it is checked whenever
+    # it has been built (a manual or nightly pass).
+    quarantined = {r[0] for r in rows if "blocking" not in r[3].split(",")}
     for name in roster:
         if name not in GENERATED:
             errors.append(f"drivers/roster: `{name}` has no GENERATED entry — say which "
@@ -259,6 +264,9 @@ def check_generated(errors):
         if name not in roster:
             continue
         files = [f for p in paths for f in glob.glob(os.path.join(ROOT, p))]
+        if not files and name in quarantined:
+            print(f"note: {name}: quarantined and not built here — generated code not checked")
+            continue
         if not files:
             errors.append(f"{name}: generated probe code {paths} not found — build it "
                           f"first (./scripts/run.sh)")
