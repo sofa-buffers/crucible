@@ -6,6 +6,7 @@
 #
 #   build.sh jvm       corelib-kotlin-mp's `jvm` target      -> a java wrapper script
 #   build.sh native    corelib-kotlin-mp's `linuxX64` target -> a native ELF
+#   build.sh js        corelib-kotlin-mp's `js(IR)` target   -> a node wrapper script
 #
 # Emits the driver path on stdout (last line); logs go to stderr.
 #
@@ -30,8 +31,8 @@ set -eu
 
 VARIANT="${1:-jvm}"
 case "$VARIANT" in
-    jvm|native) ;;
-    *) echo "usage: build.sh {jvm|native}" >&2; exit 2 ;;
+    jvm|native|js) ;;
+    *) echo "usage: build.sh {jvm|native|js}" >&2; exit 2 ;;
 esac
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -81,6 +82,21 @@ case "$VARIANT" in
         KNC=$(find "$KONAN" -maxdepth 3 -type f -name kotlinc-native 2>/dev/null | head -1)
         [ -n "$KNC" ] || { echo "no kotlinc-native under $KONAN (see .devcontainer)" >&2; exit 1; }
         ;;
+    js)
+        # The corelib's JS klib is Gradle's packed `jsJar` output (the unpacked
+        # `compileKotlinJs` directory is NOT resolved by kotlinc-js: the package simply
+        # comes up empty, with no warning). Like the jvm jar, the name carries the
+        # corelib's version, so the newest one is taken.
+        _newest_klib() { ls -t "$CORELIB"/build/libs/corelib-kotlin-mp-js-*.klib 2>/dev/null | head -1; }
+        KLIB=$(_newest_klib)
+        gradle_build jsJar "${KLIB:-$CORELIB/build/libs/corelib-kotlin-mp-js-none.klib}"
+        KLIB=$(_newest_klib)
+        [ -n "$KLIB" ] && [ -f "$KLIB" ] || { echo "no corelib js klib under $CORELIB/build/libs/" >&2; exit 1; }
+        KOTLIN_HOME=$(dirname "$(command -v kotlinc-js)")/..
+        STDLIB_JS="$KOTLIN_HOME/lib/kotlin-stdlib-js.klib"
+        [ -f "$STDLIB_JS" ] || { echo "no kotlin-stdlib-js.klib next to kotlinc-js" >&2; exit 1; }
+        command -v node >/dev/null 2>&1 || { echo "missing node (see .devcontainer)" >&2; exit 1; }
+        ;;
 esac
 
 # ------------------------------------------------------------- generated code ----
@@ -107,6 +123,7 @@ python3 "$HERE/materialize_gen.py" "$OUT/materialize_gen.kt" "$SCHEMA" >&2
 case "$VARIANT" in
     jvm)    IO="$HERE/io_jvm.kt" ;;
     native) IO="$HERE/io_native.kt" ;;
+    js)     IO="$HERE/io_js.kt" ;;
 esac
 
 # shellcheck disable=SC2046
@@ -149,5 +166,25 @@ EOF
         [ -f "$OUT/driver" ] || { echo "kotlinc-native produced no binary" >&2; exit 1; }
         chmod +x "$OUT/driver"
         echo "$OUT/driver"
+        ;;
+    js)
+        echo "==> [kotlin/js] kotlinc-js (driver + generated, against the corelib klib)" >&2
+        # Two steps, because kotlinc-js (2.4.20) compiles sources to a klib and only
+        # links a klib into JS when handed it back through -Xinclude. The compiler must
+        # be at least the version that built the corelib klib and the stdlib klib it
+        # ships, or it ignores them without a word — the same pin as the jvm leg.
+        kotlinc-js -module-kind commonjs -libraries "$STDLIB_JS:$KLIB" \
+            -ir-output-dir "$OUT/klib" -ir-output-name driver "$@" >&2
+        kotlinc-js -module-kind commonjs -main call -libraries "$STDLIB_JS:$KLIB" \
+            -Xir-produce-js -Xinclude="$OUT/klib/driver.klib" \
+            -ir-output-dir "$OUT/js" -ir-output-name driver >&2
+        [ -f "$OUT/js/driver.js" ] || { echo "kotlinc-js produced no driver.js" >&2; exit 1; }
+        WRAP="$OUT/driver"
+        cat > "$WRAP" <<EOF
+#!/bin/sh
+exec node "$OUT/js/driver.js"
+EOF
+        chmod +x "$WRAP"
+        echo "$WRAP"
         ;;
 esac

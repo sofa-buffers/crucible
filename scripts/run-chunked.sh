@@ -43,7 +43,7 @@ CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 # Every past hold-out was finding-driven and all are gone — typescript (F-0060/F-0061,
 # closed with corelib-ts#141) and zig (F-0058, generator#293/#295) both rejoined.
 # SOFAB_SPLIT_DRIVERS still overrides, for isolating one driver by hand.
-SUPPORTED="${SOFAB_SPLIT_DRIVERS:-$("$ROOT/scripts/roster.sh" caps chunked | tr '\n' ' ')}"
+SUPPORTED="${SOFAB_SPLIT_DRIVERS:-$("$ROOT/scripts/roster.sh" caps chunked "${ROSTER_TAG-blocking}" | tr '\n' ' ')}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [chunked] no driver implements SOFAB_SPLIT yet — nothing to check." >&2

@@ -1087,17 +1087,13 @@ here:
       with the corpus size, or report a timed-out driver as `[TIMEOUT]` and carry on with the
       rest — the second is the one that cannot hide drivers.
 
-- [ ] **The Kotlin target has two of its four KMP legs.** `drivers/kotlin/` runs
-      corelib-kotlin-mp on `jvm` and on `linuxX64` (2026-08-18). The corelib also builds
-      for **`js` (IR, Node/browser)** and **`linuxArm64`**, and the JS leg is the
-      interesting one: Kotlin/JS has neither a 64-bit integer nor an `fp32` value type
-      natively — `Long` is emulated and `Float` is a JS `number` — which is the shape that
-      produced findings in the other double-only ports (the Dart `Fp32Bits` channel,
-      generator#275). Wiring it needs an `io_js.kt` (Node `fs.readFileSync(0)` /
-      `process.env`) and the corelib's JS klib on the compile line; the driver core, the
-      materialize walker and the streaming axes are already target-agnostic and would need
-      no change. `linuxArm64` is cheap but only tests a cross-compile on an x86 runner —
-      worth it on an arm64 runner, not before.
+- [ ] **The Kotlin target has three of its four KMP legs.** `drivers/kotlin/` runs
+      corelib-kotlin-mp on `jvm`, `linuxX64` (2026-08-18) and, since 2026-10-02, `js` (IR, Node):
+      `kotlin-js`, quarantined until G-0046 is fixed (it quiets an fp32 signaling NaN — the
+      double-only-port shape this item predicted). Open on the JS leg: it is not yet run through
+      the chunked / encode-invariance axes or the limit suite, and has no `limits` tag.
+      `linuxArm64` is cheap but only tests a cross-compile on an x86 runner — worth it on an
+      arm64 runner, not before.
 - [ ] **The Kotlin/Native leg has no coverage front-end.** Jazzer steers the JVM leg
       (`drivers/kotlin/FuzzProbe.kt`), and both legs are replayed against the corpus it
       grows — but Kotlin/Native exposes no libFuzzer entry point, so nothing steers by

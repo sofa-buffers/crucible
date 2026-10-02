@@ -37,7 +37,7 @@ CORPUS="${CORPUS:-$ROOT/corpus/structured}"
 # said so, but a name was missing from a script — and a missing name is indistinguishable
 # from a declared exception. Staying out now requires a `meta` that declares no surface.
 # SOFAB_ENCODE_DRIVERS still overrides, for isolating one driver by hand.
-SUPPORTED="${SOFAB_ENCODE_DRIVERS:-$("$ROOT/scripts/roster.sh" caps encode | tr '\n' ' ')}"
+SUPPORTED="${SOFAB_ENCODE_DRIVERS:-$("$ROOT/scripts/roster.sh" caps encode "${ROSTER_TAG-blocking}" | tr '\n' ' ')}"
 
 if [ -z "$SUPPORTED" ]; then
     echo "==> [encode] no driver implements SOFAB_ENCODE yet — nothing to check." >&2
