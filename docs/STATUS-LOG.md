@@ -33,6 +33,12 @@ superseded; trust `FINDINGS.md` for the current tally.
   rejects a stdlib klib, built by a different compiler. **Unverified in the image**: the Dockerfile
   edit was checked only by running all three legs with a standalone 2.4.20 `kotlinc` locally; the
   image has to be rebuilt (`image.yml`) to confirm.
+- Two gates assumed every roster row is built, which a quarantined driver breaks; both are fixed
+  in this change. `scripts/check-family-copies.py` skips (with a note) a quarantined driver whose
+  generated code is not there, and `run-chunked.sh` / `run-encode.sh` now pass the gate tag to
+  `roster.sh caps` (as `run.sh` does) — before, the union-deep suite's chunk and encode passes
+  failed with `unknown driver(s): kotlin-js`, because the capability list was not filtered by tag
+  while the driver table was.
 - crucible#213 stays open: `linuxArm64` is deliberately not done (a cross-compile on an x86
   runner tests nothing — wait for an arm64 runner). crucible#214 (native coverage front-end) is
   untouched: it is the shared zig/dart/kotlin C-interop-to-libFuzzer question, a design task, not a
