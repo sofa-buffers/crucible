@@ -110,7 +110,7 @@ PLACE_CS = r"\bSeq\.(?:PlaceElem|ReserveElem|ReserveRow)\b"
 GENERATED = {
     # C decodes through corelib-c-cpp's descriptor transcoder: the generated code is
     # only the descriptor, so one SOFAB_OBJECT_FIELD per wrapper is the whole call.
-    "c":             (["drivers/c/gen/probe.c"], r"\bSOFAB_OBJECT_FIELD\w*\("),
+    "c":             (["drivers/c/gen/probe*.c"], r"\bSOFAB_OBJECT_FIELD\w*\("),
     "go":            (["drivers/go/message/probe.go"], r"\bNew(?:String|Blob|Message)Seq\b"),
     "rust-std":      (["drivers/rust/build/rs/src/message.rs"], PLACE),
     "rust-nostd":    (["drivers/rust/build/rs-no-std/src/message.rs"], PLACE),
