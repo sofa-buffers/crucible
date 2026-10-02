@@ -44,6 +44,20 @@ superseded; trust `FINDINGS.md` for the current tally.
   untouched: it is the shared zig/dart/kotlin C-interop-to-libFuzzer question, a design task, not a
   wiring one.
 
+## 2026-10-02 — bootstrap waits for the generator's CI instead of aborting at once
+
+- crucible#236's `differential` job died in the bootstrap: generator@main's newest commit had a
+  CI run in progress, and the bootstrap's rule (abort rather than install an older build) fired
+  on a coincidence of timing. The re-run, once that run had finished, got past it.
+- **Decision: wait, bounded.** `scripts/bootstrap.sh` now asks `sofabgen_pick.py` again every
+  `SOFABGEN_WAIT_POLL` seconds (30) for up to `SOFABGEN_WAIT_MIN` minutes (15; `0` restores the
+  old abort-at-once) while the tip is `RUNNING` or `FRESH`. The generator's CI takes 4-9 minutes.
+  The rule itself is unchanged: what happens once the run is done is still the pick's decision,
+  and a wait that runs out aborts with the same message — never a silent older build.
+  The wait loop was tested in isolation against a stub pick (running twice then OK; running with
+  `WAIT_MIN=0`; OK at once); the end-to-end path was not exercised against the real API.
+
+
 ## 2026-10-02 — nightly 36992410554 triaged — quiet, confirmed by a full local round
 
 - Nightly 36992410554 (dispatched on the Go fuzz-harness fix) is the first run since the sofabgen
