@@ -95,7 +95,7 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
     && curl -fsSL -o /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" \
     && unzip -q /tmp/gradle.zip -d /opt && rm /tmp/gradle.zip \
     && ln -sfn "/opt/gradle-${GRADLE_VERSION}/bin/gradle" /usr/local/bin/gradle \
-    && KOTLIN_VERSION=2.4.10 \
+    && KOTLIN_VERSION=2.4.20 \
     && curl -fsSL -o /tmp/kotlinc.zip "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip" \
     && unzip -q /tmp/kotlinc.zip -d /opt && rm /tmp/kotlinc.zip \
     && java -version && gradle --version && kotlinc -version
@@ -116,7 +116,7 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # It lands under KONAN_DATA_DIR in the layout Gradle uses, so both find the same
 # installation: drivers/kotlin/build.sh looks for kotlinc-native there, and the
 # corelib's own Gradle build reuses this copy instead of fetching its own.
-RUN KOTLIN_VERSION=2.4.10 \
+RUN KOTLIN_VERSION=2.4.20 \
     && case "$(uname -m)" in \
          x86_64)  KN_HOST=linux-x86_64 ;; \
          aarch64) KN_HOST=linux-aarch64 ;; \
