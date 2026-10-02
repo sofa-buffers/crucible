@@ -1,8 +1,8 @@
 # G-0046 — the sofabgen Kotlin backend consumes an `fp32` as a `Float`, so on Kotlin/JS a signaling NaN is quieted
 
-**Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status; this file is the evidence. Not yet filed upstream (the JS leg that exposes it is quarantined meanwhile, see `drivers/roster`).
+**Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status; this file is the evidence. The JS leg that exposes it is quarantined meanwhile (`drivers/roster`).
 **Guard:** corpus/structured — `043_f32_snan.bin` (scalar) and `083_arr_fp32_nan_bits.bin` (array element): the replay and materialized gates both see them as soon as the `kotlin-js` row is un-quarantined.
-**Issue:** —
+**Issue:** [generator#670](https://github.com/sofa-buffers/generator/issues/670) (filed 2026-10-02)
 
 **Found 2026-10-02** while wiring the Kotlin/JS leg of `drivers/kotlin/` (crucible#213). It is
 the F-0049 / G-0033 shape again, in the one backend whose corelib already did its part.
