@@ -134,11 +134,14 @@ def _load_refs(schema_path):
 
 
 def _field_ty(parent_ty, f):
-    """Generated Rust type name of field/option `f` declared under type `parent_ty`."""
+    """Generated Rust type name of field/option `f` declared under type `parent_ty`.
+
+    sofabgen joins the nesting with `_` (Probe_Choice_Pt) and names a shared $ref union
+    <Ref>__Default<Option>; the types it declares hang off <Ref>, not off that name."""
     if f["kind"] == "union" and f["name"] in _REFS:
         dflt = [o for o in f["options"] if o["id"] == f["default_id"]][0]
-        return "Union" + _camel(_REFS[f["name"]]) + "Default" + _camel(dflt["name"])
-    return parent_ty + _camel(f["name"])
+        return _camel(_REFS[f["name"]]) + "__Default" + _camel(dflt["name"])
+    return parent_ty.split("__Default")[0] + "_" + _camel(f["name"])
 
 
 def emit_value(node, path, out, ty="Probe"):
@@ -209,12 +212,12 @@ def emit_value(node, path, out, ty="Probe"):
         out.append('    let _ = write!(s, "]");')
     elif kind == "node_wrapper":
         # dynamic wrapper array (Vec) whose elements are walked through `item`; the element
-        # type is <parent><Field>Elem, one more `Elem` per nesting level.
+        # type is the field's own type (no `Elem` suffix since generator 7960a3e8).
         out.append('    let _ = write!(s, "[");')
         out.append("    for (i, x) in " + path + ".iter().enumerate() {")
         out.append('        if i > 0 { let _ = write!(s, ","); }')
         inner = []
-        emit_value(node["item"], "x", inner, ty + "Elem")
+        emit_value(node["item"], "x", inner, ty)
         out.extend("    " + ln for ln in inner)
         out.append("    }")
         out.append('    let _ = write!(s, "]");')
