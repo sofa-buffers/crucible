@@ -14,6 +14,17 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-02 — the nightly's Go fuzz engines were compiling against the old generated names
+
+- Nightly 36842488556 (2026-10-01) died in the build before fuzzing: `fuzz.sh` still named
+  `probe.c`, which the renamed sofabgen output no longer has. Already fixed by the 2026-10-01
+  adaptation; the re-run 36979164106 fuzzed, and both cluster steps accounted for every camp.
+- That re-run still had four red steps: all four Go engines (`FuzzProbe`/`FuzzProbeStream`, block
+  and union schema) failed to compile, because the adaptation renamed the calls in `driver.go` but
+  not in `drivers/go/fuzz_test.go` (`msg.DecodeProbe`/`msg.NewProbe`). They harvested nothing, and
+  the job stayed green because those steps are `continue-on-error`. `fuzz_test.go` now calls
+  `msg.Probe__Decode`/`msg.Probe__New`.
+
 ## 2026-10-01 — G-0045 found by the first union nightly, filed and resolved the same day
 
 - Nightly 36829015200 (first run with the union steps) produced one new camp: the four C++

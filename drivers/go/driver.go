@@ -180,7 +180,7 @@ func reportForeign() {
 // encodeVia re-encodes through the selected surface. The three are genuinely
 // different paths through the corelib, not three names for one call:
 //
-//	new     -> Encode(): a ProbeMaxSize buffer the generated code allocates, no sink
+//	new     -> Encode(): a Probe__MaxSize buffer the generated code allocates, no sink
 //	to      -> EncodeTo(w): the caller owns the destination; the corelib drains into
 //	           it through a small scratch window of its own
 //	stream  -> Serialize() into an encoder this driver builds, with the SOFAB_FLUSH
@@ -445,7 +445,7 @@ func canonical(w *bufio.Writer, data []byte) {
 		if errors.Is(err, sofab.ErrIncomplete) {
 			// INCOMPLETE (MESSAGE_SPEC §7): decode ended mid-message — the third
 			// canonical verdict, neither accept nor reject. The corelib returns no
-			// partial value here (DecodeProbe drops it), so emit the bare `I`.
+			// partial value here (Probe__Decode drops it), so emit the bare `I`.
 			fmt.Fprint(w, "I\n")
 			return
 		}
