@@ -49,6 +49,8 @@
 #                             The default is to ABORT: installing an older build while a newer
 #                             one is minutes away is how the replay job on main compared a fresh
 #                             family against a generator from before generator#608.
+#   SOFABGEN_WAIT_MIN=<n>     minutes to wait for that CI run before aborting (default 15; 0 =
+#                             abort at once). SOFABGEN_WAIT_POLL=<s> is the poll interval (30).
 #   SOFABGEN_ARTIFACT=<name>  artifact holding the binary (default: sofabgen-<os>-<arch>)
 #   SOFABGEN_TOKEN=<token>    token for the generator Actions API (else GH_TOKEN/GITHUB_TOKEN/gh)
 #   SOFABGEN_CI_REQUIRED=1    hard-fail instead of falling back to a release when CI is unreachable
@@ -257,17 +259,37 @@ sofabgen_from_ci() {
         # time). A commit whose CI is still running, or a fresh tip whose CI has not
         # started, ABORTS: the newest build is about to exist, and comparing a fresh family
         # against an older generator is the mismatch this repo exists to avoid.
-        _pick=$(TOK="$_tok" python3 "$ROOT/scripts/sofabgen_pick.py" "$_api" "$GEN_BRANCH" \
-            ${SOFABGEN_ALLOW_RUNNING:+--allow-running} 2>/dev/null) || _pick=""
+        #
+        # While the tip's CI is running (or not started) the pick is asked again every
+        # SOFABGEN_WAIT_POLL seconds for up to SOFABGEN_WAIT_MIN minutes -- the generator's
+        # CI takes 4-9 minutes, and aborting a whole replay run on a coincidence of timing
+        # (crucible#236) tests nothing. The rule is unchanged: what happens once the run has
+        # finished is still the pick's decision, and a wait that runs out aborts exactly as
+        # before, so there is no silent fall back to an older build.
+        _wait_max=$(( ${SOFABGEN_WAIT_MIN:-15} * 60 ))
+        _wait_poll="${SOFABGEN_WAIT_POLL:-30}"
+        _waited=0
+        while :; do
+            _pick=$(TOK="$_tok" python3 "$ROOT/scripts/sofabgen_pick.py" "$_api" "$GEN_BRANCH" \
+                ${SOFABGEN_ALLOW_RUNNING:+--allow-running} 2>/dev/null) || _pick=""
+            case "$_pick" in
+                RUNNING*|FRESH*)
+                    [ "$_waited" -lt "$_wait_max" ] || break
+                    echo "==> tools/sofabgen: generator@$GEN_BRANCH CI not finished (${_pick%% *}); waited ${_waited}s of ${_wait_max}s" >&2
+                    sleep "$_wait_poll"
+                    _waited=$(( _waited + _wait_poll )) ;;
+                *) break ;;
+            esac
+        done
         case "$_pick" in
             RUNNING*)
-                echo "error: generator@$GEN_BRANCH commit $(printf '%s' "$_pick" | cut -d' ' -f3 | cut -c1-8) has CI run $(printf '%s' "$_pick" | cut -d' ' -f2) still in progress." >&2
-                echo "       Refusing to install an older build while a newer one is coming. Wait for it, pin SOFABGEN_RUN=<run-id>," >&2
+                echo "error: generator@$GEN_BRANCH commit $(printf '%s' "$_pick" | cut -d' ' -f3 | cut -c1-8) has CI run $(printf '%s' "$_pick" | cut -d' ' -f2) still in progress after waiting ${_waited}s." >&2
+                echo "       Refusing to install an older build while a newer one is coming. Raise SOFABGEN_WAIT_MIN, pin SOFABGEN_RUN=<run-id>," >&2
                 echo "       or set SOFABGEN_ALLOW_RUNNING=1 to use the newest green ancestor instead." >&2
                 exit 1 ;;
             FRESH*)
-                echo "error: generator@$GEN_BRANCH tip $(printf '%s' "$_pick" | cut -d' ' -f2 | cut -c1-8) is minutes old and its CI has not started." >&2
-                echo "       Refusing to install an older build. Retry shortly, pin SOFABGEN_RUN=<run-id>, or set SOFABGEN_ALLOW_RUNNING=1." >&2
+                echo "error: generator@$GEN_BRANCH tip $(printf '%s' "$_pick" | cut -d' ' -f2 | cut -c1-8) is minutes old and its CI has not started (waited ${_waited}s)." >&2
+                echo "       Refusing to install an older build. Raise SOFABGEN_WAIT_MIN, pin SOFABGEN_RUN=<run-id>, or set SOFABGEN_ALLOW_RUNNING=1." >&2
                 exit 1 ;;
             OK*) ;;
             *) echo "==> tools/sofabgen: no green ci.yml run in the last commits of generator@$GEN_BRANCH (or the API was unreachable; the token needs actions:read on sofa-buffers/generator)" >&2; return 1 ;;
