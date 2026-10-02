@@ -54,3 +54,7 @@ zig                zig      -          blocking,limits   drivers/zig/build/drive
 dart               dart     -          blocking,limits   drivers/dart/build/driver
 kotlin-jvm         kotlin   jvm        blocking,limits   drivers/kotlin/build/jvm/driver
 kotlin-native      kotlin   native     blocking,limits   drivers/kotlin/build/native/driver
+# kotlin-js is QUARANTINED for G-0046: the generated Kotlin visitor takes an fp32 as a
+# widened `Float` (not `fp32Bits`), and on Kotlin/JS that quiets a signaling NaN. Lift the
+# quarantine (add `blocking,limits`) when the generator fix lands.
+kotlin-js         kotlin   js         -                 drivers/kotlin/build/js/driver

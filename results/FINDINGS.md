@@ -130,5 +130,6 @@ Chronology and decisions are **not** here — they are in
 | **G-0043** | [generated Python reads a header that contradicts the declared type instead of skipping it, in three visitor scopes (§7.3)](../findings/G-0043-python-mistyped-header-read-not-skipped/NOTES.md) | [generator#575](https://github.com/sofa-buffers/generator/issues/575) | ✅ |
 | **G-0044** | [the sofabgen Dart backend decodes `array of boolean` into raw integers: a non-zero element other than `1` is not normalized to `true`](../findings/G-0044-dart-backend-boolean-array-not-normalized-on-decode/NOTES.md) | [generator#616](https://github.com/sofa-buffers/generator/issues/616) (filed 2026-09-29) | ✅ |
 | **G-0045** | [the sofabgen C++ backend applies the element-index bound of a nested array before the §7.3 wire-type skip](../findings/G-0045-cpp-backend-nested-array-element-bound-precedes-7-3-skip/NOTES.md) | [generator#627](https://github.com/sofa-buffers/generator/issues/627) (filed 2026-10-01) | ✅ |
+| **G-0046** | [the sofabgen Kotlin backend consumes an `fp32` as a `Float`, so on Kotlin/JS a signaling NaN is quieted](../findings/G-0046-kotlin-backend-fp32-consumed-as-float-not-raw-bits/NOTES.md) | — | 🔴 |
 
-**109 entries — 107 resolved, 0 open, 2 by-design/withdrawn.**
+**110 entries — 107 resolved, 1 open, 2 by-design/withdrawn.**

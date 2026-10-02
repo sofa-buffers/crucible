@@ -14,6 +14,30 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-02 — the Kotlin/JS leg is wired (crucible#213), and finds G-0046 at once
+
+- `drivers/kotlin/build.sh js` + `io_js.kt` build the driver for corelib-kotlin-mp's `js(IR)` target
+  and run it on Node. Registered as `kotlin-js`, **quarantined** (no `blocking` tag): across
+  `corpus/structured`, `conformance`, `seeds`, `regression` and the 24 881-input grown corpus the
+  only divergences it adds are two fp32 signaling-NaN inputs, both oracles. Filed as **G-0046**
+  (generated code: it consumes `fp32(Float)` where the corelib offers `fp32Bits`). Un-quarantine
+  when the generator fix lands. Not run on this leg yet: the chunked / encode-invariance axes and
+  the limit suite (no `limits` tag).
+- Two things that cost time and are now in `build.sh`: kotlinc-js resolves the corelib only from
+  the packed `jsJar` klib (the unpacked `compileKotlinJs` directory is ignored without a word —
+  the package just comes up empty), and 2.4.20's `kotlinc-js` compiles sources to a klib and links
+  JS only through a second `-Xinclude` pass.
+- **Decision: the image's `kotlinc` moves 2.4.10 → 2.4.20.** The Dockerfile's own comment says to
+  keep it in step with `kotlin("multiplatform")` in corelib-kotlin-mp, which went to 2.4.20; the
+  mismatch was invisible on the JVM leg (a jar) but kotlinc-js silently ignores a klib, and
+  rejects a stdlib klib, built by a different compiler. **Unverified in the image**: the Dockerfile
+  edit was checked only by running all three legs with a standalone 2.4.20 `kotlinc` locally; the
+  image has to be rebuilt (`image.yml`) to confirm.
+- crucible#213 stays open: `linuxArm64` is deliberately not done (a cross-compile on an x86
+  runner tests nothing — wait for an arm64 runner). crucible#214 (native coverage front-end) is
+  untouched: it is the shared zig/dart/kotlin C-interop-to-libFuzzer question, a design task, not a
+  wiring one.
+
 ## 2026-10-02 — the nightly's Go fuzz engines were compiling against the old generated names
 
 - Nightly 36842488556 (2026-10-01) died in the build before fuzzing: `fuzz.sh` still named
