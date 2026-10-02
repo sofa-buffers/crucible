@@ -38,6 +38,20 @@ superseded; trust `FINDINGS.md` for the current tally.
   untouched: it is the shared zig/dart/kotlin C-interop-to-libFuzzer question, a design task, not a
   wiring one.
 
+## 2026-10-02 — nightly 36992410554 triaged — quiet, confirmed by a full local round
+
+- Nightly 36992410554 (dispatched on the Go fuzz-harness fix) is the first run since the sofabgen
+  rename with every engine fuzzing: the four Go engines compile again and harvested 3 + 4 (block)
+  and 421 + 240 (union) inputs. No crashes; both cluster steps accounted for every camp (3/3 block,
+  1/1 union). The scheduled 36987082797 ran before the fix landed and shows the same four Go
+  compile failures as 36979164106.
+- The three artifacts (36979164106, 36987082797, 36992410554) were merged into the local corpus:
+  `interesting` 24440 → 24881, `interesting-union` 0 → 5422.
+- Local round at family `main`, sofabgen `46154138` (newer than the nightly's): re-cluster
+  3/3 + 1/1 accounted, no new camp; materialize 0/119; encode invariance 0 over 24881 × 17;
+  chunk invariance (`--modes chunk,scrub`) 0 over 24881 × 16. The chunk pass again died on
+  `py-pure` at the default `CHUNK_FEED_TIMEOUT=120` and completed at 2400.
+
 ## 2026-10-02 — the nightly's Go fuzz engines were compiling against the old generated names
 
 - Nightly 36842488556 (2026-10-01) died in the build before fuzzing: `fuzz.sh` still named
