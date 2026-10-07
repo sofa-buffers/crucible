@@ -190,11 +190,16 @@ impl<E: std::fmt::Debug> FlushOutcome for Result<usize, E> {
 // identical bytes for one decoded value, and SOFAB_FLUSH must not change that: it hands
 // the OStream an n-byte buffer with a sink, so the encoder crosses a buffer boundary at
 // every offset — the encode-side mirror of SOFAB_CHUNK=1.
-fn encode_via(cfg: &StreamCfg, m: &Probe) -> Vec<u8> {
+//
+// Both surfaces are fallible since generator#673: `encode()` reports a value filled past
+// its bound instead of truncating it, and `serialize()` surfaces the corelib's write
+// error. A failure is returned, not unwrapped, so the caller reports it as a reject
+// class (oracle/canonical.md) rather than a panic.
+fn encode_via(cfg: &StreamCfg, m: &Probe) -> Result<Vec<u8>, Error> {
     if cfg.enc == EncSurface::New {
         // `encode()` is Vec<u8> on std and heapless::Vec<u8, MAX_SIZE> on no-std;
         // iterate rather than convert, so this one line compiles for both.
-        return m.encode().iter().copied().collect();
+        return Ok(m.encode()?.iter().copied().collect());
     }
     let cap = if cfg.flush > 0 { cfg.flush } else { Probe::MAX_SIZE };
     let mut buf = vec![0u8; std::cmp::max(cap, 1)];
@@ -220,10 +225,10 @@ fn encode_via(cfg: &StreamCfg, m: &Probe) -> Vec<u8> {
                 std::process::exit(3);
             }
         };
-        m.serialize(&mut os);
+        m.serialize(&mut os)?;
         os.flush().or_exit();
     }
-    out
+    Ok(out)
 }
 
 fn reject_class(e: Error) -> &'static str {
@@ -283,7 +288,13 @@ fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool, cfg: &St
             }
             // COMPLETE: re-encode the decoded value -> hex, through whichever encode
             // surface SOFAB_ENCODE selects (default: the allocating encode()).
-            let bytes = encode_via(cfg, &m);
+            let bytes = match encode_via(cfg, &m) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    let _ = writeln!(out, "R {}", reject_class(e));
+                    return;
+                }
+            };
             let _ = write!(out, "A ");
             for b in bytes.iter() {
                 let _ = write!(out, "{:02x}", b);
