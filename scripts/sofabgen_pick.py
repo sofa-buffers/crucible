@@ -17,7 +17,8 @@ trusting a global list:
     SOFABGEN_ALLOW_RUNNING=1 to walk past it.
   * the TIP has no run at all and is younger than FRESH_MINUTES -> ABORT ("fresh"). CI has not
     started yet; the same reasoning.
-  * a commit with a completed, successful run        -> pick it.
+  * a commit with a completed, successful run        -> pick it (its newest green PUSH run
+    when it has one: a schedule run of the same sha attaches no binary).
   * a commit whose runs all failed or were cancelled -> a red build, walk on to its parent.
 
 `pick()` takes the API reader as an argument so the rule is tested without a network
@@ -62,7 +63,11 @@ def pick(get, branch, allow_running=False, now=None, depth=DEPTH):
             return ("running", live[0]["id"], sha)
         green = [r for r in runs if r.get("status") == "completed" and r.get("conclusion") == "success"]
         if green:
-            r = max(green, key=lambda x: x["created_at"])
+            # only a push run attaches the sofabgen-<os>-<arch> binaries; the nightly
+            # schedule run of the same sha is newer but carries none (2026-10-07: the pick
+            # landed on one and every bootstrap fell back to a release a week old)
+            pushed = [r for r in green if r.get("event") == "push"]
+            r = max(pushed or green, key=lambda x: x["created_at"])
             return ("ok", r["id"], sha, r["created_at"], tip, i)
         if i == 0 and not runs and not allow_running:
             when = c.get("commit", {}).get("committer", {}).get("date")
