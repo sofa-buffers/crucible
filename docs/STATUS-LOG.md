@@ -14,6 +14,18 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-07 — the Rust driver follows sofabgen's fallible `encode()` (generator#673)
+
+- Re-bootstrap on `main` (sofabgen built from source at generator@cb894c1: the newest green
+  run was a scheduled one without a binary, and the release fallback v0.24.1 predates the
+  2026-10-01 build). generator@44e6c23 (generator#673) made the Rust backend's `encode()`
+  return `Result` instead of truncating an over-bound value, so `drivers/rust/driver.rs` no
+  longer compiled on either corelib.
+- `encode_via` now returns the error, from `encode()` and from the `serialize()` the flush
+  surface calls (whose `Result` was dropped before); the accept path reports it as
+  `R <class>`, per `oracle/canonical.md`'s rule for an encode failing after a decode.
+  `run.sh` and `materialize.sh` green, 17 drivers.
+
 ## 2026-10-02 — the Kotlin/JS leg is wired (crucible#213), and finds G-0046 at once
 
 - `drivers/kotlin/build.sh js` + `io_js.kt` build the driver for corelib-kotlin-mp's `js(IR)` target
