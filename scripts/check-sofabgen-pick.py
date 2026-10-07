@@ -21,9 +21,9 @@ def iso(minutes_ago):
     return (NOW - datetime.timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def run(rid, status="completed", conclusion="success", branch="main", minutes_ago=100):
+def run(rid, status="completed", conclusion="success", branch="main", minutes_ago=100, event="push"):
     return {"id": rid, "status": status, "conclusion": conclusion,
-            "head_branch": branch, "created_at": iso(minutes_ago)}
+            "head_branch": branch, "created_at": iso(minutes_ago), "event": event}
 
 
 def history(*commits):
@@ -96,6 +96,17 @@ case("newest_green_commit_wins",
      pick(history(("t", 60, [run(50, minutes_ago=60)]), ("m", 900, [run(40, minutes_ago=900)]),
                   ("o", 7000, [run(3, minutes_ago=7000)])), "main", now=NOW),
      ("ok", 50, "t"))
+
+# the nightly schedule run of the tip is newer than its push run but attaches no binary: the
+# push run wins (2026-10-07: picking the schedule run sent every bootstrap to a week-old release)
+case("push_run_beats_newer_schedule_run",
+     pick(history(("t", 120, [run(7, minutes_ago=110), run(8, minutes_ago=30, event="schedule")])),
+          "main", now=NOW),
+     ("ok", 7, "t"))
+# a commit with only a schedule run is still green (the caller reports a missing artifact)
+case("schedule_only_still_picked",
+     pick(history(("t", 120, [run(8, minutes_ago=30, event="schedule")])), "main", now=NOW),
+     ("ok", 8, "t"))
 
 # nothing green anywhere
 case("nothing_green", pick(history(("t", 200, [run(1, conclusion="failure")]),

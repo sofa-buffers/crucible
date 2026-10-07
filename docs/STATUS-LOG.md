@@ -25,6 +25,11 @@ superseded; trust `FINDINGS.md` for the current tally.
   surface calls (whose `Result` was dropped before); the accept path reports it as
   `R <class>`, per `oracle/canonical.md`'s rule for an encode failing after a decode.
   `run.sh` and `materialize.sh` green, 17 drivers.
+- **The sofabgen pick prefers a push run.** For one commit, `scripts/sofabgen_pick.py` took
+  the newest green run — at cb894c1 that was the nightly `schedule` run, which attaches no
+  `sofabgen-<os>-<arch>` binary, so every bootstrap (CI included) fell back to v0.24.1 and the
+  Go driver no longer compiled against the old type names. The pick now takes the newest green
+  `push` run of the commit when there is one; `check-sofabgen-pick.py` covers both cases.
 
 ## 2026-10-02 — the Kotlin/JS leg is wired (crucible#213), and finds G-0046 at once
 
