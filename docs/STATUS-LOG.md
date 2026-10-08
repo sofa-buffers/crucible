@@ -14,6 +14,23 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-08 — nightlies 37189912266 … 37599016108 triaged — quiet; three of them never clustered
+
+- The four scheduled nightlies since 36992410554 (2026-10-04 … 10-07) all fuzzed: no crashes in
+  any engine. Only 37189912266 (10-04) clustered (3/3 block, 1/1 union accounted). In 37290985130,
+  37442590999 and 37599016108 both cluster steps died in the roster build — `drivers/rust` did not
+  compile against sofabgen after generator#673 (fixed 2026-10-07, after the last of them) — and
+  the job stayed green because the steps are `continue-on-error`. That is the third time a
+  non-blocking nightly step stopped contributing without a signal; the missing step-outcome
+  summary is already listed in `docs/CI.md`.
+- Artifact 37599016108 (cumulative) merged into the local corpus: `interesting` 24881 → 25234,
+  `interesting-union` 5422 → 8577.
+- Local round at family `main`, sofabgen cb894c1 (installed as the CI binary — the push-run pick
+  from 2026-10-07): re-cluster 3/3 + 1/1 accounted, no new camp; chunk invariance
+  (`--modes chunk,scrub`, `CHUNK_FEED_TIMEOUT=2400`) 0 over 25234 × 16; encode invariance 0 over
+  25234 × 17. materialize was not re-run on the fuzzed corpus (0/119 on `corpus/structured` in the
+  2026-10-07 full suite).
+
 ## 2026-10-07 — the Rust driver follows sofabgen's fallible `encode()` (generator#673)
 
 - Re-bootstrap on `main` (sofabgen built from source at generator@cb894c1: the newest green
