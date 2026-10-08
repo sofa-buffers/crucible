@@ -64,6 +64,12 @@ jobs:
       - name: Which sofabgen the bootstrap installs (offline rule)
         run: python3 scripts/check-sofabgen-pick.py
 
+      # Every continue-on-error step of the nightly carries an `id`: its real outcome lives only
+      # in `steps.<id>.outcome`, which the nightly's last step reports. A step without one would
+      # fail silently again.
+      - name: Nightly non-blocking steps are reportable (static)
+        run: python3 scripts/check-nightly-steps.py --lint
+
   differential:
     runs-on: ubuntu-latest
     container:

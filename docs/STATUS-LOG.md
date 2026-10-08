@@ -21,8 +21,16 @@ superseded; trust `FINDINGS.md` for the current tally.
   37442590999 and 37599016108 both cluster steps died in the roster build — `drivers/rust` did not
   compile against sofabgen after generator#673 (fixed 2026-10-07, after the last of them) — and
   the job stayed green because the steps are `continue-on-error`. That is the third time a
-  non-blocking nightly step stopped contributing without a signal; the missing step-outcome
-  summary is already listed in `docs/CI.md`.
+  non-blocking nightly step stopped contributing without a signal (the Go engines 2026-08-14…18
+  and 2026-10-01 were the others).
+- **Decision: a failed non-blocking nightly step now turns the run red.** Each `continue-on-error`
+  step carries an `id`; the last step (`scripts/check-nightly-steps.py`, after the artifact
+  upload) reads `steps.<id>.outcome` and reports every failure as an annotation, a summary row
+  and a red run. Red rather than a printed list, because the annotations were already there
+  (`Process completed with exit code 101`) and nobody saw them for three nights; a red scheduled
+  run sends a notification. It also goes red on an unexplained cluster camp, which is the signal
+  the cluster steps exist for. `check-nightly-steps.py --lint` in replay.yml's `catalog` job keeps
+  a new non-blocking step from being added without an `id`.
 - Artifact 37599016108 (cumulative) merged into the local corpus: `interesting` 24881 → 25234,
   `interesting-union` 5422 → 8577.
 - Local round at family `main`, sofabgen cb894c1 (installed as the CI binary — the push-run pick

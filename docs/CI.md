@@ -31,7 +31,7 @@ changes (or on manual dispatch), with layer caching via `type=gha`.
 
 ## The replay gate (`replay.yml`) — blocking
 
-Two jobs. **`catalog`** runs first and needs no drivers at all. It carries three checks: `scripts/driver-audit.sh`, the per-driver participation ledger (every roster entry must declare what the gates need to place it), the static half of `scripts/check-family-copies.py` (every copy of family logic listed with a verdict, every materialized walker naming every schema kind), and `check-catalog.py`, which asserts that
+Two jobs. **`catalog`** runs first and needs no drivers at all. It carries these checks: `scripts/driver-audit.sh`, the per-driver participation ledger (every roster entry must declare what the gates need to place it), the static half of `scripts/check-family-copies.py` (every copy of family logic listed with a verdict, every materialized walker naming every schema kind), the offline sofabgen-pick rule (`check-sofabgen-pick.py`), `check-nightly-steps.py --lint` (every `continue-on-error` step of the nightly carries an `id`, see below), and `check-catalog.py`, which asserts that
 `results/FINDINGS.md` and its write-ups declare the same state:
 
 ```sh
@@ -102,6 +102,14 @@ Non-blocking by design: a fresh divergence is expected signal, not a build break
 triage stays human (the corelibs are other repos; cross-repo auto-filing is a later
 step). `FUZZ_TIME` (default 1800s) is overridable via manual dispatch.
 
+**A non-blocking step that fails turns the run red at the end.** The fuzz engines and both
+cluster steps are `continue-on-error` — a Go panic is a finding to upload, not a reason to stop
+the job — and GitHub then reports a failed one as a success, in the UI and in the jobs API. So
+each of them carries an `id`, and the last step (`scripts/check-nightly-steps.py`, after the
+artifact upload) reads `steps.<id>.outcome`: every failure becomes an error annotation, a row in
+the job summary, and a red run. The red run is the signal; it still blocks nothing. A new
+`continue-on-error` step without an `id` fails the `catalog` job of `replay.yml`.
+
 **The cron time is a request, not a promise.** Scheduled runs queue on GitHub's
 shared scheduler and are dispatched under load, so "nightly" regularly arrives in the
 morning: on an unchanged `0 3 * * *` the job started between +0.5 h and +4.5 h late
@@ -120,12 +128,6 @@ was when it *started*, so a fix that lands during the run is not in it.
   The two streaming gates (`run-chunked.sh`, `run-encode.sh`) each pay a build too: since
   2026-08-16 they derive their participants from the roster + `meta` (`roster.sh caps`),
   and both run a full roster — fourteen and fifteen drivers.
-- **A `continue-on-error` step that stops working says nothing.** The nightly's Go engine
-  failed for five nights (2026-08-14…18) without colouring a single run, because that is
-  what `continue-on-error` is for — a Go panic there is a finding, not a build break. The
-  flag is still right; what is missing is a final step that reads the job's step outcomes
-  and prints the ones that were non-zero, so a step that quietly stopped contributing is
-  visible on night one instead of on the next hand triage.
 - **Cross-repo auto-annotation:** have `nightly` open/annotate issues on the owning
   corelib/generator repos (needs a PAT with `issues:write`), instead of only
   uploading artifacts.
