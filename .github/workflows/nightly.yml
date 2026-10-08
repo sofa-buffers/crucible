@@ -84,6 +84,7 @@ jobs:
       # Non-blocking: a Go panic here is a crash finding, reported via the artifact
       # upload below, and must not fail the nightly.
       - name: Fuzz — Go coverage engine (second steering engine)
+        id: go_engine
         continue-on-error: true
         run: FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz-go.sh
 
@@ -98,10 +99,12 @@ jobs:
       # the same reason: a violation here is a crash finding, reported via the
       # artifact upload below, and must not fail the nightly.
       - name: Fuzz — C streaming engine (feed/finish path)
+        id: c_stream
         continue-on-error: true
         run: FUZZ_STREAM=1 FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz.sh
 
       - name: Fuzz — Go streaming engine (feed/finish path)
+        id: go_stream
         continue-on-error: true
         run: FUZZ_TARGET=FuzzProbeStream FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz-go.sh
 
@@ -113,6 +116,7 @@ jobs:
       # for that schema and would only be noise to the probe roster. Block path only.
       # Non-blocking, like every engine here.
       - name: Fuzz — union engine (deep union schema)
+        id: union_engine
         continue-on-error: true
         run: |
           FUZZ_SCHEMA=schema/probe-union-deep.sofab.yaml FUZZ_CORPUS=corpus/interesting-union \
@@ -124,6 +128,7 @@ jobs:
       # most plausibly breaks across a chunk boundary. The Go engines run on the union
       # schema in their own steps below. Harvest goes to the union corpus.
       - name: Fuzz — union streaming engine (deep union schema, feed/finish path)
+        id: union_stream
         continue-on-error: true
         run: |
           FUZZ_STREAM=1 FUZZ_SCHEMA=schema/probe-union-deep.sofab.yaml \
@@ -137,6 +142,7 @@ jobs:
       # one-shot and chunked decode is a failure, not a crash). Each schema has its own GOCACHE,
       # because Go's fuzz cache is harvested whole. Non-blocking, like every engine here.
       - name: Fuzz — union Go engine (deep union schema, block path)
+        id: union_go
         continue-on-error: true
         run: |
           FUZZ_SCHEMA=schema/probe-union-deep.sofab.yaml CORPUS=corpus/interesting-union \
@@ -144,6 +150,7 @@ jobs:
           FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz-go.sh
 
       - name: Fuzz — union Go streaming engine (deep union schema, feed/finish path)
+        id: union_go_stream
         continue-on-error: true
         run: |
           FUZZ_TARGET=FuzzProbeStream FUZZ_SCHEMA=schema/probe-union-deep.sofab.yaml \
@@ -167,6 +174,7 @@ jobs:
       # red for no reason, which is exactly what known-clusters.txt exists to prevent.
       # A real hang still fails it — 30s per input is a hang by any measure.
       - name: Cluster new divergences (non-blocking; red on an unexplained camp)
+        id: cluster
         continue-on-error: true
         run: |
           CLUSTER=1 TIMEOUT=30 CORPUS=corpus/interesting BASELINE=results/known-clusters.txt \
@@ -176,6 +184,7 @@ jobs:
       # baseline. Run after the probe cluster step: it rebuilds every driver against the
       # union schema and leaves them that way, which nothing after it depends on.
       - name: Cluster union divergences (non-blocking; red on an unexplained camp)
+        id: cluster_union
         continue-on-error: true
         run: |
           SCHEMA=schema/probe-union-deep.sofab.yaml CLUSTER=1 TIMEOUT=30 \
@@ -194,3 +203,17 @@ jobs:
             results/CLUSTERS.md
           if-no-files-found: ignore
           retention-days: 14
+
+      # The non-blocking steps above keep the job going — a Go panic is a finding to upload, not
+      # a reason to stop — but a step that stops working then says nothing: the Go engines
+      # (2026-08, 2026-10-01) and both cluster steps (2026-10-05…07, a driver that no longer
+      # compiled) each went dark for days on a green run. Their real outcome is only in
+      # `steps.<id>.outcome`, so every one of them carries an `id` (enforced by
+      # `check-nightly-steps.py --lint` in replay.yml's catalog job), and this step turns any
+      # failure among them into an annotation, a summary line, and a red run. It runs after the
+      # upload, so the artifact is never lost to it.
+      - name: Non-blocking step outcomes (red when any of them failed)
+        if: always()
+        env:
+          STEPS: ${{ toJSON(steps) }}
+        run: python3 scripts/check-nightly-steps.py
