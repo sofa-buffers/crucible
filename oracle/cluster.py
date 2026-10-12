@@ -47,7 +47,9 @@ def verdict_tag(line):
     if line == TIMEOUT:
         return "TIMEOUT", ""
     v, p = parse(line)
-    return {"A": "accept", "R": "reject"}.get(v, v), p
+    # `E` keeps its letter but gets a name a cluster report can be read with: the
+    # decode accepted and the re-encode of that value was refused (canonical.md).
+    return {"A": "accept", "R": "reject", "E": "encode-refused"}.get(v, v), p
 
 
 def signature(outputs):

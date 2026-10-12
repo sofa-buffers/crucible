@@ -149,6 +149,21 @@ public final class Driver {
         return e.error() == SofabError.LIMIT_EXCEEDED ? "L" : "R " + rejectClass(e);
     }
 
+    // A RE-ENCODE that was refused (generator#656: a value past a declared
+    // count/maxlen/width is refused with SofabError.ARGUMENT). Two rules:
+    //
+    //   on A  -> the `E <class>` verdict. NOT `R`: the decode just accepted these
+    //            bytes, so calling them malformed states the opposite of what happened
+    //            (oracle/canonical.md "The fifth verdict `E`").
+    //   on I  -> the bare `I`. The payload is dropped, the verdict is not: `I` is a
+    //            decode fact and hard, its hex a soft, optional payload. Letting an
+    //            encode failure rewrite it to `R`/`E` is the I-into-R collapse F-0001
+    //            exists to catch — and this driver is the only one that emits
+    //            `I <hex>` at all, so it was the only one where it could happen.
+    private static String refused(char verdict, String cls) {
+        return verdict == 'I' ? "I" : "E " + cls;
+    }
+
     private static String hexValue(char verdict, Probe m) {
         // Value for an A (COMPLETE) or I (INCOMPLETE) line: re-encode the decoded
         // message -> hex (oracle/canonical.md). For I this is the partial value
@@ -158,15 +173,13 @@ public final class Driver {
         try {
             enc = encodeVia(m);
         } catch (IOException e) {
-            return "R other";
+            return refused(verdict, "other");
         } catch (RuntimeException e) {
-            // encode failed after tryDecode reported A/I — should not happen given a
-            // worst-case buffer; report it as a reject class.
             Throwable c = (e.getCause() != null) ? e.getCause() : e;
             if (c instanceof SofabException) {
-                return errLine((SofabException) c);
+                return refused(verdict, rejectClass((SofabException) c));
             }
-            return "R other";
+            return refused(verdict, "other");
         }
         StringBuilder sb = new StringBuilder();
         sb.append(verdict).append(' ');

@@ -428,14 +428,18 @@ internal static class Driver
         // value's fields/elements explicitly instead of re-encoding to wire hex.
         if (Materialize) return "A " + MaterializeValue(m);
 
-        // COMPLETE: value via re-encode -> hex.
+        // COMPLETE: value via re-encode -> hex. A REFUSED re-encode (generator#656:
+        // a value past a declared count/maxlen/width throws SofabError.Argument) is
+        // the `E <class>` verdict, never a reject class — the decode above accepted
+        // these bytes, so reporting them as malformed states the opposite of what
+        // happened (oracle/canonical.md "The fifth verdict `E`").
         byte[] enc;
         try
         {
             enc = EncodeVia(m);
         }
-        catch (SofabException e) { return ErrLine(e); }
-        catch (Exception) { return "R other"; }
+        catch (SofabException e) { return "E " + RejectClass(e); }
+        catch (Exception) { return "E other"; }
 
         var sb = new StringBuilder("A ");
         foreach (byte b in enc) sb.Append(b.ToString("x2"));

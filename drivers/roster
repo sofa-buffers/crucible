@@ -22,6 +22,14 @@
 # both allow_dynamic settings. The wire format is byte-identical across all four, so
 # any divergence between them is a bug by construction — see crucible#129.
 #
+# The two no_std Rust rows are one more instance of the same idea, at the level BELOW the
+# generated code: identical generated source (only the generated Cargo.toml differs), run
+# against the two majors of `heapless` the generator now offers (generator#727). That crate
+# is not a detail of the build — with `allow_dynamic: false` a schema-bounded field *is* a
+# `heapless::String<N>`/`Vec<T, N>`, so heapless is what refuses an over-bound value at
+# encode and what fills a bounded array at decode for this profile. Two majors are two
+# implementations of that, under one API, and must answer identically.
+#
 # The two Kotlin rows are the same shape one level up: one source
 # (drivers/kotlin/driver.kt) against one corelib compiled for two Kotlin Multiplatform
 # targets — `jvm` (byte-array VarHandles for little-endian word access) and `native`
@@ -36,25 +44,26 @@
 # "something new broke". A quarantine entry must therefore always name the finding, so
 # it can be un-quarantined the moment that finding closes — never a silent exclusion.
 
-# name             builder  arg        tags              binary
-c                  c        -          blocking          drivers/c/build/driver
-go                 go       -          blocking,limits   drivers/go/build/driver
-rust-std           rust     rs         blocking,limits   drivers/rust/build/rs/target/debug/harness
-rust-nostd         rust     rs-no-std  blocking          drivers/rust/build/rs-no-std/target/debug/harness
-cpp                cpp      cpp        blocking,limits   drivers/cpp/build/cpp/driver
-cpp-fixed          cpp      cpp-fixed  blocking          drivers/cpp/build/cpp-fixed/driver
-cpp-c-cpp          cpp      c-cpp      blocking          drivers/cpp/build/c-cpp/driver
-cpp-c-cpp-dyn      cpp      c-cpp-dyn  blocking          drivers/cpp/build/c-cpp-dyn/driver
-py-cython          python   cython     blocking,limits   drivers/python/build/py-cython
-py-pure            python   pure       blocking,limits   drivers/python/build/py-pure
-java               java     -          blocking,limits   drivers/java/build/driver
-typescript         ts       -          blocking,limits   drivers/ts/build/driver
-csharp             cs       -          blocking,limits   drivers/cs/build/driver
-zig                zig      -          blocking,limits   drivers/zig/build/driver
-dart               dart     -          blocking,limits   drivers/dart/build/driver
-kotlin-jvm         kotlin   jvm        blocking,limits   drivers/kotlin/build/jvm/driver
-kotlin-native      kotlin   native     blocking,limits   drivers/kotlin/build/native/driver
+# name              builder  arg            tags              binary
+c                  c        -              blocking          drivers/c/build/driver
+go                 go       -              blocking,limits   drivers/go/build/driver
+rust-std           rust     rs             blocking,limits   drivers/rust/build/rs/target/debug/harness
+rust-nostd         rust     rs-no-std      blocking          drivers/rust/build/rs-no-std/target/debug/harness
+rust-nostd-h09     rust     rs-no-std-h09  blocking          drivers/rust/build/rs-no-std-h09/target/debug/harness
+cpp                cpp      cpp            blocking,limits   drivers/cpp/build/cpp/driver
+cpp-fixed          cpp      cpp-fixed      blocking          drivers/cpp/build/cpp-fixed/driver
+cpp-c-cpp          cpp      c-cpp          blocking          drivers/cpp/build/c-cpp/driver
+cpp-c-cpp-dyn      cpp      c-cpp-dyn      blocking          drivers/cpp/build/c-cpp-dyn/driver
+py-cython          python   cython         blocking,limits   drivers/python/build/py-cython
+py-pure            python   pure           blocking,limits   drivers/python/build/py-pure
+java               java     -              blocking,limits   drivers/java/build/driver
+typescript         ts       -              blocking,limits   drivers/ts/build/driver
+csharp             cs       -              blocking,limits   drivers/cs/build/driver
+zig                zig      -              blocking,limits   drivers/zig/build/driver
+dart               dart     -              blocking,limits   drivers/dart/build/driver
+kotlin-jvm         kotlin   jvm            blocking,limits   drivers/kotlin/build/jvm/driver
+kotlin-native      kotlin   native         blocking,limits   drivers/kotlin/build/native/driver
 # kotlin-js is QUARANTINED for G-0046: the generated Kotlin visitor takes an fp32 as a
 # widened `Float` (not `fp32Bits`), and on Kotlin/JS that quiets a signaling NaN. Lift the
 # quarantine (add `blocking,limits`) when the generator fix lands.
-kotlin-js         kotlin   js         -                 drivers/kotlin/build/js/driver
+kotlin-js          kotlin   js             -                 drivers/kotlin/build/js/driver

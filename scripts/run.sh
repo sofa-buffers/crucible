@@ -29,6 +29,15 @@ IFS='
 set -- $DRIVER_ARGS
 IFS=$_oldifs
 
+# The encode-side bound guards (generator#656) are STATIC: a refusal is only reachable
+# from the wire through a decoder bug, so no corpus can show that a profile still has
+# them. Assert it right after the build, where the generated code is on disk, rather
+# than leaving "this profile silently stopped refusing" to be noticed by nothing.
+# SKIP_ENCODE_BOUNDS=1 for a run that deliberately builds a subset.
+if [ "${SKIP_ENCODE_BOUNDS:-0}" != "1" ]; then
+    python3 "$ROOT/scripts/check-encode-bounds.py" >&2
+fi
+
 # Optional per-driver hang budget (seconds); unset → the tools compute
 # max(30, 0.25 x corpus size). A hanging driver is a finding, not a wedged run.
 TIMEOUT_ARG=""

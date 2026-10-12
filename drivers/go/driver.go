@@ -437,6 +437,20 @@ func materialize(m *msg.Probe) string {
 	return "{" + strings.Join(parts, ";") + "}"
 }
 
+// encodeClass names the canonical class for a refusal of the RE-ENCODE (not of a
+// decode): `argument` is §6.3's bad-argument code, which is what a schema-bound
+// refusal carries; anything else is a defect of its own and is surfaced as such.
+func encodeClass(err error) string {
+	switch {
+	case errors.Is(err, sofab.ErrArgument):
+		return "argument"
+	case errors.Is(err, sofab.ErrBufferFull):
+		return "buffer_full"
+	default:
+		return "other"
+	}
+}
+
 // canonical writes the canonical line for one candidate input
 // (oracle/canonical.md: decode -> re-encode -> hex).
 func canonical(w *bufio.Writer, data []byte) {
@@ -467,7 +481,12 @@ func canonical(w *bufio.Writer, data []byte) {
 	}
 	b, err := encodeVia(m)
 	if err != nil {
-		fmt.Fprint(w, "R other\n")
+		// The re-encode was REFUSED after an accepting decode — its own verdict,
+		// never a reject class (oracle/canonical.md "The fifth verdict `E`").
+		// Since generator#656 the generated Serialize calls Encoder.RejectArgument
+		// for a value past a declared count/maxlen/width, and Encode reports it as
+		// sofab.ErrArgument.
+		fmt.Fprintf(w, "E %s\n", encodeClass(err))
 		return
 	}
 	fmt.Fprintf(w, "A %s\n", hex.EncodeToString(b))

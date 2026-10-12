@@ -20,8 +20,8 @@ import struct
 import sys
 
 from message import Probe
-from sofab import (Encoder, SofaDecodeError, SofaError, SofaIncompleteError,
-                   SofaLimitError, Status)
+from sofab import (Encoder, SofaArgumentError, SofaBufferError, SofaDecodeError,
+                   SofaError, SofaIncompleteError, SofaLimitError, Status)
 
 # --- materialized value dump (oracle/materialized.md), SOFAB_MATERIALIZE=1 -------
 # The dataclass carries no schema type (fp32 vs fp64, unsigned vs signed), so the
@@ -121,9 +121,15 @@ def _materialize(m) -> str:
 # table no longer needs a row for them. `oracle/comparator.py` still rejects the `usage`
 # class outright; nothing in the roster can emit it now, and that check is what keeps it
 # so rather than something to be removed alongside this.
+# `SofaRangeError` is NOT a row here, for the same reason `SofaStateError` is not: it is
+# an ALIAS. corelib-py renamed the class to `SofaArgumentError` — "named after the code it
+# carries", §6.3's `InvalidArgument` — and kept `SofaRangeError = SofaArgumentError` so
+# `except` clauses keep working. `type(e).__name__` therefore spells the new name, and a
+# row under the old one is dead code that silently mislabels the class it was written for
+# as `invalid_msg`. That is how the stale row read until 2026-10-12.
 _CLASS = {
     "SofaDecodeError": "invalid_msg",
-    "SofaRangeError": "argument",
+    "SofaArgumentError": "argument",
     "SofaBufferError": "buffer_full",
 }
 
@@ -264,13 +270,32 @@ def _encode_via(m: Probe) -> bytes:
     return bytes(acc)
 
 
+def _encode_refusal(e: Exception) -> str:
+    """The `E <class>` line for a RE-ENCODE that was refused (oracle/canonical.md).
+
+    Since generator#656 the generated `serialize` refuses a value past a declared
+    bound — a string/blob over `maxlen`, an array over `count`, an integer, enum or
+    bitfield outside its declared width — with `SofaArgumentError`, §6.3's
+    `InvalidArgument`. That is not a statement about the input: the decode above
+    accepted it. Reporting it as `R` would say the bytes were malformed, which is
+    the one thing that did not happen.
+
+    isinstance, not the class name: `SofaRangeError` is an alias of
+    `SofaArgumentError`, and a name table over aliases is what went stale once here.
+    """
+    if isinstance(e, SofaArgumentError):
+        return "E argument"
+    if isinstance(e, SofaBufferError):
+        return "E buffer_full"
+    return "E other"
+
+
 def canonical(data: bytes) -> str:
     # decode -> re-encode -> hex (oracle/canonical.md).
     try:
         # The chunked path is taken ONLY when a chunking variable is set, so the
         # default stays the one-shot Probe.decode byte for byte.
         m = _decode_streamed(data) if _CHUNKING else Probe.decode(data)
-        b = _encode_via(m)
     except SofaIncompleteError:
         # §7 INCOMPLETE: decode ended mid-message (truncation) — not an error and
         # not malformed, so it is neither "A" nor "R". SofaIncompleteError is a
@@ -287,6 +312,13 @@ def canonical(data: bytes) -> str:
         return _reject(e)
     if _MATERIALIZE:
         return "A " + _materialize(m)
+    # The re-encode is a SEPARATE try: its failure is an encode fact (`E`), never one
+    # of the decode verdicts above. Folding both into one try is what made a refusal
+    # read as `R invalid_msg` here.
+    try:
+        b = _encode_via(m)
+    except Exception as e:
+        return _encode_refusal(e)
     return "A " + b.hex()
 
 

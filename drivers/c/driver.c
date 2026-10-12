@@ -37,7 +37,10 @@
 #define _message_descr_message_probe message_probe__descr
 #endif
 
-/* Map a corelib return code to the canonical reject class (oracle/canonical.md). */
+/* Map a corelib return code to the canonical class (oracle/canonical.md). One
+ * mapping serves both verdicts that carry a class -- the decode's "R" and the
+ * re-encode's "E": it is one taxonomy (CORELIB_PLAN §6.3), and which half of the
+ * stack produced the code is what the verdict letter says. */
 static const char *reject_class(sofab_ret_t r)
 {
     switch (r)
@@ -502,7 +505,13 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
     sofab_ret_t er = encode_via(&m, enc, sizeof(enc), &used);
     if (er != SOFAB_RET_OK)
     {
-        fprintf(out, "R %s\n", reject_class(er));
+        /* The decode ACCEPTED and the re-encode of that value was REFUSED: the `E`
+         * verdict, never a reject class (oracle/canonical.md "The fifth verdict
+         * `E`"). In C the refusal is the corelib's own, descriptor-driven -- the
+         * generated code emits no guard: sofab_object_encode answers
+         * SOFAB_RET_E_ARGUMENT for a char[maxlen+1] string filled without a
+         * terminator, and clamps a length/count companion past its capacity. */
+        fprintf(out, "E %s\n", reject_class(er));
         return;
     }
     fputs("A ", out);
@@ -560,7 +569,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 #define STREAM_HDR 3
 
 /* Classify one decode outcome into the verdict class the differential
- * comparator would see (oracle/canonical.md): "A", "I" or "R <class>". Fills
+ * comparator would see (oracle/canonical.md): "A", "I", "R <class>" or
+ * "E <class>" when the decode accepted and the re-encode was refused. Fills
  * *used (encoded length) only for "A" -- decode_and_report's re-encode step,
  * duplicated here rather than shared because that function owns writing to a
  * FILE*, not producing a comparable value. */
@@ -572,7 +582,7 @@ static void stream_verdict(sofab_ret_t r, const message_probe_t *m,
     if (r == SOFAB_RET_INCOMPLETE) { snprintf(cls, clscap, "I"); return; }
     if (r != SOFAB_RET_OK) { snprintf(cls, clscap, "R %s", reject_class(r)); return; }
     sofab_ret_t er = message_probe_encode(m, enc, enccap, used);
-    if (er != SOFAB_RET_OK) { snprintf(cls, clscap, "R %s", reject_class(er)); *used = 0; return; }
+    if (er != SOFAB_RET_OK) { snprintf(cls, clscap, "E %s", reject_class(er)); *used = 0; return; }
     snprintf(cls, clscap, "A");
 }
 

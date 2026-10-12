@@ -74,7 +74,7 @@ dumps the fully-expanded decoded value — every field and array element explici
 floats as raw bit patterns — so that class is caught too.
 
 **Verdicts** (`oracle/canonical.md`) are three-valued per MESSAGE_SPEC §7, plus a
-limit-mode fourth:
+limit-mode fourth and one that is not about the decode at all:
 
 | line | meaning |
 |---|---|
@@ -82,8 +82,13 @@ limit-mode fourth:
 | `I [<hex>]` | **INCOMPLETE** — bytes end mid-field / open sequence; a valid-so-far partial (**not** an error) |
 | `R <class>` | **INVALID** — malformed regardless of what follows |
 | `L [<class>]` | **LIMIT_EXCEEDED** — a configured receiver-side cap was hit (limit mode only) |
+| `E <class>` | the decode **accepted**, and re-encoding that value was **refused** — one implementation contradicting itself |
 
-Disagreeing on which verdict applies is a finding. The comparator is
+Disagreeing on which verdict applies is a finding, and an `E` is a finding on its own:
+since generator#656 an encoder refuses a value past a declared `count`/`maxlen`/width
+instead of writing or clamping it, so a driver answering `E` either accepted a value its
+own schema forbids or refuses one it allows. Every driver agreeing would not make that
+right, so it is checked per line rather than by comparison. The comparator is
 **crash-isolating** (a driver that dies mid-stream → `[CRASH] driver X on input N`,
 the run continues) and **hang-isolating** (a per-driver wall-clock timeout →
 `[TIMEOUT] … input N`; a decoder that loops on untrusted bytes is itself a DoS

@@ -826,6 +826,19 @@ here:
       via cross-encode's deterministic values. Mutate the *value* (floats, boundary ints, array
       sizes, unicode) and feed all 12 *encoders* → compare bytes. Reaches encoder divergences
       (and encoder UB like the old F-0002) via coverage, not just replay.
+      **generator#656 made this a bigger hole than it was (2026-10-12).** Every encoder now has
+      a *refusal* path — a value past a declared `count`/`maxlen`/width is refused rather than
+      written or clamped — and nothing here can drive a value INTO an encoder: the replay
+      protocol's only input is wire bytes, so every value a driver encodes came out of its own
+      decoder and is in-bounds by construction. What exists instead is one static assertion that
+      the guards are present (`scripts/check-encode-bounds.py`) and one verdict for the
+      contradiction if a decoder ever admits an over-bound value (`E`, oracle/canonical.md). The
+      cells themselves — a value filled past its bound through the generated setters, per
+      backend and per variant, with the clamping containers' expected output — are upstream in
+      the generator's `tests/conformance/lib/check_encode_bounds.py` and are deliberately NOT
+      duplicated here. What a value-side front-end would add that neither has: the same value
+      through *all twelve* encoders, where a refusal in eleven and a silent clamp in the twelfth
+      is a divergence nobody is currently looking for.
 - [~] **Multi-impl coverage** (the biggest architectural gap) — **first second engine wired
       2026-08-02; four languages still unwired.** Only the C corelib *steered* the fuzzer, so it
       explored C-complex paths only — F-0012 (a TS bug) was found via the differential, not

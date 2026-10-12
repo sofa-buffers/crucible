@@ -264,6 +264,34 @@ function rejectClass(e: unknown): string {
   return e instanceof SofabError ? "invalid_msg" : "other";
 }
 
+// The class of a REFUSED re-encode (generator#656: a value past a declared
+// count/maxlen/width throws with SofabErrorCode.Argument). Finer than rejectClass
+// above, which is deliberately coarse for the decode path: here the code is the
+// point, because `argument` is the one class a schema-bound refusal may carry and
+// anything else is a defect of its own.
+function encodeClass(e: unknown): string {
+  if (e instanceof SofabError) {
+    if (e.code === SofabErrorCode.Argument) return "argument";
+    if (e.code === SofabErrorCode.BufferFull) return "buffer_full";
+  }
+  return "other";
+}
+
+// The `A <hex>` line, or `E <class>` when the re-encode of an ACCEPTED value was
+// refused — its own verdict, never a reject class, and never an escaping throw:
+// before this, a refusal propagated out of canonical() and killed the process, which
+// the comparator reports as a crashed driver and which costs every line after it
+// (oracle/canonical.md "The fifth verdict `E`").
+function acceptLine(m: Probe): string {
+  let bytes: Uint8Array;
+  try {
+    bytes = encodeBytes(m);
+  } catch (e) {
+    return "E " + encodeClass(e);
+  }
+  return "A " + _hex(bytes);
+}
+
 // Re-encode through the streaming surface, which is the only one this backend has.
 // SOFAB_FLUSH=n gives the OStream an n-byte buffer draining to a sink, so the message
 // arrives in n-byte pieces and the encoder crosses a buffer boundary at every offset —
@@ -356,7 +384,7 @@ function canonicalChunked(data: Uint8Array): string {
   if (st !== DecodeStatus.Complete) return "I";
   const m = d.message;
   if (_MATERIALIZE) return "A " + materialize(m);
-  return "A " + _hex(encodeBytes(m));
+  return acceptLine(m);
 }
 
 function canonical(data: Uint8Array): string {
@@ -389,7 +417,7 @@ function canonical(data: Uint8Array): string {
   if (_MATERIALIZE) {
     return "A " + materialize(m);
   }
-  return "A " + _hex(encodeBytes(m));
+  return acceptLine(m);
 }
 
 function main(): void {

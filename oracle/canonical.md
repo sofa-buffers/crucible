@@ -8,11 +8,12 @@ of language and message shape.
 ## Grammar
 
 ```
-line       := accept | incomplete | reject | limit
+line       := accept | incomplete | reject | limit | refused
 accept     := "A" SP hex          ; COMPLETE — hex of the re-encoded sparse-canonical wire
 incomplete := "I" [ SP hex ]      ; INCOMPLETE — decode ended mid-message; optional hex = re-encode of the partial value
 reject     := "R" SP class        ; INVALID — malformed regardless of what follows
 limit      := "L" [ SP class ]    ; LIMIT_EXCEEDED — a configured receiver-side decode cap was exceeded (limit mode only)
+refused    := "E" SP class        ; the decode ACCEPTED, and re-encoding that value was REFUSED (generator#656)
 class      := "invalid_msg" | "argument" | "usage" | "buffer_full" | "limit_exceeded" | "other"
 hex        := *( HEXDIG HEXDIG )  ; lowercase, two digits per byte; empty allowed
 ```
@@ -111,6 +112,67 @@ distinct from `R` encodes here. MESSAGE_SPEC §5.4's `MAX_DEPTH` note is the sta
 analogue. *(This paragraph read "the heap note is pending upstream (generator#102)" until
 2026-08-18; §6.2.1 closed that hole and the citation had gone stale.)*
 
+### The fifth verdict `E` (the re-encode was refused)
+
+| what happened | line | meaning |
+|---|---|---|
+| decode said `COMPLETE`, and re-encoding that value was **refused** | `E <class>` | the implementation accepted bytes its own encoder will not write back. Not a decode outcome at all — the decode said accept |
+
+**Why this is not an `R`.** Until generator#656 an encode could only fail by running out
+of buffer, and the drivers encode into the schema's own worst case (`MAX_SIZE`), so
+"encode failed after a successful decode" was the impossible branch this document used
+to describe as "it should not, given a worst-case buffer" and every driver mapped to a
+reject class. #656 gave that branch a **designed trigger**: a value past a declared
+bound — a `string`/`blob` over `maxlen`, an array over `count`, an integer, enum or
+bitfield outside its declared width — is refused at encode with §6.3's `InvalidArgument`,
+never clamped and never emitted (generator `docs/ARCHITECTURE.md` §9.6.1). So the branch
+is now reachable, and reporting it as `R <class>` states the one thing that definitely
+did **not** happen: that the input was malformed. It was accepted. `R` and `E` are facts
+about opposite halves of the stack, and they get different verdicts for the same reason
+`L` is not `R`.
+
+**What an `E` means.** One implementation contradicting itself:
+
+- its decoder accepted a value past a schema bound — the §7.1 enforcement gap of the
+  F-0015 / F-0033 shape — **or**
+- its encode guard refuses a value that is in fact within bounds — the F-0052 shape (a
+  bound compared against the wrong quantity or the wrong width).
+
+Both are findings, and which one it is decides the attribution: a schema fact (`count`,
+`maxlen`, a declared width) can only be known by generated code, wire mechanics by the
+corelib (CLAUDE.md's triage table). The `E` line says *which driver* contradicted itself;
+reading its generated guard against its corelib's reader says which half is wrong.
+
+**Checked per line, not by agreement** — the mechanism the forbidden `usage` class
+already uses, and for the same reason: a verdict that must never appear cannot be
+policed by comparing drivers. Every driver answering `E` for one input is the family
+sharing one bug, not a green run. So every `E` fails the run on its own, whatever the
+others said, and it *also* shows up as a `verdict` divergence against whoever answered
+`A` — one fact reported twice, as a forbidden reject class already is.
+
+**The class** is whatever the corelib named: `argument` for §6.3's `InvalidArgument`,
+which is what #656 refuses with and therefore the only class expected here;
+`buffer_full` or `other` otherwise, and either of those is its own defect (a worst-case
+buffer that is not, or a failure mode outside the taxonomy). On mutual `E` the class is
+compared on the `encode_class` axis.
+
+**`E` never replaces `I`.** The `I` verdict is a statement about the decode, and it is
+hard; its hex payload is soft and optional. A driver whose re-encode of a **partial**
+value is refused drops the payload and emits the bare `I` — answering `E` (or, as every
+driver did before this, `R other`) would let an encode-side fact overwrite a decode-side
+verdict, which is the `I`-into-`R` collapse F-0001 exists to catch. Only Java emits
+`I <hex>` today, so Java and Kotlin — which share the shape — are where it was wired.
+
+**Measured 2026-10-12, when the verdict was added:** zero `E` lines over the whole
+roster across `corpus/seeds`, `corpus/structured`, `corpus/conformance` and
+`corpus/regression` — every value the family accepts, it re-encodes. The verdict
+starts green and exists to keep the decode and encode halves of one stack from drifting
+apart silently, which is the state #656 made possible. Reaching an `E` from the wire
+needs a decoder bug, which is why no corpus can demonstrate one: the encode-bound cells
+themselves (a value filled past its bound through the generated setters) are the
+generator's own conformance suite, `tests/conformance/lib/check_encode_bounds.py`, not
+this harness — Crucible's half is the asymmetry, not the guard.
+
 ### The `I` payload
 
 `I` may stand alone, or carry the hex of the **partial** value decoded before the
@@ -174,6 +236,8 @@ the decoded **value** against a schema-driven reference (not just driver-vs-driv
 agreement), which is what actually caught this class (docs/TODO.md, DONE
 2026-08-02) and is a standing blocking gate.
 
-`encode` failing after a successful decode (it should not, given a worst-case
-buffer) is reported as a reject class too, via the same per-line taxonomy defined
-above — see "The reject classes, and which of them may legally appear".
+`encode` failing after a successful decode has its own verdict, `E <class>` — see
+"The fifth verdict `E`". It used to be reported as a reject class, on the reasoning
+that with a worst-case buffer it could not happen; generator#656 made it happen on
+purpose, for a value past a declared bound, and a decode-reject verdict is the wrong
+place to put it.

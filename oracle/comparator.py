@@ -89,7 +89,7 @@ def load_policy(path):
     """Minimal reader for the three comparison axes we need. Avoids a YAML dep."""
     axes = {"verdict": "hard", "accept_value": "hard",
             "incomplete_value": "soft", "reject_class": "soft",
-            "limit_class": "soft"}
+            "limit_class": "soft", "encode_class": "hard"}
     if path and os.path.exists(path):
         in_cmp = False
         for line in open(path):
@@ -97,7 +97,7 @@ def load_policy(path):
                 in_cmp = True
                 continue
             if in_cmp:
-                m = re.match(r"^\s+(verdict|accept_value|incomplete_value|reject_class|limit_class):\s*(hard|soft)", line)
+                m = re.match(r"^\s+(verdict|accept_value|incomplete_value|reject_class|limit_class|encode_class):\s*(hard|soft)", line)
                 if m:
                     axes[m.group(1)] = m.group(2)
                 elif re.match(r"^\S", line):  # dedent → left the comparison block
@@ -197,16 +197,35 @@ FORBIDDEN_CLASSES = {
 # compared away.
 REPORTED_CLASSES = {"argument", "buffer_full", "other"}
 
+# A verdict that must never appear, judged by the same per-line mechanism and for the
+# same reason as a forbidden class: agreement cannot make it right.
+#
+# `E` says one implementation accepted bytes its OWN encoder then refused to write back
+# (generator#656 gave that branch a designed trigger: a value past a declared bound).
+# Either its decoder let an over-bound value through, or its encode guard refuses a
+# value that is within bounds — one of the two halves is wrong, and the whole family
+# answering `E` together would mean they all share the defect. oracle/canonical.md
+# ("The fifth verdict `E`") owns the reasoning.
+FORBIDDEN_VERDICTS = {
+    "E": "the decode ACCEPTED and re-encoding that value was REFUSED — one stack "
+         "contradicting itself (generator#656 / generator ARCHITECTURE §9.6.1). Either "
+         "the decoder admitted a value past a schema bound, or the encode guard refuses "
+         "a value within it. A schema fact (count/maxlen/declared width) is generated "
+         "code's to know, wire mechanics the corelib's — see CLAUDE.md's triage table.",
+}
+
 
 def parse(line):
-    """(verdict, payload): ('A', hex), ('I', hex-or-empty), ('R', class), or
-    ('L', class-or-empty).
+    """(verdict, payload): ('A', hex), ('I', hex-or-empty), ('R', class),
+    ('L', class-or-empty) or ('E', class).
 
     Verdicts per oracle/canonical.md: A=complete, I=incomplete (decode ended
     mid-message, MESSAGE_SPEC §7 — not an error), R=reject (INVALID), L=limit
     exceeded (a configured receiver-side cap, generator#102 — a policy rejection
-    distinct from R, appears in limit mode only). These are distinct hard verdict
-    values; disagreeing on which is a verdict divergence."""
+    distinct from R, appears in limit mode only), E=the decode ACCEPTED and
+    re-encoding that value was REFUSED (generator#656 — not a decode outcome at
+    all). These are distinct hard verdict values; disagreeing on which is a
+    verdict divergence."""
     if line.startswith("A"):
         return ("A", line[1:].strip())
     if line.startswith("I"):
@@ -215,6 +234,8 @@ def parse(line):
         return ("R", line[1:].strip())
     if line.startswith("L"):
         return ("L", line[1:].strip())
+    if line.startswith("E"):
+        return ("E", line[1:].strip())
     return ("?", line)
 
 
@@ -282,17 +303,30 @@ def main():
     # corpus the same class can be named thousands of times, and 2464 identical lines
     # would bury the signal this is meant to raise.
     seen_classes = {}   # (driver, class) -> [count, first_seed]
+    seen_refused = {}   # (driver, class) -> [count, first_seed]  — the E verdict
     for i, (seed, _) in enumerate(corpus):
         for nm, ln in drivers:
             line = ln[i]
             if line in (None, CRASH, TIMEOUT):
                 continue
             v, p = parse(line)
+            if v in FORBIDDEN_VERDICTS:
+                e = seen_refused.setdefault((nm, p or "?"), [0, seed])
+                e[0] += 1
+                continue
             if v not in ("R", "L") or not p:
                 continue
             if p in FORBIDDEN_CLASSES or p in REPORTED_CLASSES:
                 e = seen_classes.setdefault((nm, p), [0, seed])
                 e[0] += 1
+
+    # The forbidden VERDICT, same shape and same per-line reasoning as the class
+    # check above (oracle/canonical.md, "The fifth verdict `E`").
+    for (nm, cls), (count, first) in sorted(seen_refused.items()):
+        print(f"[DIVERGENCE] {first}  (encode_refused)\n"
+              f"        {nm} refused to re-encode a value it accepted on {count} "
+              f"input(s), class {cls!r} — {FORBIDDEN_VERDICTS['E']}")
+        hard += count
 
     for (nm, cls), (count, first) in sorted(seen_classes.items()):
         if cls in FORBIDDEN_CLASSES:
@@ -330,6 +364,10 @@ def main():
                 axis, reason = "reject_class", f"{ref_name}={rp} {name}={p}"
             elif rv == "L" and p != rp:
                 axis, reason = "limit_class", f"{ref_name}={rp} {name}={p}"
+            elif rv == "E" and p != rp:
+                # Mutual E: both refused the re-encode, and the classes differ. The
+                # verdict already failed the run per line above; this names the split.
+                axis, reason = "encode_class", f"{ref_name}={rp} {name}={p}"
             if axis:
                 sev = axes.get(axis, "hard")
                 # A divergence this input is ALLOWED to have (policy.yaml `allow:`),

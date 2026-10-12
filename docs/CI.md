@@ -31,7 +31,7 @@ changes (or on manual dispatch), with layer caching via `type=gha`.
 
 ## The replay gate (`replay.yml`) — blocking
 
-Two jobs. **`catalog`** runs first and needs no drivers at all. It carries these checks: `scripts/driver-audit.sh`, the per-driver participation ledger (every roster entry must declare what the gates need to place it), the static half of `scripts/check-family-copies.py` (every copy of family logic listed with a verdict, every materialized walker naming every schema kind), the offline sofabgen-pick rule (`check-sofabgen-pick.py`), `check-nightly-steps.py --lint` (every `continue-on-error` step of the nightly carries an `id`, see below), and `check-catalog.py`, which asserts that
+Two jobs. **`catalog`** runs first and needs no drivers at all. It carries these checks: `scripts/driver-audit.sh`, the per-driver participation ledger (every roster entry must declare what the gates need to place it), the static half of `scripts/check-family-copies.py` (every copy of family logic listed with a verdict, every materialized walker naming every schema kind), the offline sofabgen-pick rule (`check-sofabgen-pick.py`), `check-nightly-steps.py --lint` (every `continue-on-error` step of the nightly carries an `id`, see below), `check-oracle-verdicts.py` (the comparator against stub drivers: each canonical verdict still does what `oracle/canonical.md` says, including the two checks that fire per line rather than on disagreement — the abolished `usage` class and the `E` verdict, neither of which any input produces), and `check-catalog.py`, which asserts that
 `results/FINDINGS.md` and its write-ups declare the same state:
 
 ```sh
@@ -55,6 +55,9 @@ right after the seed build (while the generated code is still the probe's):
 ```sh
 ./scripts/bootstrap.sh   # always: latest sofabgen CI build (checksum-verified) + corelibs, both @ FAMILY_BRANCH
 ./scripts/run.sh                            # seed differential            (corpus/seeds)
+                                            #   ... and, inside run.sh, check-encode-bounds.py:
+                                            #   the generated encode guards are armed in every
+                                            #   profile and no opt-out is compiled in (#656)
 python3 scripts/check-family-copies.py      # C anchor tags + generated code reaches the corelib layer
 CORPUS=corpus/regression ./scripts/run.sh   # resolved-findings gate       (corpus/regression)
 CORPUS=corpus/conformance ./scripts/run.sh  # §2/§3 canonicality seeds     (corpus/conformance)

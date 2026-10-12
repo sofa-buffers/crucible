@@ -70,6 +70,14 @@ jobs:
       - name: Nightly non-blocking steps are reportable (static)
         run: python3 scripts/check-nightly-steps.py --lint
 
+      # The comparator against stub drivers: does each canonical verdict still do what
+      # oracle/canonical.md says? Here because of `E` (a refused re-encode,
+      # generator#656) — no input produces one, since reaching it needs a decoder bug,
+      # so nothing else in this workflow would notice if its plumbing broke. Same for
+      # the two checks that fail PER LINE rather than on disagreement.
+      - name: Canonical verdicts react as specified (oracle self-check)
+        run: python3 scripts/check-oracle-verdicts.py
+
   differential:
     runs-on: ubuntu-latest
     container:

@@ -41,12 +41,14 @@ fidelity**, and regression-proofing. See `docs/ARCHITECTURE.md`.
 
 A driver emits this form **instead of** the round-trip hex when `SOFAB_MATERIALIZE=1`
 is set in its environment; otherwise it emits the round-trip form as before. The
-verdict prefix (`A`/`I`/`R`/`L`) and the whole protocol (`drivers/common/CONTRACT.md`)
+verdict prefix and the whole protocol (`drivers/common/CONTRACT.md`)
 are identical — only the `A` payload changes from wire-hex to a value dump. The
 comparator (`oracle/comparator.py`) compares the `A` payload across drivers exactly as
 it does the hex, on the same hard `accept_value` axis. `scripts/materialize.sh` sets
 the env and runs the differential. `I`/`R`/`L` are unaffected (a materialized value
-exists only for a COMPLETE decode).
+exists only for a COMPLETE decode), and `E` — a refused re-encode (`canonical.md`) —
+cannot occur in this mode at all, because this mode runs no encode: the round-trip gate
+is where that verdict lives.
 
 ## Grammar
 
