@@ -63,6 +63,11 @@ import os
 import re
 import sys
 
+try:
+    import yaml           # phase 2 only; phase 1 needs no parser
+except ImportError:
+    yaml = None
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Files that live NEXT TO the generated code but are the driver's own — driver.rs lands
@@ -237,6 +242,194 @@ def schema_bounds(schema_rel):
             NARROW.search(text) is not None)
 
 
+# --------------------------------------------------------------- phase 2 ----
+# Phase 1 asks whether a guard EXISTS. This asks whether it guards the right number.
+#
+# The question is deliberately narrow, because the wide version is somebody else's: to
+# know that a backend refuses the right values you have to RUN it, per backend and per
+# variant, which is `tests/conformance/lib/check_encode_bounds.py` upstream. What can be
+# asked cheaply and here is one invariant over the generated source:
+#
+#   every literal that a comparison on a schema field is made against must be one of
+#   THAT field's own declared numbers.
+#
+# A field's own numbers are its `maxlen`, its `count`, its element `maxlen`/`count`, the
+# min/max of its declared integer width, its field id (it rides as the first argument of
+# every write call) and 0/1 (offsets and the last-element index). Everything else is
+# unexplained: a guard comparing `str` (maxlen 32) against 31 is a stale literal, and one
+# comparing it against 4 is `bytes_field`'s bound on the wrong field — which is the drift
+# this catches and a guard COUNT never would.
+#
+# Two tiers, because not every comparison can be attributed:
+#   per-field  the left operand names a schema field -> checked against that field
+#   global     it does not -> checked against the union of every field's numbers
+#
+# Single-character field names are left to the global tier on purpose: `v` is a field of
+# `struct_array` in the probe schema and also the name every generated decode switch
+# gives its local, and binding the two would report the whole visitor.
+#
+# The bound that rides a CALL ARGUMENT rather than a comparison is read too (python's
+# `write_string_bounded(id, v, 32)`, dart's `write*ArrayInRange(id, vals, n, lo, hi)`, the
+# UTF-16 runtimes' `writeString(id, s, maxlen)`): the numeric arguments after the first.
+
+WIDTH = {
+    "u8": (0, 255), "i8": (-128, 127),
+    "u16": (0, 65535), "i16": (-32768, 32767),
+    "u32": (0, 4294967295), "i32": (-2147483648, 2147483647),
+    "u64": (0, 18446744073709551615),
+    "i64": (-9223372036854775808, 9223372036854775807),
+}
+
+# `<left operand>  <  N` — only what a comparison is made against. Every other number in
+# a generated line (a loop bound, `_n0 - 1`, a field id in a write call) says nothing
+# about a schema bound, and taking them all in is what made the first attempt noisy.
+# The literal must not be followed by `>`: `heapless::String<8>` and `InlineVector<T, 5>`
+# are type parameters, and reading them as comparisons attributes a container's capacity
+# to whatever identifier precedes it.
+CMP = re.compile(r"([A-Za-z_][\w.\[\]()&*:<>\s]{0,44}?)\s*(?:[<>]=?)\s*(-?\d+)\b(?!\s*>)")
+# The whole call is the left operand here, not just what precedes it: the field is the
+# VALUE argument (`writeString(2, this.str, 32)`), so taking only the receiver would
+# attribute every bound to the stream.
+CALL = re.compile(r"(?:_bounded|InRange|[Ww]rite[A-Za-z]*?[Ss]tring"
+                  r"|write_[ui](?:8|16|32|64)(?:_array)?)\s*\(([^;{}]*?)\)")
+
+
+def field_numbers(node, name, out):
+    """Collect, per schema field, every number that may legitimately be compared to it."""
+    if not isinstance(node, dict):
+        return
+    allowed = {0, 1}                       # offsets, and the last-element index
+    if isinstance(node.get("id"), int):
+        allowed.add(node["id"])            # rides as the first argument of every write
+    for key in ("maxlen", "count"):
+        if isinstance(node.get(key), int):
+            allowed.add(node[key])
+    if node.get("type") in WIDTH:
+        allowed.update(WIDTH[node["type"]])
+    items = node.get("items") if isinstance(node.get("items"), dict) else {}
+    for key in ("maxlen", "count"):
+        if isinstance(items.get(key), int):
+            allowed.add(items[key])
+    if items.get("type") in WIDTH:
+        allowed.update(WIDTH[items["type"]])
+    if name:
+        out.setdefault(name, set()).update(allowed)
+    # Every container a schema can nest a declaration in. `oneof` and `$defs` are the
+    # two that were missing at first, and the deep union schema is where that showed:
+    # its union options and its reusable `$defs` types carry most of its declared
+    # widths, so every width comparison the generated code makes on them read as a
+    # literal belonging to no field at all.
+    for src in (node, items):
+        for key in ("payload", "fields", "oneof", "$defs"):
+            for child, spec in (src.get(key) or {}).items():
+                field_numbers(spec, child, out)
+
+
+def name_variants(n):
+    camel = "".join(p.capitalize() for p in n.split("_"))
+    return [n, camel, camel[0].lower() + camel[1:]]
+
+
+def schema_numbers(schema_rel):
+    """({field: numbers}, union of them), or (None, None) without a YAML reader."""
+    if yaml is None:
+        return None, None
+    with open(os.path.join(ROOT, schema_rel)) as fh:
+        doc = yaml.safe_load(fh)
+    per = {}
+    for message in (doc.get("messages") or {}).values():
+        field_numbers(message, None, per)
+    for name, spec in (doc.get("$defs") or {}).items():
+        field_numbers(spec, name, per)
+    if not per:
+        return None, None
+    return per, set().union(*per.values())
+
+
+def literal_sites(text):
+    """[(left operand, literal)] for every comparison and bound-carrying call."""
+    sites = [(m.group(1), int(m.group(2))) for m in CMP.finditer(text)]
+    for m in CALL.finditer(text):
+        args = [a.strip() for a in m.group(1).split(",")]
+        for a in args[1:]:
+            if re.fullmatch(r"-?\d+", a):
+                sites.append((m.group(0), int(a)))
+    return sites
+
+
+def check_literals(profiles, per_field, global_ok, report=print):
+    """Phase 2 over the built profiles. Returns the number of unexplained literals."""
+    names = sorted(((v, f) for f in per_field for v in name_variants(f) if len(v) > 1),
+                   key=lambda t: -len(t[0]))
+    bad = 0
+    for name, mech, needs, globs, _pattern in profiles:
+        files = [f for g in globs for f in sorted(glob.glob(os.path.join(ROOT, g)))
+                 if not NOT_GENERATED_MESSAGE_CODE.search(f)]
+        if not files:
+            continue
+        checked = attributed = unexplained = 0
+        notes = []
+        for path in files:
+            with open(path, errors="replace") as fh:
+                text = fh.read()
+            for left, literal in literal_sites(text):
+                field = next((f for v, f in names
+                              if re.search(r"\b" + re.escape(v) + r"\b", left)), None)
+                allowed = per_field[field] if field else global_ok
+                checked += 1
+                attributed += field is not None
+                if literal not in allowed:
+                    unexplained += 1
+                    where = field or "no field named in the left operand"
+                    notes.append(f"  !! {name}: {literal} is not a declared number of "
+                                 f"{where} — ...{left.strip()[-50:]!r}")
+        # A generated tree for ANOTHER schema names none of this schema's fields, and
+        # every literal in it then looks wrong. That is a harness mistake, not a family
+        # one: the suites each export their own SCHEMA, but a hand-run against a tree the
+        # last gate left behind would otherwise produce a page of confident nonsense.
+        if checked > 10 and attributed == 0:
+            report(f"{name:<15} {checked:<5} comparison(s) — SKIPPED: this generated tree "
+                   f"names no field of {os.environ.get('SCHEMA', 'schema/probe.sofab.yaml')}"
+                   ", so it was built from a different schema (set SCHEMA, or rebuild)")
+            continue
+        for n in notes:
+            report(n)
+        bad += unexplained
+        report(f"{name:<15} {checked:<5} comparison(s), {attributed:<5} attributed to a "
+               f"field, {unexplained} unexplained")
+    return bad
+
+
+SELF_TEST = [
+    # (planted text, expected unexplained count, what it stands for)
+    ("if self.str.len() > 32 { reject(); }", 0, "the schema's own bound passes"),
+    ("if self.str.len() > 31 { reject(); }", 1, "a literal that is no bound at all"),
+    ("if self.str.len() > 4 { reject(); }", 1,
+     "another field's bound on the wrong field (4 is bytes_field's maxlen)"),
+    ("if self.string_array.len() > 5 { reject(); }", 0, "a count bound passes"),
+    ("if self.string_array.len() > 6 { reject(); }", 1, "an off-by-one count"),
+]
+
+
+def self_test(per_field, global_ok):
+    """Does phase 2 actually catch a wrong bound? A check that cannot fail is decoration,
+    and this one's whole value is in the cases nobody has produced yet."""
+    names = sorted(((v, f) for f in per_field for v in name_variants(f) if len(v) > 1),
+                   key=lambda t: -len(t[0]))
+    fail = 0
+    for text, want, what in SELF_TEST:
+        got = 0
+        for left, literal in literal_sites(text):
+            field = next((f for v, f in names
+                          if re.search(r"\b" + re.escape(v) + r"\b", left)), None)
+            if literal not in (per_field[field] if field else global_ok):
+                got += 1
+        ok = got == want
+        fail += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {what} (expected {want}, got {got})")
+    return fail
+
+
 def main():
     schema_rel = os.path.relpath(
         os.path.join(ROOT, os.environ.get("SCHEMA", "schema/probe.sofab.yaml")), ROOT)
@@ -325,6 +518,19 @@ def main():
             fail += 1
         else:
             print(f"  ok  {src}: {what} ({profiles})")
+
+    # ---- phase 2: is each guard guarding the right NUMBER? -------------------
+    per_field, global_ok = schema_numbers(schema_rel)
+    if per_field is None:
+        print("\n  -- phase 2 skipped: no YAML reader, or the schema declares no field "
+              "with a number (the literal check needs the schema's own bounds)")
+    else:
+        print(f"\nliterals, against {len(per_field)} field(s) of {schema_rel}")
+        print("-" * 66)
+        fail += check_literals(PROFILES, per_field, global_ok)
+        if os.environ.get("ENCODE_BOUNDS_SELF_TEST", "1") != "0":
+            print("\nself-test (does phase 2 catch a wrong bound?)")
+            fail += self_test(per_field, global_ok)
 
     if missing:
         print(f"\n{missing} profile(s) not built — run scripts/run.sh first; an unbuilt "

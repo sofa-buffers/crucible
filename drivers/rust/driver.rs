@@ -66,6 +66,8 @@ struct StreamCfg {
     scrub: bool,
     enc: EncSurface,
     flush: usize,
+    /// SOFAB_ENCODE_FAIL=n: the destination handed to the encoder takes n bytes.
+    fail: usize,
 }
 
 fn env_usize(name: &str) -> usize {
@@ -97,20 +99,23 @@ fn read_stream_cfg() -> StreamCfg {
         scrub: matches!(std::env::var("SOFAB_CHUNK_SCRUB").as_deref(), Ok(v) if !v.is_empty() && v != "0"),
         enc,
         flush: env_usize("SOFAB_FLUSH"),
+        fail: env_usize("SOFAB_ENCODE_FAIL"),
     };
     // Announce on stderr (never parsed). A driver that silently ignored these would be
     // indistinguishable from one that honours them — identical stdout either way — so
     // this is what makes "it really re-feeds" checkable rather than asserted.
     if cfg.split != 0 || cfg.chunk != 0 || cfg.scrub || cfg.flush != 0
-        || cfg.enc != EncSurface::New
+        || cfg.enc != EncSurface::New || cfg.fail != 0
     {
         eprintln!(
-            "crucible-rust: streaming cfg split={} chunk={} scrub={} enc={} flush={}",
+            "crucible-rust: streaming cfg split={} chunk={} scrub={} enc={} flush={} \
+             fail={}",
             cfg.split,
             cfg.chunk,
             cfg.scrub as u8,
             if cfg.enc == EncSurface::New { "new" } else { "stream" },
-            cfg.flush
+            cfg.flush,
+            cfg.fail
         );
     }
     cfg
@@ -198,6 +203,18 @@ impl<E: std::fmt::Debug> FlushOutcome for Result<usize, E> {
 // the failure is returned, not unwrapped, and the caller reports it as the `E` verdict
 // (oracle/canonical.md "The fifth verdict `E`"), never as a reject class or a panic.
 fn encode_via(cfg: &StreamCfg, m: &Probe) -> Result<Vec<u8>, Error> {
+    // SOFAB_ENCODE_FAIL=n (CONTRACT.md): a destination of n bytes with NO sink, so a
+    // message that does not fit is REFUSED (Error::BufferFull) rather than truncated —
+    // §5.1 forbids returning partial output as if it were complete. It is also the only
+    // way the `E` mapping ever runs: from the wire that branch is unreachable, because
+    // every value re-encoded here came out of this driver's own decoder.
+    if cfg.fail > 0 {
+        let mut buf = vec![0u8; cfg.fail];
+        let mut os = sofab::OStream::new(&mut buf);
+        m.serialize(&mut os)?;
+        let used = os.bytes_used();
+        return Ok(buf[..used].to_vec());
+    }
     if cfg.enc == EncSurface::New {
         // `encode()` is Vec<u8> on std and heapless::Vec<u8, MAX_SIZE> on no-std;
         // iterate rather than convert, so this one line compiles for both.

@@ -4,4 +4,5 @@ framework=zig-fuzz
 pacemaker=false
 chunked_decode=push
 encode_surfaces=new,stream
+encode_fail=yes
 min_output_buffer=1

@@ -73,6 +73,7 @@ SCHEMA=schema/probe-union-deep.sofab.yaml CORPUS=corpus/union-deep ./scripts/mat
 ./scripts/run-chunked.sh                    # chunk invariance   (roster derived from meta)
 CORPUS=corpus/regression ./scripts/run-chunked.sh --modes chunk   # ...and over the findings corpus
 ./scripts/run-encode.sh                     # encode invariance  (roster derived from meta)
+./scripts/run-encode-fail.sh                # destination failure: the `E` verdict, for real
 ```
 
 - **Corelibs pinned to `main`** on purpose: Crucible is a *conformance* fuzzer, so a

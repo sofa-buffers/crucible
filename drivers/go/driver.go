@@ -49,6 +49,7 @@ var materialized = os.Getenv("SOFAB_MATERIALIZE") == "1"
 var (
 	encSurface = "new" // new | to | stream
 	flushSize  = 0     // 0 = unset; only meaningful for `stream`
+	failAfter  = 0     // SOFAB_ENCODE_FAIL=n — the destination takes n bytes
 
 	// How often the sink was handed memory that is NOT the installed output buffer.
 	// CORELIB_PLAN §5.1.6 forbids that outright, so this is an assertion and not an
@@ -112,6 +113,14 @@ func parseEncodeCfg() {
 			os.Exit(2)
 		}
 	}
+	if s := os.Getenv("SOFAB_ENCODE_FAIL"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n < 0 {
+			fmt.Fprintf(os.Stderr, "crucible-go: bad SOFAB_ENCODE_FAIL=%s\n", s)
+			os.Exit(2)
+		}
+		failAfter = n
+	}
 	if s := os.Getenv("SOFAB_FLUSH"); s != "" {
 		n, err := strconv.Atoi(s)
 		if err != nil || n < 0 {
@@ -139,9 +148,9 @@ func parseEncodeCfg() {
 // driver that ignored the variables would be indistinguishable from one that honours
 // them — which is the vacuous pass the gate's opt-in roster exists to prevent.
 func announceCfg() {
-	if encSurface != "new" || flushSize != 0 {
-		fmt.Fprintf(os.Stderr, "crucible-go: streaming cfg enc=%s flush=%d\n",
-			encSurface, flushSize)
+	if encSurface != "new" || flushSize != 0 || failAfter != 0 {
+		fmt.Fprintf(os.Stderr, "crucible-go: streaming cfg enc=%s flush=%d fail=%d\n",
+			encSurface, flushSize, failAfter)
 	}
 }
 
@@ -186,6 +195,23 @@ func reportForeign() {
 //	stream  -> Serialize() into an encoder this driver builds, with the SOFAB_FLUSH
 //	           window, so the encoder crosses a buffer boundary every n bytes
 func encodeVia(m *msg.Probe) ([]byte, error) {
+	// SOFAB_ENCODE_FAIL=n (CONTRACT.md): hand the encoder a destination of n bytes with
+	// NO sink behind it, so a message that does not fit is REFUSED (ErrBufferFull)
+	// rather than truncated — CORELIB_PLAN §5.1 forbids returning partial output as if
+	// it were complete. It is also the only way the `E` mapping below ever runs: from
+	// the wire that branch is unreachable, because every value re-encoded here came out
+	// of this driver's own decoder and is in-bounds by construction.
+	if failAfter > 0 {
+		e, err := sofab.NewEncoderBuffer(make([]byte, failAfter), 0)
+		if err != nil {
+			return nil, err
+		}
+		m.Serialize(e)
+		if err := e.Flush(); err != nil {
+			return nil, err
+		}
+		return e.Bytes(), nil
+	}
 	switch encSurface {
 	case "to":
 		var buf bytes.Buffer

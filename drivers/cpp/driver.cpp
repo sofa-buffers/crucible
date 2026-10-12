@@ -96,6 +96,7 @@ struct StreamCfg
     bool scrub = false;                        // SOFAB_CHUNK_SCRUB=1
     enum Enc { EncNew, EncTo, EncStream } enc = EncNew;  // SOFAB_ENCODE
     long flush = 0;                            // SOFAB_FLUSH=n  — OStream buffer size
+    long fail = 0;                             // SOFAB_ENCODE_FAIL=n — destination cap
 };
 
 static StreamCfg g_cfg;
@@ -115,6 +116,7 @@ static void read_stream_cfg()
     g_cfg.split = env_long("SOFAB_SPLIT");
     g_cfg.chunk = env_long("SOFAB_CHUNK");
     g_cfg.flush = env_long("SOFAB_FLUSH");
+    g_cfg.fail = env_long("SOFAB_ENCODE_FAIL");
     const char *s = std::getenv("SOFAB_CHUNK_SCRUB");
     g_cfg.scrub = s && *s && std::strcmp(s, "0") != 0;
     const char *e = std::getenv("SOFAB_ENCODE");
@@ -135,16 +137,17 @@ static void read_stream_cfg()
     // driver level, and it is what makes "this driver really re-feeds" checkable
     // rather than asserted.
     if (g_cfg.split || g_cfg.chunk || g_cfg.scrub || g_cfg.flush ||
-        g_cfg.enc != StreamCfg::EncNew)
+        g_cfg.enc != StreamCfg::EncNew || g_cfg.fail)
     {
         std::fprintf(stderr,
                      "crucible-cpp: streaming cfg split=%ld chunk=%ld scrub=%d "
-                     "enc=%s flush=%ld\n",
+                     "enc=%s flush=%ld fail=%ld\n",
                      g_cfg.split, g_cfg.chunk, g_cfg.scrub ? 1 : 0,
                      g_cfg.enc == StreamCfg::EncNew ? "new"
                          : g_cfg.enc == StreamCfg::EncTo ? "to" : "stream",
-                     g_cfg.flush);
+                     g_cfg.flush, g_cfg.fail);
     }
+
 }
 
 #ifndef CRUCIBLE_LIMIT_MODE
@@ -248,11 +251,23 @@ struct EncodeOutcome
 // Would this value encode at all? Answered on a stream this function owns, so no
 // surface under test is replaced by it. Error::None = the empty bytes were a real
 // (all-default) message.
-static sofab::Error refusal_code(const message::Probe &m)
+//
+// `room` is the SAME capacity the surface under test was given, which matters as soon
+// as that capacity is deliberately too small (SOFAB_ENCODE_FAIL): re-running the
+// encode into a full-size buffer would succeed, and the empty answer from the capped
+// surface would then read as the all-default message instead of the refusal it was.
+static sofab::Error refusal_code(const message::Probe &m, std::size_t room)
 {
-    std::vector<std::uint8_t> buf(message::Probe::_maxSize);
-    sofab::OStreamView os{buf.data(), buf.size(), 0};
-    return m.serialize(os).code();
+    std::vector<std::uint8_t> buf(room ? room : 1);
+    sofab::OStreamView os{buf.data(), room, 0};
+    (void)m.serialize(os);
+    // The STREAM's sticky status, not the Result `serialize` returns. The generated
+    // body discards its intermediate Results (`(void)_os.write(...)`) and hands back
+    // the last write's, so the Result is not the accumulated verdict: measured on a
+    // two-byte destination, `serialize(...).code()` answered None while the stream was
+    // already not ok and `encodeTo` was correctly returning 0. `encode()`/`encodeTo()`
+    // read `_os.ok()` for exactly that reason, and so must this.
+    return os.ok() ? sofab::Error::None : os.error();
 }
 
 // Which generated call produces the `A <hex>` payload. All three must emit identical
@@ -262,6 +277,26 @@ static sofab::Error refusal_code(const message::Probe &m)
 static EncodeOutcome encode_via(const message::Probe &m)
 {
     EncodeOutcome r;
+    std::size_t room = message::Probe::_maxSize;   // what the destination can take
+    // SOFAB_ENCODE_FAIL=n (CONTRACT.md): hand the encoder a destination of n bytes with
+    // no sink behind it, so a message that does not fit is REFUSED rather than
+    // truncated and the `E` mapping runs for real. `encodeTo` IS that destination here,
+    // whichever surface SOFAB_ENCODE would otherwise have selected.
+    if (g_cfg.fail > 0)
+    {
+        room = static_cast<std::size_t>(g_cfg.fail) < room
+               ? static_cast<std::size_t>(g_cfg.fail) : room;
+        std::vector<std::uint8_t> buf(room ? room : 1);
+        std::size_t used = m.encodeTo(buf.data(), room);
+        buf.resize(used);
+        r.bytes = std::move(buf);
+        if (r.bytes.empty())
+        {
+            sofab::Error code = refusal_code(m, room);
+            if (code != sofab::Error::None) { r.refused = true; r.code = code; }
+        }
+        return r;
+    }
     if (g_cfg.enc == StreamCfg::EncStream)
     {
         // stream: serialize into an OStream, collecting what it flushes. This is the
@@ -293,14 +328,17 @@ static EncodeOutcome encode_via(const message::Probe &m)
     }
     else
     {
-        std::vector<std::uint8_t> buf(message::Probe::_maxSize);
+        // SOFAB_ENCODE_FAIL=n: hand `encodeTo` an n-byte destination instead of the
+        // schema's worst case, so a message that does not fit is refused rather than
+        // truncated (CORELIB_PLAN §5.1 forbids returning partial output as complete).
+        std::vector<std::uint8_t> buf(room);
         std::size_t used = m.encodeTo(buf.data(), buf.size());
         buf.resize(used);
         r.bytes = std::move(buf);
     }
     if (r.bytes.empty())
     {
-        sofab::Error code = refusal_code(m);
+        sofab::Error code = refusal_code(m, room);
         if (code != sofab::Error::None)
         {
             r.refused = true;

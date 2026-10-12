@@ -5,4 +5,5 @@ pacemaker=false
 variants=rs,rs-no-std
 chunked_decode=push
 encode_surfaces=new,stream
+encode_fail=yes
 min_output_buffer=1

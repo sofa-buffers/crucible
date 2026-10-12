@@ -170,6 +170,8 @@ def _env_int(name: str) -> int:
 _SPLIT = _env_int("SOFAB_SPLIT")
 _CHUNK = _env_int("SOFAB_CHUNK")
 _FLUSH = _env_int("SOFAB_FLUSH")
+# SOFAB_ENCODE_FAIL=n: the destination handed to the encoder takes n bytes.
+_FAIL = _env_int("SOFAB_ENCODE_FAIL")
 _SCRUB = os.environ.get("SOFAB_CHUNK_SCRUB", "") not in ("", "0")
 _ENCODE = os.environ.get("SOFAB_ENCODE", "") or "new"
 _CHUNKING = bool(_SPLIT or _CHUNK or _SCRUB)
@@ -191,9 +193,10 @@ def _check_cfg() -> None:
         sys.exit(2)
     # Announce on stderr (never parsed). A driver that silently ignored these would be
     # indistinguishable from one that honours them — stdout is identical either way.
-    if _SPLIT or _CHUNK or _FLUSH or _SCRUB or _ENCODE != "new":
+    if _SPLIT or _CHUNK or _FLUSH or _SCRUB or _ENCODE != "new" or _FAIL:
         sys.stderr.write(f"crucible-py: streaming cfg split={_SPLIT} chunk={_CHUNK} "
-                         f"scrub={1 if _SCRUB else 0} enc={_ENCODE} flush={_FLUSH}\n")
+                         f"scrub={1 if _SCRUB else 0} enc={_ENCODE} flush={_FLUSH} "
+                         f"fail={_FAIL}\n")
 
 
 def _chunks(data: bytes) -> list:
@@ -251,6 +254,20 @@ def _encode_via(m: Probe) -> bytes:
     puts the encoder over a fixed n-byte caller buffer whose flush sink drains it and
     hands back a fresh one, so the encoder crosses a buffer boundary at every offset.
     """
+    # SOFAB_ENCODE_FAIL=n (CONTRACT.md): a destination of n bytes with NO sink, so a
+    # message that does not fit is REFUSED (SofaBufferError) rather than truncated, and
+    # the `E` mapping in canonical() runs for real — from the wire that branch is
+    # unreachable, because every value re-encoded here came out of this driver's own
+    # decoder and is in-bounds by construction.
+    if _FAIL > 0:
+        buf = bytearray(_FAIL)
+        e = Encoder.over_buffer(buf, 0)
+        m.serialize(e)
+        # `bytes_used()` is a CALL, as the generated encode() spells it — a property
+        # here would slice the buffer with a bound method and raise TypeError, which
+        # the `E` mapping would then report as `E other` on a message that encodes
+        # perfectly well. The gate caught exactly that on the first run.
+        return bytes(memoryview(buf)[: e.bytes_used()])
     if _ENCODE == "new":
         return m.encode()
     if _FLUSH <= 0:

@@ -76,8 +76,8 @@ case "$cmd" in
         cap="${2:-}"
         want="${3:-}"
         case "$cap" in
-            encode|chunked) ;;
-            *) echo "usage: roster.sh caps {encode|chunked} [tag]" >&2; exit 2 ;;
+            encode|chunked|encode_fail) ;;
+            *) echo "usage: roster.sh caps {encode|chunked|encode_fail} [tag]" >&2; exit 2 ;;
         esac
         rows | while read -r name builder _arg _tags _binary; do
             meta="$ROOT/drivers/$builder/meta"
@@ -93,6 +93,12 @@ case "$cmd" in
                     # decoder); push and pull both participate.
                     v=$(sed -n 's/^chunked_decode=//p' "$meta")
                     [ -n "$v" ] && [ "$v" != "none" ] && printf '%s\n' "$name"
+                    ;;
+                encode_fail)
+                    # SOFAB_ENCODE_FAIL: whether the driver can hand the encoder a
+                    # destination that is too small. `no` is the declared absence.
+                    v=$(sed -n 's/^encode_fail=//p' "$meta")
+                    [ -n "$v" ] && [ "$v" != "no" ] && printf '%s\n' "$name"
                     ;;
             esac
         done
