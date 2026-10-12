@@ -79,7 +79,14 @@ case "$VARIANT" in
         # provisions into KONAN_DATA_DIR (the standalone kotlinc has no native
         # front-end), so it is located after the corelib build has pulled it.
         KONAN="${KONAN_DATA_DIR:-$HOME/.konan}"
-        KNC=$(find "$KONAN" -maxdepth 3 -type f -name kotlinc-native 2>/dev/null | head -1)
+        # The NEWEST distribution, not whichever `find` happens to walk into first.
+        # Gradle provisions one per Kotlin version it is asked for, so after a corelib
+        # bump there are several side by side: on 2026-10-12 the corelib moved to
+        # 2.4.21 and `head -1` picked the 2.4.10 compiler to read a 2.4.21 klib. It
+        # worked, but by luck -- and the JS leg shows what the unlucky case looks like
+        # (a klib silently ignored and no output, see the `js` arm).
+        KNC=$(find "$KONAN" -maxdepth 3 -type f -name kotlinc-native 2>/dev/null \
+              | sort -V | tail -1)
         [ -n "$KNC" ] || { echo "no kotlinc-native under $KONAN (see .devcontainer)" >&2; exit 1; }
         ;;
     js)

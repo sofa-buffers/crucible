@@ -1100,11 +1100,18 @@ here:
       with the corpus size, or report a timed-out driver as `[TIMEOUT]` and carry on with the
       rest — the second is the one that cannot hide drivers.
 
-- [ ] **The Kotlin target has three of its four KMP legs.** `drivers/kotlin/` runs
-      corelib-kotlin-mp on `jvm`, `linuxX64` (2026-08-18) and, since 2026-10-02, `js` (IR, Node):
-      `kotlin-js`, quarantined until G-0046 is fixed (it quiets an fp32 signaling NaN — the
-      double-only-port shape this item predicted). Open on the JS leg: it is not yet run through
-      the chunked / encode-invariance axes or the limit suite, and has no `limits` tag.
+- [ ] **The Kotlin target has three of its four KMP legs, and the JS one cannot currently be
+      built.** `drivers/kotlin/` runs corelib-kotlin-mp on `jvm`, `linuxX64` (2026-08-18) and,
+      since 2026-10-02, `js` (IR, Node). **G-0046 — the reason `kotlin-js` was quarantined — is
+      fixed** (generator#716, 2026-10-07; Crucible's half, the walker reading the raw-bits
+      channel, landed 2026-10-12). What blocks the leg now is the toolchain, tracked as
+      **crucible#244**: the image's `kotlinc-js` is 2.4.10 while the corelib builds its JS klib
+      with 2.4.21, and an older kotlinc-js ignores a newer klib *silently* — the first compile
+      step writes nothing and the second fails on a missing file. The Kotlin/Native
+      distributions carry no JS front-end, so there is nothing newer to point at locally; the
+      JVM leg is unaffected because a jar is version-tolerant. Also still open on the JS leg: it
+      is not yet run through the chunked / encode-invariance axes or the limit suite, and has no
+      `limits` tag.
       `linuxArm64` is cheap but only tests a cross-compile on an x86 runner — worth it on an
       arm64 runner, not before.
 - [ ] **The Kotlin/Native leg has no coverage front-end.** Jazzer steers the JVM leg
