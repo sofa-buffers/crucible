@@ -109,6 +109,16 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
     && KOTLIN_VERSION=2.4.21 \
     && curl -fsSL -o /tmp/kotlinc.zip "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip" \
     && unzip -q /tmp/kotlinc.zip -d /opt && rm /tmp/kotlinc.zip \
+    # kotlin-dom-api-compat, beside the stdlib klib the zip does carry. It holds
+    # `org.khronos.webgl`, which the JS stdlib has NOT held since Kotlin 1.9 — Gradle
+    # resolves it from Maven for any JS target, and a hand-rolled kotlinc-js call (what
+    # drivers/kotlin/build.sh makes, for the reason drivers/java calls javac) has to be
+    # handed it. corelib-kotlin-mp needs it since corelib-kotlin-mp#56: `Seq.fp32BitsView`
+    # returns a Float32Array view so an fp32 array keeps a signalling NaN on Kotlin/JS.
+    # Missing, the symbol stays unlinked and Kotlin 2.x's partial linkage defers the error
+    # to RUN time, where it reads like a corelib bug (crucible#247).
+    && curl -fsSL -o "/opt/kotlinc/lib/kotlin-dom-api-compat.klib" \
+        "https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-dom-api-compat/${KOTLIN_VERSION}/kotlin-dom-api-compat-${KOTLIN_VERSION}.klib" \
     && java -version && gradle --version && kotlinc -version
 
 # --- Kotlin/Native: the compiler behind the `native` driver leg ----------------

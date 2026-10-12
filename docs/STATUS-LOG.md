@@ -14,6 +14,44 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-12 (the actual last) — the JS leg's third blocker: a klib the compiler zip does not ship
+
+Un-quarantining `kotlin-js` turned the seed gate red on the first try, and the crash read
+like a corelib bug: it died inside `feed` → `decode` → `fastCompound`, in corelib frames,
+on the first input. It is not one.
+
+```
+IrLinkageError: Can not read value from variable 'f':
+  Variable uses unlinked class symbol 'org.khronos.webgl/Float32Array|null[0]'
+    at fp32BitsView → arrayBegin → arrayBeginFixlen → fastFixlenArray → fastCompound → decode → feed
+```
+
+`org.khronos.webgl` left the JS stdlib in Kotlin 1.9 and lives in **kotlin-dom-api-compat**,
+a Maven artifact Gradle resolves for any JS target and the compiler distribution does not
+carry. Our `kotlinc-js` call — hand-rolled for the reason `drivers/java` calls `javac` —
+never passed it. That was invisible until today: `Seq.fp32BitsView` (corelib-kotlin-mp#56)
+is the corelib's first use of the package, and it is *how* the G-0046 fix keeps an fp32
+array's signalling NaN on a target whose `Float` is a double. So the fix for one blocker
+uncovered the next.
+
+**What made it look like someone else's bug** is Kotlin 2.x's partial linkage: an
+unresolved symbol is not a link error, it is deferred to **run time**. The driver decodes
+happily until the first fp32 array, then throws from inside the corelib. The image fetches
+the klib now (same version as `KOTLIN_VERSION`) and `build.sh` refuses to build without
+it, naming it.
+
+**Debugged locally, which took installing the matching compiler** (2.4.21) into this
+container — the CI-only route would have been a diagnostic step pushed to the branch and
+a 45-minute round trip per question. Worth recording as the general shape: a leg that only
+CI can build is a leg nobody can debug.
+
+Green afterwards, 20 drivers: seeds, regression (265), conformance, structured (119),
+materialize (0 divergences, C anchor still 0/119 against the reference), encode invariance
+(`kotlin-js` 119 × 9 configs), chunk invariance, and destination failure at 1/16/64 bytes.
+The materialize result is the end-to-end proof for G-0046: `043_f32_snan.bin` and
+`083_arr_fp32_nan_bits.bin` now agree with the family on the JS leg, which is where they
+did not.
+
 ## 2026-10-12 (last, really) — `kotlin-js` is back in the gates
 
 Both blockers closed within the day, so the row that had been quarantined since 2026-10-02
