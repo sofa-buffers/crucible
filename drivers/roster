@@ -30,6 +30,13 @@
 # encode and what fills a bounded array at decode for this profile. Two majors are two
 # implementations of that, under one API, and must answer identically.
 #
+# `rust-nostd-dyn` is the third of them and the odd one out: `allow_dynamic: true` puts
+# the schema-bounded fields in `alloc::String` / `Vec` instead of heapless containers, so
+# nothing refuses on assignment and the generator emits real guards again — behind a cargo
+# feature (`disable_encode_bounds`) that is the only encode-bound OPT-OUT any profile in
+# this roster has. It is here because an opt-out nothing builds is an opt-out nobody can
+# notice being switched on.
+#
 # The two Kotlin rows are the same shape one level up: one source
 # (drivers/kotlin/driver.kt) against one corelib compiled for two Kotlin Multiplatform
 # targets — `jvm` (byte-array VarHandles for little-endian word access) and `native`
@@ -50,6 +57,7 @@ go                 go       -              blocking,limits   drivers/go/build/dr
 rust-std           rust     rs             blocking,limits   drivers/rust/build/rs/target/debug/harness
 rust-nostd         rust     rs-no-std      blocking          drivers/rust/build/rs-no-std/target/debug/harness
 rust-nostd-h09     rust     rs-no-std-h09  blocking          drivers/rust/build/rs-no-std-h09/target/debug/harness
+rust-nostd-dyn     rust     rs-no-std-dyn  blocking          drivers/rust/build/rs-no-std-dyn/target/debug/harness
 cpp                cpp      cpp            blocking,limits   drivers/cpp/build/cpp/driver
 cpp-fixed          cpp      cpp-fixed      blocking          drivers/cpp/build/cpp-fixed/driver
 cpp-c-cpp          cpp      c-cpp          blocking          drivers/cpp/build/c-cpp/driver

@@ -4,6 +4,18 @@
 #   build.sh rs             -> corelib-rs        (std, maxspeed)
 #   build.sh rs-no-std      -> corelib-rs-no-std (no_std, embedded), heapless 0.8
 #   build.sh rs-no-std-h09  -> the same, against heapless 0.9 (generator#727)
+#   build.sh rs-no-std-dyn  -> the same, allow_dynamic: true (alloc fields)
+#
+# `rs-no-std-dyn` is the one profile in this roster that HAS an encode-bound opt-out:
+# with `allow_dynamic: true` the schema-bounded fields are `alloc::String` / `Vec`
+# instead of heapless containers, so nothing refuses on assignment any more and the
+# generator emits real guards again -- each behind
+# `#[cfg(not(feature = "disable_encode_bounds"))]`, a cargo feature the generated
+# Cargo.toml declares off by default (generator ARCHITECTURE §9.6.1, "the footprint
+# opt-out"). It is in the roster because an opt-out that nothing builds is an opt-out
+# nothing can notice being switched on: scripts/check-encode-bounds.py asserts both
+# that the guards are there and that the feature stays off, and neither assertion has
+# anything to look at unless this profile exists.
 #
 # The two no_std variants generate BYTE-IDENTICAL source — generator docs/generator/
 # rust.md: "The generated source is the same for both ... and only Cargo.toml differs".
@@ -38,18 +50,25 @@ case "$VARIANT" in
     rs-no-std-h09) CORELIB="$ROOT/vendor/corelib-rs-no-std";
                CFG='targets: { rust: { corelib: rs-no-std, heapless: "0.9" } }';
                PREAMBLE='use sofabuffers_generated::{Probe, DecodeError};\n' ;;
-    *) echo "unknown variant '$VARIANT' (want: rs | rs-no-std | rs-no-std-h09)" >&2; exit 2 ;;
+    rs-no-std-dyn) CORELIB="$ROOT/vendor/corelib-rs-no-std";
+               CFG="targets: { rust: { corelib: rs-no-std, allow_dynamic: true } }";
+               PREAMBLE='use sofabuffers_generated::{Probe, DecodeError};\n' ;;
+    *) echo "unknown variant '$VARIANT' (want: rs | rs-no-std | rs-no-std-h09 | rs-no-std-dyn)" >&2; exit 2 ;;
 esac
 
 # Limit mode (crucible#10 / generator#102): SCHEMA selects the schema (default the
 # bounded probe); LIMITS, when set, bakes identical max_dyn_* caps into the
 # generated code so an unbounded field over the cap decodes to LIMIT_EXCEEDED (the
-# `L` verdict). Only the std corelib (rs) supports it — rs-no-std is fixed-capacity
-# and cannot represent an unbounded field, and its Error has no LimitExceeded.
+# `L` verdict). Only the std corelib (rs) supports it, and it takes BOTH halves:
+# storage that can hold an unbounded field, and a corelib whose Error carries
+# LimitExceeded so the driver can emit `L` at all. Every rs-no-std row fails the
+# second half — `rs-no-std-dyn` has alloc fields and so could represent the field,
+# but corelib-rs-no-std has no such error and driver.rs compiles its `L` arm out
+# (the `limit` cargo feature is enabled for `rs` only).
 SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
 case "${LIMITS:+set}:$VARIANT" in
     set:rs-no-std*)
-        echo "==> [rust:$VARIANT] LIMITS is unsupported: the fixed-capacity profile has no unbounded fields" >&2
+        echo "==> [rust:$VARIANT] LIMITS is unsupported: corelib-rs-no-std has no LimitExceeded, so this driver cannot emit the \`L\` verdict" >&2
         exit 2 ;;
 esac
 

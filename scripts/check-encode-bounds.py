@@ -17,7 +17,7 @@ its bound through the setters; what Crucible has to keep true is narrower and ca
 tested that way: **every profile in this roster is built with its own refusal mechanism
 in place, and none of the opt-outs is switched on.**
 
-Three assertions, from generator `docs/ARCHITECTURE.md` §9.6.1:
+Four assertions, from generator `docs/ARCHITECTURE.md` §9.6.1:
 
 1. a profile that refuses through a GENERATED guard has one in its generated code — but
    only for a bound its storage does not already guarantee, and only when the schema in
@@ -25,10 +25,14 @@ Three assertions, from generator `docs/ARCHITECTURE.md` §9.6.1:
 2. a profile that refuses some other way has NO generated guard: the fixed-capacity
    containers that clamp (C++ `FixedString`/`InlineVector`, Zig `FixedArray`, C's
    length/count companions) or refuse on assignment (`heapless`), and C, whose check is
-   descriptor-driven inside the corelib — asserted at its source, since an absence in
-   generated code alone would also be satisfied by nobody checking at all;
-3. no opt-out is compiled in: `SOFAB_DISABLE_ENCODE_BOUNDS` (C / C++ with the c-cpp
-   corelib) or the `disable_encode_bounds` cargo feature (rs-no-std + allow_dynamic).
+   descriptor-driven inside the corelib;
+3. and that other way is **there**, asserted in the vendored corelib (`CORELIB_MECHANISMS`).
+   An absence of generated guards alone would also be satisfied by nobody checking at
+   all, which is the one reading of a green `by contract` row that would be wrong;
+4. no opt-out is switched on: `SOFAB_DISABLE_ENCODE_BOUNDS` (C / C++ with the c-cpp
+   corelib) or the `disable_encode_bounds` cargo feature. The latter is *declared* by
+   the one generated project that has it (`rs-no-std` + `allow_dynamic`), off by
+   default, so declaring it and enabling it are told apart (`opt_out_enabled`).
 
 Both directions matter in (1)/(2): a guard appearing in a clamping profile means its
 storage flavour moved and the expectation here went stale.
@@ -96,6 +100,12 @@ PROFILES = [
      r"Err\(sofab::Error::Argument\)"),
     ("rust-nostd-h09", "container", None, ["drivers/rust/build/rs-no-std-h09/src/*.rs"],
      r"Err\(sofab::Error::Argument\)"),
+    # allow_dynamic: true -- the fields are alloc::String / Vec, so nothing refuses on
+    # assignment and §9.6.1 emits real guards again, each behind the one encode-bound
+    # OPT-OUT any profile here has (`disable_encode_bounds`, off by default). Both halves
+    # are asserted: the guards below, and that the feature stays off further down.
+    ("rust-nostd-dyn", "guard", "len", ["drivers/rust/build/rs-no-std-dyn/src/*.rs"],
+     r"Err\(sofab::Error::Argument\)"),
     ("cpp",           "guard", "len",   ["drivers/cpp/gen/cpp/*.hpp"],
      r"rejectArgument\(\)"),
     ("cpp-fixed",     "clamp", None,    ["drivers/cpp/gen/cpp-fixed/*.hpp"],
@@ -146,11 +156,62 @@ OPT_OUT_SCOPE = (["drivers/%s/build.sh" % d for d in
                    "ts", "dart")]
                  + ["drivers/rust/build/rs/Cargo.toml",
                     "drivers/rust/build/rs-no-std/Cargo.toml",
-                    "drivers/rust/build/rs-no-std-h09/Cargo.toml"])
+                    "drivers/rust/build/rs-no-std-h09/Cargo.toml",
+                    # the one generated project that DECLARES the opt-out: what is
+                    # checked here is that it stays a declaration
+                    "drivers/rust/build/rs-no-std-dyn/Cargo.toml"])
+
+# The other side of a non-`guard` mechanism: where it lives in the vendored corelib, and
+# the tokens that have to be there for the claim "no generated guard is needed" to hold.
+#   (source, [needles], which profiles rely on it, what it is)
+CORELIB_MECHANISMS = [
+    ("vendor/corelib-c-cpp/src/object.c",
+     ["SOFAB_RET_E_ARGUMENT", "SOFAB_DISABLE_ENCODE_BOUNDS"], "c",
+     "sofab_object_encode refuses an unterminated string and clamps the length/count "
+     "companions, descriptor-driven"),
+    ("vendor/corelib-cpp/include/sofab/sofab.hpp",
+     ["utf8Prefix", "FixedString", "InlineVector"], "cpp-fixed",
+     "FixedString / FixedBytes / InlineVector clamp on assignment, and the string clamp "
+     "cuts at a UTF-8 character boundary"),
+    ("vendor/corelib-c-cpp/src/include/sofab/sofab.hpp",
+     ["utf8Prefix", "FixedString"], "cpp-c-cpp",
+     "the c-cpp wrapper's static containers clamp on assignment at a UTF-8 boundary"),
+    ("vendor/corelib-zig/src/support.zig",
+     ["fn set", "@min(vals.len, N)"], "zig's native arrays",
+     "FixedArray.set keeps the first N elements"),
+    ("vendor/corelib-rs-no-std/src/lib.rs",
+     ["heapless"], "rust-nostd, rust-nostd-h09",
+     "the heapless containers refuse on assignment, and the corelib's SeqVec impl is "
+     "built on them"),
+]
 
 # A declared type narrower than the widest integer, i.e. one a backend holding it in a
 # wider type emits a width comparison for (§9.6.1; `boolean` is normalised, not bounded).
 NARROW = re.compile(r"type:\s*(u8|i8|u16|i16|u32|i32|enum|bitfield)\b")
+
+
+def opt_out_enabled(line, token):
+    """Is this line SWITCHING the opt-out on, rather than declaring it exists?
+
+    `rs-no-std` with allow_dynamic puts `disable_encode_bounds = []` in the generated
+    Cargo.toml -- that is the feature being DECLARED, off by default, which is exactly
+    the state this check wants. What would switch it on is the feature appearing in a
+    list: `default = ["disable_encode_bounds"]`, another feature enabling it, a
+    dependency's `features = [...]`, or `--features` in a build recipe. So a line that
+    merely defines the feature is fine, and a line that mentions it inside brackets or on
+    a cargo/compiler command line is not. (`SOFAB_DISABLE_ENCODE_BOUNDS` has no such
+    declaration form -- any mention of it in a build recipe is a definition being passed
+    to the compiler.)
+    """
+    # Comments first, in both file kinds: `#` starts one in Cargo.toml and in a shell
+    # recipe alike, and the word appears in prose on both sides of this repo — the build
+    # script explains the opt-out it does not use, which is not the same as using it.
+    bare = line.split("#", 1)[0].strip()
+    if token not in bare:
+        return False
+    if re.fullmatch(re.escape(token) + r"\s*=\s*\[\s*\]", bare):
+        return False      # the declaration itself: the feature exists, switched off
+    return True
 
 
 def read(rel):
@@ -231,7 +292,9 @@ def main():
 
     print()
     for token, what in OPT_OUTS:
-        where = [rel for rel in OPT_OUT_SCOPE if token in (read(rel) or "")]
+        where = [rel for rel in OPT_OUT_SCOPE
+                 if any(opt_out_enabled(line, token)
+                        for line in (read(rel) or "").splitlines())]
         if where:
             print(f"  !! {token} appears in {', '.join(where)} — {what}. Crucible compares "
                   "implementations as a user gets them; switching a refusal out here would "
@@ -240,22 +303,28 @@ def main():
         else:
             print(f"  ok  no {token} in any build recipe")
 
-    # `corelib` above asserts only an ABSENCE in the generated code, which on its own
-    # would be satisfied by a corelib that does not check either. C is the one profile
-    # whose whole mechanism lives there, so the presence is asserted at the source.
-    c_src = read("vendor/corelib-c-cpp/src/object.c")
-    if c_src is None:
-        print("  !! vendor/corelib-c-cpp is not vendored — the C profile's refusal could "
-              "not be checked at its source (scripts/bootstrap.sh)")
-        missing += 1
-    elif "SOFAB_RET_E_ARGUMENT" not in c_src or "SOFAB_DISABLE_ENCODE_BOUNDS" not in c_src:
-        print("  !! corelib-c-cpp src/object.c carries no encode-bound refusal — the C "
-              "profile generates no guard because §9.6.1 puts the check in the corelib "
-              "(sofab_object_encode, over field->size). With neither side checking, the C "
-              "profile is the only one that would write an over-bound value.")
-        fail += 1
-    else:
-        print("  ok  corelib-c-cpp sofab_object_encode carries the refusal (C's mechanism)")
+    # A mechanism of `clamp` / `container` / `corelib` is asserted above only as an
+    # ABSENCE of generated guards, which on its own would also be satisfied by nobody
+    # checking at all. So each one is asserted a second time where it actually lives: in
+    # the vendored corelib. Signature-based like scripts/check-family-copies.py, with the
+    # same caveat — a rename upstream turns this red and the §9.6.1 row has to be
+    # re-read, which is the intended outcome rather than a silent pass.
+    for src, needles, profiles, what in CORELIB_MECHANISMS:
+        text = read(src)
+        if text is None:
+            print(f"  !! {src} is not vendored — the mechanism behind {profiles} could "
+                  "not be checked at its source (scripts/bootstrap.sh)")
+            missing += 1
+            continue
+        absent = [n for n in needles if n not in text]
+        if absent:
+            print(f"  !! {src} no longer carries {', '.join(absent)} — {profiles} "
+                  f"generate no guard because §9.6.1 says {what}. With neither side "
+                  "doing it, those profiles are the only ones that would accept an "
+                  "over-bound value where every other refuses.")
+            fail += 1
+        else:
+            print(f"  ok  {src}: {what} ({profiles})")
 
     if missing:
         print(f"\n{missing} profile(s) not built — run scripts/run.sh first; an unbuilt "
