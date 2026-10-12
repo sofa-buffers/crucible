@@ -128,6 +128,22 @@ which is the corelib's refusal being documented, not a guard being emitted.) A g
 red for a reason outside the thing it guards is worse than no gate, and this one did it on its
 first non-default schema.
 
+**Two holes in that check, closed the same day they were named.** (1) A `by contract` row
+asserted only that a profile emits *no* generated guard — which a corelib that stopped
+checking would satisfy just as well. The mechanism is now asserted where it lives:
+`corelib-cpp`'s `FixedString` / `InlineVector` clamps and its `utf8Prefix` boundary rule,
+the `c-cpp` wrapper's equivalents, Zig's `FixedArray.set`, C's descriptor-driven refusal,
+and heapless under the two static Rust rows. Signature-based, with
+`check-family-copies.py`'s caveat: an upstream rename turns it red and §9.6.1 has to be
+re-read, which is the intended outcome rather than a silent pass. (2) The **only
+encode-bound opt-out in the family** — the `disable_encode_bounds` cargo feature — belongs
+to `rs-no-std` with `allow_dynamic: true`, and Crucible did not build that profile at all.
+An opt-out nothing builds is one nobody can notice being switched on, so it is a fourth
+Rust roster row now (`rust-nostd-dyn`): its fields are `alloc::String` / `Vec`, nothing
+refuses on assignment, and §9.6.1 emits 25 real guards behind that `#[cfg(not(feature =
+…))]`. The check asserts both halves, and tells *declaring* the feature (what the generated
+Cargo.toml does, off by default — the state we want) apart from *enabling* it.
+
 **And the oracle itself is now exercised.** `scripts/check-oracle-verdicts.py` drives the
 comparator with stub drivers emitting chosen canonical lines, because `E` has no input that
 produces one and neither do the per-line checks: a verdict whose handling nothing exercises is

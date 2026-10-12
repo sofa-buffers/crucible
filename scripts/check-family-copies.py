@@ -114,6 +114,11 @@ GENERATED = {
     "go":            (["drivers/go/message/probe.go"], r"\bNew(?:String|Blob|Message)Seq\b"),
     "rust-std":      (["drivers/rust/build/rs/src/message.rs"], PLACE),
     "rust-nostd":    (["drivers/rust/build/rs-no-std/src/message.rs"], PLACE),
+    # Same generated source as rust-nostd, so the same placement layer: these two rows
+    # differ only in the heapless major their containers come from (generator#727), and
+    # `rust-nostd-dyn` only in holding alloc containers instead (allow_dynamic).
+    "rust-nostd-h09": (["drivers/rust/build/rs-no-std-h09/src/message.rs"], PLACE),
+    "rust-nostd-dyn": (["drivers/rust/build/rs-no-std-dyn/src/message.rs"], PLACE),
     "cpp":           (["drivers/cpp/gen/cpp/probe.hpp"], SEQ),
     "cpp-fixed":     (["drivers/cpp/gen/cpp-fixed/probe.hpp"], SEQ),
     "cpp-c-cpp":     (["drivers/cpp/gen/c-cpp/probe.hpp"], SEQ),
