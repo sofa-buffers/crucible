@@ -1,7 +1,7 @@
 # G-0047 — the generated C++ `encode()` / `encodeTo()` cannot report a refusal: it answers "no bytes", which is also the all-default message
 
-**Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status; this file is the evidence.
-**Guard:** none — the ambiguity is in the shape of the generated API, not in a value, so no wire input reaches it (an over-bound value would have to come from a decoder bug first). `isolate.cpp` in this folder reproduces it in 25 lines, and `drivers/cpp/driver.cpp` (`refusal_code`) is what keeps Crucible itself from being blind to it.
+**Status:** ✅ **RESOLVED** — fixed upstream the same day, in generator `05176bb8` ("fix(cpp): encode() and encodeTo() report a refusal"), about two and a half hours after it was filed. Both entry points now return `sofab::Error` and are `[[nodiscard]]`, exactly the generator#673 shape this write-up pointed at: `encode(std::vector<std::uint8_t>&)` and `encodeTo(dst, cap, used)`. The commit also cites a clause this write-up did not — CORELIB_PLAN §5.1.2, "a one-shot helper that ignores that report is non-conformant" — and adds `tests/conformance/cpp/encode_refusal_check.cpp`, which asserts in all four profiles that a refusal and the all-default message agree on their bytes and differ in their status.
+**Guard:** scripts/run-encode-fail.sh — the destination-failure gate hands every driver an n-byte destination with no sink, so all four C++ profiles now answer a real refusal through the fixed API on every run (`E buffer_full`), and a regression to the old "answers nothing" shape would stop compiling: both entry points are `[[nodiscard]]` and the status is the return value. `isolate.cpp` in this folder still reproduces the original collision against a pre-fix generator.
 **Issue:** [generator#736](https://github.com/sofa-buffers/generator/issues/736) (filed 2026-10-12) — the C++ twin of [generator#673](https://github.com/sofa-buffers/generator/issues/673), which made the Rust `encode()` fallible for exactly this reason, and the sequel to [generator#322](https://github.com/sofa-buffers/generator/issues/322), whose `return {}` fix was unambiguous until #656 added a reachable argument error.
 
 **Found 2026-10-12** while teaching the drivers generator#656's encode-side refusal
@@ -111,11 +111,19 @@ One of the two shapes the family already uses elsewhere:
 Either way the doc comment's claim about `encodeTo()` has to go, since today it is simply
 untrue.
 
-## What Crucible does meanwhile
+## What Crucible did meanwhile, and what replaced it
 
-`drivers/cpp/driver.cpp` re-runs `serialize()` on a stream it owns **when, and only when,
-the surface under test came back empty**, and reports `E <class>` from the `Result`
-(`refusal_code`). That keeps the three encode surfaces the encode gate compares being the
-ones actually called, and costs one extra pass on the single input per corpus whose wire
-form is empty. It is a workaround for a missing return value, not a second oracle — if
-the API grows one, the second pass goes away.
+While the issue was open, `drivers/cpp/driver.cpp` re-ran `serialize()` on a stream it
+owned whenever the surface under test came back empty, and read the refusal from there.
+**That is gone**, in the same session: the API grew the return value, so the workaround
+would only be a second opinion about a status the call now reports. The driver reads
+`encode()`/`encodeTo()`'s `sofab::Error` directly.
+
+Two things worth keeping from the workaround's short life. It was written reading the
+`Result` that `serialize` returns, which is **not** the accumulated verdict — the
+generated body discards its intermediate Results and hands back the last write's, so a
+two-byte destination answered `code() == None` while the stream was already not ok. The
+stream's own `ok()`/`error()` is the status, which is what the `stream` arm still reads
+and what `encode()`/`encodeTo()` always read internally. And the defect that exposed it
+was found by `scripts/run-encode-fail.sh` on its first run — the gate written to make the
+`E` verdict happen at all.

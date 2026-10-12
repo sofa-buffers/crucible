@@ -14,6 +14,33 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-12 (later still) — G-0047 fixed upstream within the session; the workaround is gone
+
+generator#736 was filed at 14:1x and closed at 16:39, in `05176bb8` ("fix(cpp): encode()
+and encodeTo() report a refusal") — about two and a half hours. The fix is the shape the
+issue pointed at, Rust's generator#673 one: both entry points return `sofab::Error` and
+are `[[nodiscard]]`, `encode(std::vector<std::uint8_t>&)` and `encodeTo(dst, cap, used)`.
+It cites a clause the issue did not (CORELIB_PLAN §5.1.2: "a one-shot helper that ignores
+that report is non-conformant") and adds a conformance check asserting, in all four
+profiles, that a refusal and the all-default message agree on their bytes and differ in
+their status.
+
+**So the workaround came out the same day it went in.** `drivers/cpp/driver.cpp` no longer
+re-runs `serialize()` to find out whether an empty answer was a refusal; it reads the
+status the call returns. The `[[nodiscard]]` also means a regression to the old shape stops
+compiling rather than going quiet — which is how CI found the API change in the first
+place: the differential job bootstraps the newest green sofabgen, and the driver no longer
+built against it.
+
+Two things are worth keeping from the workaround's short life. It was first written reading
+the `Result` that `serialize` **returns**, which is not the accumulated verdict: the
+generated body discards its intermediate Results and hands back the last write's, so a
+two-byte destination answered `code() == None` while the stream was already not ok. The
+stream's own `ok()`/`error()` is the status — which is what the `stream` arm still reads,
+and what `encode()`/`encodeTo()` always read internally. And the defect that exposed it was
+caught by `scripts/run-encode-fail.sh` on its first run, by the gate written to make the
+`E` verdict happen at all. G-0047 is ✅ and its guard is that gate.
+
 ## 2026-10-12 (later) — the two limits the encode-bound work left behind, closed
 
 The `E` verdict and the arming check landed with four limits written down (ARCHITECTURE,
