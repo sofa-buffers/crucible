@@ -14,6 +14,26 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-12 (last, really) — `kotlin-js` is back in the gates
+
+Both blockers closed within the day, so the row that had been quarantined since 2026-10-02
+carries `blocking` again: G-0046 by generator#716 plus this repo's half of it (the
+materialized walker reading the raw-bits channel), and crucible#244 by the Dockerfile's
+2.4.21 pin — `image.yml` rebuilt `crucible-ci:latest` on the merge, as it does for any
+Dockerfile change, so CI's compiler now matches the Kotlin the corelib's klibs are built
+with.
+
+**Verified in CI, not here, and that is a property of the change rather than a shortcut.**
+This container is older than the corelib's Kotlin, so `build.sh js` exits 3 by the
+pre-flight added with crucible#244 — and with the row un-quarantined that aborts the roster
+build rather than one leg, which is worth knowing before someone wonders why every gate
+stopped working locally. The fix is to rebuild the devcontainer from the Dockerfile
+(crucible#217, which is exactly about the image a developer gets rather than the one CI
+gets); the fallback is `ROSTER_TAG=` with a hand-picked subset.
+
+What stays open on the leg: no `limits` tag. The `limits` rows are the heap profiles whose
+corelib reports LIMIT_EXCEEDED, and whether Kotlin/JS qualifies has not been looked at.
+
 ## 2026-10-12 (last) — crucible#244: the silent half of the Kotlin toolchain, asserted
 
 The JS leg could not be built because the image's `kotlinc` (2.4.10) is older than the
