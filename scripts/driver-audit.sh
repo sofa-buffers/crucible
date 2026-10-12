@@ -90,14 +90,21 @@ while read -r name builder arg tags binary; do
             ;;
     esac
 
-    # A quarantine must name the finding that justifies it, so it can be lifted the day
-    # that finding closes — the roster's own rule. Checked against the file's comments,
-    # which is where the reason lives.
+    # A quarantine must name what justifies it, so it can be lifted the day that thing
+    # closes — the roster's own rule. Checked against the file's comments, which is where
+    # the reason lives.
+    #
+    # A finding (F-/G-) or a tracked issue (crucible#NNN) both count, and the second was
+    # added 2026-10-12: `kotlin-js` had been out for G-0046, that finding closed, and the
+    # leg STILL could not be built — the image's kotlinc-js is older than the Kotlin the
+    # corelib's klib is built with. Naming the closed finding to satisfy this check would
+    # have been precisely the silent exclusion it exists to prevent, so the blocker got a
+    # ticket (crucible#244) and this learned to accept one.
     case ",$tags," in
         *,blocking,*) ;;
         *)
-            if ! grep -q "$name" "$ROSTER" || ! grep -E "^#.*$name" "$ROSTER" | grep -qE 'F-[0-9]{4}|G-[0-9]{4}'; then
-                note "$name: quarantined (no blocking tag) with no finding named in drivers/roster — a quarantine without a reason is a silent exclusion"
+            if ! grep -q "$name" "$ROSTER" || ! grep -E "^#.*$name" "$ROSTER" | grep -qE 'F-[0-9]{4}|G-[0-9]{4}|crucible#[0-9]+'; then
+                note "$name: quarantined (no blocking tag) with neither a finding (F-/G-) nor a tracked issue (crucible#NNN) named on its line in drivers/roster — a quarantine without a reason is a silent exclusion"
             fi
             ;;
     esac

@@ -14,6 +14,46 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-12 (later still) — G-0046 is fixed upstream too; what blocks `kotlin-js` now is the toolchain
+
+generator#670 closed on 2026-10-07 via generator#716 (with corelib-kotlin-mp#56 under it)
+and nothing here had noticed: the finding still read 🔴 and `kotlin-js` was still
+quarantined five days later, with its quarantine naming a condition that had already been
+met. Worth saying plainly, because the gap was not in a gate — it was that nobody asked.
+
+**What the fix required on this side.** The Kotlin materialized walker had the defect's
+premise written into it as a type note: "a real Kotlin Float, so `Float.toRawBits()` is
+the exact wire pattern … and no `<field>Fp32Bits` companion channel is involved." True on
+JVM and Native, false on Kotlin/JS — where a `Float` **is** a JS number — and it named the
+very channel generator#716 then introduced. `drivers/kotlin/materialize_gen.py` now reads
+it: a scalar passes `<expr>Fp32Bits`, an array reads `Seq.fp32BitsView(FloatArray):
+IntArray?` once per container and indexes it, both `null` where neither is needed so the
+other two legs keep `toRawBits()` as the fallback rather than as an exception. Materialize
+is 119 × 19 drivers 0 divergences with the C anchor still 0/119 against the reference, so
+the fallback is exact where it is taken.
+
+**Decision: the quarantine stays, under a new name.** Lifting it was the point of the
+exercise and it does not build: the image's `kotlinc-js` is **2.4.10** while
+corelib-kotlin-mp builds its JS klib with **2.4.21** since its Renovate bump this morning,
+and an older kotlinc-js ignores a newer klib *without a word* — which
+`drivers/kotlin/build.sh`'s own comment predicted, and which surfaces two steps later as
+"No module with …/driver.klib found". The Kotlin/Native distributions carry no JS
+front-end, so there is nothing newer to point at locally; the JVM leg is unaffected
+because its corelib artifact is a jar. Filed as **crucible#244**.
+
+**And `driver-audit.sh` had to learn what a quarantine may name.** Its rule is that a
+quarantine names the finding justifying it, so it can be lifted the day that finding
+closes. Here the finding closed and the exclusion remained for an unrelated reason —
+naming G-0046 anyway, to satisfy the grep, would have been exactly the silent exclusion
+the rule exists to prevent. It accepts a tracked issue (`crucible#NNN`) as well now, and
+the roster names crucible#244.
+
+**One more thing fell out of it.** `build.sh`'s native arm resolved its compiler with
+`find … | head -1` over the konan installs, and with two of them present (2.4.10 and
+2.4.21, Gradle provisions one per Kotlin version it is asked for) it picked **2.4.10** to
+read a 2.4.21 klib. That worked, by luck — and it is the same class of bug as the JS one,
+one step less visible. It takes the newest now (`sort -V | tail -1`).
+
 ## 2026-10-12 (later still) — G-0047 fixed upstream within the session; the workaround is gone
 
 generator#736 was filed at 14:1x and closed at 16:39, in `05176bb8` ("fix(cpp): encode()

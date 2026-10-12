@@ -1,8 +1,8 @@
 # G-0046 — the sofabgen Kotlin backend consumes an `fp32` as a `Float`, so on Kotlin/JS a signaling NaN is quieted
 
-**Status:** 🔴 **OPEN** — [`results/FINDINGS.md`](../../results/FINDINGS.md) owns this finding's status; this file is the evidence. The JS leg that exposes it is quarantined meanwhile (`drivers/roster`).
-**Guard:** corpus/structured — `043_f32_snan.bin` (scalar) and `083_arr_fp32_nan_bits.bin` (array element): the replay and materialized gates both see them as soon as the `kotlin-js` row is un-quarantined.
-**Issue:** [generator#670](https://github.com/sofa-buffers/generator/issues/670) (filed 2026-10-02)
+**Status:** ✅ **RESOLVED** — fixed upstream in [generator#716](https://github.com/sofa-buffers/generator/pull/716) (merged 2026-10-07, five days after this was filed), with [corelib-kotlin-mp#56](https://github.com/sofa-buffers/corelib-kotlin-mp/pull/56) underneath it. The generated visitor overrides **`fp32Bits`** and takes the wire pattern: a scalar stores `Float.fromBits(bits)` and keeps the pattern beside it in a public `<field>Fp32Bits: Int?` while the value is a NaN (`Seq.fp32NaNBits`), an array element goes in through `Seq.putFp32Bits` over `Seq.fp32BitsView`, and `OStream.writeFp32(id, value, raw)` re-emits it. Crucible's own half followed on 2026-10-12: `drivers/kotlin/materialize_gen.py` reads that channel instead of asserting it does not exist. **The `kotlin-js` leg is still quarantined, for an unrelated reason** — the image's `kotlinc-js` (2.4.10) is older than the Kotlin the corelib's JS klib is built with (2.4.21), and an older compiler ignores a newer klib silently: [crucible#244](https://github.com/sofa-buffers/crucible/issues/244).
+**Guard:** corpus/structured — `043_f32_snan.bin` (scalar) and `083_arr_fp32_nan_bits.bin` (array element). The replay and materialized gates feed both on every run; they bind the `kotlin-js` row the moment crucible#244 lets it build, and they already bind the walker's new read path on the JVM and Native rows, where `<field>Fp32Bits` and `Seq.fp32BitsView` are null and the fallback has to be exact.
+**Issue:** [generator#670](https://github.com/sofa-buffers/generator/issues/670) (filed 2026-10-02, closed 2026-10-07 by [generator#716](https://github.com/sofa-buffers/generator/pull/716))
 
 **Found 2026-10-02** while wiring the Kotlin/JS leg of `drivers/kotlin/` (crucible#213). It is
 the F-0049 / G-0033 shape again, in the one backend whose corelib already did its part.
@@ -62,3 +62,24 @@ divergence is a property of the JS target, which is why it is invisible until th
 An `fp32Bits` override in the generated visitor, and a bits-carrying channel in the generated
 message for a scalar and an array element that a bit-exact consumer — Crucible's materialized
 walker — can read, as TypeScript and (after generator#275) Dart have.
+
+## What the fix required on this side
+
+The Kotlin materialized walker had the defect's premise written into it as a **type note**:
+
+> `fp32` — a real Kotlin Float, so `Float.toRawBits()` is the exact wire pattern: nothing
+> widened it through a double, so a signalling NaN survives and no `<field>Fp32Bits`
+> companion channel (generator#275, the Dart case) is involved.
+
+True on JVM and Native, false on Kotlin/JS — where a `Float` **is** a JS number — and it
+named the very channel the fix then introduced. `drivers/kotlin/materialize_gen.py` now
+emits `_f32(b, value, raw)` with the pattern beside the value:
+
+- a scalar passes `<expr>Fp32Bits`, the companion the generated message keeps while the
+  value is a NaN;
+- an array reads `Seq.fp32BitsView(FloatArray): IntArray?` once per container and indexes
+  it, which is the same public helper the generated visitor fills through.
+
+Both are `null` where neither is needed, so JVM and Native keep `toRawBits()` — the
+fallback, not an exception. That is also what the two guard vectors bind on those rows
+today, with the JS row still out for crucible#244.
