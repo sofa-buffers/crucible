@@ -71,16 +71,13 @@ zig                zig      -              blocking,limits   drivers/zig/build/d
 dart               dart     -              blocking,limits   drivers/dart/build/driver
 kotlin-jvm         kotlin   jvm            blocking,limits   drivers/kotlin/build/jvm/driver
 kotlin-native      kotlin   native         blocking,limits   drivers/kotlin/build/native/driver
-# kotlin-js runs in the gates again as of 2026-10-12, after two separate blockers closed on
-# the same day: G-0046 (the generated visitor took an fp32 as a widened `Float`, so
-# Kotlin/JS quieted a signaling NaN) via generator#716, and crucible#244 (the image's
-# kotlinc was older than the Kotlin that builds the corelib's klibs, which an older
-# kotlinc ignores silently) via the Dockerfile's 2.4.21 pin and the image rebuild it
-# triggered. No `limits` tag yet — the JS leg is not in the limit roster, which is its own
-# open item (docs/TODO.md).
-#
-# NOTE for a stale container: `drivers/kotlin/build.sh js` exits 3 when the local kotlinc
-# is older than the corelib's Kotlin, and with this row un-quarantined that aborts the
-# roster build rather than one leg. Rebuild the devcontainer from .devcontainer/Dockerfile
-# (crucible#217), or run a gate with ROSTER_TAG= and a hand-picked subset.
-kotlin-js          kotlin   js             blocking          drivers/kotlin/build/js/driver
+# kotlin-js is QUARANTINED for crucible#247, which is a SEQUENCING state and not a defect:
+# its two real blockers are gone (G-0046 via generator#716 plus this repo's walker half,
+# and the compiler-version mismatch via the Dockerfile's 2.4.21 pin, crucible#244), and
+# the leg is verified green on all seven gates locally — 20 drivers, including the
+# materialized sNaN vectors that G-0046 was about. What it still needs is an IMAGE that
+# carries `kotlin-dom-api-compat.klib`, which crucible#247 adds to the Dockerfile: the CI
+# image is only rebuilt after that lands on main, so the row cannot be lifted in the same
+# change that makes it buildable. Lift it in the follow-up, once an image carrying the
+# klib exists. (No `limits` tag either way — that is its own open item, docs/TODO.md.)
+kotlin-js          kotlin   js             -                 drivers/kotlin/build/js/driver

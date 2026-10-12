@@ -52,10 +52,14 @@ The materialize result is the end-to-end proof for G-0046: `043_f32_snan.bin` an
 `083_arr_fp32_nan_bits.bin` now agree with the family on the JS leg, which is where they
 did not.
 
-## 2026-10-12 (last, really) — `kotlin-js` is back in the gates
+## 2026-10-12 (last, really) — `kotlin-js` verified, and still quarantined for one more merge
 
-Both blockers closed within the day, so the row that had been quarantined since 2026-10-02
-carries `blocking` again: G-0046 by generator#716 plus this repo's half of it (the
+Both blockers closed within the day, and a third surfaced behind them (the next entry). The
+leg is green on all seven gates locally — 20 drivers — but the row keeps its quarantine for
+one more change: lifting it needs a CI image carrying `kotlin-dom-api-compat.klib`, and
+that image is only built after the Dockerfile change reaches main. Un-quarantining in the
+same PR that makes the leg buildable cannot pass its own CI, which is the same sequencing
+crucible#244 had one level up. What follows applies to the state after that merge: G-0046 by generator#716 plus this repo's half of it (the
 materialized walker reading the raw-bits channel), and crucible#244 by the Dockerfile's
 2.4.21 pin — `image.yml` rebuilt `crucible-ci:latest` on the merge, as it does for any
 Dockerfile change, so CI's compiler now matches the Kotlin the corelib's klibs are built
