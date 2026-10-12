@@ -58,6 +58,7 @@ right after the seed build (while the generated code is still the probe's):
                                             #   ... and, inside run.sh, check-encode-bounds.py:
                                             #   the generated encode guards are armed in every
                                             #   profile and no opt-out is compiled in (#656)
+python3 scripts/check-kotlin-version.py     # the image's kotlinc vs the corelib's klibs (crucible#244)
 python3 scripts/check-family-copies.py      # C anchor tags + generated code reaches the corelib layer
 CORPUS=corpus/regression ./scripts/run.sh   # resolved-findings gate       (corpus/regression)
 CORPUS=corpus/conformance ./scripts/run.sh  # §2/§3 canonicality seeds     (corpus/conformance)

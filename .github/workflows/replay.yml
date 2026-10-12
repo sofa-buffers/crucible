@@ -104,6 +104,14 @@ jobs:
       # limit mode, the union suite and the sweeps rebuild against other schemas. Asserts
       # the C anchor has a case for every corelib-c-cpp field-type tag and that each
       # driver's generated code reaches its corelib's collector layer (generator#587).
+      # The image's Kotlin compiler must not be older than the Kotlin the corelibs
+      # build their klibs with — the one mismatch in this toolchain that is SILENT
+      # (crucible#244). Hard on the Dockerfile, which this repo owns and a reviewer can
+      # see; reported on the running image, which rebuilds only after the Dockerfile
+      # change reaches main and therefore always lags the PR that fixes it.
+      - name: Kotlin compiler vs the corelib's klibs
+        run: python3 scripts/check-kotlin-version.py
+
       - name: Family copies (anchor tags + generated code reaches the corelib)
         run: python3 scripts/check-family-copies.py
 

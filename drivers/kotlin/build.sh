@@ -103,6 +103,24 @@ case "$VARIANT" in
         STDLIB_JS="$KOTLIN_HOME/lib/kotlin-stdlib-js.klib"
         [ -f "$STDLIB_JS" ] || { echo "no kotlin-stdlib-js.klib next to kotlinc-js" >&2; exit 1; }
         command -v node >/dev/null 2>&1 || { echo "missing node (see .devcontainer)" >&2; exit 1; }
+        # PRE-FLIGHT the version relationship, because getting it wrong is SILENT here:
+        # an older kotlinc-js ignores a newer klib without a word, writes no klib, and
+        # the -Xinclude step below then fails with "No module with .../driver.klib
+        # found" -- two steps from the cause (crucible#244). Exit 3, the contract's
+        # "cannot operate at this configuration", with both numbers in the message.
+        # scripts/check-kotlin-version.py asserts the same relationship for the image
+        # and the Dockerfile; this is the per-build half, where it actually bites.
+        _kv=$(kotlinc -version 2>&1 | sed -n 's/.*kotlinc[a-z-]*  *\([0-9][0-9.]*\).*/\1/p' | head -1)
+        _cv=$(sed -n 's/.*kotlin("multiplatform") version "\([^"]*\)".*/\1/p' \
+              "$CORELIB/build.gradle.kts" 2>/dev/null | head -1)
+        if [ -n "$_kv" ] && [ -n "$_cv" ] && \
+           [ "$(printf '%s\n%s\n' "$_cv" "$_kv" | sort -V | head -1)" != "$_cv" ]; then
+            echo "==> [kotlin/js] kotlinc is $_kv, older than the Kotlin that builds the" >&2
+            echo "    corelib's JS klib ($_cv). An older kotlinc-js ignores a newer klib" >&2
+            echo "    silently — this leg cannot be built here (crucible#244); the image" >&2
+            echo "    needs a kotlinc >= $_cv (.devcontainer/Dockerfile)." >&2
+            exit 3
+        fi
         ;;
 esac
 

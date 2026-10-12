@@ -14,6 +14,39 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-12 (last) — crucible#244: the silent half of the Kotlin toolchain, asserted
+
+The JS leg could not be built because the image's `kotlinc` (2.4.10) is older than the
+Kotlin that builds the corelib's klibs (2.4.21). Three things came out of looking at it.
+
+**The Dockerfile was already ahead of the image.** It pinned 2.4.20 — bumped on 2026-10-02
+when the JS leg was wired — and the running container still carries 2.4.10, so the image
+was never rebuilt for that change. It rebuilds on a push to **main** that touches
+`.devcontainer/Dockerfile` (image.yml), which is also what will carry this one: both pins
+(the standalone compiler and the Kotlin/Native prebuilt) now say 2.4.21, the corelib's
+current version.
+
+**Decision: assert the relationship rather than comment it.** The Dockerfile already told
+a reader to "keep the version in step with the `kotlin("multiplatform")` version in that
+repo's build.gradle.kts" — and that side moves on its own, because Renovate bumps the
+corelib whenever Kotlin releases. `scripts/check-kotlin-version.py` compares both numbers,
+and splits the question by what a PR can actually fix: the **Dockerfile** pin is hard (the
+sync point this repo owns, reviewable in the diff), the **running image** is reported. The
+image lags the Dockerfile by one merge by construction, so failing on it would make the
+fix unmergeable — the one case where "report, don't fail" is structural rather than a
+deferral. Wired into the differential job after bootstrap, since it needs `vendor/`.
+
+**And the per-build half, where it bites.** `drivers/kotlin/build.sh`'s js arm pre-flights
+the same comparison and exits 3 — the contract's "cannot operate at this configuration" —
+naming both numbers, instead of letting the first compile step write nothing and the
+second fail with `No module with …/driver.klib found`. Two failure directions, and only
+one of them was ever loud: a newer compiler than the library fails on metadata version, an
+older one ignores the klib **without a word**. The jvm leg hides the whole problem, because
+its corelib artifact is a jar.
+
+`kotlin-js` stays quarantined until an image carrying 2.4.21 exists and a run proves the
+leg builds; that is a follow-up to this change, not part of it.
+
 ## 2026-10-12 (later still) — G-0046 is fixed upstream too; what blocks `kotlin-js` now is the toolchain
 
 generator#670 closed on 2026-10-07 via generator#716 (with corelib-kotlin-mp#56 under it)

@@ -70,10 +70,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #     build tool before any wrapper is there; project builds still go via ./gradlew.
 #   * kotlinc, the standalone compiler, for the reason drivers/java calls javac
 #     directly: Gradle builds the corelib, the driver is a handful of files compiled
-#     against that jar and must not drag a Gradle project of its own along. Keep the
-#     version in step with the `kotlin("multiplatform")` version in that repo's
-#     build.gradle.kts — a driver built by a newer kotlinc than the corelib fails on
-#     metadata version, which reads like a corelib bug and is not one.
+#     against that jar and must not drag a Gradle project of its own along.
+#
+#     KOTLIN_VERSION below must be **>= the `kotlin("multiplatform")` version in
+#     corelib-kotlin-mp's build.gradle.kts**, and the two drift on their own: Renovate
+#     bumps that repo whenever Kotlin releases, and nothing here moves with it. Both
+#     directions bite, and differently:
+#       - a driver built by a NEWER kotlinc than the corelib fails on metadata version,
+#         which reads like a corelib bug and is not one;
+#       - an OLDER kotlinc ignores the corelib's klib **silently** — the JS leg then
+#         writes no klib and fails two steps later on a missing file (crucible#244,
+#         2026-10-12: kotlinc 2.4.10 in a stale image against a 2.4.21 klib).
+#     `scripts/check-kotlin-version.py` asserts the relationship instead of asking a
+#     reader of this comment to remember it. The JVM leg is the exception that hides
+#     the problem: its corelib artifact is a jar, which is version-tolerant, so only
+#     the klib consumers (js, native) notice.
 #
 # Kotlin/Native (linuxX64/linuxArm64) fetches its own LLVM + platform libraries on
 # first build (~2 GB); KONAN_DATA_DIR parks that cache in the image instead of the
@@ -95,7 +106,7 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
     && curl -fsSL -o /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" \
     && unzip -q /tmp/gradle.zip -d /opt && rm /tmp/gradle.zip \
     && ln -sfn "/opt/gradle-${GRADLE_VERSION}/bin/gradle" /usr/local/bin/gradle \
-    && KOTLIN_VERSION=2.4.20 \
+    && KOTLIN_VERSION=2.4.21 \
     && curl -fsSL -o /tmp/kotlinc.zip "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip" \
     && unzip -q /tmp/kotlinc.zip -d /opt && rm /tmp/kotlinc.zip \
     && java -version && gradle --version && kotlinc -version
@@ -116,7 +127,12 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # It lands under KONAN_DATA_DIR in the layout Gradle uses, so both find the same
 # installation: drivers/kotlin/build.sh looks for kotlinc-native there, and the
 # corelib's own Gradle build reuses this copy instead of fetching its own.
-RUN KOTLIN_VERSION=2.4.20 \
+# Same version as the standalone kotlinc above, and for the same reason: this one
+# consumes the corelib's linuxX64 klib, so an older compiler reads a newer klib. Gradle
+# provisions a SECOND distribution beside this one whenever the corelib asks for a
+# Kotlin it does not have, which is why build.sh takes the newest it finds rather than
+# the first (it picked 2.4.10 over 2.4.21 until 2026-10-12).
+RUN KOTLIN_VERSION=2.4.21 \
     && case "$(uname -m)" in \
          x86_64)  KN_HOST=linux-x86_64 ;; \
          aarch64) KN_HOST=linux-aarch64 ;; \
