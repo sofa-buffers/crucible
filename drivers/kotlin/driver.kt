@@ -55,6 +55,8 @@ private fun envInt(name: String): Int = Io.env(name)?.toIntOrNull() ?: 0
 private val SPLIT = envInt("SOFAB_SPLIT")
 private val CHUNK = envInt("SOFAB_CHUNK")
 private val FLUSH = envInt("SOFAB_FLUSH")
+// SOFAB_ENCODE_FAIL=n: the destination handed to the encoder takes n bytes.
+private val FAIL_AFTER = envInt("SOFAB_ENCODE_FAIL")
 private val SCRUB = Io.env("SOFAB_CHUNK_SCRUB").let { it != null && it.isNotEmpty() && it != "0" }
 private val ENCODE = Io.env("SOFAB_ENCODE").let { if (it.isNullOrEmpty()) "new" else it }
 private val CHUNKING = SPLIT != 0 || CHUNK != 0 || SCRUB
@@ -110,6 +112,17 @@ private class ByteAcc {
  *  boundary at every offset. corelib-kotlin-mp declares MIN_OUTPUT_BUFFER = 1
  *  (Sofab.MIN_OUTPUT_BUFFER), so every swept size is one it accepts. */
 private fun encodeVia(m: Probe): ByteArray {
+    // SOFAB_ENCODE_FAIL=n (CONTRACT.md): a destination of n bytes with NO sink, so a
+    // message that does not fit is REFUSED (SofabError.BUFFER_FULL) rather than
+    // truncated, and the `E` mapping runs for real — from the wire that branch is
+    // unreachable, every value re-encoded here came out of this driver's own decoder.
+    if (FAIL_AFTER > 0) {
+        val small = ByteArray(FAIL_AFTER)
+        val sos = OStream(small, 0)
+        m.serialize(sos)
+        sos.flush()
+        return small.copyOf(sos.bytesUsed)
+    }
     if (ENCODE == "new") return m.encode()
     val cap = if (FLUSH > 0) FLUSH else Probe.MAX_SIZE
     val acc = ByteAcc()
@@ -227,10 +240,13 @@ private fun announce() {
         Io.err("crucible-kotlin: unknown SOFAB_ENCODE=$ENCODE (this backend has new, to, stream)")
         Io.exit(2)
     }
-    if (SPLIT != 0 || CHUNK != 0 || SCRUB || FLUSH != 0 || ENCODE != "new") {
+    if (SPLIT != 0 || CHUNK != 0 || SCRUB || FLUSH != 0 || ENCODE != "new" ||
+        FAIL_AFTER != 0
+    ) {
         Io.err(
             "crucible-kotlin: streaming cfg split=$SPLIT chunk=$CHUNK" +
-                " scrub=" + (if (SCRUB) 1 else 0) + " enc=$ENCODE flush=$FLUSH",
+                " scrub=" + (if (SCRUB) 1 else 0) +
+                " enc=$ENCODE flush=$FLUSH fail=$FAIL_AFTER",
         )
     }
 }

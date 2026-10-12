@@ -4,4 +4,5 @@ framework=go-native-fuzz
 pacemaker=false
 chunked_decode=none
 encode_surfaces=new,to,stream
+encode_fail=yes
 min_output_buffer=20

@@ -294,6 +294,8 @@ internal static class Driver
     private static readonly int Split = EnvInt("SOFAB_SPLIT");
     private static readonly int Chunk = EnvInt("SOFAB_CHUNK");
     private static readonly int Flush = EnvInt("SOFAB_FLUSH");
+    // SOFAB_ENCODE_FAIL=n: the destination handed to the encoder takes n bytes.
+    private static readonly int FailAfter = EnvInt("SOFAB_ENCODE_FAIL");
     private static readonly bool Scrub =
         !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SOFAB_CHUNK_SCRUB")) &&
         Environment.GetEnvironmentVariable("SOFAB_CHUNK_SCRUB") != "0";
@@ -318,10 +320,12 @@ internal static class Driver
     // way — so this makes "it really re-feeds" checkable rather than asserted.
     private static void AnnounceCfg()
     {
-        if (Split != 0 || Chunk != 0 || Scrub || Flush != 0 || Encode0 != "new")
+        if (Split != 0 || Chunk != 0 || Scrub || Flush != 0 || Encode0 != "new"
+            || FailAfter != 0)
         {
             Console.Error.WriteLine($"crucible-cs: streaming cfg split={Split} " +
-                $"chunk={Chunk} scrub={(Scrub ? 1 : 0)} enc={Encode0} flush={Flush}");
+                $"chunk={Chunk} scrub={(Scrub ? 1 : 0)} enc={Encode0} flush={Flush} " +
+                $"fail={FailAfter}");
         }
     }
 
@@ -365,6 +369,18 @@ internal static class Driver
     /// boundary at every offset.
     private static byte[] EncodeVia(Probe m)
     {
+        // SOFAB_ENCODE_FAIL=n (CONTRACT.md): a destination of n bytes with NO sink, so
+        // a message that does not fit is REFUSED (SofabError.BufferFull) rather than
+        // truncated, and the `E` mapping runs for real — from the wire that branch is
+        // unreachable, every value re-encoded here came out of this driver's decoder.
+        if (FailAfter > 0)
+        {
+            var small = new byte[FailAfter];
+            var sos = new OStream(small);
+            m.Serialize(sos);
+            sos.Flush();
+            return small[..sos.BytesUsed];
+        }
         if (Encode0 == "new") return m.Encode();
         int cap = Flush > 0 ? Flush : Probe.MaxSize;
         var acc = new List<byte>();

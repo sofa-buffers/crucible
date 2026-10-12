@@ -299,6 +299,7 @@ static struct {
     enum enc_surface enc;
     int enc_set;              /* SOFAB_ENCODE was present -- see the announcement */
     long flush;
+    long fail;                /* SOFAB_ENCODE_FAIL=n: the destination takes n bytes */
 } g_cfg;
 
 static long env_long(const char *name)
@@ -314,6 +315,7 @@ static void read_stream_cfg(void)
     g_cfg.split = env_long("SOFAB_SPLIT");
     g_cfg.chunk = env_long("SOFAB_CHUNK");
     g_cfg.flush = env_long("SOFAB_FLUSH");
+    g_cfg.fail = env_long("SOFAB_ENCODE_FAIL");
     e = getenv("SOFAB_CHUNK_SCRUB");
     g_cfg.scrub = e && *e && strcmp(e, "0") != 0;
     e = getenv("SOFAB_ENCODE");
@@ -342,12 +344,12 @@ static void read_stream_cfg(void)
      * be indistinguishable from one that honours them -- identical stdout either
      * way -- so this makes "it really re-feeds" checkable rather than asserted. */
     if (g_cfg.split || g_cfg.chunk || g_cfg.scrub || g_cfg.flush ||
-        g_cfg.enc_set || g_cfg.enc != ENC_TO)
+        g_cfg.enc_set || g_cfg.enc != ENC_TO || g_cfg.fail)
     {
         fprintf(stderr, "crucible-c: streaming cfg split=%ld chunk=%ld scrub=%d "
-                        "enc=%s flush=%ld\n",
+                        "enc=%s flush=%ld fail=%ld\n",
                 g_cfg.split, g_cfg.chunk, g_cfg.scrub,
-                g_cfg.enc == ENC_TO ? "to" : "stream", g_cfg.flush);
+                g_cfg.enc == ENC_TO ? "to" : "stream", g_cfg.flush, g_cfg.fail);
     }
 }
 
@@ -502,7 +504,15 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
     /* Accept: re-encode the decoded value and emit its canonical wire as hex. */
     uint8_t enc[MESSAGE_PROBE_MAX_SIZE];
     size_t used = 0;
-    sofab_ret_t er = encode_via(&m, enc, sizeof(enc), &used);
+    /* SOFAB_ENCODE_FAIL=n (CONTRACT.md): hand the encoder a destination of n bytes
+     * with no sink behind it, so a message that does not fit is REFUSED
+     * (SOFAB_RET_E_BUFFER_FULL) instead of truncated, and the `E` mapping below runs
+     * for real. In C that destination is exactly what the caller-buffer encode takes,
+     * so the axis is a smaller `dstlen` and nothing else. */
+    sofab_ret_t er = g_cfg.fail > 0
+        ? message_probe_encode(&m, enc, (size_t)g_cfg.fail < sizeof(enc)
+                                        ? (size_t)g_cfg.fail : sizeof(enc), &used)
+        : encode_via(&m, enc, sizeof(enc), &used);
     if (er != SOFAB_RET_OK)
     {
         /* The decode ACCEPTED and the re-encode of that value was REFUSED: the `E`

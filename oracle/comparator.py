@@ -245,6 +245,12 @@ def main():
     ap.add_argument("--driver", action="append", required=True,
                     help="name:path, repeatable")
     ap.add_argument("--policy", default=None)
+    ap.add_argument("--allow-encode-refused", action="store_true",
+                    help="compare the `E` verdict instead of failing on every occurrence "
+                         "— for a run that makes the caller's destination fail on purpose "
+                         "(SOFAB_ENCODE_FAIL, drivers/common/CONTRACT.md), where a refused "
+                         "re-encode is the expected answer and the question is whether "
+                         "every implementation refuses the SAME records")
     ap.add_argument("--timeout", type=float, default=None,
                     help="per-driver wall-clock budget in seconds "
                          "(default max(30, 0.25 x corpus size))")
@@ -310,7 +316,7 @@ def main():
             if line in (None, CRASH, TIMEOUT):
                 continue
             v, p = parse(line)
-            if v in FORBIDDEN_VERDICTS:
+            if v in FORBIDDEN_VERDICTS and not args.allow_encode_refused:
                 e = seen_refused.setdefault((nm, p or "?"), [0, seed])
                 e[0] += 1
                 continue

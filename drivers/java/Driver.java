@@ -58,6 +58,8 @@ public final class Driver {
     private static final int SPLIT = envInt("SOFAB_SPLIT");
     private static final int CHUNK = envInt("SOFAB_CHUNK");
     private static final int FLUSH = envInt("SOFAB_FLUSH");
+    // SOFAB_ENCODE_FAIL=n: the destination handed to the encoder takes n bytes.
+    private static final int FAIL_AFTER = envInt("SOFAB_ENCODE_FAIL");
     private static final boolean SCRUB;
     private static final String ENCODE;
     static {
@@ -73,10 +75,11 @@ public final class Driver {
         // Announce on stderr (never parsed). A driver that silently ignored these
         // would be indistinguishable from one that honours them — stdout is identical
         // either way — so this makes "it really re-feeds" checkable, not asserted.
-        if (SPLIT != 0 || CHUNK != 0 || SCRUB || FLUSH != 0 || !ENCODE.equals("new")) {
+        if (SPLIT != 0 || CHUNK != 0 || SCRUB || FLUSH != 0 || !ENCODE.equals("new")
+                || FAIL_AFTER != 0) {
             System.err.println("crucible-java: streaming cfg split=" + SPLIT + " chunk="
                 + CHUNK + " scrub=" + (SCRUB ? 1 : 0) + " enc=" + ENCODE
-                + " flush=" + FLUSH);
+                + " flush=" + FLUSH + " fail=" + FAIL_AFTER);
         }
     }
     private static final boolean CHUNKING = SPLIT != 0 || CHUNK != 0 || SCRUB;
@@ -116,6 +119,18 @@ public final class Driver {
      *  OStream an n-byte buffer draining to a sink, so the encoder crosses a buffer
      *  boundary at every offset. */
     private static byte[] encodeVia(Probe m) throws IOException {
+        // SOFAB_ENCODE_FAIL=n (CONTRACT.md): hand the encoder a destination of n bytes
+        // with NO sink behind it, so a message that does not fit is REFUSED
+        // (SofabError.BUFFER_FULL) rather than truncated — §5.1 forbids returning
+        // partial output as if it were complete. It is also the only way the `E`
+        // mapping ever runs: from the wire that branch is unreachable, because every
+        // value re-encoded here came out of this driver's own decoder.
+        if (FAIL_AFTER > 0) {
+            OStream os = new OStream(new byte[FAIL_AFTER]);
+            m.serialize(os);
+            os.flush();
+            return os.copyOfBytesUsed();
+        }
         if (ENCODE.equals("new")) return m.encode();
         int cap = FLUSH > 0 ? FLUSH : Probe.MAX_SIZE;
         ByteArrayOutputStream acc = new ByteArrayOutputStream();
@@ -172,6 +187,10 @@ public final class Driver {
         byte[] enc;
         try {
             enc = encodeVia(m);
+        } catch (SofabException e) {
+            // Before IOException, which SofabException extends: the category is the
+            // whole point of the `E` line, and the generic arm would flatten it.
+            return refused(verdict, rejectClass(e));
         } catch (IOException e) {
             return refused(verdict, "other");
         } catch (RuntimeException e) {

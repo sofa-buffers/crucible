@@ -220,6 +220,62 @@ chunked_decode=push|pull|none    push: feed(chunk) — every corelib with a resu
 encode_surfaces=new,to,stream    which of the three this backend actually has
 ```
 
+### The caller's destination can be made to fail (`SOFAB_ENCODE_FAIL=n`)
+
+| variable | meaning |
+|---|---|
+| `SOFAB_ENCODE_FAIL=n` | re-encode into a destination of **n bytes with no sink behind it** |
+
+Unset or `0` is today's behaviour. Set, it **replaces** the re-encode path rather than
+modifying a surface: the driver hands the encoder an n-byte buffer with no sink installed,
+and a message that does not fit is refused. `SOFAB_ENCODE` is therefore not consulted —
+asking for a surface as well would only test which branch the driver takes to reach the
+same stream, and every backend has this one shape:
+
+| backend | the n-byte sink-less destination |
+|---|---|
+| `c` | `message_probe__encode(m, dst, n, &used)` |
+| `cpp` ×4 | `encodeTo(dst, n)` |
+| `go` | `sofab.NewEncoderBuffer(make([]byte, n), 0)` |
+| `java`, `csharp`, `kotlin` | `new OStream(new byte[n])` |
+| `dart` | `sofab.Encoder.overBuffer(Uint8List(n))` |
+| `python` | `Encoder.over_buffer(bytearray(n), 0)` |
+| `rust` | `sofab::OStream::new(&mut buf)` |
+| `typescript` | `new OStream(new Uint8Array(n), 0)` |
+| `zig` | `sofab.OStream.init(buf)` |
+
+A sink is deliberately **not** what fails. Three of the eleven ports cannot report a sink
+failure at all — C's flush callback returns `void`, C++'s is a `std::function<void(span)>`
+on a `noexcept` stream, and Rust's `Flush::flush` returns `()` — so an injected sink error
+would have covered eight ports with eight shapes. A full sink-less buffer is one shape
+that every port has, and the refusal then comes from the **corelib** (§6.3's `BufferFull`)
+rather than from an exception the driver threw at itself.
+
+**Why this axis exists.** The `E` verdict above is reachable from the wire only through a
+decoder bug: every value a driver re-encodes came out of its own decoder and is in-bounds
+by construction. So the mapping each driver does — an encode failure becomes `E <class>`,
+and on the `I` path the payload is dropped rather than the verdict — would never run at
+all, in any driver, until the day it mattered. This makes it run: the destination fails on
+purpose, the generated encode reports it, and the driver has to answer `E`.
+
+It is also a rule in its own right, and CORELIB_PLAN §5.1 states it: an encoder must not
+return partial output as if it were complete. A driver answering `A <short hex>` here has
+caught its corelib doing exactly that.
+
+**It is differential, unlike the other intra-driver axes.** The family is byte-canonical,
+so one value has one encoding and therefore one length: with the same `n`, every
+implementation must refuse the *same* records and accept the rest byte-identically. So the
+ordinary comparator runs it (`scripts/run-encode-fail.sh`), with
+`--allow-encode-refused` — which makes `E` a verdict to be compared rather than one that
+fails per line, because here it is the expected answer and not a contradiction.
+
+`meta` records the capability for the gate's roster, as the other axes do, and
+`scripts/roster.sh caps encode_fail` derives who participates from it:
+
+```
+encode_fail=yes|no        whether this driver can hand over a short destination
+```
+
 ### A refused re-encode is not a decode verdict (`E`)
 
 The re-encode has **three** outcomes, not two, and the third one is new. Since

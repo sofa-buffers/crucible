@@ -202,5 +202,13 @@ jobs:
       - name: Chunk invariance over the resolved-findings corpus
         run: CORPUS=corpus/regression ./scripts/run-chunked.sh --modes chunk
 
+      # The `E` verdict (a refused re-encode) is unreachable from the wire — it takes a
+      # decoder bug — so every driver's mapping for it would never run. This hands each
+      # one an n-byte destination with no sink and makes it run, differentially: one
+      # value has one length, so with the same n the whole family must refuse the same
+      # records (drivers/common/CONTRACT.md, SOFAB_ENCODE_FAIL).
+      - name: Destination failure (the `E` verdict, exercised)
+        run: ./scripts/run-encode-fail.sh
+
       - name: Encode invariance (streaming encode, opt-in roster)
         run: ./scripts/run-encode.sh

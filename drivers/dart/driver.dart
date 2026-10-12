@@ -53,6 +53,8 @@ int _envInt(String name) => int.tryParse(Platform.environment[name] ?? '') ?? 0;
 final int _split = _envInt('SOFAB_SPLIT');
 final int _chunk = _envInt('SOFAB_CHUNK');
 final int _flush = _envInt('SOFAB_FLUSH');
+// SOFAB_ENCODE_FAIL=n: the destination handed to the encoder takes n bytes.
+final int _encodeFail = _envInt('SOFAB_ENCODE_FAIL');
 final bool _scrub = (Platform.environment['SOFAB_CHUNK_SCRUB'] ?? '').isNotEmpty &&
     Platform.environment['SOFAB_CHUNK_SCRUB'] != '0';
 final String _encode = (Platform.environment['SOFAB_ENCODE'] ?? '').isEmpty
@@ -69,9 +71,14 @@ void _checkCfg() {
   // Announce on stderr (never parsed). A driver that silently ignored these would
   // be indistinguishable from one that honours them — stdout is identical either
   // way — so this makes "it really re-feeds" checkable rather than asserted.
-  if (_split != 0 || _chunk != 0 || _scrub || _flush != 0 || _encode != 'new') {
+  if (_split != 0 ||
+      _chunk != 0 ||
+      _scrub ||
+      _flush != 0 ||
+      _encode != 'new' ||
+      _encodeFail != 0) {
     stderr.writeln('crucible-dart: streaming cfg split=$_split chunk=$_chunk '
-        'scrub=${_scrub ? 1 : 0} enc=$_encode flush=$_flush');
+        'scrub=${_scrub ? 1 : 0} enc=$_encode flush=$_flush fail=$_encodeFail');
   }
 }
 
@@ -101,6 +108,16 @@ List<Uint8List> _chunksOf(Uint8List data) {
 // n-byte buffer draining to a sink, so the encoder crosses a buffer boundary at
 // every offset.
 Uint8List _encodeVia(Probe m) {
+  // SOFAB_ENCODE_FAIL=n (CONTRACT.md): a destination of n bytes with NO sink
+  // (`Encoder.overBuffer`), so a message that does not fit is REFUSED
+  // (invalidArgument / bufferFull) rather than truncated, and the `E` mapping runs for
+  // real — from the wire that branch is unreachable, because every value re-encoded
+  // here came out of this driver's own decoder and is in-bounds by construction.
+  if (_encodeFail > 0) {
+    final enc = sofab.Encoder.overBuffer(Uint8List(_encodeFail));
+    m.serialize(enc);
+    return Uint8List.fromList(enc.written);
+  }
   if (_encode == 'new') return m.encode();
   final builder = BytesBuilder(copy: true);
   // corelib-dart#62 dropped `bufferSize:`: per CORELIB_PLAN §5.1 the corelib

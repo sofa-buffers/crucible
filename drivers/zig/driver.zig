@@ -59,6 +59,8 @@ const StreamCfg = struct {
     scrub: bool = false,
     enc_stream: bool = false,
     flush: usize = 0,
+    /// SOFAB_ENCODE_FAIL=n: the destination handed to the encoder takes n bytes.
+    fail: usize = 0,
 };
 
 fn envUsize(init: std.process.Init, name: []const u8) usize {
@@ -71,6 +73,7 @@ fn readStreamCfg(init: std.process.Init) StreamCfg {
     cfg.split = envUsize(init, "SOFAB_SPLIT");
     cfg.chunk = envUsize(init, "SOFAB_CHUNK");
     cfg.flush = envUsize(init, "SOFAB_FLUSH");
+    cfg.fail = envUsize(init, "SOFAB_ENCODE_FAIL");
     if (init.environ_map.get("SOFAB_CHUNK_SCRUB")) |v| {
         cfg.scrub = v.len != 0 and !std.mem.eql(u8, v, "0");
     }
@@ -90,12 +93,14 @@ fn readStreamCfg(init: std.process.Init) StreamCfg {
     // Announce on stderr (never parsed). A driver that silently ignored these would
     // be indistinguishable from one that honours them — stdout is identical either
     // way — so this makes "it really re-feeds" checkable rather than asserted.
-    if (cfg.split != 0 or cfg.chunk != 0 or cfg.scrub or cfg.flush != 0 or cfg.enc_stream) {
+    if (cfg.split != 0 or cfg.chunk != 0 or cfg.scrub or cfg.flush != 0 or
+        cfg.enc_stream or cfg.fail != 0)
+    {
         std.debug.print("crucible-zig: streaming cfg split={d} chunk={d} scrub={d} " ++
-            "enc={s} flush={d}\n", .{
+            "enc={s} flush={d} fail={d}\n", .{
             cfg.split, cfg.chunk, @intFromBool(cfg.scrub),
             if (cfg.enc_stream) @as([]const u8, "stream") else @as([]const u8, "new"),
-            cfg.flush,
+            cfg.flush, cfg.fail,
         });
     }
     return cfg;
@@ -251,7 +256,17 @@ pub fn main(init: std.process.Init) !void {
         // identical bytes, and SOFAB_FLUSH must not change them either: it gives the
         // OStream an n-byte buffer with a sink, so the encoder crosses a buffer
         // boundary at every offset — the encode-side mirror of SOFAB_CHUNK=1.
-        const enc = (if (cfg.enc_stream) blk: {
+        // SOFAB_ENCODE_FAIL=n (CONTRACT.md): a destination of n bytes with NO sink, so
+        // a message that does not fit is REFUSED (error.BufferFull) rather than
+        // truncated, and the `E` mapping below runs for real — from the wire that
+        // branch is unreachable, because every value re-encoded here came out of this
+        // driver's own decoder and is in-bounds by construction.
+        const enc = (if (cfg.fail > 0) blk: {
+            const sbuf = a.alloc(u8, cfg.fail) catch break :blk error.BufferFull;
+            var os = sofab.OStream.init(sbuf);
+            m.serialize(&os) catch |e| break :blk @as(anyerror![]u8, e);
+            break :blk @as(anyerror![]u8, sbuf[0..os.bytesUsed()]);
+        } else if (cfg.enc_stream) blk: {
             const cap = if (cfg.flush > 0) cfg.flush else message.Probe.MAX_SIZE;
             const sbuf = a.alloc(u8, cap) catch break :blk error.BufferFull;
             var acc = EncAcc{ .alloc = a };

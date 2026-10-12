@@ -43,6 +43,8 @@ const _num = (name: string): number => {
 const _SPLIT = _num("SOFAB_SPLIT");
 const _CHUNK = _num("SOFAB_CHUNK");
 const _FLUSH = _num("SOFAB_FLUSH");
+// SOFAB_ENCODE_FAIL=n: the destination handed to the encoder takes n bytes.
+const _FAIL = _num("SOFAB_ENCODE_FAIL");
 const _SCRUB = !!process.env.SOFAB_CHUNK_SCRUB && process.env.SOFAB_CHUNK_SCRUB !== "0";
 const _ENCODE = process.env.SOFAB_ENCODE ?? "";
 if (_ENCODE && _ENCODE !== "stream") {
@@ -56,10 +58,11 @@ if (_ENCODE && _ENCODE !== "stream") {
 // silently ignored the variables would be indistinguishable from one that honours
 // them — identical stdout either way — which is the vacuous pass the gate's opt-in
 // roster guards against. This is the same guard at the driver level.
-if (_SPLIT || _CHUNK || _SCRUB || _FLUSH || _ENCODE) {
+if (_SPLIT || _CHUNK || _SCRUB || _FLUSH || _ENCODE || _FAIL) {
   process.stderr.write(
     `crucible-ts: streaming cfg split=${_SPLIT} chunk=${_CHUNK} ` +
-      `scrub=${_SCRUB ? 1 : 0} enc=${_ENCODE || "stream"} flush=${_FLUSH}\n`,
+      `scrub=${_SCRUB ? 1 : 0} enc=${_ENCODE || "stream"} flush=${_FLUSH} ` +
+      `fail=${_FAIL}\n`,
   );
 }
 
@@ -297,6 +300,18 @@ function acceptLine(m: Probe): string {
 // arrives in n-byte pieces and the encoder crosses a buffer boundary at every offset —
 // the encode-side mirror of SOFAB_CHUNK=1. The bytes must not change either way.
 function encodeBytes(m: Probe): Uint8Array {
+  // SOFAB_ENCODE_FAIL=n (CONTRACT.md): a destination of n bytes with NO sink, so a
+  // message that does not fit is REFUSED (SofabErrorCode.BufferFull) rather than
+  // truncated, and the `E` mapping runs for real — from the wire that branch is
+  // unreachable, because every value re-encoded here came out of this driver's own
+  // decoder and is in-bounds by construction.
+  if (_FAIL > 0) {
+    const small = new Uint8Array(_FAIL);
+    const sos = new OStream(small, 0);
+    m.serialize(sos);
+    sos.flush();
+    return small.subarray(0, sos.bytesUsed);
+  }
   if (_FLUSH > 0) {
     const parts: Uint8Array[] = [];
     // The sink is handed the INSTALLED BUFFER plus coordinates — `buffer[start..end)`

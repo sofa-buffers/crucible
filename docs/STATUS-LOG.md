@@ -14,6 +14,80 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-12 (later) — the two limits the encode-bound work left behind, closed
+
+The `E` verdict and the arming check landed with four limits written down (ARCHITECTURE,
+and the STATUS-LOG entry below). Two of them were worth closing, and this is them. The
+other two stay: the per-field literal check cannot prove a bound is *right* — only that it
+is one of that field's own numbers — and that gap is the generator conformance suite's, not
+ours; and a `heapless` profile pair still covers one major each, which is a roster cost
+rather than a hole.
+
+**The `E` verdict had never actually run.** It reports a decode that accepted a value its
+own encoder then refused, and reaching that from the wire takes a decoder bug: every value
+a driver re-encodes came out of its own decoder and is in-bounds by construction. So the
+mapping in all eleven driver sources was unexercised — not by a gate, not by a nightly,
+not once. Written that way it is the failure mode this repo keeps naming: a check nothing
+runs.
+
+**Decision: make the destination fail, not the value.** `SOFAB_ENCODE_FAIL=n`
+(drivers/common/CONTRACT.md) has a driver re-encode into an n-byte buffer with **no sink**
+behind it. Every port has that one shape, and the refusal then comes from the **corelib** —
+§6.3's `BufferFull` — rather than from an exception the driver threw at itself. A failing
+*sink* was the first design and was dropped: three ports cannot report one at all (C's
+flush callback returns `void`, C++'s is a `void` `std::function` on a `noexcept` stream,
+Rust's `Flush::flush` returns `()`), so it would have covered eight ports with eight
+shapes and a class that differed per shape.
+
+**And it is differential, which no other encode-side axis is.** The family is
+byte-canonical: one value has one encoding, so it has one length. With the same `n` every
+implementation must refuse the *same* records and re-encode the rest byte-identically — so
+the gate is the ordinary comparator (`scripts/run-encode-fail.sh`), with
+`--allow-encode-refused` to say that here an `E` is the expected answer rather than a
+contradiction to fail on per line.
+
+**It found two defects on its first run, both in this harness, and that is the point.**
+The C++ driver was reading the `Result` that `serialize` returns instead of the stream's
+sticky status — the generated body discards its intermediate Results (`(void)_os.write(…)`)
+and hands back the last write's, which is exactly why `encode()`/`encodeTo()` read
+`_os.ok()`; measured, a two-byte destination answered `code() == None` while the stream was
+already not ok. And the Python driver sliced its buffer with `e.bytes_used` where the
+generated code calls `e.bytes_used()`, so a message that encodes perfectly well came back
+as `E other`. Both were invisible until something made the path run.
+
+Green afterwards: destinations of 1, 16 and 64 bytes over `corpus/seeds` and
+`corpus/structured`, 19 drivers, **0 divergences** — including the 1-byte run, where a
+refusal and the all-default message (whose wire form is genuinely zero bytes, §2) would
+collide if a driver confused them, which is G-0047's shape exactly.
+
+**The arming check now asks whether a guard guards the right number.** Phase 1 asked
+whether a guard exists; a guard comparing `str` (maxlen 32) against 31, or against 4 —
+`bytes_field`'s bound on the wrong field — passed it. Phase 2 reads the schema and asserts
+that **every literal a comparison on a schema field is made against is one of that
+field's own declared numbers**: its `maxlen`, its `count`, its element bounds, the min/max
+of its declared width, its field id, and 0/1. Two tiers, because not every comparison can
+be attributed: the left operand names a field, or it falls back to the union of every
+field's numbers. 1 183 comparisons across the 19 profiles, 0 unexplained.
+
+Deliberately narrow, and the wide version is upstream's: to know a backend refuses the
+right *values* you have to run it, per backend and per variant, which is
+`tests/conformance/lib/check_encode_bounds.py`. What this adds is the one question that is
+cheap here and that a guard **count** can never answer.
+
+It carries its own self-test, for the same reason the oracle check does: the planted cases
+(a literal that is no bound at all, another field's bound on the wrong field, an
+off-by-one count) must each be caught, and the schema's own bound must pass. And it needed
+two fixes before it was trustworthy — the walker missed `oneof` and `$defs`, so every width
+comparison in the deep union schema read as belonging to no field (the deep union gate is
+where that showed), and a type parameter (`heapless::String<8>`, `InlineVector<T, 5>`)
+parsed as a comparison until the literal was required not to be followed by `>`.
+
+**`check-family-copies` learned the two new Rust rows.** Its full half — the one that needs
+built drivers — requires every roster entry to declare which corelib layer its generated
+code must reach, and the rows added earlier today had no entry. CI caught it after a local
+run of only the `--static` half: exactly the "roster entry that quietly does less" that
+check exists for, and a reminder that running a gate's cheap half is not running the gate.
+
 ## 2026-10-12 — the family moved to encode-side bound refusal (generator#656); the harness got a fifth verdict for it
 
 Pulled every corelib to `origin/main` and sofabgen to the generator's tip (CI run 38231570981,
