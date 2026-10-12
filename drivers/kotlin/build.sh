@@ -102,6 +102,18 @@ case "$VARIANT" in
         KOTLIN_HOME=$(dirname "$(command -v kotlinc-js)")/..
         STDLIB_JS="$KOTLIN_HOME/lib/kotlin-stdlib-js.klib"
         [ -f "$STDLIB_JS" ] || { echo "no kotlin-stdlib-js.klib next to kotlinc-js" >&2; exit 1; }
+        # `org.khronos.webgl` is NOT in the distribution's kotlin-stdlib-js: it lives in
+        # kotlin-dom-api-compat, a Maven artifact Gradle resolves for a JS target and the
+        # compiler zip does not carry (the image fetches it, see .devcontainer/Dockerfile).
+        # corelib-kotlin-mp needs it since corelib-kotlin-mp#56: `Seq.fp32BitsView` returns
+        # a `Float32Array` view so an fp32 array keeps a signalling NaN's payload on
+        # Kotlin/JS, where a `Float` is a double (G-0046). Without this klib on the path
+        # the symbol stays UNLINKED and Kotlin 2.x's partial linkage defers the failure to
+        # RUN time: the driver decodes until the first fp32 array and then dies with
+        # `IrLinkageError: ... unlinked class symbol 'org.khronos.webgl/Float32Array'`,
+        # which reads like a corelib bug and is a missing -libraries entry.
+        DOM_JS="$KOTLIN_HOME/lib/kotlin-dom-api-compat.klib"
+        [ -f "$DOM_JS" ] || { echo "no kotlin-dom-api-compat.klib next to kotlinc-js — the corelib's JS klib references org.khronos.webgl (see .devcontainer/Dockerfile)" >&2; exit 1; }
         command -v node >/dev/null 2>&1 || { echo "missing node (see .devcontainer)" >&2; exit 1; }
         # PRE-FLIGHT the version relationship, because getting it wrong is SILENT here:
         # an older kotlinc-js ignores a newer klib without a word, writes no klib, and
@@ -198,9 +210,9 @@ EOF
         # links a klib into JS when handed it back through -Xinclude. The compiler must
         # be at least the version that built the corelib klib and the stdlib klib it
         # ships, or it ignores them without a word — the same pin as the jvm leg.
-        kotlinc-js -module-kind commonjs -libraries "$STDLIB_JS:$KLIB" \
+        kotlinc-js -module-kind commonjs -libraries "$STDLIB_JS:$DOM_JS:$KLIB" \
             -ir-output-dir "$OUT/klib" -ir-output-name driver "$@" >&2
-        kotlinc-js -module-kind commonjs -main call -libraries "$STDLIB_JS:$KLIB" \
+        kotlinc-js -module-kind commonjs -main call -libraries "$STDLIB_JS:$DOM_JS:$KLIB" \
             -Xir-produce-js -Xinclude="$OUT/klib/driver.klib" \
             -ir-output-dir "$OUT/js" -ir-output-name driver >&2
         [ -f "$OUT/js/driver.js" ] || { echo "kotlinc-js produced no driver.js" >&2; exit 1; }
