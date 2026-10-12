@@ -369,9 +369,13 @@ def check_literals(profiles, per_field, global_ok, report=print):
             continue
         checked = attributed = unexplained = 0
         notes = []
+        names_a_field = False
         for path in files:
             with open(path, errors="replace") as fh:
                 text = fh.read()
+            if not names_a_field:
+                names_a_field = any(re.search(r"\b" + re.escape(v) + r"\b", text)
+                                    for v, _f in names)
             for left, literal in literal_sites(text):
                 field = next((f for v, f in names
                               if re.search(r"\b" + re.escape(v) + r"\b", left)), None)
@@ -387,7 +391,13 @@ def check_literals(profiles, per_field, global_ok, report=print):
         # every literal in it then looks wrong. That is a harness mistake, not a family
         # one: the suites each export their own SCHEMA, but a hand-run against a tree the
         # last gate left behind would otherwise produce a page of confident nonsense.
-        if checked > 10 and attributed == 0:
+        #
+        # Asked of the FILES, not of the comparisons: whether a comparison happens to
+        # name a field is a property of the backend's idiom — the C# tree for a union
+        # schema does its width checks on locals and attributes nothing while naming
+        # every field elsewhere — so "no comparison named a field" is not the same
+        # question as "this tree is for another schema".
+        if not names_a_field and checked > 10:
             report(f"{name:<15} {checked:<5} comparison(s) — SKIPPED: this generated tree "
                    f"names no field of {os.environ.get('SCHEMA', 'schema/probe.sofab.yaml')}"
                    ", so it was built from a different schema (set SCHEMA, or rebuild)")
@@ -400,20 +410,36 @@ def check_literals(profiles, per_field, global_ok, report=print):
     return bad
 
 
+# The self-test carries its OWN schema model rather than the one the gate was invoked
+# with. What it checks is the mechanism — does a literal get attributed to the right
+# field, and is a wrong one reported — and that question has the same answer whichever
+# schema is being built. Written against the live model it passed on `probe` and failed
+# on every other schema, because `str`, `bytes_field` and `string_array` are probe's
+# fields and their bounds are probe's numbers. A self-test that depends on the subject
+# under test is not one.
+SELF_MODEL = {
+    "alpha": {0, 1, 7, 32},        # a string, maxlen 32, id 7
+    "beta": {0, 1, 8, 4},          # a blob, maxlen 4, id 8
+    "gamma": {0, 1, 9, 5},         # an array, count 5, id 9
+}
 SELF_TEST = [
     # (planted text, expected unexplained count, what it stands for)
-    ("if self.str.len() > 32 { reject(); }", 0, "the schema's own bound passes"),
-    ("if self.str.len() > 31 { reject(); }", 1, "a literal that is no bound at all"),
-    ("if self.str.len() > 4 { reject(); }", 1,
-     "another field's bound on the wrong field (4 is bytes_field's maxlen)"),
-    ("if self.string_array.len() > 5 { reject(); }", 0, "a count bound passes"),
-    ("if self.string_array.len() > 6 { reject(); }", 1, "an off-by-one count"),
+    ("if self.alpha.len() > 32 { reject(); }", 0, "a field's own bound passes"),
+    ("if self.alpha.len() > 31 { reject(); }", 1, "a literal that is no bound at all"),
+    ("if self.alpha.len() > 4 { reject(); }", 1,
+     "another field's bound on the wrong field (4 is beta's maxlen)"),
+    ("if self.gamma.len() > 5 { reject(); }", 0, "a count bound passes"),
+    ("if self.gamma.len() > 6 { reject(); }", 1, "an off-by-one count"),
+    ("os.writeString(7, self.alpha, 32);", 0, "a bound riding a call argument passes"),
+    ("os.writeString(7, self.alpha, 16);", 1, "...and a wrong one is caught there too"),
 ]
 
 
-def self_test(per_field, global_ok):
+def self_test():
     """Does phase 2 actually catch a wrong bound? A check that cannot fail is decoration,
     and this one's whole value is in the cases nobody has produced yet."""
+    per_field = SELF_MODEL
+    global_ok = set().union(*per_field.values())
     names = sorted(((v, f) for f in per_field for v in name_variants(f) if len(v) > 1),
                    key=lambda t: -len(t[0]))
     fail = 0
@@ -530,7 +556,7 @@ def main():
         fail += check_literals(PROFILES, per_field, global_ok)
         if os.environ.get("ENCODE_BOUNDS_SELF_TEST", "1") != "0":
             print("\nself-test (does phase 2 catch a wrong bound?)")
-            fail += self_test(per_field, global_ok)
+            fail += self_test()
 
     if missing:
         print(f"\n{missing} profile(s) not built — run scripts/run.sh first; an unbuilt "

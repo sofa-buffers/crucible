@@ -103,11 +103,21 @@ cheap here and that a guard **count** can never answer.
 
 It carries its own self-test, for the same reason the oracle check does: the planted cases
 (a literal that is no bound at all, another field's bound on the wrong field, an
-off-by-one count) must each be caught, and the schema's own bound must pass. And it needed
+off-by-one count, a wrong bound riding a call argument) must each be caught, and a field's
+own bound must pass. The self-test carries its **own** three-field schema model, which it
+did not at first: written against the live one it passed on `probe` and failed on every
+other schema, because `str`, `bytes_field` and `string_array` are probe's fields and their
+bounds are probe's numbers — CI found that on the cross-encode gate's union pass. A
+self-test that depends on the subject under test is not one. And it needed
 two fixes before it was trustworthy — the walker missed `oneof` and `$defs`, so every width
 comparison in the deep union schema read as belonging to no field (the deep union gate is
 where that showed), and a type parameter (`heapless::String<8>`, `InlineVector<T, 5>`)
-parsed as a comparison until the literal was required not to be followed by `>`.
+parsed as a comparison until the literal was required not to be followed by `>`. The
+"this tree was built from another schema" guard also had to move from the comparisons to
+the **files**: whether a comparison happens to name a field is a property of the backend's
+idiom — the C# tree for a union schema does its width checks on locals and attributes
+nothing while naming every field elsewhere — so "no comparison named a field" was skipping
+two profiles that were perfectly checkable.
 
 **`check-family-copies` learned the two new Rust rows.** Its full half — the one that needs
 built drivers — requires every roster entry to declare which corelib layer its generated
