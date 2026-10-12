@@ -298,15 +298,16 @@ the vacuous pass the gates' opt-in rosters guard against, one level down.
   Reject class maps `sofab::Error` (same 5 codes as C's `sofab_ret_t`). Empty
   input guarded (len==0 → all-defaults) because c-cpp routes to the C istream's
   `datalen>0` assert. Coverage engine is libFuzzer (devcontainer).
-  **The only driver that cannot read its own encode verdict from the generated call:**
-  `encode()` and `encodeTo()` answer "no bytes" both for a refusal (generator#656) and
-  for the all-default message, whose wire form is genuinely empty, and the doc comment
-  pointing at `encodeTo()` to tell them apart is wrong — measured in
-  `findings/G-0047-*/isolate.cpp`. So `encode_via` reports an `EncodeOutcome`, and when
-  the surface under test came back empty it runs `serialize()` once more on a stream the
-  driver owns and reads the `Result` (`refusal_code`). The surfaces the encode gate
-  compares stay the ones actually called; the extra pass costs the one input per corpus
-  whose encoding is empty, and goes away if the generated API grows a return value.
+  **Both one-shot encode surfaces are fallible since generator#736** (filed and fixed
+  2026-10-12, G-0047): `encode(std::vector<std::uint8_t>&)` and `encodeTo(dst, cap, used)`
+  return `sofab::Error` and are `[[nodiscard]]`. Before that they answered "no bytes" both
+  for a refusal (generator#656) and for the all-default message, whose wire form is
+  genuinely empty, and the driver had to re-run `serialize()` on a stream of its own to
+  tell the two apart; that workaround is gone. `encode_via` reports an `EncodeOutcome`
+  carrying the code the call returned. The `stream` arm reads the **stream's** latched
+  `ok()`/`error()` rather than the `Result` `serialize` hands back: the generated body
+  discards its intermediate Results and returns the last write's, so on a two-byte
+  destination that Result answered `None` while the stream was already not ok.
   **The receiver's field-span cap is a constructor argument** on the pure-C++
   corelib since corelib-cpp#128 (§6.2.1: no held limit, no default — the library
   has no number to invent), so every stream `driver.cpp` builds by hand must state
