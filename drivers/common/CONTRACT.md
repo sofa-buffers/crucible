@@ -220,6 +220,57 @@ chunked_decode=push|pull|none    push: feed(chunk) — every corelib with a resu
 encode_surfaces=new,to,stream    which of the three this backend actually has
 ```
 
+### A refused re-encode is not a decode verdict (`E`)
+
+The re-encode has **three** outcomes, not two, and the third one is new. Since
+generator#656 the generated encoder **refuses** a value past a declared bound — a
+`string`/`blob` over `maxlen`, an array over `count`, an integer, enum or bitfield
+outside its declared width — with the corelib's bad-argument code (CORELIB_PLAN §6.3:
+`InvalidArgument` / `ARGUMENT` / `invalidArgument`), writing none of it and clamping
+nothing (generator `docs/ARCHITECTURE.md` §9.6.1). A driver re-encodes on every accepted
+record, so every driver can now be handed that refusal.
+
+So a driver maps the re-encode like this:
+
+| the re-encode | the line |
+|---|---|
+| returned bytes | `A <hex>` as before |
+| was **refused** after an accepting decode | `E <class>` — `argument` for §6.3's bad-argument code, `buffer_full` / `other` otherwise |
+| was refused after an `INCOMPLETE` decode | the bare `I` — the payload is dropped, the verdict is not |
+
+**Do not route it into `R`.** `R` says the input was malformed; the decode just said the
+opposite. Every driver mapped an encode failure to `R other` (or, in Java and Kotlin, to
+whatever class the exception carried) while the branch was unreachable, and that is what
+#656 turned into a real mislabel. `oracle/canonical.md` ("The fifth verdict `E`") owns
+the semantics; the comparator fails the run on **every** `E`, whatever the other drivers
+answered, because one implementation accepting a value its own encoder refuses is a
+contradiction that agreement cannot repair.
+
+**Which error means `E`, per backend** — these are the generated encode surfaces'
+refusal, not the decode's:
+
+| backend | the refusal arrives as |
+|---|---|
+| go | `Encode`/`EncodeTo`/`Flush` return `sofab.ErrArgument` (the generated guard calls `Encoder.RejectArgument`) |
+| python | `SofaArgumentError` (`SofaRangeError` is its **alias** — match the class, not the old name) |
+| rust | `Err(sofab::Error::Argument)` from the fallible `encode()` (generator#673) |
+| java / kotlin | `SofabException` with `SofabError.ARGUMENT` |
+| csharp | `SofabException` with `SofabError.Argument` |
+| typescript | `SofabError` with `SofabErrorCode.Argument` |
+| dart | `SofabException` with `invalidArgument` |
+| zig | `error.InvalidArgument` |
+| c | `SOFAB_RET_E_ARGUMENT` from `message_probe__encode` / `__encode_to` (the C corelib refuses descriptor-driven; generated C emits no guard) |
+| cpp | **the generated `encode()` / `encodeTo()` cannot report it** — both answer "no bytes", which is also the all-default message. Re-encode through `serialize(os)` on a stream the driver owns and read `os.ok()`; where a surface under test must still be the one called, disambiguate its empty result with a second `serialize` pass. See `findings/G-0047-*` |
+
+A profile whose storage **clamps by contract** never produces an `E`: C++ `FixedString` /
+`FixedBytes` / `InlineVector` (`cpp-fixed`, `cpp-c-cpp`), Zig `FixedArray`, and C's length
+and count companions cut the value at assignment instead of refusing it, so an over-bound
+value there comes back as a *different value* and the round-trip oracle sees it on
+`accept_value`. That is a difference in mechanism, not in strictness, and
+`scripts/check-encode-bounds.py` is what holds each profile to the one it is supposed to
+use — so that a profile whose guards silently stopped being generated cannot be mistaken
+for one that clamps.
+
 ## Decode core requirements
 
 - Decode the candidate bytes into the `probe` message using the corelib's real

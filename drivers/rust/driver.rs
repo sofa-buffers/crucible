@@ -193,8 +193,10 @@ impl<E: std::fmt::Debug> FlushOutcome for Result<usize, E> {
 //
 // Both surfaces are fallible since generator#673: `encode()` reports a value filled past
 // its bound instead of truncating it, and `serialize()` surfaces the corelib's write
-// error. A failure is returned, not unwrapped, so the caller reports it as a reject
-// class (oracle/canonical.md) rather than a panic.
+// error. Since generator#656 the bound refusal is a real outcome rather than a theoretical
+// one — a value past a declared count/maxlen/width is refused with Error::Argument — so
+// the failure is returned, not unwrapped, and the caller reports it as the `E` verdict
+// (oracle/canonical.md "The fifth verdict `E`"), never as a reject class or a panic.
 fn encode_via(cfg: &StreamCfg, m: &Probe) -> Result<Vec<u8>, Error> {
     if cfg.enc == EncSurface::New {
         // `encode()` is Vec<u8> on std and heapless::Vec<u8, MAX_SIZE> on no-std;
@@ -231,6 +233,9 @@ fn encode_via(cfg: &StreamCfg, m: &Probe) -> Result<Vec<u8>, Error> {
     Ok(out)
 }
 
+// One Error -> class mapping, used by BOTH verdicts that carry a class: the decode's
+// `R` and the re-encode's `E`. The codes are the same taxonomy (CORELIB_PLAN §6.3);
+// which half of the stack produced it is what the verdict letter says, not the class.
 fn reject_class(e: Error) -> &'static str {
     match e {
         Error::InvalidMsg => "invalid_msg",
@@ -291,7 +296,12 @@ fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool, cfg: &St
             let bytes = match encode_via(cfg, &m) {
                 Ok(bytes) => bytes,
                 Err(e) => {
-                    let _ = writeln!(out, "R {}", reject_class(e));
+                    // The decode ACCEPTED and the re-encode of that value was
+                    // REFUSED: the `E` verdict, not a reject class (generator#656
+                    // refuses a value past a declared count/maxlen/width with
+                    // Error::Argument). `R` here would claim the input was
+                    // malformed, which is the opposite of what the decode said.
+                    let _ = writeln!(out, "E {}", reject_class(e));
                     return;
                 }
             };

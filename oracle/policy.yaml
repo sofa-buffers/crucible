@@ -48,6 +48,18 @@ comparison:
   # generated with identical max_dyn_* caps, so they must agree on L vs A/I/R.
   limit_class: hard
 
+  # On mutual E (the decode accepted, the re-encode of that value was REFUSED —
+  # generator#656), whether the class must match. Hard, like reject_class, and for the
+  # same reason: the same value cannot be unencodable for two different reasons.
+  #
+  # This axis is the SMALL half of the check. An `E` fails the run per line, whatever
+  # the others answered, because it is one implementation contradicting itself and
+  # unanimity would not make it right (oracle/comparator.py FORBIDDEN_VERDICTS,
+  # oracle/canonical.md "The fifth verdict `E`"). Setting this to soft therefore
+  # legalises nothing — it only silences the split between two drivers that are both
+  # already failing.
+  encode_class: hard
+
 # ENFORCED since 2026-08-16 — `oracle/comparator.py` reads this block.
 #
 # An entry names an input and the one axis on which that input may differ. When the

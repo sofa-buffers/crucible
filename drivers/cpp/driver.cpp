@@ -60,6 +60,9 @@ static const sofab::Limits kReceiverLimits{SIZE_MAX};
 #endif
 #endif
 
+// One Error -> class mapping, used by BOTH verdicts that carry a class: the decode's
+// `R` and the re-encode's `E`. It is one taxonomy (CORELIB_PLAN §6.3); which half of
+// the stack produced the code is what the verdict letter says, not the class.
 static const char *reject_class(sofab::Error e)
 {
     switch (e)
@@ -219,38 +222,92 @@ static sofab::IStreamImpl::Result decode_streamed(const std::uint8_t *data,
 }
 #endif
 
+// The outcome of one re-encode. THREE cases, not two — and the third one is why this
+// is a struct rather than a vector:
+//
+//   bytes      the value's canonical wire form
+//   empty      the all-default message, whose wire form genuinely is zero bytes
+//   refused    generator#656: a value past a declared count / maxlen / width is
+//              refused with Error::InvalidArgument, and nothing is written
+//
+// The generated `encode()` and `encodeTo()` cannot tell the last two apart: both answer
+// "no bytes" either way, and the generated doc comment's advice — "use encodeTo() when
+// the two need telling apart" — does not hold, because encodeTo returns 0 in both cases
+// too (measured; findings/G-0047). The corelib does carry the answer, in
+// OStreamImpl::Result / ok(), and the only way a CALLER can reach it is to run
+// serialize() on a stream it owns. So that is what refusal_code() does — once, and only
+// when the surface under test came back empty, which keeps the surfaces themselves the
+// ones actually being exercised by the encode gate.
+struct EncodeOutcome
+{
+    std::vector<std::uint8_t> bytes;
+    bool refused = false;
+    sofab::Error code = sofab::Error::None;
+};
+
+// Would this value encode at all? Answered on a stream this function owns, so no
+// surface under test is replaced by it. Error::None = the empty bytes were a real
+// (all-default) message.
+static sofab::Error refusal_code(const message::Probe &m)
+{
+    std::vector<std::uint8_t> buf(message::Probe::_maxSize);
+    sofab::OStreamView os{buf.data(), buf.size(), 0};
+    return m.serialize(os).code();
+}
+
 // Which generated call produces the `A <hex>` payload. All three must emit identical
 // bytes for one decoded value — the family is byte-canonical — and SOFAB_FLUSH must not
 // change that either: it hands the OStream an n-byte buffer, so the sink receives the
 // message in n-byte pieces and the encoder crosses a buffer boundary at every offset.
-static std::vector<std::uint8_t> encode_via(const message::Probe &m)
+static EncodeOutcome encode_via(const message::Probe &m)
 {
+    EncodeOutcome r;
+    if (g_cfg.enc == StreamCfg::EncStream)
+    {
+        // stream: serialize into an OStream, collecting what it flushes. This is the
+        // one surface that reports the refusal itself — serialize() hands back the
+        // Result — so it needs no second pass.
+        std::size_t cap = g_cfg.flush > 0 ? static_cast<std::size_t>(g_cfg.flush)
+                                          : message::Probe::_maxSize;
+        if (cap == 0) cap = 1;
+        std::shared_ptr<std::uint8_t[]> buf(new std::uint8_t[cap]);
+        {
+            sofab::OStream os{[&r](std::span<const std::uint8_t> s) {
+                                  r.bytes.insert(r.bytes.end(), s.begin(), s.end());
+                              },
+                              buf, cap};
+            sofab::Error code = m.serialize(os).code();
+            os.flush();   // hand over whatever is still buffered
+            if (code != sofab::Error::None)
+            {
+                r.refused = true;
+                r.code = code;
+            }
+        }
+        if (r.refused) r.bytes.clear();
+        return r;
+    }
     if (g_cfg.enc == StreamCfg::EncNew)
     {
-        return m.encode();
+        r.bytes = m.encode();
     }
-    if (g_cfg.enc == StreamCfg::EncTo)
+    else
     {
         std::vector<std::uint8_t> buf(message::Probe::_maxSize);
         std::size_t used = m.encodeTo(buf.data(), buf.size());
         buf.resize(used);
-        return buf;
+        r.bytes = std::move(buf);
     }
-    // stream: serialize into an OStream, collecting what it flushes.
-    std::vector<std::uint8_t> out;
-    std::size_t cap = g_cfg.flush > 0 ? static_cast<std::size_t>(g_cfg.flush)
-                                      : message::Probe::_maxSize;
-    if (cap == 0) cap = 1;
-    std::shared_ptr<std::uint8_t[]> buf(new std::uint8_t[cap]);
+    if (r.bytes.empty())
     {
-        sofab::OStream os{[&out](std::span<const std::uint8_t> s) {
-                              out.insert(out.end(), s.begin(), s.end());
-                          },
-                          buf, cap};
-        (void)m.serialize(os);
-        os.flush();   // hand over whatever is still buffered
+        sofab::Error code = refusal_code(m);
+        if (code != sofab::Error::None)
+        {
+            r.refused = true;
+            r.code = code;
+        }
     }
-    return out;
+    return r;
 }
 
 static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *out)
@@ -323,9 +380,18 @@ static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *o
 
     // Accept: re-encode the decoded value and emit its canonical wire as hex, through
     // whichever encode surface SOFAB_ENCODE selects (default: the allocating encode()).
-    std::vector<std::uint8_t> enc = encode_via(m);
+    EncodeOutcome enc = encode_via(m);
+    if (enc.refused)
+    {
+        // The decode ACCEPTED and the re-encode of that value was REFUSED: its own
+        // verdict (oracle/canonical.md "The fifth verdict `E`"), never a reject
+        // class — the input was not malformed, this implementation just will not
+        // write back what it read.
+        std::fprintf(out, "E %s\n", reject_class(enc.code));
+        return;
+    }
     std::fputs("A ", out);
-    for (std::uint8_t b : enc)
+    for (std::uint8_t b : enc.bytes)
     {
         std::fprintf(out, "%02x", b);
     }

@@ -139,6 +139,15 @@ private fun errLine(e: SofabException): String =
 
 private const val HEX = "0123456789abcdef"
 
+// A RE-ENCODE that was refused (generator#656: a value past a declared
+// count/maxlen/width is refused with SofabError.ARGUMENT). On A that is the `E <class>`
+// verdict and never `R` — the decode just accepted these bytes, so calling them
+// malformed says the opposite of what happened. On I the payload is dropped and the
+// verdict kept: `I` is a hard decode fact, its hex a soft payload (oracle/canonical.md
+// "The fifth verdict `E`").
+private fun refused(verdict: Char, cls: String): String =
+    if (verdict == 'I') "I" else "E $cls"
+
 private fun hexValue(verdict: Char, m: Probe): String {
     // Value for an A (COMPLETE) or I (INCOMPLETE) line: re-encode the decoded
     // message -> hex (oracle/canonical.md). For I this is the partial value filled
@@ -146,13 +155,11 @@ private fun hexValue(verdict: Char, m: Probe): String {
     val enc: ByteArray = try {
         encodeVia(m)
     } catch (e: SofabException) {
-        // encode failed after tryDecode reported A/I — should not happen given a
-        // worst-case buffer; report it as a reject class rather than crashing.
-        return errLine(e)
+        return refused(verdict, rejectClass(e))
     } catch (e: RuntimeException) {
         val c = e.cause
-        if (c is SofabException) return errLine(c)
-        return "R other"
+        if (c is SofabException) return refused(verdict, rejectClass(c))
+        return refused(verdict, "other")
     }
     val sb = StringBuilder(2 + enc.size * 2)
     sb.append(verdict).append(' ')

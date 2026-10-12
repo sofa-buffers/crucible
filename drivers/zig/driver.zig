@@ -101,6 +101,17 @@ fn readStreamCfg(init: std.process.Init) StreamCfg {
     return cfg;
 }
 
+// The class a refused RE-ENCODE carries. `anyerror` rather than the corelib's error
+// set: the stream arm can also surface an allocation failure, which is the driver's
+// own problem and must not be dressed up as a corelib code.
+fn encode_class(e: anyerror) []const u8 {
+    return switch (e) {
+        error.InvalidArgument => "argument",
+        error.BufferFull => "buffer_full",
+        else => "other",
+    };
+}
+
 // Sink for the streaming encode: collect what the OStream flushes.
 const EncAcc = struct {
     list: std.ArrayListUnmanaged(u8) = .empty,
@@ -245,11 +256,18 @@ pub fn main(init: std.process.Init) !void {
             const sbuf = a.alloc(u8, cap) catch break :blk error.BufferFull;
             var acc = EncAcc{ .alloc = a };
             var os = sofab.OStream.initFlush(sbuf, 0, &acc, EncAcc.sink);
-            m.serialize(&os) catch break :blk error.BufferFull;
+            // Hand the encoder's OWN error up instead of relabelling it: this arm
+            // read `catch break :blk error.BufferFull` and so reported a REFUSAL
+            // (error.InvalidArgument, generator#656) as a full buffer, which then
+            // became `R other`. Two facts lost in one line.
+            m.serialize(&os) catch |e| break :blk @as(anyerror![]u8, e);
             _ = os.flush();
             break :blk @as(anyerror![]u8, acc.list.items);
-        } else m.encode(a)) catch {
-            try out.writeAll("R other\n");
+        } else m.encode(a)) catch |e| {
+            // The decode ACCEPTED and the re-encode of that value was REFUSED: its
+            // own verdict, never a reject class — the bytes were not malformed
+            // (oracle/canonical.md "The fifth verdict `E`").
+            try out.print("E {s}\n", .{encode_class(e)});
             try out.flush();
             continue;
         };

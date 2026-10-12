@@ -1,8 +1,21 @@
 #!/usr/bin/env sh
 # Build a Crucible Rust replay driver for one corelib variant.
 #
-#   build.sh rs         -> corelib-rs        (std, maxspeed)
-#   build.sh rs-no-std  -> corelib-rs-no-std (no_std, embedded)
+#   build.sh rs             -> corelib-rs        (std, maxspeed)
+#   build.sh rs-no-std      -> corelib-rs-no-std (no_std, embedded), heapless 0.8
+#   build.sh rs-no-std-h09  -> the same, against heapless 0.9 (generator#727)
+#
+# The two no_std variants generate BYTE-IDENTICAL source — generator docs/generator/
+# rust.md: "The generated source is the same for both ... and only Cargo.toml differs".
+# They are worth running side by side anyway, because `heapless` is where this profile's
+# bound enforcement lives: with `allow_dynamic: false` a schema-bounded field IS a
+# `heapless::String<N>` / `Vec<T, N>`, which refuses on assignment instead of being
+# guarded by generated code (generator ARCHITECTURE §9.6.1, and the `container` row in
+# scripts/check-encode-bounds.py). Two majors are two implementations of that refusal,
+# and of the decode-side fill above it, under one generated API — the same reason the
+# four C++ rows and the two Python engines are in the roster. heapless 0.9 needs rustc
+# 1.87, which the generated Cargo.toml declares, so an older toolchain is refused by
+# cargo up front rather than failing inside heapless.
 #
 # Regenerates the probe project from the schema via sofabgen, swaps the generated
 # JSON harness (src/main.rs) for our replay driver, points the crate at the
@@ -19,7 +32,13 @@ case "$VARIANT" in
                PREAMBLE='mod message;\nuse message::{Probe, DecodeError};\n' ;;
     rs-no-std) CORELIB="$ROOT/vendor/corelib-rs-no-std"; CFG="targets: { rust: { corelib: rs-no-std } }";
                PREAMBLE='use sofabuffers_generated::{Probe, DecodeError};\n' ;;
-    *) echo "unknown variant '$VARIANT' (want: rs | rs-no-std)" >&2; exit 2 ;;
+    # The value must be QUOTED in the config: an unquoted 0.9 is a YAML number and the
+    # config schema rejects it (generation fails rather than falling back to 0.8 — which
+    # is the behaviour that makes this variant honest about what it tested).
+    rs-no-std-h09) CORELIB="$ROOT/vendor/corelib-rs-no-std";
+               CFG='targets: { rust: { corelib: rs-no-std, heapless: "0.9" } }';
+               PREAMBLE='use sofabuffers_generated::{Probe, DecodeError};\n' ;;
+    *) echo "unknown variant '$VARIANT' (want: rs | rs-no-std | rs-no-std-h09)" >&2; exit 2 ;;
 esac
 
 # Limit mode (crucible#10 / generator#102): SCHEMA selects the schema (default the
@@ -28,10 +47,11 @@ esac
 # `L` verdict). Only the std corelib (rs) supports it — rs-no-std is fixed-capacity
 # and cannot represent an unbounded field, and its Error has no LimitExceeded.
 SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
-if [ -n "${LIMITS:-}" ] && [ "$VARIANT" = "rs-no-std" ]; then
-    echo "==> [rust:rs-no-std] LIMITS is unsupported: the fixed-capacity profile has no unbounded fields" >&2
-    exit 2
-fi
+case "${LIMITS:+set}:$VARIANT" in
+    set:rs-no-std*)
+        echo "==> [rust:$VARIANT] LIMITS is unsupported: the fixed-capacity profile has no unbounded fields" >&2
+        exit 2 ;;
+esac
 
 [ -x "$SOFABGEN" ] || { echo "missing $SOFABGEN — run scripts/bootstrap.sh" >&2; exit 1; }
 [ -d "$CORELIB" ] || { echo "missing $CORELIB — run scripts/bootstrap.sh" >&2; exit 1; }

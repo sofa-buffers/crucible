@@ -14,6 +14,145 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-12 — the family moved to encode-side bound refusal (generator#656); the harness got a fifth verdict for it
+
+Pulled every corelib to `origin/main` and sofabgen to the generator's tip (CI run 38231570981,
+`0.0.0-20261012094159-af99e570da92`, 36 commits). Eleven of the twelve corelibs moved; the
+delta is dominated by **one** change, and it is an API change that reaches into every driver
+here.
+
+**What changed upstream.** generator#656: a value past its own declared bound — a
+`string`/`blob` over `maxlen`, an array over `count`, an integer/enum/bitfield outside its
+declared width — is **refused at encode** with CORELIB_PLAN §6.3's `InvalidArgument`, written
+nowhere and clamped nowhere (generator `docs/ARCHITECTURE.md` §9.6.1). Before it, every backend
+either wrote such a value unchecked (and its own decoder then rejected what it had written),
+silently clamped it, or refused only because the *whole message* overflowed `MAX_SIZE` — an
+accident that a single over-bound value in a small message slips past. The corelibs grew the
+argument-taking halves it needs (`writeString(id, s, maxlen)` in java/kotlin/cs/ts,
+`write_*_bounded` + width-typed writers in py, `RejectArgument` in go, `rejectArgument` in both
+C++ corelibs, `write{Unsigned,Signed}ArrayInRange` in dart, a descriptor-driven refusal in C),
+which is §6.2.1's "a limit is passed, never held" applied to the encode side. The rest of the
+delta is small: #718 (python hands values to the writer uncoerced — an `int()` wrapper was
+truncating a float instead of refusing it), #719/#720 (reserved name, refusal text names the
+row), #721 (a conformance cell), #727/#729 (rust heapless 0.9 as an option, serde/alloc on
+no_std).
+
+**Decision: a refused re-encode is its own verdict, `E <class>`, not a reject class.** Every
+driver re-encodes on every accepted record, so #656 handed all of them a branch that used to be
+unreachable — and all eleven mapped it into a *decode* verdict: ten to `R other` or to whatever
+class the exception carried, and the C++ driver could not see it at all. `R` says the input was
+malformed, which is the opposite of what the decode had just reported, and the two facts are
+about opposite halves of one stack. So `oracle/canonical.md` grew a fifth verdict, for the same
+reason `L` is not `R`.
+
+Three consequences, each deliberate:
+
+- **An `E` fails the run per line, whatever the others answered** — the mechanism the abolished
+  `usage` class already used. An `E` is one implementation contradicting itself (its decoder
+  admitted a value past a schema bound, or its encode guard refuses one within it), so every
+  driver agreeing would mean the family shares the defect, and unanimity is what green looks
+  like everywhere else. `encode_class` compares the class on mutual `E`; it is the smaller half.
+- **On the `INCOMPLETE` path a refused re-encode drops the payload, never the verdict.** `I` is a
+  decode fact and hard; its hex is soft and optional. Java and Kotlin used to answer `R` there,
+  which would have let an encode failure perform exactly the `I`-into-`R` collapse F-0001 exists
+  to catch. Java is the only driver that emits `I <hex>` at all, so it was the only one where it
+  could fire.
+- **Three bypasses found while wiring it, each a place a fact was being discarded rather than
+  mapped:** the TypeScript driver never guarded the re-encode at all, so a refusal would have
+  escaped `canonical()` and killed the process (a crashed driver, and every line after it lost);
+  the Zig driver's streaming arm read `catch break :blk error.BufferFull`, relabelling a refusal
+  as a full buffer before the `R other` even happened; and `drivers/python/driver.py`'s class
+  table still keyed on `SofaRangeError`, which corelib-py has made an **alias** of
+  `SofaArgumentError` — so `type(e).__name__` could no longer spell it and an `argument` was
+  being reported as `invalid_msg`. That is the second time a stale alias row went unnoticed
+  there (`SofaStateError` was the first), and the fix is the same: match the class, not the name
+  it used to have.
+
+**G-0047 — the generated C++ `encode()`/`encodeTo()` cannot report a refusal.** Both answer "no
+bytes", which is also the all-default message, whose wire form is genuinely empty; the generated
+doc comment sends the caller to `encodeTo()` to tell them apart and `encodeTo()` returns 0 in
+both cases. Measured in a 25-line isolate against the probe's own header
+(`findings/G-0047-*/isolate.cpp`). Attribution is **generator** (the C++ backend), not
+`corelib-cpp`: the corelib's `OStreamImpl::Result` carries `ok()`/`code()` and the generated
+`serialize()` returns it — the two generated entry points read that status and throw it away.
+It is the exact twin of generator#673, which made the Rust `encode()` fallible, and the sequel
+to generator#322: that issue found `encode()` ignoring `os.ok()` altogether and its fix — `if
+(!os.ok()) { return {}; }` — was unambiguous under its own premise, because on a bounded schema
+the only remaining errors were caller mistakes unreachable through the generated setters. #656
+added one that is reachable, and the backend's comment above that check still enumerates the old
+two. Filed as **generator#736**. Until it is fixed the C++ driver runs `serialize()` once more on
+a stream it owns, and only when the surface under test came back empty, so the three surfaces the
+encode gate compares stay the ones actually called.
+
+**Decision: the encode guards are asserted statically, not by a vector.** A refusal is reachable
+from the wire only through a decoder bug, so no corpus can demonstrate that a profile still has
+its guards, and a profile whose guards silently stopped being generated looks exactly like one
+that has nothing to refuse — the `cpp` and `cpp-c-cpp-dyn` profiles generate 19
+`rejectArgument()` calls each while `cpp-fixed` and `cpp-c-cpp` generate none *by contract*,
+which is the same 13-vs-0 shape that pinned F-0013's residual. `scripts/check-encode-bounds.py`
+holds each profile to the mechanism generator §9.6.1 assigns it, in both directions, asserts C's
+corelib-side refusal at its source (an absence in generated code alone would also be satisfied
+by nobody checking), and asserts no opt-out is compiled in — Crucible compares implementations
+as a user gets them, so `SOFAB_DISABLE_ENCODE_BOUNDS` or the `disable_encode_bounds` cargo
+feature would make one profile quietly more permissive than the rest. It runs inside `run.sh`,
+right after the build, where the generated code is on disk.
+
+**Decision: `rs-no-std` is now in the roster twice, once per heapless major.**
+generator#727 made the heapless major a config option (`heapless: "0.8" | "0.9"`, default
+0.8), because a `heapless::Vec` from 0.8 and one from 0.9 are different types and a project
+on 0.9 would otherwise copy every value across. For Crucible that is not a packaging detail:
+with `allow_dynamic: false` a schema-bounded field **is** a `heapless::String<N>` /
+`Vec<T, N>`, so heapless is the entire bound mechanism of that profile — it refuses an
+over-bound value at encode (which is why §9.6.1 emits no generated guard there) and fills a
+bounded array at decode. Two majors are two implementations of that under one generated API,
+and the generated source is byte-identical between them, so a divergence between the rows can
+only come from the container. That is the argument the four C++ rows and the two Python
+engines already rest on. `drivers/rust/build.sh rs-no-std-h09` + one roster row;
+rustc here is 1.98, above heapless 0.9's 1.87 minimum, which the generated `Cargo.toml`
+declares so an older toolchain is refused by cargo rather than failing inside the crate.
+
+**The arming check's own first red run is worth recording**, because it failed for two
+reasons that have nothing to do with the family. Run against `probe-union` (sweep.sh's union
+pass) it reported `go` as having **no** guard and java/kotlin as **not built**: the paths were
+a hand-listed file set, and which files sofabgen emits depends on the schema's shape — Go's
+guards for a union live in `sofab_types.go`, not in `probe.go`, and `probe-union` has no
+`Probe_Nested` at all. The paths are globs over the generated tree now, with the drivers' own
+files (`main.rs`, the materialize walkers, `Driver.cs`) excluded, since those name the very
+error values the patterns look for. The second reason was the expectation itself: §9.6.1 emits
+a width guard only where the storage is wider than the declared width, so on the **unbounded**
+`probe-dyn` that limit mode uses, zero guards in go / rust / cpp / csharp / zig is the correct
+answer. The check now reads the same `SCHEMA` the build scripts read and conditions each
+profile on the bound kinds that schema actually declares. (The C row also had to become
+code-shaped: the generated C header *names* `SOFAB_RET_E_ARGUMENT` in a per-field doc comment,
+which is the corelib's refusal being documented, not a guard being emitted.) A gate that goes
+red for a reason outside the thing it guards is worse than no gate, and this one did it on its
+first non-default schema.
+
+**And the oracle itself is now exercised.** `scripts/check-oracle-verdicts.py` drives the
+comparator with stub drivers emitting chosen canonical lines, because `E` has no input that
+produces one and neither do the per-line checks: a verdict whose handling nothing exercises is
+decoration. Eight cases, driver-free, in the `catalog` job.
+
+**Measured after the change**, family `main`, sofabgen af99e570da92, 18 drivers (the new
+heapless-0.9 row included): `corpus/seeds` 7 inputs 0 divergences; `corpus/regression` 265
+inputs 0 divergences (24 warnings, 16 allowed — the standing `incomplete_value` and F-0018
+entries); `corpus/conformance` 8 inputs 0; `corpus/structured` 119 inputs 0; encode
+invariance 119 inputs × 5–9 configs per driver, **0 mismatches** — so the C++ driver's extra
+`serialize` pass changes no surface's bytes; chunk invariance (`--modes chunk`) 0 over the 17
+chunked-capable rows; materialize 119 × 18 drivers 0 divergences with the C anchor still
+0/119 against the independent reference. `rust-nostd-h09` agrees with the other seventeen
+everywhere it runs. The full blocking suite is green behind it: union 11 × 18 drivers 0;
+deep union, sweep (12 probe axes + the 8 union ones, 1562 vectors) 0 divergences and 0
+conformance failures; limit mode 0 over the 12 heap rows. **Zero `E` lines anywhere**, which
+is what the verdict should report today: every value this family accepts, it re-encodes.
+
+**What was deliberately not built.** The encode-bound *cells* — a value filled past its bound
+through the generated setters, per backend, per variant, with the clamping containers' expected
+output — already exist upstream as `tests/conformance/lib/check_encode_bounds.py`, and
+duplicating them here would mean a second place to keep in step with §9.6.1. Crucible's half is
+the one that suite structurally cannot see: the **asymmetry** between one implementation's two
+directions.
+
 ## 2026-10-08 — nightlies 37189912266 … 37599016108 triaged — quiet; three of them never clustered
 
 - The four scheduled nightlies since 36992410554 (2026-10-04 … 10-07) all fuzzed: no crashes in

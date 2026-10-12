@@ -108,7 +108,13 @@ Uint8List _encodeVia(Probe m) {
   // `minOutputBuffer` is refused at the handover with `invalidArgument` — report
   // that as exit 3 ("cannot operate at this configuration") rather than letting
   // the exception escape, so the oracle sees the size the port declined.
-  final cap = _flush > 0 ? _flush : 4096;
+  // Unset SOFAB_FLUSH means one buffer big enough for any conformant value, and the
+  // generated code states what that is — `Probe.maxSize`, the schema's worst case, the
+  // same number `encode()` allocates. It was a hardcoded 4096 until 2026-10-12: a magic
+  // number that happened to be larger than this schema's 1231 and would quietly start
+  // flushing mid-message on a bigger one, turning the no-flush baseline into a flushing
+  // run that nothing announced.
+  final cap = _flush > 0 ? _flush : Probe.maxSize;
   final sofab.Encoder enc;
   try {
     enc = sofab.Encoder(builder.add, buffer: Uint8List(cap));
@@ -124,6 +130,19 @@ Uint8List _encodeVia(Probe m) {
   }
   enc.flush();
   return builder.toBytes();
+}
+
+// The class a refused re-encode carries. corelib-dart puts the canonical category on
+// the exception itself, so branch on it rather than on the message text.
+String _encodeClass(sofab.SofabException e) {
+  switch (e.code) {
+    case sofab.SofabError.invalidArgument:
+      return 'argument';
+    case sofab.SofabError.bufferFull:
+      return 'buffer_full';
+    default:
+      return 'other';
+  }
 }
 
 // canonical produces the one canonical line for a single candidate input
@@ -175,8 +194,15 @@ String canonical(Uint8List data) {
   if (_materialize) return 'A ${materialize(out)}';
   try {
     return 'A ${_hex(_encodeVia(out))}';
+  } on sofab.SofabException catch (e) {
+    // The decode ACCEPTED and the re-encode of that value was REFUSED: the `E`
+    // verdict, never a reject class — the input was not malformed, this
+    // implementation just will not write back what it read. Since generator#656 a
+    // value past a declared count/maxlen/width is refused with invalidArgument
+    // (oracle/canonical.md "The fifth verdict `E`").
+    return 'E ${_encodeClass(e)}';
   } catch (_) {
-    return 'R other';
+    return 'E other';
   }
 }
 
