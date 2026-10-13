@@ -96,6 +96,11 @@ INVENTORY = {
         "schema/probe.sofab.yaml; materialize.sh asserts the committed copy is current"),
     "engine/structured/gen.py": ({"wire-codec"}, False, BYTES_REASON),
     "engine/structured/sweep_varint.py": ({"wire-codec"}, False, BYTES_REASON),
+    "oracle/projection.py": (
+        {"wire-codec"}, False,
+        "reads two canonical re-encodings into field trees to decide whether one camp's "
+        "value is the other's NUL-projection (the F-0018 cause); the oracle judges the "
+        "drivers and must not share a decoder with any of them"),
 }
 
 OBJECT_H = "vendor/corelib-c-cpp/src/include/sofab/object.h"

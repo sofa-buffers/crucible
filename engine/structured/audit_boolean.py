@@ -82,7 +82,7 @@ MUST = {"wiretype_sweep":"§7.3 — a boolean's wire type must be swept",
 for a, why in MUST.items(): check(f"{a} reaches a boolean ({why})", reach[a][1] > 0)
 
 print("\n4. WALKERS — every materialized-form walker handles the `bool` kind")
-W = {"drivers/c/driver.c":"case SOFAB_OBJECT_FIELDTYPE_BOOLEAN",  # descriptor-driven; the arm prints the RAW stored value
+W = {"drivers/c/driver.c":"SOFAB_OBJECT_FIELDTYPE_BOOLEAN:",  # descriptor-driven; the arm prints the RAW stored value
      "drivers/go/driver.go":'case "bool"', "drivers/python/driver.py":'"bool": _bool',
      "drivers/ts/driver.ts":'case "bool"', "drivers/cs/Driver.cs":'"bool" =>',
      "drivers/java/ProbeDump.java":'case "bool"',
