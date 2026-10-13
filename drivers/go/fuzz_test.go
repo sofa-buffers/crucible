@@ -9,10 +9,8 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"testing"
 
-	sofab "github.com/sofa-buffers/corelib-go"
 	msg "crucible/driver/go/message"
 )
 
@@ -24,9 +22,9 @@ func FuzzProbe(f *testing.F) {
 	})
 }
 
-// FuzzProbeStream steers on the STREAMING (feed/finish) decode path instead of
+// FuzzProbeStream steers on the STREAMING (Decoder.Feed) decode path instead of
 // the block-path FuzzProbe above (crucible#178). Nothing else fuzzes it: every
-// coverage engine calls the one-shot decode, so feed/finish is only ever
+// coverage engine calls the one-shot decode, so the chunked path is only ever
 // REPLAYED, over a corpus the block path grew.
 //
 // mode and param are Go's own fuzz arguments (not a header in data, unlike the
@@ -40,16 +38,13 @@ func FuzzProbe(f *testing.F) {
 // every streaming defect found so far (F-0058, F-0060, F-0061, crucible#130)
 // was a VALUE or VERDICT mismatch, not a crash, and nothing else would notice
 // one here. Each case decodes twice, one-shot and chunked, and fails if they
-// disagree: on the verdict class (A / I / R <class>), or, when both accept, on
+// disagree: on the verdict class (A / I / L / R <class>), or, when both accept, on
 // the re-encoded bytes. That is the same intra-driver invariant
 // scripts/run-chunked.sh checks over the replay driver (CONTRACT.md: "an
 // intra-driver invariant"); this is its fuzz-time form.
 func FuzzProbeStream(f *testing.F) {
 	f.Add([]byte{0x00, 0x2a}, uint8(1), uint16(1))
 	f.Fuzz(func(t *testing.T, data []byte, mode uint8, param uint16) {
-		if len(data) == 0 {
-			return // CONTRACT rule 4: a length-0 record is not fed at all
-		}
 		want, wErr := msg.Probe__Decode(data)
 		got, gErr := decodeProbeChunked(data, mode, int(param))
 
@@ -74,69 +69,23 @@ func FuzzProbeStream(f *testing.F) {
 	})
 }
 
-// decodeProbeChunked mirrors drivers/go/message/probe.go's Probe__DecodeFrom, but
-// cuts at the fuzz-chosen boundary instead of at a fixed scratch-buffer size,
-// and scrubs each fed chunk afterward (0xA5) so a decoder that borrowed from a
-// chunk rather than copying out of it is caught here the same way
+// decodeProbeChunked maps the fuzz arguments onto the replay driver's own chunked
+// decode (decodeChunked in driver.go), with scrubbing always on, so a decoder that
+// borrowed from a chunk rather than copying out of it is caught here the same way
 // SOFAB_CHUNK_SCRUB catches it in the replay driver.
 func decodeProbeChunked(data []byte, mode uint8, param int) (*msg.Probe, error) {
-	m := msg.Probe__New()
-	d := sofab.NewDecoder(m)
-
-	step := len(data)
-	twoWay := mode&1 == 0
-	if twoWay {
-		if param > 0 && param < len(data) {
-			step = param
-		}
-	} else if param > 0 {
-		step = param
+	if mode&1 == 1 {
+		return decodeChunked(data, 0, param, true)
 	}
-
-	var out sofab.Outcome
-	var err error
-	for off := 0; off < len(data); {
-		n := len(data) - off
-		if n > step {
-			n = step
-		}
-		if twoWay && off > 0 { // a two-way split is two chunks, not fixed-size
-			n = len(data) - off
-		}
-		chunk := append([]byte(nil), data[off:off+n]...)
-		out, err = d.Feed(chunk)
-		for i := range chunk {
-			chunk[i] = 0xA5
-		}
-		if err != nil {
-			return nil, err
-		}
-		off += n
-	}
-	if out != sofab.Complete {
-		return nil, sofab.ErrIncomplete
-	}
-	return m, nil
+	return decodeChunked(data, param, 0, true)
 }
 
 // verdictClass maps a decode error to the verdict class the differential
-// comparator would see (oracle/canonical.md): "A", "I" or "R <class>",
-// mirroring reject_class in drivers/c/driver.c.
+// comparator would see (oracle/canonical.md): "A", or the replay driver's own
+// decodeVerdict line — one mapping for both, so they cannot drift apart.
 func verdictClass(err error) string {
-	switch {
-	case err == nil:
+	if err == nil {
 		return "A"
-	case errors.Is(err, sofab.ErrIncomplete):
-		return "I"
-	case errors.Is(err, sofab.ErrInvalidMsg):
-		return "R invalid_msg"
-	case errors.Is(err, sofab.ErrLimitExceeded):
-		return "R limit_exceeded"
-	case errors.Is(err, sofab.ErrArgument):
-		return "R argument"
-	case errors.Is(err, sofab.ErrBufferFull):
-		return "R buffer_full"
-	default:
-		return "R other"
 	}
+	return decodeVerdict(err)
 }

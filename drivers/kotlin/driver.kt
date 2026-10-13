@@ -23,7 +23,7 @@
 // Probe)`: it feeds the bytes into the passed `Probe` and returns what `IStream.feed`
 // answered, so one call yields both the three-valued VERDICT (its returned
 // status, or the SofabException it throws on malformed input) and the decoded VALUE
-// (the filled `Probe`, re-encoded for the A/I hex).
+// (the filled `Probe`, re-encoded for the A hex; an I carries no payload).
 //
 // The JVM coverage engine is Jazzer — see FuzzProbe.kt.
 package crucible
@@ -46,8 +46,9 @@ private val MATERIALIZE = Io.env("SOFAB_MATERIALIZE") == "1"
 // so neither streaming surface of the generated API is reachable through it. Unset,
 // every variable below is today's behaviour byte for byte.
 //
-// The generated Kotlin Decoder DOES expose `status`, so the verdict comes from there
-// rather than from finish() — finish() throws IllegalStateException when the stream
+// The generated Kotlin Decoder has no `status` accessor: each feed() RETURNS the
+// status (CORELIB_PLAN §5.2.1), so the last feed()'s return IS the status CONTRACT.md
+// rule 3 reads. Never finish() — it throws IllegalStateException when the stream
 // ended mid-field, and routing the verdict through it would bake that into the
 // canonical line.
 private fun envInt(name: String): Int = Io.env(name)?.toIntOrNull() ?: 0
@@ -61,14 +62,14 @@ private val SCRUB = Io.env("SOFAB_CHUNK_SCRUB").let { it != null && it.isNotEmpt
 private val ENCODE = Io.env("SOFAB_ENCODE").let { if (it.isNullOrEmpty()) "new" else it }
 private val CHUNKING = SPLIT != 0 || CHUNK != 0 || SCRUB
 
-/** How the record is cut on its way in. Never an empty chunk; a 0-byte record
- *  yields none at all. Each chunk is a fresh copy this driver owns, which is what
- *  makes SOFAB_CHUNK_SCRUB able to say anything. */
+/** How the record is cut on its way in. Never an empty chunk, except that a 0-byte
+ *  record is ONE empty chunk, fed once (CONTRACT.md rule 4): the decoder answers the
+ *  empty message, not this driver. Each chunk is a fresh copy this driver owns, which
+ *  is what makes SOFAB_CHUNK_SCRUB able to say anything. */
 private fun chunksOf(data: ByteArray): List<ByteArray> {
     val out = ArrayList<ByteArray>()
     val len = data.size
-    if (len == 0) return out
-    if (CHUNK > 0) {
+    if (len > 0 && CHUNK > 0) {
         var o = 0
         while (o < len) {
             val n = if (CHUNK < len - o) CHUNK else len - o
@@ -140,9 +141,13 @@ private fun rejectClass(e: SofabException): String = when (e.error) {
     // corelib-kotlin-mp carries the canonical category on the exception itself
     // (SofabError), so branch on it rather than string-matching messages. Its
     // SofabError has no USAGE member — CORELIB_PLAN §6.3 abolished that class.
+    SofabError.INVALID_MSG -> "invalid_msg"
     SofabError.ARGUMENT -> "argument"
     SofabError.BUFFER_FULL -> "buffer_full"
-    else -> "invalid_msg"
+    // LIMIT_EXCEEDED never reaches here on decode (errLine answers `L`); on the
+    // encode path, and for any category a later corelib adds, it is outside the
+    // canonical classes.
+    else -> "other"
 }
 
 // LIMIT_EXCEEDED (generator#102, limit mode only) is a policy rejection distinct
@@ -152,30 +157,23 @@ private fun errLine(e: SofabException): String =
 
 private const val HEX = "0123456789abcdef"
 
-// A RE-ENCODE that was refused (generator#656: a value past a declared
-// count/maxlen/width is refused with SofabError.ARGUMENT). On A that is the `E <class>`
-// verdict and never `R` — the decode just accepted these bytes, so calling them
-// malformed says the opposite of what happened. On I the payload is dropped and the
-// verdict kept: `I` is a hard decode fact, its hex a soft payload (oracle/canonical.md
-// "The fifth verdict `E`").
-private fun refused(verdict: Char, cls: String): String =
-    if (verdict == 'I') "I" else "E $cls"
-
-private fun hexValue(verdict: Char, m: Probe): String {
-    // Value for an A (COMPLETE) or I (INCOMPLETE) line: re-encode the decoded
-    // message -> hex (oracle/canonical.md). For I this is the partial value filled
-    // before truncation (the `incomplete_value` axis is soft; the verdict is hard).
+private fun acceptLine(m: Probe): String {
+    // The A (COMPLETE) value: re-encode the decoded message -> hex (oracle/canonical.md).
+    // A RE-ENCODE that was refused (generator#656: a value past a declared
+    // count/maxlen/width is refused with SofabError.ARGUMENT) is the `E <class>`
+    // verdict and never `R` — the decode just accepted these bytes, so calling them
+    // malformed says the opposite of what happened (oracle/canonical.md "The fifth
+    // verdict `E`"). The generated encoder and the corelib throw SofabException
+    // directly; anything else thrown is outside the taxonomy.
     val enc: ByteArray = try {
         encodeVia(m)
     } catch (e: SofabException) {
-        return refused(verdict, rejectClass(e))
-    } catch (e: RuntimeException) {
-        val c = e.cause
-        if (c is SofabException) return refused(verdict, rejectClass(c))
-        return refused(verdict, "other")
+        return "E " + rejectClass(e)
+    } catch (e: Throwable) {
+        return "E other"
     }
     val sb = StringBuilder(2 + enc.size * 2)
-    sb.append(verdict).append(' ')
+    sb.append("A ")
     for (b in enc) {
         val v = b.toInt() and 0xff
         sb.append(HEX[v ushr 4]).append(HEX[v and 0xf])
@@ -198,10 +196,10 @@ private fun canonical(data: ByteArray): String {
             // byte, which is also what makes the gate meaningful: it then compares
             // two genuinely different code paths. The verdict is the last feed()'s
             // return value, never finish(), which throws mid-field (CONTRACT.md).
-            // A record with no chunks (a zero-length one) feeds nothing and keeps
-            // COMPLETE: zero bytes are the valid empty message.
+            // chunksOf never returns an empty list, so `status` is always a real
+            // feed() answer — a zero-length record is one empty chunk.
             val d = Probe.decoder()
-            status = DecodeStatus.COMPLETE
+            status = DecodeStatus.INCOMPLETE
             for (c in chunksOf(data)) {
                 status = d.feed(c)
                 // Scrub: the chunk is a copy the driver owns, so overwriting it
@@ -213,22 +211,22 @@ private fun canonical(data: ByteArray): String {
             status = Probe.tryDecode(data, m)
         }
     } catch (e: SofabException) {
+        // The corelib and the generated visitor throw SofabException itself (a
+        // RuntimeException in corelib-kotlin-mp), never wrapped.
         return errLine(e)
-    } catch (e: RuntimeException) {
-        // A rejection raised from inside the visitor can arrive wrapped; unwrap to
-        // preserve the L/R distinction. A genuinely foreign RuntimeException still
-        // falls through to "R other".
-        val c = e.cause
-        if (c is SofabException) return errLine(c)
+    } catch (e: Throwable) {
+        // Anything else thrown out of a decode is outside the taxonomy.
         return "R other"
     }
     // INCOMPLETE (MESSAGE_SPEC §7): bytes end mid-message — the third canonical
     // verdict, neither accept (A) nor reject (R). Not an error. COMPLETE emits A.
-    val verdict = if (status == DecodeStatus.INCOMPLETE) 'I' else 'A'
-    // Materialized mode replaces only the A payload with the decoded-value dump
-    // (oracle/materialized.md); I keeps the round-trip hex of its partial value.
-    if (verdict == 'A' && MATERIALIZE) return "A " + materialize(m)
-    return hexValue(verdict, m)
+    // INCOMPLETE is a bare `I` — the partial value is not a decode result and is never
+    // re-encoded (oracle/canonical.md "The `I` line has no payload").
+    if (status == DecodeStatus.INCOMPLETE) return "I"
+    // Materialized mode replaces the A payload with the decoded-value dump
+    // (oracle/materialized.md).
+    if (MATERIALIZE) return "A " + materialize(m)
+    return acceptLine(m)
 }
 
 /** Announce the resolved streaming configuration on stderr (never parsed).

@@ -87,8 +87,7 @@ def allowance_for(entries, data, axis):
 
 def load_policy(path):
     """Minimal reader for the three comparison axes we need. Avoids a YAML dep."""
-    axes = {"verdict": "hard", "accept_value": "hard",
-            "incomplete_value": "soft", "reject_class": "soft",
+    axes = {"verdict": "hard", "accept_value": "hard", "reject_class": "soft",
             "limit_class": "soft", "encode_class": "hard"}
     if path and os.path.exists(path):
         in_cmp = False
@@ -97,7 +96,7 @@ def load_policy(path):
                 in_cmp = True
                 continue
             if in_cmp:
-                m = re.match(r"^\s+(verdict|accept_value|incomplete_value|reject_class|limit_class|encode_class):\s*(hard|soft)", line)
+                m = re.match(r"^\s+(verdict|accept_value|reject_class|limit_class|encode_class):\s*(hard|soft)", line)
                 if m:
                     axes[m.group(1)] = m.group(2)
                 elif re.match(r"^\S", line):  # dedent → left the comparison block
@@ -215,9 +214,18 @@ FORBIDDEN_VERDICTS = {
 }
 
 
+# Which axis a payload difference is reported on, per verdict. `I` has no payload.
+# Mutual E: both refused the re-encode and the classes differ — the verdict already
+# failed the run per line, this names the split.
+_PAYLOAD_AXIS = {"A": "accept_value", "R": "reject_class", "L": "limit_class",
+                 "E": "encode_class"}
+
+
 def parse(line):
-    """(verdict, payload): ('A', hex), ('I', hex-or-empty), ('R', class),
-    ('L', class-or-empty) or ('E', class).
+    """(verdict, payload): ('A', hex), ('I', ''), ('R', class),
+    ('L', class-or-empty) or ('E', class) — and ('?', line) for anything the grammar
+    does not allow, including an `I` that carries a payload (oracle/canonical.md,
+    "The `I` line has no payload").
 
     Verdicts per oracle/canonical.md: A=complete, I=incomplete (decode ended
     mid-message, MESSAGE_SPEC §7 — not an error), R=reject (INVALID), L=limit
@@ -228,8 +236,8 @@ def parse(line):
     verdict divergence."""
     if line.startswith("A"):
         return ("A", line[1:].strip())
-    if line.startswith("I"):
-        return ("I", line[1:].strip())
+    if line == "I":
+        return ("I", "")
     if line.startswith("R"):
         return ("R", line[1:].strip())
     if line.startswith("L"):
@@ -310,12 +318,17 @@ def main():
     # would bury the signal this is meant to raise.
     seen_classes = {}   # (driver, class) -> [count, first_seed]
     seen_refused = {}   # (driver, class) -> [count, first_seed]  — the E verdict
+    seen_malformed = {}  # driver -> [count, first_seed, first_line]
     for i, (seed, _) in enumerate(corpus):
         for nm, ln in drivers:
             line = ln[i]
             if line in (None, CRASH, TIMEOUT):
                 continue
             v, p = parse(line)
+            if v == "?":
+                e = seen_malformed.setdefault(nm, [0, seed, line])
+                e[0] += 1
+                continue
             if v in FORBIDDEN_VERDICTS and not args.allow_encode_refused:
                 e = seen_refused.setdefault((nm, p or "?"), [0, seed])
                 e[0] += 1
@@ -334,6 +347,14 @@ def main():
               f"input(s), class {cls!r} — {FORBIDDEN_VERDICTS['E']}")
         hard += count
 
+    # A line outside the grammar is judged on its own, like a forbidden class: if every
+    # driver printed the same malformed line the run would otherwise be unanimous.
+    for nm, (count, first, line) in sorted(seen_malformed.items()):
+        print(f"[DIVERGENCE] {first}  (malformed_line)\n"
+              f"        {nm} printed {count} line(s) outside oracle/canonical.md's "
+              f"grammar, e.g. {line[:60]!r}")
+        hard += count
+
     for (nm, cls), (count, first) in sorted(seen_classes.items()):
         if cls in FORBIDDEN_CLASSES:
             print(f"[DIVERGENCE] {first}  (reject_class_forbidden)\n"
@@ -349,32 +370,38 @@ def main():
     soft = sum(c for (nm, cls), (c, _) in seen_classes.items()
                if cls in REPORTED_CLASSES)
     allowed = 0
-    # Reference = first driver that did NOT crash/hang on a given input.
+    # The verdict is compared against the reference — the first driver that did NOT
+    # crash/hang on a given input. The payload (value or class) is compared within each
+    # VERDICT CAMP, against the camp's first member: comparing it against the reference
+    # alone would hide a value split among the drivers that disagree with the reference
+    # (when `c` rejects, two accepters decoding different values were never reported).
     for i, (seed, _) in enumerate(corpus):
+        # a malformed line already failed the run as malformed_line above
         present = [(nm, ln[i]) for nm, ln in drivers
-                   if ln[i] not in (None, CRASH, TIMEOUT)]
+                   if ln[i] not in (None, CRASH, TIMEOUT) and parse(ln[i])[0] != "?"]
         if len(present) < 2:
             continue
         ref_name, ref_line = present[0]
-        rv, rp = parse(ref_line)
-        for name, line in present[1:]:
+        rv, _ = parse(ref_line)
+        camp_ref = {}   # verdict -> (name, payload) of the camp's first member
+        for name, line in present:
             v, p = parse(line)
-            axis = reason = None
+            if v not in camp_ref:
+                camp_ref[v] = (name, p)
+                if name == ref_name:
+                    continue
+            found = []      # (axis, reason) — a driver can split on both
+            cname, cp = camp_ref[v]
             if v != rv:
-                axis, reason = "verdict", f"{ref_name}={rv!r} {name}={v!r}"
-            elif rv == "A" and p != rp:
-                axis, reason = "accept_value", f"{ref_name}: {rp}\n        {name}: {p}"
-            elif rv == "I" and p != rp:
-                axis, reason = "incomplete_value", f"{ref_name}: {rp}\n        {name}: {p}"
-            elif rv == "R" and p != rp:
-                axis, reason = "reject_class", f"{ref_name}={rp} {name}={p}"
-            elif rv == "L" and p != rp:
-                axis, reason = "limit_class", f"{ref_name}={rp} {name}={p}"
-            elif rv == "E" and p != rp:
-                # Mutual E: both refused the re-encode, and the classes differ. The
-                # verdict already failed the run per line above; this names the split.
-                axis, reason = "encode_class", f"{ref_name}={rp} {name}={p}"
-            if axis:
+                found.append(("verdict", f"{ref_name}={rv!r} {name}={v!r}"))
+            if cname != name and p != cp and v in _PAYLOAD_AXIS:
+                where = "" if v == rv else ", outside the reference's camp"
+                if v == "A":
+                    found.append((_PAYLOAD_AXIS[v],
+                                  f"{cname}: {cp}{where}\n        {name}: {p}"))
+                else:
+                    found.append((_PAYLOAD_AXIS[v], f"{cname}={cp} {name}={p}{where}"))
+            for axis, reason in found:
                 sev = axes.get(axis, "hard")
                 # A divergence this input is ALLOWED to have (policy.yaml `allow:`),
                 # matched on the input's bytes rather than its path so the allowance

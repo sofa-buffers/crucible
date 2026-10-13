@@ -32,10 +32,11 @@ import { DecodeStatus, OStream, SofabError, SofabErrorCode } from "@sofa-buffers
 // which crashed, failed to compile, or turned the conformance suite red. That is the
 // class of defect this axis exists for.
 //
-// This backend has ONE encode surface: `serialize(os)`. There is no `encode()` and no
-// `encodeTo()`, so `SOFAB_ENCODE=new|to` must be a hard error rather than a fallback —
-// reporting a mode as passing that never ran is the failure the encode gate exists to
-// prevent (meta: encode_surfaces=stream).
+// This backend has TWO of the three encode surfaces: the generated `encode()` (`new`, the
+// default) and `serialize(os)` into a caller-built `OStream` (`stream`). The generated
+// code has no `encodeTo()`, so `SOFAB_ENCODE=to` must be a hard error rather than a
+// fallback — reporting a mode as passing that never ran is the failure the encode gate
+// exists to prevent (meta: encode_surfaces=new,stream).
 const _num = (name: string): number => {
   const v = process.env[name];
   return v ? parseInt(v, 10) || 0 : 0;
@@ -47,10 +48,19 @@ const _FLUSH = _num("SOFAB_FLUSH");
 const _FAIL = _num("SOFAB_ENCODE_FAIL");
 const _SCRUB = !!process.env.SOFAB_CHUNK_SCRUB && process.env.SOFAB_CHUNK_SCRUB !== "0";
 const _ENCODE = process.env.SOFAB_ENCODE ?? "";
-if (_ENCODE && _ENCODE !== "stream") {
+// SOFAB_FLUSH sizes the stream surface's buffer, so on its own it selects that surface.
+const _SURFACE = _ENCODE || (_FLUSH > 0 ? "stream" : "new");
+if (_SURFACE !== "new" && _SURFACE !== "stream") {
   process.stderr.write(
-    `crucible-ts: SOFAB_ENCODE=${_ENCODE} — this backend has only 'stream' ` +
-      `(no encode(), no encodeTo())\n`,
+    `crucible-ts: SOFAB_ENCODE=${_SURFACE} — this backend has only 'new' and 'stream' ` +
+      `(the generated code has no encodeTo())\n`,
+  );
+  process.exit(2);
+}
+if (_FLUSH > 0 && _SURFACE !== "stream") {
+  process.stderr.write(
+    `crucible-ts: SOFAB_FLUSH=${_FLUSH} sizes the stream surface's buffer, ` +
+      `but SOFAB_ENCODE=${_SURFACE}\n`,
   );
   process.exit(2);
 }
@@ -61,17 +71,18 @@ if (_ENCODE && _ENCODE !== "stream") {
 if (_SPLIT || _CHUNK || _SCRUB || _FLUSH || _ENCODE || _FAIL) {
   process.stderr.write(
     `crucible-ts: streaming cfg split=${_SPLIT} chunk=${_CHUNK} ` +
-      `scrub=${_SCRUB ? 1 : 0} enc=${_ENCODE || "stream"} flush=${_FLUSH} ` +
+      `scrub=${_SCRUB ? 1 : 0} enc=${_SURFACE} flush=${_FLUSH} ` +
       `fail=${_FAIL}\n`,
   );
 }
 
-// How the record is cut on its way into the decoder. Never an empty chunk: k<=0,
-// k>=len and n>=len all mean one chunk holding the whole record. A zero-length record
-// yields no chunks and is not fed at all.
+// How the record is cut on its way into the decoder. k<=0, k>=len and n>=len all mean
+// one chunk holding the whole record. A zero-length record is ONE empty chunk, fed once
+// (CONTRACT.md rule 4): the decoder, not the driver, answers the empty message. No
+// other empty chunk is ever produced.
 function chunksOf(data: Uint8Array): Uint8Array[] {
   const len = data.length;
-  if (len === 0) return [];
+  if (len === 0) return [data];
   if (_CHUNK > 0) {
     const out: Uint8Array[] = [];
     for (let o = 0; o < len; o += _CHUNK) out.push(data.subarray(o, Math.min(o + _CHUNK, len)));
@@ -260,22 +271,17 @@ function materialize(m: Probe): string {
   return "{" + d.fields.map((c) => c.id + ":" + walk(c, v[c.name])).join(";") + "}";
 }
 
-function rejectClass(e: unknown): string {
-  // Coarse in Phase 2 (reject-class comparison is soft per policy). A SofabError
-  // is a decode-level failure; anything else is surfaced as "other" rather than
-  // hidden.
-  return e instanceof SofabError ? "invalid_msg" : "other";
-}
-
-// The class of a REFUSED re-encode (generator#656: a value past a declared
-// count/maxlen/width throws with SofabErrorCode.Argument). Finer than rejectClass
-// above, which is deliberately coarse for the decode path: here the code is the
-// point, because `argument` is the one class a schema-bound refusal may carry and
-// anything else is a defect of its own.
-function encodeClass(e: unknown): string {
+// The canonical class of a decode reject or a refused re-encode, read off the
+// corelib's SofabErrorCode (oracle/canonical.md). Incomplete and LimitExceeded never
+// reach this: they are verdicts of their own (`I`, `L`), classified by the callers.
+// Anything that is not a SofabError is surfaced as "other" rather than hidden.
+function errorClass(e: unknown): string {
   if (e instanceof SofabError) {
-    if (e.code === SofabErrorCode.Argument) return "argument";
-    if (e.code === SofabErrorCode.BufferFull) return "buffer_full";
+    switch (e.code) {
+      case SofabErrorCode.InvalidMsg: return "invalid_msg";
+      case SofabErrorCode.Argument: return "argument";
+      case SofabErrorCode.BufferFull: return "buffer_full";
+    }
   }
   return "other";
 }
@@ -290,15 +296,51 @@ function acceptLine(m: Probe): string {
   try {
     bytes = encodeBytes(m);
   } catch (e) {
-    return "E " + encodeClass(e);
+    return "E " + errorClass(e);
   }
   return "A " + _hex(bytes);
 }
 
-// Re-encode through the streaming surface, which is the only one this backend has.
-// SOFAB_FLUSH=n gives the OStream an n-byte buffer draining to a sink, so the message
-// arrives in n-byte pieces and the encoder crosses a buffer boundary at every offset —
-// the encode-side mirror of SOFAB_CHUNK=1. The bytes must not change either way.
+// SOFAB_FLUSH=n: the stream surface's OStream gets an n-byte buffer draining to a
+// sink, so the message arrives in n-byte pieces and the encoder crosses a buffer
+// boundary at every offset — the encode-side mirror of SOFAB_CHUNK=1.
+//
+// The sink is handed the INSTALLED BUFFER plus coordinates — `buffer[start..end)` —
+// never a subarray, because a view would be an allocation per flush and the encoder
+// allocates nothing after construction (§6.6); and never foreign memory, because
+// §5.1.6 forbids pass-through. Copying the region out is what lets the encoder keep
+// writing into the same buffer. Taking `buffer` whole here instead would append the
+// untouched tail of the window to every piece.
+let _parts: Uint8Array[] = [];
+function flushStream(): OStream {
+  return new OStream(new Uint8Array(_FLUSH), 0, (buffer, start, end) =>
+    _parts.push(buffer.slice(start, end)),
+  );
+}
+
+// CORELIB_PLAN §5.1 (CONTRACT.md "Which flush sizes must work"): a size at or above
+// meta's min_output_buffer MUST work, one below it MUST be refused where the buffer is
+// handed over — and that refusal is the corelib's to make, at the OStream constructor,
+// so the driver asks it once before any record rather than comparing against a number
+// of its own. A refusal exits 3. Whether that is the required answer or a conformance
+// failure is the gate's call, from the same meta value.
+if (_FLUSH > 0) {
+  try {
+    flushStream();
+  } catch (e) {
+    process.stderr.write(
+      `crucible-ts: SOFAB_FLUSH=${_FLUSH} refused at the handover ` +
+        `(CORELIB_PLAN §5.1): ${e instanceof Error ? e.message : String(e)}\n`,
+    );
+    process.exit(3);
+  }
+}
+
+// Re-encode through the selected surface. Each is the generated entry point an
+// application would call; a throw from any of them is the `E` line above.
+//   new     -> the generated `encode()`: one exact MAX_SIZE buffer it allocates itself
+//   stream  -> `serialize(os)` into an OStream this driver builds — a MAX_SIZE buffer
+//              with no sink, or the SOFAB_FLUSH window draining to one
 function encodeBytes(m: Probe): Uint8Array {
   // SOFAB_ENCODE_FAIL=n (CONTRACT.md): a destination of n bytes with NO sink, so a
   // message that does not fit is REFUSED (SofabErrorCode.BufferFull) rather than
@@ -312,49 +354,21 @@ function encodeBytes(m: Probe): Uint8Array {
     sos.flush();
     return small.subarray(0, sos.bytesUsed);
   }
+  if (_SURFACE === "new") return m.encode();
   if (_FLUSH > 0) {
-    const parts: Uint8Array[] = [];
-    // The sink is handed the INSTALLED BUFFER plus coordinates — `buffer[start..end)`
-    // — never a subarray, because a view would be an allocation per flush and the
-    // encoder allocates nothing after construction (§6.6); and never foreign memory,
-    // because §5.1.6 forbids pass-through. Copying the region out is what lets the
-    // encoder keep writing into the same buffer. Taking `buffer` whole here instead
-    // would append the untouched tail of the window to every piece.
-    const os = new OStream(new Uint8Array(_FLUSH), 0, (buffer, start, end) =>
-      parts.push(buffer.slice(start, end)),
-    );
-    try {
-      m.serialize(os);
-    } catch (e) {
-      // corelib-ts's OStream.ensure(n) needs n CONTIGUOUS bytes and only flushes
-      // before checking, so a caller buffer smaller than the largest single write
-      // (e.g. 4 for an fp32, count*10 for a varint array) cannot encode at all. That
-      // is a property of this backend, not of the message: corelib-cpp streams the
-      // same value through a 1-byte buffer. Exit 3 — distinct from 2, "the backend
-      // has no such surface" — so the gate can report the size as inapplicable
-      // instead of either failing or, worse, silently skipping it.
-      if (e instanceof SofabError && e.code === SofabErrorCode.BufferFull) {
-        process.stderr.write(
-          `crucible-ts: SOFAB_FLUSH=${_FLUSH} is below this backend's contiguous-write ` +
-            `requirement (OStream.ensure needs n contiguous bytes): ${e.message}\n`,
-        );
-        process.exit(3);
-      }
-      throw e;
-    }
+    _parts = [];
+    const os = flushStream();
+    m.serialize(os);
     os.flush();
-    const total = parts.reduce((n, p) => n + p.length, 0);
+    const total = _parts.reduce((n, p) => n + p.length, 0);
     const out = new Uint8Array(total);
     let o = 0;
-    for (const p of parts) { out.set(p, o); o += p.length; }
+    for (const p of _parts) { out.set(p, o); o += p.length; }
     return out;
   }
-  // The buffer is the CALLER's since corelib-ts#161: OStream holds none of its own
-  // (CORELIB_PLAN §6.6), so its first argument is required and there is no allocating
-  // constructor to fall back on. This mirrors what the generated `encode()` does —
-  // one exact MAX_SIZE buffer, the schema's worst case, so every value the schema
-  // permits fits — while keeping the bytes coming out of the same `serialize(os)`
-  // stream surface the flush sweep compares against.
+  // The buffer is the CALLER's (CORELIB_PLAN §6.6): OStream holds none of its own, so
+  // the stream surface needs one supplied — MAX_SIZE, the schema's worst case, so every
+  // value the schema permits fits.
   const os = new OStream(new Uint8Array(Probe.MAX_SIZE));
   m.serialize(os);
   return os.bytes();
@@ -373,12 +387,12 @@ function encodeBytes(m: Probe): Uint8Array {
 // It used to be read from a `status` accessor beside `feed`. CORELIB_PLAN §5.2.1
 // closed that door — the outcome "MUST reach the caller from the `feed` that produced
 // it", with "no second place to ask", because two surfaces holding one answer can
-// disagree — so the generated decoder has no such accessor any more. A record with no
-// chunks at all (a zero-length one) feeds nothing and keeps the initial COMPLETE: zero
-// bytes are the valid empty message.
+// disagree — so the generated decoder has no such accessor any more. Every record
+// feeds at least once (a zero-length one feeds one empty chunk), so `st` below is
+// always a status the corelib returned, never one this driver assumed.
 function canonicalChunked(data: Uint8Array): string {
   const d = new Probe__Decoder();
-  let st: DecodeStatus = DecodeStatus.Complete;
+  let st: DecodeStatus | undefined;
   try {
     for (const c of chunksOf(data)) {
       // Scrub mode needs a buffer the driver owns: feed it, then overwrite. A decoder
@@ -390,7 +404,7 @@ function canonicalChunked(data: Uint8Array): string {
   } catch (e) {
     if (e instanceof SofabError && e.code === SofabErrorCode.Incomplete) return "I";
     if (e instanceof SofabError && e.code === SofabErrorCode.LimitExceeded) return "L";
-    return "R " + rejectClass(e);
+    return "R " + errorClass(e);
   }
   // No `Invalid` arm: `feed` returns only Complete or Incomplete (corelib-ts types
   // that as `FeedStatus`), and a malformed message arrives as the throw the catch
@@ -403,8 +417,8 @@ function canonicalChunked(data: Uint8Array): string {
 }
 
 function canonical(data: Uint8Array): string {
-  // decode -> re-encode -> hex (oracle/canonical.md). The generated TS message
-  // has no encode(), so serialize into an in-memory OStream and read its bytes.
+  // decode -> re-encode -> hex (oracle/canonical.md). A zero-length record goes
+  // through Probe.decode like any other: the decoder answers the empty message.
   if (_SPLIT || _CHUNK || _SCRUB) return canonicalChunked(data);
   let m: Probe;
   try {
@@ -412,9 +426,7 @@ function canonical(data: Uint8Array): string {
   } catch (e) {
     // INCOMPLETE (truncation) is a distinct hard verdict, not a reject: the
     // stream ended inside a field. Detect it first (canonical.md: never collapse
-    // it into A or R). The optional partial-value hex payload is not emitted —
-    // the throwing one-shot path yields no partial value, and the payload axis is
-    // soft in Phase 2.
+    // it into A or R). The line is a bare `I` — it carries no payload.
     if (e instanceof SofabError && e.code === SofabErrorCode.Incomplete) {
       return "I";
     }
@@ -424,7 +436,7 @@ function canonical(data: Uint8Array): string {
       // its own verdict `L`, not `R`.
       return "L";
     }
-    return "R " + rejectClass(e);
+    return "R " + errorClass(e);
   }
   // COMPLETE decode. In materialize mode, dump the decoded value (oracle/
   // materialized.md) instead of the re-encoded wire hex; the default path is

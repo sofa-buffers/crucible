@@ -49,17 +49,16 @@ sync demonstrably did not.
 
 **`differential`** bootstraps the corelibs (their `main` tips) + sofabgen, builds every
 replay driver, and runs the **green** oracles in sequence; any divergence fails the
-job. All ten, in the order the workflow runs them, with the full family-copies check
-right after the seed build (while the generated code is still the probe's):
+job. All ten, in the order the workflow runs them:
 
 ```sh
 ./scripts/bootstrap.sh   # always: latest sofabgen CI build (checksum-verified) + corelibs, both @ FAMILY_BRANCH
 ./scripts/run.sh                            # seed differential            (corpus/seeds)
                                             #   ... and, inside run.sh, check-encode-bounds.py:
-                                            #   the generated encode guards are armed in every
-                                            #   profile and no opt-out is compiled in (#656)
+                                            #   no encode-bound opt-out is switched on in any
+                                            #   build recipe (#656)
 python3 scripts/check-kotlin-version.py     # the image's kotlinc vs the corelib's klibs (crucible#244)
-python3 scripts/check-family-copies.py      # C anchor tags + generated code reaches the corelib layer
+python3 scripts/check-family-copies.py      # C anchor tags (needs vendor/)
 CORPUS=corpus/regression ./scripts/run.sh   # resolved-findings gate       (corpus/regression)
 CORPUS=corpus/conformance ./scripts/run.sh  # §2/§3 canonicality seeds     (corpus/conformance)
 REGEN=0 ./scripts/cross-encode.sh           # cross-encode / structured    (corpus/structured)

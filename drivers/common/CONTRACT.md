@@ -95,14 +95,18 @@ otherwise drift eleven ways, so it is normative:
      those backends, it returns the *same* three-valued outcome the one-shot path
      returns. Rust is the case in point: its generated `Decoder` has **no `status`**
      (crucible#132's API table overstates this — verified absent at sofabgen
-     `cfe5250b`), and `finish()` yields `Result<Probe, sofab::Error>`, exactly what
+     `cfe5250b`), and `finish()` yields `Result<Probe, DecodeError>`, exactly what
      `try_decode` yields. Routing through it there introduces nothing.
    - Mid-stream, an `Incomplete` from a `feed` is **not** terminal — it only says
      *those bytes* ended mid-field. Only a non-`Incomplete` error stops the feeding.
-4. A record of length 0 is the valid all-defaults message and is **not fed at all**, as
-   in the one-shot path (corelib-c-cpp asserts `datalen>0`).
-5. Never synthesize an empty chunk: `k<=0`, `k>=len` and `n>=len` all mean one chunk
-   holding the whole record, i.e. today's behaviour.
+4. A record of length 0 is the valid all-defaults message (MESSAGE_SPEC §2) and goes
+   through the decoder like any other record: **one empty chunk**, fed once. The driver
+   never answers it itself — that would assert the verdict instead of testing it. A
+   zero-length feed is legal in every corelib (CORELIB_PLAN §5.2: the status is a
+   property of the bytes consumed, computable at any byte boundary; corelib-c-cpp's
+   `sofab_istream_feed` documents `feed(ctx, NULL, 0)` as the canonical spelling).
+5. Never synthesize an empty chunk beyond that one: `k<=0`, `k>=len` and `n>=len` all
+   mean one chunk holding the whole record, i.e. today's behaviour.
 
 ### Encode side — which call produces the `A <hex>`
 
@@ -178,7 +182,7 @@ cannot demand more than a whole message can occupy. (Until documentation#46/#48 
 latitude that let corelib-ts#94 sit behind a green gate is not restored by this, because
 a sweep that runs no size at all is now impossible by construction.)
 
-Not every backend has all three (TypeScript has no `encode()`, C has no allocating
+Not every backend has all three (TypeScript has no `encodeTo()`, C has no allocating
 encode — see the API table in
 [crucible#132](https://github.com/sofa-buffers/crucible/issues/132)). A driver asked for
 a surface its backend does not have must **exit non-zero with a one-line reason on
@@ -216,7 +220,7 @@ chunked_decode=push|pull|none    push: feed(chunk) — every corelib with a resu
                                  driver wraps around the chunks (no port does this
                                  today — corelib-py was the last and became push in
                                  corelib-py#142); none: the corelib has no resumable
-                                 decoder (go)
+                                 decoder (no port today)
 encode_surfaces=new,to,stream    which of the three this backend actually has
 ```
 
@@ -316,26 +320,39 @@ refusal, not the decode's:
 | dart | `SofabException` with `invalidArgument` |
 | zig | `error.InvalidArgument` |
 | c | `SOFAB_RET_E_ARGUMENT` from `message_probe__encode` / `__encode_to` (the C corelib refuses descriptor-driven; generated C emits no guard) |
-| cpp | **the generated `encode()` / `encodeTo()` cannot report it** — both answer "no bytes", which is also the all-default message. Re-encode through `serialize(os)` on a stream the driver owns and read `os.ok()`; where a surface under test must still be the one called, disambiguate its empty result with a second `serialize` pass. See `findings/G-0047-*` |
+| cpp | the `sofab::Error` that the `[[nodiscard]]` `encode()` / `encodeTo()` return (G-0047, resolved in generator `05176bb8`), or `os.ok()` / `os.error()` after `serialize(os)` |
 
 A profile whose storage **clamps by contract** never produces an `E`: C++ `FixedString` /
 `FixedBytes` / `InlineVector` (`cpp-fixed`, `cpp-c-cpp`), Zig `FixedArray`, and C's length
 and count companions cut the value at assignment instead of refusing it, so an over-bound
 value there comes back as a *different value* and the round-trip oracle sees it on
-`accept_value`. That is a difference in mechanism, not in strictness, and
-`scripts/check-encode-bounds.py` is what holds each profile to the one it is supposed to
-use — so that a profile whose guards silently stopped being generated cannot be mistaken
-for one that clamps.
+`accept_value`. That is a difference in mechanism, not in strictness. Whether each
+profile's generated code carries the guards its mechanism calls for is the generator's own
+conformance question (`tests/conformance/lib/check_encode_bounds.py` there), not
+Crucible's: Crucible reads generated code only by calling it. What Crucible does check
+(`scripts/check-encode-bounds.py`) is its own build configuration — that no driver is
+built with an encode-bound opt-out switched on.
 
 ## Decode core requirements
 
 - Decode the candidate bytes into the `probe` message using the corelib's real
   decode entry point (generated from `schema/` via `sofabgen`).
+- **Use the generated code the way an application would.** Call the generated entry
+  points themselves (`try_decode` / `decode` / `decoder()`, `encode` / `encodeTo` /
+  `serialize`) and the corelib's public API — never a hand-written copy of a generated
+  body, never a corelib-internal symbol, and never a workaround that absorbs a defect of
+  either. A copy freezes the entry point at the day it was copied; a workaround turns a
+  finding into a green line. Where the generated API genuinely lacks something the
+  contract needs, say so in a code comment that names the upstream issue.
+- **The dump reports what the application would read.** A materialized walker prints
+  the stored value as it is — it never normalizes (`v ? 1 : 0`), clamps, or substitutes
+  on the generated code's behalf (`oracle/materialized.md`).
 - Map the corelib's **three-valued** decode outcome (MESSAGE_SPEC §7) to the
   canonical line (`oracle/canonical.md`):
   - `COMPLETE` → emit `A <hex>`.
   - `INCOMPLETE` (decode ended mid-field/varint or with an open sequence — **not**
-    an error) → emit `I` (optionally `I <hex>` for the partial value). Do **not**
+    an error) → emit a bare `I`. No payload: a partial value is not a decode result,
+    and a payload only some drivers print compares nothing. Do **not**
     report it as `A` or `R`.
   - `INVALID` → emit `R <class>`, mapping the corelib's error to the canonical
     reject class.

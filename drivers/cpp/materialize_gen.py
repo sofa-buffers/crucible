@@ -25,8 +25,11 @@ C++ member name for each node is its schema `name` (confirmed against both
 drivers/cpp/gen/{cpp,c-cpp}/probe.hpp); paths join with `.`.
 
 Usage:
-    materialize_gen.py [OUT.inc]
-      OUT.inc   output path (default: stdout)
+    materialize_gen.py [OUT.inc [SCHEMA]]
+      OUT.inc   output path (default: stdout, also for "-")
+      SCHEMA    the schema the build generated from (build.sh passes $SCHEMA). For any
+                schema but probe.sofab.yaml a compile-only stub is emitted, unless
+                $SOFAB_MATERIALIZE_SCHEMA names a descriptor for it
     Descriptor path: $SOFAB_MATERIALIZE_SCHEMA, else <repo-root>/oracle/materialized-schema.json
 """
 import json
@@ -47,8 +50,8 @@ def _load_descriptor():
 # --- leaf emitters: append one materialized leaf for a member-access expr `acc` ---
 def _leaf(kind, acc):
     if kind == "u":      return f"_md_u(o, {acc});"
-    # §4.4 boolean: rendered as the unsigned value it is on the wire — `u1` / `u0`. A port whose storage is a real bool can only ever produce those two; one that kept a non-normalized raw value renders it as-is, which is exactly the divergence the form exists to surface.
-    if kind == "bool":   return f"_md_u(o, static_cast<unsigned long long>({acc} ? 1 : 0));"
+    # §4.4 boolean: the stored value as it is, as an unsigned number — never normalized here. Storage that is a real bool can only produce `u0` / `u1`; one that kept a non-normalized raw value renders it as-is, which is exactly the divergence the form exists to surface.
+    if kind == "bool":   return f"_md_u(o, static_cast<unsigned long long>({acc}));"
     if kind == "s":      return f"_md_s(o, {acc});"
     if kind == "fp32":   return f"_md_f32(o, {acc});"
     if kind == "fp64":   return f"_md_f64(o, {acc});"

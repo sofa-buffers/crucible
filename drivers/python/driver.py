@@ -10,9 +10,9 @@ Both must be byte-for-byte identical (corelib-py asserts this in its own parity
 tests); Crucible checks it against the other language corelibs too.
 
 Speaks drivers/common/CONTRACT.md: reads length-prefixed records on stdin, emits
-one canonical line (oracle/canonical.md) per record. Unlike Rust/C++, the
-generated Python `decode` RAISES on malformed input, so the verdict is a plain
-try/except — no two-pass workaround (contrast results/FINDINGS.md G-0001/G-0005).
+one canonical line (oracle/canonical.md) per record. The one-shot verdict is
+whatever the generated `Probe.decode` raises; the chunked one is the status the
+generated `Probe.decoder()`'s `feed` returns.
 """
 import json
 import os
@@ -21,7 +21,7 @@ import sys
 
 from message import Probe
 from sofab import (Encoder, SofaArgumentError, SofaBufferError, SofaDecodeError,
-                   SofaError, SofaIncompleteError, SofaLimitError, Status)
+                   SofaIncompleteError, SofaLimitError, Status)
 
 # --- materialized value dump (oracle/materialized.md), SOFAB_MATERIALIZE=1 -------
 # The dataclass carries no schema type (fp32 vs fp64, unsigned vs signed), so the
@@ -108,38 +108,20 @@ def _materialize(m) -> str:
         f"{f['id']}:{_walk(f, _attr(m, f['name']))}" for f in _SCHEMA["fields"]
     ) + "}"
 
-# Exception class name -> the canonical reject class (oracle/canonical.md).
-#
-# `SofaStateError` is deliberately absent. corelib-py#96 (merged 2026-08-17) made it a
-# deprecated ALIAS of SofaRangeError, so `type(e).__name__` can never spell it again and
-# the entry mapping it to "usage" was dead code. Keeping it would also have been wrong in
-# the other direction: `usage` is the class CORELIB_PLAN §6.3 abolished, and an alias for
-# SofaRangeError is precisely §6.3's `InvalidArgument`, which is `argument` below.
-#
-# The four type-mismatched reads that used to raise here now return None and skip the
-# field (MESSAGE_SPEC §7.3), so they produce no reject class at all — which is why this
-# table no longer needs a row for them. `oracle/comparator.py` still rejects the `usage`
-# class outright; nothing in the roster can emit it now, and that check is what keeps it
-# so rather than something to be removed alongside this.
-# `SofaRangeError` is NOT a row here, for the same reason `SofaStateError` is not: it is
-# an ALIAS. corelib-py renamed the class to `SofaArgumentError` — "named after the code it
-# carries", §6.3's `InvalidArgument` — and kept `SofaRangeError = SofaArgumentError` so
-# `except` clauses keep working. `type(e).__name__` therefore spells the new name, and a
-# row under the old one is dead code that silently mislabels the class it was written for
-# as `invalid_msg`. That is how the stale row read until 2026-10-12.
-_CLASS = {
-    "SofaDecodeError": "invalid_msg",
-    "SofaArgumentError": "argument",
-    "SofaBufferError": "buffer_full",
-}
-
-
-def _reject(e: Exception) -> str:
-    if isinstance(e, SofaError):
-        return "R " + _CLASS.get(type(e).__name__, "invalid_msg")
-    # Any non-SofaError failure is surfaced (not hidden) so a divergence in
-    # failure mode still shows up rather than masquerading.
-    return "R other"
+# Corelib exception -> the canonical failure class (oracle/canonical.md), shared by the
+# decode reject `R <class>` and the re-encode refusal `E <class>`. isinstance against the
+# imported classes, never a table of class NAMES: corelib-py keeps deprecated aliases
+# (`SofaRangeError = SofaArgumentError`, `SofaStateError` likewise), and a name table
+# over aliases is what went stale here before. Anything else — another SofaError, or a
+# non-corelib failure — is `other`: surfaced, never folded into a class it is not.
+def _fail_class(e: Exception) -> str:
+    if isinstance(e, SofaDecodeError):
+        return "invalid_msg"
+    if isinstance(e, SofaArgumentError):
+        return "argument"
+    if isinstance(e, SofaBufferError):
+        return "buffer_full"
+    return "other"
 
 
 # ---- the streaming axes (drivers/common/CONTRACT.md) --------------------------
@@ -156,9 +138,9 @@ def _reject(e: Exception) -> str:
 # returned SHORT READS. That reader is gone, and so is the `Decoder(reader, chunk_size=)`
 # constructor it needed — `Decoder` is keyword-only now and takes a `visitor`/`binding`.
 #
-# The verdict still comes from the same exceptions the one-shot path raises, because
-# `_decode_streamed` re-raises what `Probe.decode` would have: both paths then answer in
-# one currency and `canonical()`'s try/except covers them alike.
+# The chunked verdict is the status the last `feed` returned, mapped the way
+# CONTRACT.md "Deriving the verdict" says; only a receiver cap still arrives as an
+# exception, because the generated decoder raises it (SofaLimitError).
 def _env_int(name: str) -> int:
     v = os.environ.get(name, "")
     try:
@@ -203,32 +185,28 @@ def _chunks(data: bytes) -> list:
     """The record cut the way drivers/common/CONTRACT.md says, piece by piece.
 
     `SOFAB_CHUNK=n` gives fixed-size pieces (the last one short); `SOFAB_SPLIT=k` gives
-    exactly two, `[0,k)` and `[k,end)`; an empty record gives **no** pieces at all — it
-    is the valid empty message (MESSAGE_SPEC §2), not something to feed through.
+    exactly two, `[0,k)` and `[k,end)`; an empty record gives ONE empty piece, so the
+    empty message goes through the decoder like any other record.
 
     Each piece is a `bytearray` this driver owns, so `SOFAB_CHUNK_SCRUB` has a mutable
     buffer to overwrite once `feed` has returned.
     """
-    if not data:
-        return []
-    if _CHUNK > 0:
+    if _CHUNK > 0 and data:
         return [bytearray(data[o:o + _CHUNK]) for o in range(0, len(data), _CHUNK)]
     if 0 < _SPLIT < len(data):
         return [bytearray(data[:_SPLIT]), bytearray(data[_SPLIT:])]
     return [bytearray(data)]
 
 
-def _decode_streamed(data: bytes) -> Probe:
-    """Feed the record in pieces, then answer exactly as `Probe.decode` would.
+def _decode_streamed(data: bytes):
+    """Feed the record in pieces; return (status of the last feed, decoded message).
 
     `INVALID` is terminal (§5.2.1) — every later `feed` returns it again without
     consuming anything — so feeding stops at the first one rather than pushing bytes at
-    a decoder that is already done. A record with no pieces never calls `feed`, and the
-    outcome stays COMPLETE: that is the empty message, and it is what the one-shot path
-    reports for the same bytes.
+    a decoder that is already done. There is always at least one piece, so `st` is
+    always a status `feed` returned.
     """
     d = Probe.decoder()
-    st = Status.COMPLETE
     for c in _chunks(data):
         st = d.feed(c)
         if _SCRUB:
@@ -240,11 +218,7 @@ def _decode_streamed(data: bytes) -> Probe:
             c[:] = b"\xa5" * len(c)
         if st is Status.INVALID:
             break
-    if st is Status.INVALID:
-        raise SofaDecodeError(d.error or "invalid message")
-    if st is Status.INCOMPLETE:
-        raise SofaIncompleteError(d.error or "truncated message")
-    return d.message
+    return st, d.message
 
 
 def _encode_via(m: Probe) -> bytes:
@@ -296,15 +270,8 @@ def _encode_refusal(e: Exception) -> str:
     `InvalidArgument`. That is not a statement about the input: the decode above
     accepted it. Reporting it as `R` would say the bytes were malformed, which is
     the one thing that did not happen.
-
-    isinstance, not the class name: `SofaRangeError` is an alias of
-    `SofaArgumentError`, and a name table over aliases is what went stale once here.
     """
-    if isinstance(e, SofaArgumentError):
-        return "E argument"
-    if isinstance(e, SofaBufferError):
-        return "E buffer_full"
-    return "E other"
+    return "E " + _fail_class(e)
 
 
 def canonical(data: bytes) -> str:
@@ -312,12 +279,15 @@ def canonical(data: bytes) -> str:
     try:
         # The chunked path is taken ONLY when a chunking variable is set, so the
         # default stays the one-shot Probe.decode byte for byte.
-        m = _decode_streamed(data) if _CHUNKING else Probe.decode(data)
+        if _CHUNKING:
+            st, m = _decode_streamed(data)
+        else:
+            st, m = Status.COMPLETE, Probe.decode(data)
     except SofaIncompleteError:
-        # §7 INCOMPLETE: decode ended mid-message (truncation) — not an error and
-        # not malformed, so it is neither "A" nor "R". SofaIncompleteError is a
-        # sibling of SofaDecodeError under SofaError, so this clause MUST precede
-        # the generic handler below or _reject would mislabel it "R invalid_msg".
+        # §7 INCOMPLETE (one-shot): decode ended mid-message (truncation) — not an
+        # error and not malformed, so it is neither "A" nor "R". SofaIncompleteError
+        # is a sibling of SofaDecodeError under SofaError, so this clause MUST
+        # precede the generic handler below.
         return "I"
     except SofaLimitError:
         # LIMIT_EXCEEDED (generator#102, limit mode only): a configured receiver-side
@@ -326,7 +296,12 @@ def canonical(data: bytes) -> str:
         # this clause MUST precede the generic handler below.
         return "L"
     except Exception as e:
-        return _reject(e)
+        return "R " + _fail_class(e)
+    # The chunked path's status (the one-shot path only gets here on COMPLETE).
+    if st is Status.INVALID:
+        return "R invalid_msg"
+    if st is Status.INCOMPLETE:
+        return "I"
     if _MATERIALIZE:
         return "A " + _materialize(m)
     # The re-encode is a SEPARATE try: its failure is an encode fact (`E`), never one

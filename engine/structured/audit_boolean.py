@@ -82,7 +82,7 @@ MUST = {"wiretype_sweep":"§7.3 — a boolean's wire type must be swept",
 for a, why in MUST.items(): check(f"{a} reaches a boolean ({why})", reach[a][1] > 0)
 
 print("\n4. WALKERS — every materialized-form walker handles the `bool` kind")
-W = {"drivers/c/driver.c":None,  # descriptor-driven: sofabgen emits UNSIGNED, no bool branch exists
+W = {"drivers/c/driver.c":"case SOFAB_OBJECT_FIELDTYPE_BOOLEAN",  # descriptor-driven; the arm prints the RAW stored value
      "drivers/go/driver.go":'case "bool"', "drivers/python/driver.py":'"bool": _bool',
      "drivers/ts/driver.ts":'case "bool"', "drivers/cs/Driver.cs":'"bool" =>',
      "drivers/java/ProbeDump.java":'case "bool"',
@@ -91,9 +91,6 @@ W = {"drivers/c/driver.c":None,  # descriptor-driven: sofabgen emits UNSIGNED, n
      "drivers/zig/materialize_gen.py":'kind == "bool"',
      "engine/structured/materialize.py":'kind == "bool"'}
 for f, needle in W.items():
-    if needle is None:
-        print(f"  [n/a] {f} — descriptor-driven (sofabgen tags the field UNSIGNED; prints the RAW value, which is the signal)")
-        continue
     check(f, needle in open(f).read())
 # and the rust array path, which is separate
 check("drivers/rust/materialize_gen.py array path", 'mz_arr_bool' in open('drivers/rust/materialize_gen.py').read())

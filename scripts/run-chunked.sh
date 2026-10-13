@@ -38,10 +38,7 @@ CORPUS="${CORPUS:-$ROOT/corpus/seeds}"
 # WHO PARTICIPATES IS DERIVED, NOT TYPED. `roster.sh caps chunked` lists the roster
 # names whose `drivers/<builder>/meta` declares `chunked_decode` as anything but `none`,
 # so a new driver is in this gate by construction and cannot be forgotten into silence.
-# `go` is the one absence, and it is a declared one: corelib-go has no resumable decoder,
-# so `drivers/go/meta` says `chunked_decode=none` (docs/ARCHITECTURE.md streaming table).
-# Every past hold-out was finding-driven and all are gone — typescript (F-0060/F-0061,
-# closed with corelib-ts#141) and zig (F-0058, generator#293/#295) both rejoined.
+# Every driver in the roster participates today (docs/ARCHITECTURE.md streaming table).
 # SOFAB_SPLIT_DRIVERS still overrides, for isolating one driver by hand.
 SUPPORTED="${SOFAB_SPLIT_DRIVERS:-$("$ROOT/scripts/roster.sh" caps chunked "${ROSTER_TAG-blocking}" | tr '\n' ' ')}"
 

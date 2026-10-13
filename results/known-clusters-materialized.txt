@@ -14,6 +14,19 @@
 # A camp belongs here ONLY once it is explained: a catalogued finding, a legal divergence,
 # or a benign soft axis. Anything else is reported as NEW and the run exits non-zero.
 
-accept:c | accept:cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,java,kotlin-js,kotlin-jvm,kotlin-native,py-cython,py-pure,rust-nostd,rust-nostd-dyn,rust-nostd-h09,rust-std,typescript,zig  # F-0018 — embedded NUL in a string_array element; the C object API stores strings NUL-terminated, so its materialized element is the projection to the first NUL (t0: against t4:000e7374) while the 19 length-carrying profiles keep all four bytes. Legal, same root cause as the round-trip camp (policy c-embedded-nul-string-projection); here it needs a camp row because a fuzzed input cannot match that policy entry's applies_to.
-I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-nostd-dyn,rust-nostd-h09,rust-std,typescript,zig | I:java,kotlin-js,kotlin-jvm,kotlin-native  # benign — java and all three Kotlin legs emit an incomplete_value payload on I; the verdict is unanimous (policy incomplete_value: soft). Same soft axis as the matching row in known-clusters.txt: it is visible to both oracles because the payload is handed back on I either way.
-I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-nostd-dyn,rust-nostd-h09,rust-std,typescript,zig | I:java | I:kotlin-js,kotlin-jvm,kotlin-native  # benign, same soft axis as the row above — the verdict is unanimous I; here java and the three Kotlin legs each hand back an incomplete_value payload and the two payloads differ. The row above covers the case where they agree; this one where they do not.
+accept@nul-projection:c | accept:cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,java,kotlin-js,kotlin-jvm,kotlin-native,py-cython,py-pure,rust-nostd,rust-nostd-dyn,rust-nostd-h09,rust-std,typescript,zig  # F-0018 — embedded NUL in a string_array element; the C object API stores strings NUL-terminated, so its materialized element is the projection to the first NUL (t0: against t4:000e7374) while the 19 length-carrying profiles keep all four bytes. Legal, same root cause as the round-trip camp (policy c-embedded-nul-string-projection); here it needs a camp row because a fuzzed input cannot match that policy entry's applies_to.
+
+# --- deleted 2026-10-13, the axis is gone ---------------------------------------------
+# The benign `I` payload rows (java and the Kotlin legs printed `I <partial-hex>` where
+# everyone else printed a bare `I`) were never a family difference — only those drivers
+# printed a payload. An `I` line has no payload now (oracle/canonical.md), the drivers
+# print a bare `I`, and one that printed a payload again would fail the comparator per
+# line as malformed. If any of these partitions comes back it must read as NEW:
+#
+#   I:<the bare-I drivers> | I:java,kotlin-*            (one shared payload)
+#   I:<the bare-I drivers> | I:java | I:kotlin-*        (two different payloads)
+
+# The F-0018 row is matched by CAUSE, not by who split: the `c` camp carries the tag
+# `accept@nul-projection`, which oracle/cluster.py assigns only when that camp's value is
+# the other camp's value with every string cut at its first U+0000 (oracle/projection.py).
+# A value split where `c` decodes anything else is untagged, matches no row, and is NEW.

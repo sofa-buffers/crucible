@@ -1,6 +1,6 @@
 lang=python
 corelib=corelib-py
-framework=atheris
+framework=none
 pacemaker=false
 variants=cython,pure
 chunked_decode=push

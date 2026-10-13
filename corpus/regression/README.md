@@ -75,10 +75,9 @@ finding's own record. `F0003_overcount_clean.bin` has no original — see below.
 
 ### Expected warnings (not failures)
 
-One input — `F0024_control_valid_then_trunc.bin` — raises a policy-`soft` `incomplete_value`
-warning: on an `I` verdict, `c` emits no partial value where `java` emits the default
-skeleton (`c60c0212414207`). That axis is `soft` in `oracle/policy.yaml`, so the gate still
-exits 0. Divergences — not warnings — are the signal.
+None. (`F0024_control_valid_then_trunc.bin` used to raise an `incomplete_value` warning,
+because `java` printed a partial value on `I`; an `I` line carries no payload any more —
+oracle/canonical.md.) Divergences — not warnings — are the signal.
 | `F0008_*.bin` (2) | F-0008 | generator#126 | the generated fixed-capacity string/blob-array fill **terminates** on an element index past the capacity, instead of looping forever |
 | `F0012_*.bin` (3) | F-0012 | corelib-ts#49 | a truncated fixlen on the skip path is `R invalid_msg`, not `I` — §5.2 precedence on the branch the one-shot path does not take |
 | `F0028_*.bin` (2) | F-0028 | corelib-cpp#47 + corelib-dart#14 | a field id above `ID_MAX` is rejected on decode, not accepted and echoed back |

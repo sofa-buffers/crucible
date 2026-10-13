@@ -28,12 +28,8 @@ rm -rf "$GEN"
 SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
 "$SOFABGEN" --lang c --in "$SCHEMA" --out "$GEN" >&2
 
-# sofabgen 0.0.0-20261001 (generator 0c746f21) names the message files probe_sofab.{c,h} and
-# puts every $defs type in a shared sofab-defs.{c,h}. driver.c includes "probe.h", so give it
-# that name when the generator no longer writes it, and compile every generated .c.
-if [ ! -f "$GEN/probe.h" ] && [ -f "$GEN/probe_sofab.h" ]; then
-    printf '#include "probe_sofab.h"\n' > "$GEN/probe.h"
-fi
+# The generator writes the message as probe_sofab.{c,h} plus any shared $defs file;
+# driver.c includes probe_sofab.h itself, and every generated .c is compiled.
 
 mkdir -p "$OUT"
 SAN=""

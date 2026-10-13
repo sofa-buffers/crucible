@@ -89,24 +89,22 @@ def run_axis(name, emitter="emit"):
             print(f"  [{name}] driver {dn} {kind} on {corpus[fail_idx][0]}")
         outs[dn] = lines
 
-    divergences, conformance, soft = [], [], []
+    divergences, conformance = [], []
     for i, (fn, _) in enumerate(corpus):
         vals = {dn: (outs[dn][i] or "") for dn, _ in DRIVERS}
         verds = {dn: parse(v)[0] for dn, v in vals.items()}
         pays = {dn: parse(v)[1] for dn, v in vals.items()}
         # Axis-aware, matching oracle/policy.yaml (as comparator.py does): a verdict
-        # split (A/I/R) is HARD; an accept-value split (agreed A, differing hex) is
-        # HARD; an incomplete-value payload (agreed I) or a reject-class (agreed R)
-        # difference is SOFT — a warning, not a divergence.
+        # split (A/I/R/L) is HARD, and so is a payload split on an agreed verdict — the
+        # accept value, the reject class and the limit class are all hard axes. An `I`
+        # carries no payload: one that does parses as "?" and lands as a verdict split.
         if len(set(verds.values())) > 1:
             divergences.append((fn, vals))
             continue
         v = next(iter(verds.values()))
-        if v == "A" and len(set(pays.values())) > 1:
-            divergences.append((fn, vals))           # accept_value — hard
+        if v in ("A", "R", "L") and len(set(pays.values())) > 1:
+            divergences.append((fn, vals))           # accept_value / *_class — hard
             continue
-        if v in ("I", "R", "L") and len(set(pays.values())) > 1:
-            soft.append(fn)                          # incomplete_value / reject_class — soft
         # agreed on the hard axes — now check conformance
         exp = expect[fn]
         if exp == "reject" and v != "R":
@@ -163,7 +161,7 @@ def run_axis(name, emitter="emit"):
                     conformance.append(
                         (fn, f"accepted but NOT normalized — re-encode differs from {twin}")
                     )
-    return len(corpus), divergences, conformance, soft
+    return len(corpus), divergences, conformance
 
 
 # The deep union pass: one axis, over schema/probe-union-deep.sofab.yaml (struct / array /
@@ -189,12 +187,11 @@ def main():
               "built against probe-union-deep (scripts/run-union-deep.sh does this)")
     total_div = total_conf = 0
     for name in axes:
-        n, div, conf, soft = run_axis(name, emitter)
+        n, div, conf = run_axis(name, emitter)
         total_div += len(div); total_conf += len(conf)
         status = "OK" if not div and not conf else "FAIL"
-        softnote = f", {len(soft)} soft (incomplete_value/reject_class)" if soft else ""
         print(f"[{name}] {n} vectors — {len(div)} divergence(s), "
-              f"{len(conf)} conformance failure(s){softnote}  [{status}]")
+              f"{len(conf)} conformance failure(s)  [{status}]")
         for fn, vals in div[:8]:
             camps = {}
             for dn, v in vals.items():

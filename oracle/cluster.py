@@ -21,6 +21,7 @@ import sys
 
 from comparator import (run_driver, parse, read_corpus, CRASH, TIMEOUT,
                         default_timeout)
+from projection import NUL_PROJECTION, related
 
 
 def run_driver_recover(path, corpus, timeout=None):
@@ -55,7 +56,10 @@ def verdict_tag(line):
 def signature(outputs):
     """(cluster-key, groups) for a divergent input, or None if all agree.
     groups: {output_line: [driver_names]}. key drops the accepted value, keeping
-    only (driver-set, verdict) per group."""
+    only (driver-set, verdict) per group — except where one camp's value stands in a
+    named relation to the other's (oracle/projection.py): that camp's verdict is
+    tagged `accept@<relation>`, so a baseline row can name the CAUSE of a value split
+    rather than merely who split."""
     groups = {}
     for name, line in outputs:
         if line is None:
@@ -63,8 +67,14 @@ def signature(outputs):
         groups.setdefault(line, []).append(name)
     if len(groups) <= 1:
         return None
+    tags = {line: verdict_tag(line)[0] for line in groups}
+    if len(groups) == 2 and all(t == "accept" for t in tags.values()):
+        a, b = groups
+        for x, y in ((a, b), (b, a)):
+            if related(x, y, NUL_PROJECTION):
+                tags[x] = f"accept@{NUL_PROJECTION}"
     key = frozenset(
-        (frozenset(names), verdict_tag(line)[0]) for line, names in groups.items()
+        (frozenset(names), tags[line]) for line, names in groups.items()
     )
     return key, groups
 

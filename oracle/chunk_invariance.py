@@ -17,8 +17,9 @@ Three ways of cutting it, because they find different things (drivers/common/CON
   cannot miss it.
 * `SOFAB_CHUNK_SCRUB=1` — overwrite each chunk's buffer once `feed` returns. This one is
   not about boundaries at all: a decoder that *borrows* from a fed chunk instead of
-  copying out of it reads back scrubbed bytes. crucible#132 reports corelib-zig doing
-  exactly that for a `string`/`blob` arriving whole in one chunk.
+  copying out of it reads back scrubbed bytes. crucible#132 reported corelib-zig doing
+  exactly that for a `string`/`blob` arriving whole in one chunk; its generated decoder
+  copies today, and zig runs the axis like every other driver.
 
 Two properties this checks that nothing else in the suite can:
 

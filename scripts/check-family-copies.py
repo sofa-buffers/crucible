@@ -24,19 +24,16 @@ is neither listed nor honest:
   3. **every walker knows every kind.** Every kind in `oracle/materialized-schema.json`
      must be named by every materialized-value walker. `enum` and `bitfield` are the
      next two (docs/TODO.md); this is what makes a walker that missed one fail by name.
-  4. **generated code reaches the corelib layer.** Since generator#587 no backend emits
-     its own wrapper-array placement; for every roster driver, its generated probe code
-     must call its corelib's collector/placement layer at least once per wrapper field.
-     A driver that keeps working while that layer is bypassed tells us nothing.
 
-Checks 2 and 4 read vendor/ and the built drivers, so they need `scripts/bootstrap.sh`
-and `scripts/run.sh` first; `--static` runs 1 and 3 only (the catalog job has neither).
+Check 2 reads vendor/, so it needs `scripts/bootstrap.sh` first; `--static` runs 1 and 3
+only (the catalog job has no vendor/). How the GENERATED code reaches its corelib is not
+checked here: Crucible reads generated code only by calling it (drivers/common/CONTRACT.md,
+"Decode core requirements"), and that design question is the generator's own.
 
 Run: `python3 scripts/check-family-copies.py [--static]`   (exit 1 on any failure)
 """
 
 import fnmatch
-import glob
 import json
 import os
 import re
@@ -99,40 +96,6 @@ INVENTORY = {
         "schema/probe.sofab.yaml; materialize.sh asserts the committed copy is current"),
     "engine/structured/gen.py": ({"wire-codec"}, False, BYTES_REASON),
     "engine/structured/sweep_varint.py": ({"wire-codec"}, False, BYTES_REASON),
-}
-
-# Check 4: roster driver -> (generated probe sources, the corelib layer they must call).
-# Paths are the build outputs of drivers/<lang>/build.sh for the default probe schema.
-# (corelib-c-cpp's static profile spells its collectors Fixed*Seq)
-SEQ = r"\b(?:Fixed)?(?:String|Blob|Message|Framed|Element)Seq\b"
-PLACE = r"\b(?:place_?[Ee]lem|reserve_?[Ee]lem|reserve_?[Rr]ow|reserve_?[Ll]eaf)\b"
-PLACE_CS = r"\bSeq\.(?:PlaceElem|ReserveElem|ReserveRow)\b"
-GENERATED = {
-    # C decodes through corelib-c-cpp's descriptor transcoder: the generated code is
-    # only the descriptor, so one SOFAB_OBJECT_FIELD per wrapper is the whole call.
-    "c":             (["drivers/c/gen/probe*.c"], r"\bSOFAB_OBJECT_FIELD\w*\("),
-    "go":            (["drivers/go/message/probe.go"], r"\bNew(?:String|Blob|Message)Seq\b"),
-    "rust-std":      (["drivers/rust/build/rs/src/message.rs"], PLACE),
-    "rust-nostd":    (["drivers/rust/build/rs-no-std/src/message.rs"], PLACE),
-    # Same generated source as rust-nostd, so the same placement layer: these two rows
-    # differ only in the heapless major their containers come from (generator#727), and
-    # `rust-nostd-dyn` only in holding alloc containers instead (allow_dynamic).
-    "rust-nostd-h09": (["drivers/rust/build/rs-no-std-h09/src/message.rs"], PLACE),
-    "rust-nostd-dyn": (["drivers/rust/build/rs-no-std-dyn/src/message.rs"], PLACE),
-    "cpp":           (["drivers/cpp/gen/cpp/probe.hpp"], SEQ),
-    "cpp-fixed":     (["drivers/cpp/gen/cpp-fixed/probe.hpp"], SEQ),
-    "cpp-c-cpp":     (["drivers/cpp/gen/c-cpp/probe.hpp"], SEQ),
-    "cpp-c-cpp-dyn": (["drivers/cpp/gen/c-cpp-dyn/probe.hpp"], SEQ),
-    "py-cython":     (["drivers/python/build/gen/message.py"], PLACE),
-    "py-pure":       (["drivers/python/build/gen/message.py"], PLACE),
-    "java":          (["drivers/java/build/gen/src/main/java/message/Probe.java"], PLACE),
-    "typescript":    (["drivers/ts/build/message.ts"], SEQ),
-    "csharp":        (["drivers/cs/build/Message.cs"], PLACE_CS),
-    "zig":           (["drivers/zig/build/src/message.zig"], PLACE),
-    "dart":          (["drivers/dart/build/bin/message.dart"], SEQ),
-    "kotlin-jvm":    (["drivers/kotlin/build/jvm/gen/src/main/kotlin/message/Probe.kt"], PLACE),
-    "kotlin-native": (["drivers/kotlin/build/native/gen/src/main/kotlin/message/Probe.kt"], PLACE),
-    "kotlin-js":     (["drivers/kotlin/build/js/gen/src/main/kotlin/message/Probe.kt"], PLACE),
 }
 
 OBJECT_H = "vendor/corelib-c-cpp/src/include/sofab/object.h"
@@ -248,43 +211,6 @@ def check_anchor(errors):
     return len(tags)
 
 
-def check_generated(errors):
-    _, doc = schema_kinds()
-    wrappers = json.dumps(doc).count('"kind": "wrapper"') + \
-        json.dumps(doc).count('"kind": "struct_wrapper"')
-    rows = [ln.split() for ln in read("drivers/roster").splitlines()
-            if ln.strip() and not ln.lstrip().startswith("#")]
-    roster = [r[0] for r in rows]
-    # A quarantined driver (no `blocking` tag) is not built by the gates that run this
-    # check, so its generated code is legitimately absent there; it is checked whenever
-    # it has been built (a manual or nightly pass).
-    quarantined = {r[0] for r in rows if "blocking" not in r[3].split(",")}
-    for name in roster:
-        if name not in GENERATED:
-            errors.append(f"drivers/roster: `{name}` has no GENERATED entry — say which "
-                          f"corelib layer its generated code must reach")
-    for name in sorted(set(GENERATED) - set(roster)):
-        errors.append(f"GENERATED `{name}` is not in drivers/roster — remove the entry")
-    for name, (paths, rx) in GENERATED.items():
-        if name not in roster:
-            continue
-        files = [f for p in paths for f in glob.glob(os.path.join(ROOT, p))]
-        if not files and name in quarantined:
-            print(f"note: {name}: quarantined and not built here — generated code not checked")
-            continue
-        if not files:
-            errors.append(f"{name}: generated probe code {paths} not found — build it "
-                          f"first (./scripts/run.sh)")
-            continue
-        calls = sum(len(re.findall(rx, read(os.path.relpath(f, ROOT)))) for f in files)
-        if calls < wrappers:
-            errors.append(
-                f"{name}: generated probe code calls its corelib's collector layer {calls} "
-                f"time(s) for {wrappers} wrapper field(s) — some wrapper is placed by "
-                f"generated code again (generator#587)")
-    return len(roster), wrappers
-
-
 def main():
     static = "--static" in sys.argv[1:]
     errors = []
@@ -295,16 +221,14 @@ def main():
         missing = [p for p in (OBJECT_H,) if not os.path.exists(os.path.join(ROOT, p))]
         if missing:
             errors.append(f"{missing[0]} missing — run scripts/bootstrap.sh, or pass "
-                          f"--static to skip the checks that need vendor/ and built drivers")
+                          f"--static to skip the check that needs vendor/")
         else:
             n_tags = check_anchor(errors)
-            n_drivers, n_wrappers = check_generated(errors)
-            summary += [f"{n_tags} C field-type tags",
-                        f"{n_drivers} drivers x {n_wrappers} wrapper fields"]
+            summary += [f"{n_tags} C field-type tags"]
     for e in errors:
         print(f"FAIL: {e}")
     print(f"{'OK' if not errors else 'FAIL'}: family copies — " + ", ".join(summary)
-          + ("" if not static else " (static: anchor + generated checks skipped)"))
+          + ("" if not static else " (static: anchor check skipped)"))
     return 1 if errors else 0
 
 

@@ -14,7 +14,99 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
-## 2026-10-13 (last) — the nightly's two findings from the triage, fixed: a budget for the oracle, and a baseline for the materialized one
+## 2026-10-13 (review) — the drivers use the generated code the way an application does
+
+A review of `main` @ f6807e4 asked one question of every driver, walker and gate: does
+Crucible use the sofabgen-generated code like an ordinary user — call the generated entry
+points and the corelib's public API — or has it grown special handling that works around
+the concept? It had grown some. Everything found is fixed in this change; the drivers'
+own before/after captures show no output change except where one was intended.
+
+**Decision: the rule is written down.** `drivers/common/CONTRACT.md` ("Decode core
+requirements") now states it: call the generated entry points themselves, never a
+hand-copied generated body, never a corelib internal, never a workaround that absorbs a
+generator or corelib defect; and a materialized walker prints the stored value as it is.
+CLAUDE.md's gotchas point at it; two stale gotchas (the `datalen>0` empty-message guard,
+the Rust second-pass) are replaced.
+
+**What hid defects, now fixed.**
+- The C and C++ materialized walkers normalized booleans (`v ? 1 : 0`) — exactly what
+  `oracle/materialized.md` forbids, and C is the conformance anchor. Both print the raw
+  stored value now. Measured: no driver stores anything but 0/1 on today's corpora, so no
+  divergence was being hidden yet.
+- `results/known-clusters*.txt` had an `accept:c | accept:<everyone else>` row for F-0018.
+  A camp signature records who split, not the values, so that row accepted *any* future
+  value split where only `c` differs. `oracle/projection.py` now names the relation —
+  one camp's value is the other's with every string cut at its first NUL — and
+  `oracle/cluster.py` tags such a camp `accept@nul-projection`. The rows name the tag; any
+  other C-only value split is NEW again. Driver-agnostic: the tag never names `c`.
+- The comparator compared every payload against the reference driver only, so when `c`
+  rejected, a value split among the accepters was never reported. Payloads are now
+  compared inside each verdict camp.
+
+**Decision: an `I` line has no payload.** Only java and the Kotlin legs printed
+`I <partial-hex>`; the `incomplete_value` axis was soft and fired thousands of times on a
+difference that was the drivers', not the corelibs'. What an out-parameter API leaves in
+its destination after `INCOMPLETE` is defined nowhere, and a value-returning API (Rust)
+hands back nothing, so a payload compares API shapes. The grammar (`oracle/canonical.md`),
+the comparator (a payload on `I` is a `malformed_line`, failed per line), the policy (axis
+removed), `sweep_run.py` and the baselines (four benign rows deleted) follow.
+`sweep_run.py` also treated `reject_class`/`limit_class` as soft although the policy made
+them hard on 2026-08-16; aligned.
+
+**Decision: a 0-byte record is decoded, not answered.** Every driver short-circuited the
+empty message (CONTRACT rule 4, justified by corelib-c-cpp's old `datalen>0` assert). The
+assert is gone — `feed(ctx, NULL, 0)` is the documented spelling — so the driver was
+asserting the verdict instead of testing it. Rule 4 now: one empty chunk, fed once; the
+one-shot path calls the generated decode with the empty input.
+
+**Bypassed generated API, now called.**
+- cpp ×4: the generated `try_decode` was never called — a hand copy (`decode_streamed`)
+  ran instead, and for c-cpp the copy was not even the same construction. It is called in
+  every mode now; only the chunk axes drive a stream by hand (no generated `decoder()`,
+  crucible#132). `CRUCIBLE_LIMIT_MODE` (a bypass for generator#228, closed, and passing
+  the same cap anyway) is gone; `CRUCIBLE_ISTREAM_TAKES_LIMITS`/`CRUCIBLE_HAS_LIMIT_EXCEEDED`
+  became one `CRUCIBLE_CORELIB_CPP` for the two real API differences.
+- typescript: the generated `encode()` exists and was never called (the driver rebuilt it
+  and claimed it did not exist). Called now; `encode_surfaces=new,stream`.
+- go: `meta` said `chunked_decode=none`, but corelib-go has had a push decoder since
+  crucible#178. The replay driver runs the chunk axes now (30 configurations, every
+  chunked line equal to the whole-record line), so `go` joined `run-chunked.sh` by
+  construction. Decode errors map by `errors.Is` instead of all becoming `invalid_msg`.
+
+**Upstream.** Java's unwrap of `RuntimeException` causes stays, narrowed to the one
+carrier the API documents: rejections from generated visitor code reach the caller as
+`UncheckedIOException` around the `SofabException`, although `IStream.feed` declares and
+documents `SofabException` — filed as corelib-java#129 (corelib boundary; no schema
+knowledge needed). Two smaller API gaps noted, not filed: generated Java `encode()` reports
+a refusal as an untyped `RuntimeException`; generated Go has no caller-buffer encode
+surface and keeps its encoder options unexported, so the encode-fail path restates
+`WithMaxDepth`.
+
+**Decision: Crucible does not grep generated code.** `scripts/check-encode-bounds.py`
+regex-modelled where each backend places its encode guards (573 lines, with a self-test of
+its own model) and `check-family-copies.py` check 4 asserted generated code calls certain
+corelib symbols (generator#587's design). Both are the generator's conformance questions,
+owned by its suite; both are removed. `check-encode-bounds.py` keeps only what is
+Crucible's own: no driver is built with an encode-bound opt-out switched on.
+
+**Smaller.** Per-driver class fallbacks map an unknown error to `other`, never
+`invalid_msg` (java, kotlin, python, go, typescript). Dead coverage placeholders deleted
+(`ts/fuzz.ts`, `dart/fuzz.dart`, `zig/fuzz.zig`; python's atheris install); `meta`
+`framework=none` where no entry point exists (also cpp and rust, which claimed one).
+`scripts/fuzz.sh` builds the C pacemaker with the replay driver's corelib configuration
+(strict UTF-8 was missing). C: old-sofabgen naming shims removed, silent byte drops on the
+encode and scrub paths now fail loudly, unreachable "guess the length" walker fallbacks
+fail loudly. Zig: driver allocation failure no longer prints as a corelib `buffer_full`;
+the scrub axis runs (the "zig borrows" claim in the docs was stale). Rust: the `limit`
+feature is a `--cfg` instead of an edit to the generated `Cargo.toml`. Kotlin: dead
+unwrap, silent unknown-union-tag skip. Stale comments across all drivers.
+
+**Correction to the review itself:** it called Zig's chunked verdict a contract breach
+(no `finish()`). Wrong — the generated Zig `feed` returns the `sofab.Status`, which is
+exactly what CONTRACT rule 3 says to read; only the comment was off.
+
+## 2026-10-13 — the nightly's two findings from the triage, fixed: a budget for the oracle, and a baseline for the materialized one
 
 Both came out of the triage entry below, and neither is a wire bug — they are the harness
 failing to report.

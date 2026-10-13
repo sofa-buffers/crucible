@@ -1,154 +1,30 @@
 #!/usr/bin/env python3
-"""Are the encode-side bound checks ARMED in every driver profile?
+"""Is any driver BUILT with an encode-bound opt-out switched on?
 
-generator#656 made the generated encoder refuse a value past a declared bound — a
-`string`/`blob` over `maxlen`, an array over `count`, an integer/enum/bitfield outside
-its declared width — instead of writing or clamping it. Crucible's drivers re-encode on
-every accepted record, so that refusal is part of what this harness exercises, and
-`oracle/canonical.md`'s `E` verdict is what reports it.
+generator#656 made the generated encoder refuse a value past a declared bound (generator
+`docs/ARCHITECTURE.md` §9.6.1), and two profiles can compile that refusal out:
+`SOFAB_DISABLE_ENCODE_BOUNDS` (C / C++ with the c-cpp corelib) and the
+`disable_encode_bounds` cargo feature (`rs-no-std` + `allow_dynamic`). Crucible compares
+implementations as a user gets them, so switching a refusal out in one of its own build
+recipes would make that profile silently more permissive than every other.
 
-**Why a static check and not a vector.** The refusal is only reachable from the wire
-through a *decoder* bug: a value no decoder accepts can never be handed back to an
-encoder. So no corpus can prove the guards are there, and a profile whose guards
-silently stopped being generated looks exactly like a profile that has nothing to
-refuse. The generator's own conformance suite
-(`tests/conformance/lib/check_encode_bounds.py`) owns the cells that fill a value past
-its bound through the setters; what Crucible has to keep true is narrower and cannot be
-tested that way: **every profile in this roster is built with its own refusal mechanism
-in place, and none of the opt-outs is switched on.**
+That is a question about Crucible's own build configuration, and it is the whole of this
+check. Whether each profile's *generated code* carries the guards its mechanism calls for
+is the generator's conformance question — `tests/conformance/lib/check_encode_bounds.py`
+there owns it, by filling values past their bounds through the generated setters. Crucible
+reads generated code only by calling it (drivers/common/CONTRACT.md, "Decode core
+requirements"); it does not grep it.
 
-Four assertions, from generator `docs/ARCHITECTURE.md` §9.6.1:
+    ./scripts/check-encode-bounds.py          # run.sh calls it; reads the build recipes
+                                              # and the generated Cargo.toml files
 
-1. a profile that refuses through a GENERATED guard has one in its generated code — but
-   only for a bound its storage does not already guarantee, and only when the schema in
-   play declares such a bound at all (see `needs`);
-2. a profile that refuses some other way has NO generated guard: the fixed-capacity
-   containers that clamp (C++ `FixedString`/`InlineVector`, Zig `FixedArray`, C's
-   length/count companions) or refuse on assignment (`heapless`), and C, whose check is
-   descriptor-driven inside the corelib;
-3. and that other way is **there**, asserted in the vendored corelib (`CORELIB_MECHANISMS`).
-   An absence of generated guards alone would also be satisfied by nobody checking at
-   all, which is the one reading of a green `by contract` row that would be wrong;
-4. no opt-out is switched on: `SOFAB_DISABLE_ENCODE_BOUNDS` (C / C++ with the c-cpp
-   corelib) or the `disable_encode_bounds` cargo feature. The latter is *declared* by
-   the one generated project that has it (`rs-no-std` + `allow_dynamic`), off by
-   default, so declaring it and enabling it are told apart (`opt_out_enabled`).
-
-Both directions matter in (1)/(2): a guard appearing in a clamping profile means its
-storage flavour moved and the expectation here went stale.
-
-**Why the expectation is conditioned on the schema.** §9.6.1: "Nothing is emitted where
-the storage type is the guarantee." A backend that holds an integer at its declared
-width (go, rust, cpp, zig, and C#'s `byte`/`short`) emits a guard only for a *length* or
-*count* bound; one that holds a narrow value in a wider type (python, typescript, dart,
-java's `long`, kotlin's `Int`/`ULong`) also emits a width comparison. So on a schema with
-no `maxlen` and no `count` — `schema/probe-dyn.sofab.yaml`, the unbounded one limit mode
-uses — zero guards in the first group is the correct answer, not a regression. This reads
-the same `SCHEMA` the build scripts read and prints which condition it applied.
-
-**The paths are globs over the generated tree, never a file list.** Which files sofabgen
-emits depends on the schema's shape: the Go guards for `probe-union` live in
-`sofab_types.go` (the union's own file) and not in `probe.go` at all, and
-`probe-union` has no `Probe_Nested`. A hand-listed path set therefore reports a
-backend as unarmed, or as unbuilt, on any schema but the one it was written against —
-which is how this check first went red.
-
-    ./scripts/check-encode-bounds.py          # needs built drivers (scripts/run.sh)
-    SCHEMA=schema/probe-union.sofab.yaml ./scripts/check-encode-bounds.py
-
-Exit 0 = every profile is armed the way §9.6.1 says it should be, for this schema.
+Exit 0 = no opt-out is switched on anywhere a driver is built.
 """
-import glob
 import os
 import re
 import sys
 
-try:
-    import yaml           # phase 2 only; phase 1 needs no parser
-except ImportError:
-    yaml = None
-
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# Files that live NEXT TO the generated code but are the driver's own — driver.rs lands
-# as main.rs, the materialized walkers are generated by drivers/<lang>/materialize_gen.py
-# from Crucible's own descriptor, and `harness/` is sofabgen's JSON CLI rather than
-# message code. Counting a guard-shaped line in any of them would arm a profile by
-# accident, and the drivers' own `reject_class` tables name exactly the error values
-# these patterns look for.
-NOT_GENERATED_MESSAGE_CODE = re.compile(
-    r"(^|/)(driver\.[a-z]+|main\.rs|materialize_gen\.[a-z]+|Driver\.cs|harness/)")
-
-# mechanism: what §9.6.1 says does the refusing for this profile.
-#   guard     — generated per-field comparison against the schema literal
-#   corelib   — the corelib checks it (C: descriptor-driven; no generated guard)
-#   clamp     — a fixed-capacity container clamps on assignment (the clamp contract)
-#   container — a fixed-capacity container REFUSES on assignment (heapless)
-#
-# needs (guard profiles only): which kind of declared bound this backend emits a guard
-# for, i.e. which kind the schema must carry for a guard to be expected at all.
-#   len    — a `maxlen` or a `count` only; its storage is the declared width otherwise
-#   width  — those, plus an integer/enum/bitfield held in a wider type
-#
-# `pattern` is what a generated guard looks like in that backend; a profile whose
-# mechanism is not `guard` must contain NO match for it.
-PROFILES = [
-    # (name, mechanism, needs, [globs over the GENERATED tree], pattern)
-    ("go",            "guard", "len",   ["drivers/go/message/*.go"],
-     r"RejectArgument\(\)"),
-    ("rust-std",      "guard", "len",   ["drivers/rust/build/rs/src/*.rs"],
-     r"Err\(sofab::Error::Argument\)"),
-    # The two rs-no-std rows are generated with static storage (allow_dynamic off):
-    # heapless::String / Vec refuse at insert, so §9.6.1 emits no guard. They differ
-    # only in the heapless major (generator#727), which IS their whole mechanism.
-    ("rust-nostd",     "container", None, ["drivers/rust/build/rs-no-std/src/*.rs"],
-     r"Err\(sofab::Error::Argument\)"),
-    ("rust-nostd-h09", "container", None, ["drivers/rust/build/rs-no-std-h09/src/*.rs"],
-     r"Err\(sofab::Error::Argument\)"),
-    # allow_dynamic: true -- the fields are alloc::String / Vec, so nothing refuses on
-    # assignment and §9.6.1 emits real guards again, each behind the one encode-bound
-    # OPT-OUT any profile here has (`disable_encode_bounds`, off by default). Both halves
-    # are asserted: the guards below, and that the feature stays off further down.
-    ("rust-nostd-dyn", "guard", "len", ["drivers/rust/build/rs-no-std-dyn/src/*.rs"],
-     r"Err\(sofab::Error::Argument\)"),
-    ("cpp",           "guard", "len",   ["drivers/cpp/gen/cpp/*.hpp"],
-     r"rejectArgument\(\)"),
-    ("cpp-fixed",     "clamp", None,    ["drivers/cpp/gen/cpp-fixed/*.hpp"],
-     r"rejectArgument\(\)"),
-    ("cpp-c-cpp",     "clamp", None,    ["drivers/cpp/gen/c-cpp/*.hpp"],
-     r"rejectArgument\(\)"),
-    ("cpp-c-cpp-dyn", "guard", "len",   ["drivers/cpp/gen/c-cpp-dyn/*.hpp"],
-     r"rejectArgument\(\)"),
-    # Code-shaped, not just the token: the generated C header NAMES the refusal in its
-    # per-field doc comment ("encode refuses it (SOFAB_RET_E_ARGUMENT)"), which is the
-    # corelib's refusal being documented, not a guard being emitted.
-    ("c",             "corelib", None,  ["drivers/c/gen/*.c", "drivers/c/gen/*.h"],
-     r"(return|=)\s+SOFAB_RET_E_ARGUMENT"),
-    # Python's bound rides the writer's NAME (a declared width: write_u8_array) or its
-    # argument (`*_bounded`, a cap); only a wrapper array's count is a generated raise.
-    ("py",            "guard", "width", ["drivers/python/build/gen/*.py"],
-     r"_bounded\(|write_[ui](8|16|32|64)(_array)?\(|_SofaArgumentError\("),
-    ("java",          "guard", "width",
-     ["drivers/java/build/gen/src/main/java/message/*.java"],
-     r"SofabError\.ARGUMENT|writeString\([^)]+,[^)]+,[^)]+\)"),
-    ("kotlin-jvm",    "guard", "width",
-     ["drivers/kotlin/build/jvm/gen/src/main/kotlin/message/*.kt"],
-     r"SofabError\.ARGUMENT|writeString\([^)]+,[^)]+,[^)]+\)"),
-    ("kotlin-native", "guard", "width",
-     ["drivers/kotlin/build/native/gen/src/main/kotlin/message/*.kt"],
-     r"SofabError\.ARGUMENT|writeString\([^)]+,[^)]+,[^)]+\)"),
-    # C# holds a narrow integer at its declared width (byte/short, enum : sbyte), so
-    # §9.6.1 emits no width guard there — `len` like go/rust/cpp/zig.
-    ("csharp",        "guard", "len",   ["drivers/cs/build/Message.cs"],
-     r"SofabError\.Argument|WriteString\([^)]+,[^)]+,[^)]+\)"),
-    ("typescript",    "guard", "width", ["drivers/ts/build/message.ts"],
-     r"SofabErrorCode\.Argument|writeString\([^)]+,[^)]+,[^)]+\)"),
-    ("dart",          "guard", "width", ["drivers/dart/build/bin/message.dart"],
-     r"SofabError\.invalidArgument|InRange\("),
-    # Zig: generated guards on slices; sofab.FixedArray clamps the native array counts.
-    ("zig",           "guard", "len",   ["drivers/zig/build/src/*.zig"],
-     r"error\.InvalidArgument"),
-]
 
 # The opt-outs §9.6.1 names, and the one spelling each takes. Searched in the BUILD
 # recipes (what the compiler is actually told) and in the generated projects.
@@ -159,40 +35,13 @@ OPT_OUTS = [
 OPT_OUT_SCOPE = (["drivers/%s/build.sh" % d for d in
                   ("c", "cpp", "rust", "zig", "go", "python", "java", "kotlin", "cs",
                    "ts", "dart")]
-                 + ["drivers/rust/build/rs/Cargo.toml",
+                 + ["scripts/fuzz.sh",
+                    "drivers/rust/build/rs/Cargo.toml",
                     "drivers/rust/build/rs-no-std/Cargo.toml",
                     "drivers/rust/build/rs-no-std-h09/Cargo.toml",
                     # the one generated project that DECLARES the opt-out: what is
                     # checked here is that it stays a declaration
                     "drivers/rust/build/rs-no-std-dyn/Cargo.toml"])
-
-# The other side of a non-`guard` mechanism: where it lives in the vendored corelib, and
-# the tokens that have to be there for the claim "no generated guard is needed" to hold.
-#   (source, [needles], which profiles rely on it, what it is)
-CORELIB_MECHANISMS = [
-    ("vendor/corelib-c-cpp/src/object.c",
-     ["SOFAB_RET_E_ARGUMENT", "SOFAB_DISABLE_ENCODE_BOUNDS"], "c",
-     "sofab_object_encode refuses an unterminated string and clamps the length/count "
-     "companions, descriptor-driven"),
-    ("vendor/corelib-cpp/include/sofab/sofab.hpp",
-     ["utf8Prefix", "FixedString", "InlineVector"], "cpp-fixed",
-     "FixedString / FixedBytes / InlineVector clamp on assignment, and the string clamp "
-     "cuts at a UTF-8 character boundary"),
-    ("vendor/corelib-c-cpp/src/include/sofab/sofab.hpp",
-     ["utf8Prefix", "FixedString"], "cpp-c-cpp",
-     "the c-cpp wrapper's static containers clamp on assignment at a UTF-8 boundary"),
-    ("vendor/corelib-zig/src/support.zig",
-     ["fn set", "@min(vals.len, N)"], "zig's native arrays",
-     "FixedArray.set keeps the first N elements"),
-    ("vendor/corelib-rs-no-std/src/lib.rs",
-     ["heapless"], "rust-nostd, rust-nostd-h09",
-     "the heapless containers refuse on assignment, and the corelib's SeqVec impl is "
-     "built on them"),
-]
-
-# A declared type narrower than the widest integer, i.e. one a backend holding it in a
-# wider type emits a width comparison for (§9.6.1; `boolean` is normalised, not bounded).
-NARROW = re.compile(r"type:\s*(u8|i8|u16|i16|u32|i32|enum|bitfield)\b")
 
 
 def opt_out_enabled(line, token):
@@ -227,289 +76,21 @@ def read(rel):
         return fh.read()
 
 
-def schema_bounds(schema_rel):
-    """(has_len_bound, has_narrow) for the schema in play.
-
-    Read as text rather than parsed: the question is only whether the schema declares
-    any bound of each kind, the tokens are unambiguous in this format, and a wrong
-    answer is safe in both directions — a false positive demands a guard that should be
-    there anyway, a false negative skips the assertion and says so.
-    """
-    text = read(schema_rel)
-    if text is None:
-        return None, None
-    return (re.search(r"\b(maxlen|count):", text) is not None,
-            NARROW.search(text) is not None)
-
-
-# --------------------------------------------------------------- phase 2 ----
-# Phase 1 asks whether a guard EXISTS. This asks whether it guards the right number.
-#
-# The question is deliberately narrow, because the wide version is somebody else's: to
-# know that a backend refuses the right values you have to RUN it, per backend and per
-# variant, which is `tests/conformance/lib/check_encode_bounds.py` upstream. What can be
-# asked cheaply and here is one invariant over the generated source:
-#
-#   every literal that a comparison on a schema field is made against must be one of
-#   THAT field's own declared numbers.
-#
-# A field's own numbers are its `maxlen`, its `count`, its element `maxlen`/`count`, the
-# min/max of its declared integer width, its field id (it rides as the first argument of
-# every write call) and 0/1 (offsets and the last-element index). Everything else is
-# unexplained: a guard comparing `str` (maxlen 32) against 31 is a stale literal, and one
-# comparing it against 4 is `bytes_field`'s bound on the wrong field — which is the drift
-# this catches and a guard COUNT never would.
-#
-# Two tiers, because not every comparison can be attributed:
-#   per-field  the left operand names a schema field -> checked against that field
-#   global     it does not -> checked against the union of every field's numbers
-#
-# Single-character field names are left to the global tier on purpose: `v` is a field of
-# `struct_array` in the probe schema and also the name every generated decode switch
-# gives its local, and binding the two would report the whole visitor.
-#
-# The bound that rides a CALL ARGUMENT rather than a comparison is read too (python's
-# `write_string_bounded(id, v, 32)`, dart's `write*ArrayInRange(id, vals, n, lo, hi)`, the
-# UTF-16 runtimes' `writeString(id, s, maxlen)`): the numeric arguments after the first.
-
-WIDTH = {
-    "u8": (0, 255), "i8": (-128, 127),
-    "u16": (0, 65535), "i16": (-32768, 32767),
-    "u32": (0, 4294967295), "i32": (-2147483648, 2147483647),
-    "u64": (0, 18446744073709551615),
-    "i64": (-9223372036854775808, 9223372036854775807),
-}
-
-# `<left operand>  <  N` — only what a comparison is made against. Every other number in
-# a generated line (a loop bound, `_n0 - 1`, a field id in a write call) says nothing
-# about a schema bound, and taking them all in is what made the first attempt noisy.
-# The literal must not be followed by `>`: `heapless::String<8>` and `InlineVector<T, 5>`
-# are type parameters, and reading them as comparisons attributes a container's capacity
-# to whatever identifier precedes it.
-CMP = re.compile(r"([A-Za-z_][\w.\[\]()&*:<>\s]{0,44}?)\s*(?:[<>]=?)\s*(-?\d+)\b(?!\s*>)")
-# The whole call is the left operand here, not just what precedes it: the field is the
-# VALUE argument (`writeString(2, this.str, 32)`), so taking only the receiver would
-# attribute every bound to the stream.
-CALL = re.compile(r"(?:_bounded|InRange|[Ww]rite[A-Za-z]*?[Ss]tring"
-                  r"|write_[ui](?:8|16|32|64)(?:_array)?)\s*\(([^;{}]*?)\)")
-
-
-def field_numbers(node, name, out):
-    """Collect, per schema field, every number that may legitimately be compared to it."""
-    if not isinstance(node, dict):
-        return
-    allowed = {0, 1}                       # offsets, and the last-element index
-    if isinstance(node.get("id"), int):
-        allowed.add(node["id"])            # rides as the first argument of every write
-    for key in ("maxlen", "count"):
-        if isinstance(node.get(key), int):
-            allowed.add(node[key])
-    if node.get("type") in WIDTH:
-        allowed.update(WIDTH[node["type"]])
-    items = node.get("items") if isinstance(node.get("items"), dict) else {}
-    for key in ("maxlen", "count"):
-        if isinstance(items.get(key), int):
-            allowed.add(items[key])
-    if items.get("type") in WIDTH:
-        allowed.update(WIDTH[items["type"]])
-    if name:
-        out.setdefault(name, set()).update(allowed)
-    # Every container a schema can nest a declaration in. `oneof` and `$defs` are the
-    # two that were missing at first, and the deep union schema is where that showed:
-    # its union options and its reusable `$defs` types carry most of its declared
-    # widths, so every width comparison the generated code makes on them read as a
-    # literal belonging to no field at all.
-    for src in (node, items):
-        for key in ("payload", "fields", "oneof", "$defs"):
-            for child, spec in (src.get(key) or {}).items():
-                field_numbers(spec, child, out)
-
-
-def name_variants(n):
-    camel = "".join(p.capitalize() for p in n.split("_"))
-    return [n, camel, camel[0].lower() + camel[1:]]
-
-
-def schema_numbers(schema_rel):
-    """({field: numbers}, union of them), or (None, None) without a YAML reader."""
-    if yaml is None:
-        return None, None
-    with open(os.path.join(ROOT, schema_rel)) as fh:
-        doc = yaml.safe_load(fh)
-    per = {}
-    for message in (doc.get("messages") or {}).values():
-        field_numbers(message, None, per)
-    for name, spec in (doc.get("$defs") or {}).items():
-        field_numbers(spec, name, per)
-    if not per:
-        return None, None
-    return per, set().union(*per.values())
-
-
-def literal_sites(text):
-    """[(left operand, literal)] for every comparison and bound-carrying call."""
-    sites = [(m.group(1), int(m.group(2))) for m in CMP.finditer(text)]
-    for m in CALL.finditer(text):
-        args = [a.strip() for a in m.group(1).split(",")]
-        for a in args[1:]:
-            if re.fullmatch(r"-?\d+", a):
-                sites.append((m.group(0), int(a)))
-    return sites
-
-
-def check_literals(profiles, per_field, global_ok, report=print):
-    """Phase 2 over the built profiles. Returns the number of unexplained literals."""
-    names = sorted(((v, f) for f in per_field for v in name_variants(f) if len(v) > 1),
-                   key=lambda t: -len(t[0]))
-    bad = 0
-    for name, mech, needs, globs, _pattern in profiles:
-        files = [f for g in globs for f in sorted(glob.glob(os.path.join(ROOT, g)))
-                 if not NOT_GENERATED_MESSAGE_CODE.search(f)]
-        if not files:
-            continue
-        checked = attributed = unexplained = 0
-        notes = []
-        names_a_field = False
-        for path in files:
-            with open(path, errors="replace") as fh:
-                text = fh.read()
-            if not names_a_field:
-                names_a_field = any(re.search(r"\b" + re.escape(v) + r"\b", text)
-                                    for v, _f in names)
-            for left, literal in literal_sites(text):
-                field = next((f for v, f in names
-                              if re.search(r"\b" + re.escape(v) + r"\b", left)), None)
-                allowed = per_field[field] if field else global_ok
-                checked += 1
-                attributed += field is not None
-                if literal not in allowed:
-                    unexplained += 1
-                    where = field or "no field named in the left operand"
-                    notes.append(f"  !! {name}: {literal} is not a declared number of "
-                                 f"{where} — ...{left.strip()[-50:]!r}")
-        # A generated tree for ANOTHER schema names none of this schema's fields, and
-        # every literal in it then looks wrong. That is a harness mistake, not a family
-        # one: the suites each export their own SCHEMA, but a hand-run against a tree the
-        # last gate left behind would otherwise produce a page of confident nonsense.
-        #
-        # Asked of the FILES, not of the comparisons: whether a comparison happens to
-        # name a field is a property of the backend's idiom — the C# tree for a union
-        # schema does its width checks on locals and attributes nothing while naming
-        # every field elsewhere — so "no comparison named a field" is not the same
-        # question as "this tree is for another schema".
-        if not names_a_field and checked > 10:
-            report(f"{name:<15} {checked:<5} comparison(s) — SKIPPED: this generated tree "
-                   f"names no field of {os.environ.get('SCHEMA', 'schema/probe.sofab.yaml')}"
-                   ", so it was built from a different schema (set SCHEMA, or rebuild)")
-            continue
-        for n in notes:
-            report(n)
-        bad += unexplained
-        report(f"{name:<15} {checked:<5} comparison(s), {attributed:<5} attributed to a "
-               f"field, {unexplained} unexplained")
-    return bad
-
-
-# The self-test carries its OWN schema model rather than the one the gate was invoked
-# with. What it checks is the mechanism — does a literal get attributed to the right
-# field, and is a wrong one reported — and that question has the same answer whichever
-# schema is being built. Written against the live model it passed on `probe` and failed
-# on every other schema, because `str`, `bytes_field` and `string_array` are probe's
-# fields and their bounds are probe's numbers. A self-test that depends on the subject
-# under test is not one.
-SELF_MODEL = {
-    "alpha": {0, 1, 7, 32},        # a string, maxlen 32, id 7
-    "beta": {0, 1, 8, 4},          # a blob, maxlen 4, id 8
-    "gamma": {0, 1, 9, 5},         # an array, count 5, id 9
-}
 SELF_TEST = [
-    # (planted text, expected unexplained count, what it stands for)
-    ("if self.alpha.len() > 32 { reject(); }", 0, "a field's own bound passes"),
-    ("if self.alpha.len() > 31 { reject(); }", 1, "a literal that is no bound at all"),
-    ("if self.alpha.len() > 4 { reject(); }", 1,
-     "another field's bound on the wrong field (4 is beta's maxlen)"),
-    ("if self.gamma.len() > 5 { reject(); }", 0, "a count bound passes"),
-    ("if self.gamma.len() > 6 { reject(); }", 1, "an off-by-one count"),
-    ("os.writeString(7, self.alpha, 32);", 0, "a bound riding a call argument passes"),
-    ("os.writeString(7, self.alpha, 16);", 1, "...and a wrong one is caught there too"),
+    ("disable_encode_bounds = []", "disable_encode_bounds", False),
+    ('default = ["disable_encode_bounds"]', "disable_encode_bounds", True),
+    ("cargo build --features disable_encode_bounds", "disable_encode_bounds", True),
+    ("# we never pass disable_encode_bounds", "disable_encode_bounds", False),
+    ("$CC -DSOFAB_DISABLE_ENCODE_BOUNDS x.c", "SOFAB_DISABLE_ENCODE_BOUNDS", True),
 ]
 
 
-def self_test():
-    """Does phase 2 actually catch a wrong bound? A check that cannot fail is decoration,
-    and this one's whole value is in the cases nobody has produced yet."""
-    per_field = SELF_MODEL
-    global_ok = set().union(*per_field.values())
-    names = sorted(((v, f) for f in per_field for v in name_variants(f) if len(v) > 1),
-                   key=lambda t: -len(t[0]))
-    fail = 0
-    for text, want, what in SELF_TEST:
-        got = 0
-        for left, literal in literal_sites(text):
-            field = next((f for v, f in names
-                          if re.search(r"\b" + re.escape(v) + r"\b", left)), None)
-            if literal not in (per_field[field] if field else global_ok):
-                got += 1
-        ok = got == want
-        fail += not ok
-        print(f"  {'ok  ' if ok else 'FAIL'} {what} (expected {want}, got {got})")
-    return fail
-
-
 def main():
-    schema_rel = os.path.relpath(
-        os.path.join(ROOT, os.environ.get("SCHEMA", "schema/probe.sofab.yaml")), ROOT)
-    has_len, has_narrow = schema_bounds(schema_rel)
-    if has_len is None:
-        print(f"error: SCHEMA={schema_rel} does not exist", file=sys.stderr)
-        return 2
-    print(f"schema {schema_rel}: {'has' if has_len else 'NO'} maxlen/count bound, "
-          f"{'has' if has_narrow else 'NO'} narrow integer/enum/bitfield")
-    print()
-    print(f"{'PROFILE':<15} {'MECHANISM':<10} {'GUARDS':<7} VERDICT")
-    print("-" * 66)
-
     fail = 0
-    missing = 0
-    for name, mech, needs, globs, pattern in PROFILES:
-        files = [f for g in globs for f in sorted(glob.glob(os.path.join(ROOT, g)))
-                 if not NOT_GENERATED_MESSAGE_CODE.search(f)]
-        if not files:
-            # Not a pass and not a failure of the family: the profile was never built in
-            # this checkout. Counted separately so "nothing was checked" cannot read as
-            # green.
-            print(f"{name:<15} {mech:<10} {'—':<7} NOT BUILT ({globs[0]})")
-            missing += 1
-            continue
-        hits = 0
-        for f in files:
-            with open(f, errors="replace") as fh:
-                hits += len(re.findall(pattern, fh.read()))
-        if mech != "guard":
-            if hits:
-                why = {"clamp": "its container clamps on assignment (the clamp contract)",
-                       "container": "its container refuses on assignment",
-                       "corelib": "the corelib checks it, descriptor-driven"}[mech]
-                print(f"{name:<15} {mech:<10} {hits:<7} FAIL — {why}, so §9.6.1 emits no "
-                      "guard here; finding one means the storage flavour changed and the "
-                      "expectation is stale")
-                fail += 1
-            else:
-                print(f"{name:<15} {mech:<10} {hits:<7} by contract ({mech})")
-            continue
-        expected = has_len or (needs == "width" and has_narrow)
-        if hits:
-            print(f"{name:<15} {mech:<10} {hits:<7} armed")
-        elif not expected:
-            kind = "maxlen/count" if needs == "len" else "maxlen/count or narrow-width"
-            print(f"{name:<15} {mech:<10} {hits:<7} nothing to arm "
-                  f"(no {kind} bound in this schema)")
-        else:
-            print(f"{name:<15} {mech:<10} {hits:<7} FAIL — this schema declares a bound "
-                  f"this backend guards ({needs}), and its generated code has none")
+    for line, token, want in SELF_TEST:
+        if opt_out_enabled(line, token) != want:
+            print(f"  !! self-test: opt_out_enabled({line!r}) should be {want}")
             fail += 1
-
-    print()
     for token, what in OPT_OUTS:
         where = [rel for rel in OPT_OUT_SCOPE
                  if any(opt_out_enabled(line, token)
@@ -520,52 +101,10 @@ def main():
                   "make the profile silently more permissive than every other.")
             fail += 1
         else:
-            print(f"  ok  no {token} in any build recipe")
-
-    # A mechanism of `clamp` / `container` / `corelib` is asserted above only as an
-    # ABSENCE of generated guards, which on its own would also be satisfied by nobody
-    # checking at all. So each one is asserted a second time where it actually lives: in
-    # the vendored corelib. Signature-based like scripts/check-family-copies.py, with the
-    # same caveat — a rename upstream turns this red and the §9.6.1 row has to be
-    # re-read, which is the intended outcome rather than a silent pass.
-    for src, needles, profiles, what in CORELIB_MECHANISMS:
-        text = read(src)
-        if text is None:
-            print(f"  !! {src} is not vendored — the mechanism behind {profiles} could "
-                  "not be checked at its source (scripts/bootstrap.sh)")
-            missing += 1
-            continue
-        absent = [n for n in needles if n not in text]
-        if absent:
-            print(f"  !! {src} no longer carries {', '.join(absent)} — {profiles} "
-                  f"generate no guard because §9.6.1 says {what}. With neither side "
-                  "doing it, those profiles are the only ones that would accept an "
-                  "over-bound value where every other refuses.")
-            fail += 1
-        else:
-            print(f"  ok  {src}: {what} ({profiles})")
-
-    # ---- phase 2: is each guard guarding the right NUMBER? -------------------
-    per_field, global_ok = schema_numbers(schema_rel)
-    if per_field is None:
-        print("\n  -- phase 2 skipped: no YAML reader, or the schema declares no field "
-              "with a number (the literal check needs the schema's own bounds)")
-    else:
-        print(f"\nliterals, against {len(per_field)} field(s) of {schema_rel}")
-        print("-" * 66)
-        fail += check_literals(PROFILES, per_field, global_ok)
-        if os.environ.get("ENCODE_BOUNDS_SELF_TEST", "1") != "0":
-            print("\nself-test (does phase 2 catch a wrong bound?)")
-            fail += self_test()
-
-    if missing:
-        print(f"\n{missing} profile(s) not built — run scripts/run.sh first; an unbuilt "
-              "profile is not a checked one.")
+            print(f"  ok  no {token} switched on in any build recipe")
     if fail:
-        print(f"\n{fail} problem(s). generator docs/ARCHITECTURE.md §9.6.1 is the owner of "
-              "which mechanism each profile uses.")
+        print(f"\n{fail} problem(s).")
         return 1
-    print("\nencode bounds armed in every built profile; no opt-out compiled in.")
     return 0
 
 

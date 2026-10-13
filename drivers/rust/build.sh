@@ -64,7 +64,7 @@ esac
 # LimitExceeded so the driver can emit `L` at all. Every rs-no-std row fails the
 # second half — `rs-no-std-dyn` has alloc fields and so could represent the field,
 # but corelib-rs-no-std has no such error and driver.rs compiles its `L` arm out
-# (the `limit` cargo feature is enabled for `rs` only).
+# (the `crucible_limit` cfg is set for `rs` only).
 SCHEMA="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
 case "${LIMITS:+set}:$VARIANT" in
     set:rs-no-std*)
@@ -108,27 +108,20 @@ python3 "$HERE/materialize_gen.py" "$OUT/src/materialize_gen.rs" "$SCHEMA"
 # ${SOFAB_RS_CORELIB} placeholder).
 sed -i "s#\${SOFAB_RS_CORELIB}#$CORELIB#" "$OUT/Cargo.toml"
 
-# The `L` (LimitExceeded) verdict arm in driver.rs is std-only — declare + enable
-# the `limit` cargo feature that gates it for the std corelib (rs) only. rs-no-std's
+# The `L` (LimitExceeded) verdict arm in driver.rs is std-only — it is gated on the
+# Crucible-owned `crucible_limit` cfg, set for the std corelib (rs) only. rs-no-std's
 # Error has no LimitExceeded variant, so the arm must stay compiled out there.
 #
-# rs-no-std still needs the feature *declared* (not enabled): the arm uses
-# `#[cfg(feature = "limit")]`, and an undeclared feature makes that an *unknown*
-# cfg value — cargo's `unexpected_cfgs` lint then warns on every rs-no-std build
-# (noise that can mask real warnings). Declaring it silences the lint while the arm
-# stays compiled out (the feature is never enabled for rs-no-std).
-FEATURES=""
-if [ "$VARIANT" = "rs" ]; then
-    printf '\n[features]\nlimit = []\n' >> "$OUT/Cargo.toml"
-    FEATURES="--features limit"
-elif grep -q '^\[features\]' "$OUT/Cargo.toml"; then
-    sed -i '/^\[features\]/a limit = []' "$OUT/Cargo.toml"   # declare, don't enable
-else
-    printf '\n[features]\nlimit = []\n' >> "$OUT/Cargo.toml"
-fi
+# The cfg goes in through RUSTFLAGS rather than a cargo feature, so the generated
+# Cargo.toml stays exactly what sofabgen wrote (the ${SOFAB_RS_CORELIB} placeholder
+# above is the one substitution the generator asks for). Every variant gets the
+# `--check-cfg` declaration: without it the gate is an *unknown* cfg name, and rustc's
+# `unexpected_cfgs` lint warns on every build (noise that can mask real warnings).
+RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--check-cfg cfg(crucible_limit)"
+if [ "$VARIANT" = "rs" ]; then RUSTFLAGS="$RUSTFLAGS --cfg crucible_limit"; fi
+export RUSTFLAGS
 
-echo "==> [rust:$VARIANT] cargo build${FEATURES:+ ($FEATURES)}" >&2
-# shellcheck disable=SC2086
-( cd "$OUT" && cargo build -q $FEATURES >&2 )
+echo "==> [rust:$VARIANT] cargo build (RUSTFLAGS=$RUSTFLAGS)" >&2
+( cd "$OUT" && cargo build -q >&2 )
 
 echo "$OUT/target/debug/harness"

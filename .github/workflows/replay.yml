@@ -100,10 +100,7 @@ jobs:
       - name: Differential over seeds (the green gate)
         run: ./scripts/run.sh
 
-      # Right after the seed build, while every driver's generated code is the probe's:
-      # limit mode, the union suite and the sweeps rebuild against other schemas. Asserts
-      # the C anchor has a case for every corelib-c-cpp field-type tag and that each
-      # driver's generated code reaches its corelib's collector layer (generator#587).
+      # Asserts the C anchor has a case for every corelib-c-cpp field-type tag.
       # The image's Kotlin compiler must not be older than the Kotlin the corelibs
       # build their klibs with — the one mismatch in this toolchain that is SILENT
       # (crucible#244). Hard on the Dockerfile, which this repo owns and a reviewer can
@@ -112,7 +109,7 @@ jobs:
       - name: Kotlin compiler vs the corelib's klibs
         run: python3 scripts/check-kotlin-version.py
 
-      - name: Family copies (anchor tags + generated code reaches the corelib)
+      - name: Family copies (C anchor tags)
         run: python3 scripts/check-family-copies.py
 
       # Reproducers for findings that are already fixed: a divergence here means a

@@ -22,14 +22,9 @@ comparison:
   # On mutual ACCEPT, the decoded canonical value must match.
   accept_value: hard
 
-  # On mutual INCOMPLETE, whether the partial re-encoded value must match. **Stays soft**,
-  # and unlike its two neighbours it is not legacy: measured 2026-08-16, it fires 5471
-  # times (5463 over corpus/interesting, 8 over regression) and every single one is the
-  # same thing — java hands back what it had already read when the stream ended mid-field,
-  # where the other fourteen hand back nothing. The verdict is unanimous (`I` everywhere);
-  # only the payload differs. Hardening this would mean 5471 red lines for one known,
-  # catalogued behaviour. The I verdict itself is hard (above).
-  incomplete_value: soft
+  # There is no `incomplete_value` axis: an `I` line carries no payload
+  # (oracle/canonical.md, "The `I` line has no payload"), and one that does is a
+  # malformed line, which the comparator fails per line whatever the others printed.
 
   # On mutual REJECT, whether the reject *class* must match. **HARD since 2026-08-16.**
   # It was soft because the per-language error taxonomies were not aligned — that was

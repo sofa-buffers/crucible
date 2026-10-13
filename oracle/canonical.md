@@ -10,7 +10,7 @@ of language and message shape.
 ```
 line       := accept | incomplete | reject | limit | refused
 accept     := "A" SP hex          ; COMPLETE — hex of the re-encoded sparse-canonical wire
-incomplete := "I" [ SP hex ]      ; INCOMPLETE — decode ended mid-message; optional hex = re-encode of the partial value
+incomplete := "I"                 ; INCOMPLETE — decode ended mid-message; no payload (see "The `I` line has no payload")
 reject     := "R" SP class        ; INVALID — malformed regardless of what follows
 limit      := "L" [ SP class ]    ; LIMIT_EXCEEDED — a configured receiver-side decode cap was exceeded (limit mode only)
 refused    := "E" SP class        ; the decode ACCEPTED, and re-encoding that value was REFUSED (generator#656)
@@ -76,7 +76,7 @@ first character:
 | corelib outcome | line | meaning |
 |---|---|---|
 | `COMPLETE` | `A <hex>` | consumed bytes end exactly at a field boundary; a valid message |
-| `INCOMPLETE` | `I` (or `I <hex>`) | bytes end **inside** a field/varint or an open sequence — valid so far, not a complete message. **Not an error** (§7); the caller owns end-of-input |
+| `INCOMPLETE` | `I` | bytes end **inside** a field/varint or an open sequence — valid so far, not a complete message. **Not an error** (§7); the caller owns end-of-input |
 | `INVALID` | `R <class>` | malformed regardless of what follows (unknown wire-type, varint > 64 bits, count/length over max, `MAX_DEPTH`, stray sequence-end) |
 
 `A` / `I` / `R` are **three distinct hard verdict values**: two implementations
@@ -157,11 +157,10 @@ buffer that is not, or a failure mode outside the taxonomy). On mutual `E` the c
 compared on the `encode_class` axis.
 
 **`E` never replaces `I`.** The `I` verdict is a statement about the decode, and it is
-hard; its hex payload is soft and optional. A driver whose re-encode of a **partial**
-value is refused drops the payload and emits the bare `I` — answering `E` (or, as every
-driver did before this, `R other`) would let an encode-side fact overwrite a decode-side
-verdict, which is the `I`-into-`R` collapse F-0001 exists to catch. Only Java emits
-`I <hex>` today, so Java and Kotlin — which share the shape — are where it was wired.
+hard. An `INCOMPLETE` decode is never re-encoded at all (it has no payload, below), so
+there is nothing to refuse — answering `E` (or `R other`) there would let an encode-side
+fact overwrite a decode-side verdict, which is the `I`-into-`R` collapse F-0001 exists
+to catch.
 
 **Measured 2026-10-12, when the verdict was added:** zero `E` lines over the whole
 roster across `corpus/seeds`, `corpus/structured`, `corpus/conformance` and
@@ -173,15 +172,17 @@ themselves (a value filled past its bound through the generated setters) are the
 generator's own conformance suite, `tests/conformance/lib/check_encode_bounds.py`, not
 this harness — Crucible's half is the asymmetry, not the guard.
 
-### The `I` payload
+### The `I` line has no payload
 
-`I` may stand alone, or carry the hex of the **partial** value decoded before the
-stream ran out (same decode→encode→hex pipeline as `A`, over whatever complete
-fields arrived). Emitting it is encouraged — it catches an impl that consumed a
-different prefix before hitting truncation — but the payload comparison
-(`incomplete_value` axis) is **soft** in Phase 2: partial-value materialization is
-not yet aligned across languages. The verdict itself (`I` vs `A`/`R`) is always
-hard.
+`I` stands alone. A partial value is not a decode result: what an out-parameter API
+(Java's `tryDecode(data, out)`) leaves in its destination after an `INCOMPLETE` decode
+is defined nowhere, and a value-returning API (Rust's `Err`) hands back nothing at all —
+so a payload would compare API shapes, not decoders. It also compared nothing — only Java and the Kotlin legs ever
+printed it, so the comparison it fed (`incomplete_value`, soft) could only ever tell
+those drivers apart from everyone else, and it did, thousands of times per corpus, on a
+difference that was the drivers' and not the corelibs'. The comparator rejects an `I`
+line that carries anything after the letter as malformed. The verdict itself (`I` vs
+`A`/`R`) is hard, as before.
 
 ## How `accept` is produced: decode → re-encode → hex
 

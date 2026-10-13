@@ -140,6 +140,10 @@ def _emit_array(em, elem, expr):
         # Through the raw-bits view where the target has one (Kotlin/JS: the
         # Float32Array behind the FloatArray), so an element's signalling NaN is read
         # as it lies rather than through a widening Float (G-0046 / generator#716).
+        # `Seq.fp32BitsView` is corelib-kotlin-mp's PUBLIC API and the same channel the
+        # generated decoder stores through (`Seq.putFp32Bits`), so this reads the value
+        # exactly where an application on that target would — it is not a normalization:
+        # the bits printed are the bits the generated code stored.
         v = em.fresh()
         em.stmt(f"val {v} = Seq.fp32BitsView({expr})")
         em.stmt(f"for ({i} in 0 until {expr}.size) {{")
@@ -212,7 +216,9 @@ def _emit_union(em, options, expr):
         _emit_value(inner, opt, f'{expr}.{opt["name"]}')
         inner.stmt('b.append("}")')
         em.stmt("    }")
-    em.stmt("    else -> {}")
+    # A tag naming no descriptor option is a broken walk, not an empty union: fail
+    # loudly (the drivers/java ProbeDump and drivers/cs shape) rather than print `{}`.
+    em.stmt(f'    else -> throw IllegalStateException("union which=" + {expr}.which + " names no descriptor option")')
     em.stmt("}")
 
 

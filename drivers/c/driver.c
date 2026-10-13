@@ -21,21 +21,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "probe.h"   /* generated from schema/probe.sofab.yaml by build.sh */
-
-/* Newer sofabgen builds (generator 7960a3e8) separate the message name from the member with `__`.
- * Alias the new spellings to the ones this driver is written in; nothing happens on an older build. */
-#ifdef MESSAGE_PROBE__MAX_SIZE
-#define MESSAGE_PROBE_MAX_SIZE      MESSAGE_PROBE__MAX_SIZE
-#define message_probe_decoder_t     message_probe__decoder_t
-#define message_probe_decoder_init  message_probe__decoder_init
-#define message_probe_decoder_feed  message_probe__decoder_feed
-#define message_probe_decode        message_probe__decode
-#define message_probe_encode        message_probe__encode
-#define message_probe_encode_to     message_probe__encode_to
-#define message_probe_init          message_probe__init
-#define _message_descr_message_probe message_probe__descr
-#endif
+#include "probe_sofab.h"   /* generated from schema/probe.sofab.yaml by build.sh */
 
 /* Map a corelib return code to the canonical class (oracle/canonical.md). One
  * mapping serves both verdicts that carry a class -- the decode's "R" and the
@@ -62,8 +48,13 @@ static const char *reject_class(sofab_ret_t r)
  * see canonical.md §Tradeoff). This second path instead walks the decoded value via
  * the generic object descriptor (the one reflective surface in the family) and dumps
  * every field + every array element explicitly. C is the descriptor anchor; the
- * engine/structured/materialize.py reference is the ground truth every driver matches. */
-extern const sofab_object_descr_t _message_descr_message_probe;
+ * engine/structured/materialize.py reference is the ground truth every driver matches.
+ *
+ * The walk prints what an application would read out of the decoded struct and nothing
+ * else (drivers/common/CONTRACT.md "Decode core requirements"): no normalizing, no
+ * clamping, no guessing. Where the descriptor does not say how much of a field is
+ * populated, or says more than the field can hold, md_fail() stops the run instead of
+ * printing a plausible value. */
 
 static uint64_t md_rdu(const uint8_t *p, unsigned sz)
 {
@@ -102,36 +93,25 @@ static void md_value(FILE *o, const sofab_object_descr_t *info,
 static void md_obj(FILE *o, const sofab_object_descr_t *info, const uint8_t *base);
 static void md_union(FILE *o, const sofab_object_descr_t *info, const uint8_t *base);
 
-/* An element slot is "empty" (its type default) — the fallback length projection for
- * an **un-sized** wrapper holder, which carries no used-count and can therefore only
- * express 0 or N (object.h, SOFAB_OBJECT_DESCR_SEQ vs _SEQ_SIZED). A sized holder
- * reports its own count instead: `count` is a capacity, not a length (MESSAGE_SPEC §3),
- * and the length is *highest present id + 1* (§5.1) — where the **last** element is
- * always written even when it equals its default (§2), so trimming trailing defaults
- * would report `["a", ""]` as `["a"]` and lose an element the wire carries.
- * A SEQUENCE slot (a struct_array element, WP-05) is empty iff its whole sub-object is
- * default — the recursive check mirrors the corelib's own `_field_is_default`
- * (object.c), which drives the identical interior elision on encode. */
-static int md_slot_empty(const sofab_object_descr_t *info,
-                         const sofab_object_descr_field_t *f, const uint8_t *base)
+/* A descriptor the walk cannot read faithfully. Every bounded field sofabgen emits today
+ * carries a length companion (BLOB_SIZED, ARRAY_SIZED, SEQ_SIZED), and a decode that
+ * accepted never leaves a companion past its capacity; either failing is a generator or
+ * corelib regression. Guessing a length would turn it into a plausible dump, so abort. */
+static void md_fail(const char *what, unsigned id)
 {
-    const uint8_t *p = base + f->offset;
-    switch (f->type) {
-    case SOFAB_OBJECT_FIELDTYPE_STRING: return p[0] == '\0';
-    case SOFAB_OBJECT_FIELDTYPE_BLOB:
-        return f->nested_idx ? (md_rdu(base + f->offset - f->nested_idx, f->nested_idx) == 0)
-                             : (f->size == 0);
-    case SOFAB_OBJECT_FIELDTYPE_UNSIGNED:
-    case SOFAB_OBJECT_FIELDTYPE_SIGNED:
-        return md_rdu(p, f->element_size) == 0;
-    case SOFAB_OBJECT_FIELDTYPE_SEQUENCE: {
-        const sofab_object_descr_t *nested = info->nested_list[f->nested_idx];
-        for (size_t i = 0; i < md_field_count(nested); i++)
-            if (!md_slot_empty(nested, &nested->field_list[i], p)) return 0;
-        return 1;
-    }
-    default: return 0;  /* fp/array element kinds: treat as present */
-    }
+    fprintf(stderr, "crucible-c: materialize: %s (field id %u)\n", what, id);
+    abort();
+}
+
+/* The length a companion member records. The corelib static-asserts the companion to sit
+ * immediately before the payload, with `nested_idx` holding its byte width. */
+static size_t md_companion_len(const sofab_object_descr_field_t *f, const uint8_t *base,
+                               size_t capacity, const char *kind)
+{
+    if (!f->nested_idx) md_fail(kind, (unsigned)f->id);
+    size_t n = (size_t)md_rdu(base + f->offset - f->nested_idx, f->nested_idx);
+    if (n > capacity) md_fail("length companion past the field's capacity", (unsigned)f->id);
+    return n;
 }
 
 /* The element count a native `count: N` array actually carries.
@@ -143,16 +123,13 @@ static int md_slot_empty(const sofab_object_descr_t *info,
  * a pre-sized target, so walking `f->size / element_size` slots would materialize the
  * spare capacity as trailing default elements — the removed fill-to-N.
  *
- * A sized array descriptor (SOFAB_OBJECT_FIELD_ARRAY_SIZED) carries that length in a
- * companion member the corelib static-asserts to sit immediately before the payload,
- * with `nested_idx` holding its byte width — the same convention BLOB_SIZED uses. An
- * un-sized descriptor has no length member and is full-capacity by definition. */
+ * A sized array descriptor (SOFAB_OBJECT_FIELD_ARRAY_SIZED) carries that length in its
+ * companion member, the same convention BLOB_SIZED uses. An un-sized one has no length
+ * to read, so it is a hard failure, never "full capacity". */
 static size_t md_array_len(const sofab_object_descr_field_t *f, const uint8_t *base,
                            size_t capacity)
 {
-    if (!f->nested_idx) return capacity;
-    size_t n = (size_t)md_rdu(base + f->offset - f->nested_idx, f->nested_idx);
-    return n > capacity ? capacity : n;
+    return md_companion_len(f, base, capacity, "array descriptor without a length companion");
 }
 
 static void md_value(FILE *o, const sofab_object_descr_t *info,
@@ -165,12 +142,12 @@ static void md_value(FILE *o, const sofab_object_descr_t *info,
     case SOFAB_OBJECT_FIELDTYPE_SIGNED:
         fprintf(o, "s%lld", (long long)md_rds(p, f->element_size)); break;
     case SOFAB_OBJECT_FIELDTYPE_BOOLEAN:
-        /* §4.4: two-valued, so the materialized form is u1/u0 — a decode has already
-         * normalized every non-zero spelling away (that is the rule under test). Read
-         * the destination as bytes, never as a `bool` lvalue: a `bool` object holding a
-         * value outside {0,1} has no value at all, so reading it could not tell us
-         * whether the decode normalized. */
-        fprintf(o, "u%u", md_rdu(p, f->element_size) ? 1u : 0u); break;
+        /* §4.4: a boolean is an unsigned integer on the wire, and a decode that honours
+         * the rule stores only 0 or 1. Print the stored value raw, exactly as UNSIGNED
+         * does (oracle/materialized.md): a decode that kept a non-0/1 spelling shows up
+         * as e.g. `u2` instead of being folded into `u1` here. Read the destination as
+         * bytes, never as a `bool` lvalue, which could not hold such a value at all. */
+        fprintf(o, "u%llu", (unsigned long long)md_rdu(p, f->element_size)); break;
     case SOFAB_OBJECT_FIELDTYPE_FP32:
         { uint32_t b; memcpy(&b, p, 4); fprintf(o, "f%08x", b); } break;
     case SOFAB_OBJECT_FIELDTYPE_FP64:
@@ -178,9 +155,7 @@ static void md_value(FILE *o, const sofab_object_descr_t *info,
     case SOFAB_OBJECT_FIELDTYPE_STRING:
         { size_t n = strlen((const char *)p); fprintf(o, "t%zu:", n); md_hex(o, p, n); } break;
     case SOFAB_OBJECT_FIELDTYPE_BLOB: {
-        size_t n = f->nested_idx ? (size_t)md_rdu(base + f->offset - f->nested_idx, f->nested_idx)
-                                 : f->size;
-        if (n > f->size) n = f->size;
+        size_t n = md_companion_len(f, base, f->size, "blob descriptor without a length companion");
         fprintf(o, "b%zu:", n); md_hex(o, p, n);
         } break;
     case SOFAB_OBJECT_FIELDTYPE_ARRAY_UNSIGNED:
@@ -189,17 +164,13 @@ static void md_value(FILE *o, const sofab_object_descr_t *info,
         unsigned es = f->element_size;
         size_t cnt = md_array_len(f, base, es ? f->size / es : 0);
         int sg = (f->type == SOFAB_OBJECT_FIELDTYPE_ARRAY_SIGNED);
-        /* an array of boolean is an array of unsigned 0/1 (MESSAGE_SPEC §4.7), each
-         * element normalized on the same rule as the scalar above */
-        int bl = (f->type == SOFAB_OBJECT_FIELDTYPE_ARRAY_BOOLEAN);
+        /* an array of boolean is an array of unsigned (MESSAGE_SPEC §4.7): each element
+         * prints its stored value raw, on the same rule as the scalar above */
         fputc('[', o);
         for (size_t i = 0; i < cnt; i++) {
             if (i) fputc(',', o);
             if (sg) fprintf(o, "s%lld", (long long)md_rds(p + i * es, es));
-            else {
-                unsigned long long v = (unsigned long long)md_rdu(p + i * es, es);
-                fprintf(o, "u%llu", bl ? (v ? 1ULL : 0ULL) : v);
-            }
+            else    fprintf(o, "u%llu", (unsigned long long)md_rdu(p + i * es, es));
         }
         fputc(']', o);
         } break;
@@ -223,18 +194,13 @@ static void md_value(FILE *o, const sofab_object_descr_t *info,
              * SOFAB_OBJECT_DESCR_SEQ_SIZED); its width is the bits above
              * SOFAB_OBJECT_SEQ_LEN_SHIFT. That count is the array's length (§5.1) and
              * is the only source that survives a default-valued LAST element, which
-             * §2 requires to be present. Without one, fall back to the
-             * highest-populated projection — all an un-sized holder can express. */
+             * §2 requires to be present. An un-sized holder has no length to read, and
+             * inferring one from the slot contents would be a guess, so it fails. */
             unsigned lw = nested->fixed_seq >> SOFAB_OBJECT_SEQ_LEN_SHIFT;
-            size_t n;
-            if (lw) {
-                n = (size_t)md_rdu(p, lw);
-                if (n > md_field_count(nested)) n = md_field_count(nested);
-            } else {
-                n = 0;
-                for (size_t i = 0; i < md_field_count(nested); i++)
-                    if (!md_slot_empty(nested, &nested->field_list[i], p)) n = i + 1;
-            }
+            if (!lw) md_fail("wrapper array holder without a length member", (unsigned)f->id);
+            size_t n = (size_t)md_rdu(p, lw);
+            if (n > md_field_count(nested))
+                md_fail("wrapper array length past the holder's capacity", (unsigned)f->id);
             fputc('[', o);
             for (size_t i = 0; i < n; i++) {
                 if (i) fputc(',', o);
@@ -289,13 +255,13 @@ static void md_obj(FILE *o, const sofab_object_descr_t *info, const uint8_t *bas
  * so neither streaming surface of the generated API is reachable through it. Unset,
  * every variable below is today's behaviour byte for byte.
  *
- * C has no allocating encode -- `message_probe_encode` writes into a caller buffer,
+ * C has no allocating encode -- `message_probe__encode` writes into a caller buffer,
  * which IS the `to` surface -- so this driver's default path is already `to` and
  * SOFAB_ENCODE=new is a hard error rather than a fallback (meta:
  * encode_surfaces=to,stream).
  *
  * Like Rust, the generated decoder has no `status`: the doc on
- * message_probe_decoder_t states the rule directly -- a feed reports only whether
+ * message_probe__decoder_t states the rule directly -- a feed reports only whether
  * THE BYTES ended on a field boundary (OK) or mid-field (INCOMPLETE), and "the last
  * verdict says whether it ended half-read". So the last feed's return is the status,
  * mapped exactly as the one-shot return is. */
@@ -362,10 +328,10 @@ static void read_stream_cfg(void)
     }
 }
 
-/* Feed the record in the given pieces through ONE decoder. Never an empty chunk:
- * k<=0, k>=len and n>=len all mean one chunk holding the whole record, which
- * matters twice over here -- it is today's single feed, and sofab_istream_feed
- * asserts datalen>0. Returns the last feed's verdict.
+/* Feed the record in the given pieces through ONE decoder. k<=0, k>=len and n>=len
+ * all mean one chunk holding the whole record, i.e. the one-shot feed. A length-0
+ * record is ONE empty chunk, fed once as feed(NULL, 0) (CONTRACT.md rule 4), and no
+ * other empty chunk is ever synthesized. Returns the last feed's verdict.
  *
  * Takes its settings as arguments rather than reading g_cfg, so both the replay
  * front-end (which reads them from the environment) and the streaming fuzz
@@ -374,48 +340,62 @@ static void read_stream_cfg(void)
 static sofab_ret_t decode_chunked(message_probe_t *m, const uint8_t *buf, size_t len,
                                   long split, long chunk, int scrub)
 {
-    message_probe_decoder_t d;
+    message_probe__decoder_t d;
     sofab_ret_t r = SOFAB_RET_OK;
-    uint8_t scratch[MESSAGE_PROBE_MAX_SIZE];
+    uint8_t *scratch = NULL;
     size_t step, off;
 
-    message_probe_decoder_init(&d, m);
+    message_probe__decoder_init(&d, m);
 
     if (chunk > 0)                                   step = (size_t)chunk;
     else if (split > 0 && (size_t)split < len)       step = (size_t)split;
     else                                              step = len;
 
+    /* Scrub needs a buffer the driver owns, as large as the largest chunk, so that
+     * every chunk is scrubbed whatever its size. */
+    if (scrub && len > 0)
+    {
+        scratch = malloc(len);
+        if (!scratch) { fprintf(stderr, "crucible-c: oom (scrub, %zu bytes)\n", len); abort(); }
+    }
+
     off = 0;
-    while (off < len)
+    do
     {
         size_t n = len - off < step ? len - off : step;
         /* A two-way split is two chunks, not fixed-size: after the first cut, the
          * rest goes in one piece. */
         if (chunk <= 0 && off > 0) n = len - off;
-        if (scrub && n <= sizeof(scratch))
+        if (n == 0)
         {
-            /* Scrub needs a buffer the driver owns: feed it, then overwrite. A
-             * decoder that borrowed from the chunk rather than copying out of it
-             * reads back 0xA5. */
+            r = message_probe__decoder_feed(&d, NULL, 0);   /* the empty record */
+        }
+        else if (scratch)
+        {
+            /* Feed the driver-owned copy, then overwrite it. A decoder that borrowed
+             * from the chunk rather than copying out of it reads back 0xA5. */
             memcpy(scratch, buf + off, n);
-            r = message_probe_decoder_feed(&d, scratch, n);
+            r = message_probe__decoder_feed(&d, scratch, n);
             memset(scratch, 0xA5, n);
         }
         else
         {
-            r = message_probe_decoder_feed(&d, buf + off, n);
+            r = message_probe__decoder_feed(&d, buf + off, n);
         }
         /* INCOMPLETE mid-stream only means THOSE bytes ended mid-field; any other
          * error is terminal. */
         if (r != SOFAB_RET_OK && r != SOFAB_RET_INCOMPLETE) break;
         off += n;
-    }
+    } while (off < len);
+    free(scratch);
     return r;
 }
 
-/* Accumulator for the streaming encode's flush callback. */
+/* Accumulator for the streaming encode's flush callback. It holds
+ * MESSAGE_PROBE__MAX_SIZE, the generated worst case; an encode that hands it more is
+ * a defect (of that bound or of the encoder), never something to truncate. */
 struct enc_acc {
-    uint8_t bytes[MESSAGE_PROBE_MAX_SIZE];
+    uint8_t bytes[MESSAGE_PROBE__MAX_SIZE];
     size_t len;
 };
 
@@ -424,11 +404,15 @@ static void enc_flush_cb(sofab_ostream_t *ctx, const uint8_t *data, size_t len,
 {
     struct enc_acc *a = (struct enc_acc *)usrptr;
     (void)ctx;
-    if (a->len + len <= sizeof(a->bytes))
+    if (len > sizeof(a->bytes) - a->len)
     {
-        memcpy(a->bytes + a->len, data, len);
-        a->len += len;
+        fprintf(stderr, "crucible-c: streaming encode flushed %zu bytes past "
+                        "MESSAGE_PROBE__MAX_SIZE (%zu)\n",
+                a->len + len - sizeof(a->bytes), sizeof(a->bytes));
+        abort();
     }
+    memcpy(a->bytes + a->len, data, len);
+    a->len += len;
 }
 
 /* Which generated call produces the `A <hex>` payload. Both surfaces must emit
@@ -440,21 +424,33 @@ static sofab_ret_t encode_via(const message_probe_t *m, uint8_t *dst, size_t dst
 {
     if (g_cfg.enc == ENC_TO)
     {
-        return message_probe_encode(m, dst, dstlen, used);
+        return message_probe__encode(m, dst, dstlen, used);
     }
     {
         struct enc_acc acc;
         sofab_ostream_t os;
-        uint8_t small[MESSAGE_PROBE_MAX_SIZE];
+        uint8_t small[MESSAGE_PROBE__MAX_SIZE];
         size_t cap = g_cfg.flush > 0 ? (size_t)g_cfg.flush : sizeof(small);
         sofab_ret_t r;
         acc.len = 0;
         if (cap == 0) cap = 1;
         if (cap > sizeof(small)) cap = sizeof(small);
         sofab_ostream_init(&os, small, cap, 0, enc_flush_cb, &acc);
-        r = message_probe_encode_to(&os, m);
-        (void)sofab_ostream_flush(&os);
+        r = message_probe__encode_to(&os, m);
         if (r != SOFAB_RET_OK) return r;
+        /* sofab_ostream_flush has no failure code: it drains the tail through the
+         * callback and returns how many bytes that was. Hold it to that -- a tail it
+         * reported but did not deliver would otherwise leave a truncated `A`. */
+        {
+            size_t before = acc.len;
+            size_t tail = sofab_ostream_flush(&os);
+            if (acc.len - before != tail)
+            {
+                fprintf(stderr, "crucible-c: sofab_ostream_flush reported %zu bytes, "
+                                "the callback received %zu\n", tail, acc.len - before);
+                abort();
+            }
+        }
         if (acc.len > dstlen) return SOFAB_RET_E_BUFFER_FULL;
         memcpy(dst, acc.bytes, acc.len);
         *used = acc.len;
@@ -467,23 +463,19 @@ static sofab_ret_t encode_via(const message_probe_t *m, uint8_t *dst, size_t dst
 static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
 {
     message_probe_t m;
-    message_probe_init(&m);
+    message_probe__init(&m);
 
-    /* An empty buffer is the valid sparse-canonical encoding of the all-defaults
-     * message (Go decodes it so). corelib-c-cpp's sofab_istream_feed asserts
-     * datalen>0 as a debug precondition; under NDEBUG the same call returns OK
-     * with defaults. We keep asserts ON (they catch real bugs on non-empty
-     * input) but honor the precondition here so a valid empty message isn't a
-     * false abort. See docs/ARCHITECTURE.md. */
-    if (len > 0)
+    /* A length-0 record is decoded like any other (CONTRACT.md rule 4): the empty
+     * byte string is the all-defaults message (MESSAGE_SPEC §2), and the decoder,
+     * not the driver, is what says so. */
     {
         /* The chunked path is taken ONLY when a chunking variable is set, so the
-         * default stays the one-shot message_probe_decode byte for byte -- which is
+         * default stays the one-shot message_probe__decode byte for byte -- which is
          * also what makes the gate meaningful: it then compares two genuinely
          * different code paths rather than one against itself. */
         sofab_ret_t r = (g_cfg.split || g_cfg.chunk || g_cfg.scrub)
                             ? decode_chunked(&m, buf, len, g_cfg.split, g_cfg.chunk, g_cfg.scrub)
-                            : message_probe_decode(&m, buf, len);
+                            : message_probe__decode(&m, len ? buf : NULL, len);
         if (r == SOFAB_RET_INCOMPLETE)
         {
             /* Decode ended mid-field or with an open sequence: valid so far but
@@ -505,13 +497,13 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
     if (materialize < 0) materialize = getenv("SOFAB_MATERIALIZE") ? 1 : 0;
     if (materialize) {
         fputs("A ", out);
-        md_obj(out, &_message_descr_message_probe, (const uint8_t *)&m);
+        md_obj(out, &message_probe__descr, (const uint8_t *)&m);
         fputc('\n', out);
         return;
     }
 
     /* Accept: re-encode the decoded value and emit its canonical wire as hex. */
-    uint8_t enc[MESSAGE_PROBE_MAX_SIZE];
+    uint8_t enc[MESSAGE_PROBE__MAX_SIZE];
     size_t used = 0;
     /* SOFAB_ENCODE_FAIL=n (CONTRACT.md): hand the encoder a destination of n bytes
      * with no sink behind it, so a message that does not fit is REFUSED
@@ -519,7 +511,7 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
      * for real. In C that destination is exactly what the caller-buffer encode takes,
      * so the axis is a smaller `dstlen` and nothing else. */
     sofab_ret_t er = g_cfg.fail > 0
-        ? message_probe_encode(&m, enc, (size_t)g_cfg.fail < sizeof(enc)
+        ? message_probe__encode(&m, enc, (size_t)g_cfg.fail < sizeof(enc)
                                         ? (size_t)g_cfg.fail : sizeof(enc), &used)
         : encode_via(&m, enc, sizeof(enc), &used);
     if (er != SOFAB_RET_OK)
@@ -550,8 +542,8 @@ static void decode_and_report(const uint8_t *buf, size_t len, FILE *out)
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
     message_probe_t m;
-    message_probe_init(&m);
-    if (size > 0) (void)message_probe_decode(&m, data, size); /* see decode_and_report */
+    message_probe__init(&m);
+    (void)message_probe__decode(&m, size ? data : NULL, size);   /* size 0 included */
     return 0;
 }
 #else
@@ -600,30 +592,31 @@ static void stream_verdict(sofab_ret_t r, const message_probe_t *m,
     *used = 0;
     if (r == SOFAB_RET_INCOMPLETE) { snprintf(cls, clscap, "I"); return; }
     if (r != SOFAB_RET_OK) { snprintf(cls, clscap, "R %s", reject_class(r)); return; }
-    sofab_ret_t er = message_probe_encode(m, enc, enccap, used);
+    sofab_ret_t er = message_probe__encode(m, enc, enccap, used);
     if (er != SOFAB_RET_OK) { snprintf(cls, clscap, "E %s", reject_class(er)); *used = 0; return; }
     snprintf(cls, clscap, "A");
 }
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
-    if (size <= STREAM_HDR) return 0;
-    const uint8_t *msg = data + STREAM_HDR;
+    if (size < STREAM_HDR) return 0;
+    /* A header with no message is the length-0 record, decoded like any other
+     * (CONTRACT rule 4): one-shot feed(NULL, 0) against one empty chunk. */
+    const uint8_t *msg = size > STREAM_HDR ? data + STREAM_HDR : NULL;
     size_t len = size - STREAM_HDR;
-    if (len == 0) return 0;   /* CONTRACT rule 4: a length-0 record is never fed */
 
     long param = (long)((unsigned)data[1] | ((unsigned)data[2] << 8));
     long split = (data[0] & 1) ? 0 : param;
     long chunk = (data[0] & 1) ? param : 0;
 
     message_probe_t a, b;
-    message_probe_init(&a);
-    message_probe_init(&b);
-    sofab_ret_t ra = message_probe_decode(&a, msg, len);
+    message_probe__init(&a);
+    message_probe__init(&b);
+    sofab_ret_t ra = message_probe__decode(&a, msg, len);
     sofab_ret_t rb = decode_chunked(&b, msg, len, split, chunk, /*scrub=*/1);
 
     char cls_a[16], cls_b[16];
-    uint8_t enc_a[MESSAGE_PROBE_MAX_SIZE], enc_b[MESSAGE_PROBE_MAX_SIZE];
+    uint8_t enc_a[MESSAGE_PROBE__MAX_SIZE], enc_b[MESSAGE_PROBE__MAX_SIZE];
     size_t used_a, used_b;
     stream_verdict(ra, &a, cls_a, sizeof(cls_a), enc_a, sizeof(enc_a), &used_a);
     stream_verdict(rb, &b, cls_b, sizeof(cls_b), enc_b, sizeof(enc_b), &used_b);
@@ -751,9 +744,7 @@ int main(void)
         }
         if (n > 0 && !read_exact(buf, n)) { fprintf(stderr, "crucible-c: short payload\n"); free(buf); return 1; }
 
-        /* Always hand decode a valid pointer, even for a 0-byte input. */
-        static uint8_t empty[1];
-        decode_and_report(n ? buf : empty, n, stdout);
+        decode_and_report(n ? buf : NULL, n, stdout);
         fflush(stdout);
     }
 

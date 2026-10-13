@@ -293,19 +293,24 @@ void _f32Scalar(StringBuffer b, double v, int? bits) {
 // One element of an fp32 array, bit-exact (CORELIB_PLAN §6.5). `_f32` above cannot
 // be used here: its argument is already a widened double, and fp32 -> fp64 widening
 // sets the quiet bit, so a signaling NaN is gone before the function is entered.
-// A decoded fp32 array is a Float32List (or, since generator#570, an InlineFloat32Array
-// backed by one), whose byte buffer still holds the untouched little-endian wire bits;
-// fall back to the repack only for a plain List<double>.
+// A decoded fp32 array is, since generator#570, an InlineFloat32Array: its public
+// `byteView` is the byte view the codec copied the little-endian wire payload into,
+// so it still holds the untouched bits. A plain Float32List is read through its own
+// buffer; fall back to the repack only for a plain List<double>.
 void _f32Elem(StringBuffer b, Object a, int i) {
-  final l = a is sofab.InlineFloat32Array ? a.storage : a as List<double>;
-  if (l is Float32List) {
-    final u = l.buffer.asUint8List(l.offsetInBytes + i * 4, 4);
-    final bits = u[0] | (u[1] << 8) | (u[2] << 16) | (u[3] << 24);
-    b.write('f');
-    b.write(bits.toRadixString(16).padLeft(8, '0'));
+  final Uint8List u;
+  if (a is sofab.InlineFloat32Array) {
+    u = a.byteView;
+  } else if (a is Float32List) {
+    u = a.buffer.asUint8List(a.offsetInBytes, a.lengthInBytes);
+  } else {
+    _f32(b, (a as List<double>)[i]);
     return;
   }
-  _f32(b, l[i]);
+  final o = i * 4;
+  final bits = u[o] | (u[o + 1] << 8) | (u[o + 2] << 16) | (u[o + 3] << 24);
+  b.write('f');
+  b.write(bits.toRadixString(16).padLeft(8, '0'));
 }
 
 void _f64(StringBuffer b, double v) {
