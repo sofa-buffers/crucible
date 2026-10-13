@@ -124,6 +124,35 @@ here:
 
 ## Open — engine & oracles
 
+- [x] **DONE 2026-10-13 — `materialize.sh` got a baseline, and the anchor no longer depends on
+      the differential.** `CLUSTER=1 BASELINE=results/known-clusters-materialized.txt` reduces the
+      run to camps and diffs them against the accounted-for set, the way `run.sh` does; the new baseline
+      carries the three camps a full pass over `corpus/interesting` produces — F-0018 plus the two
+      benign `incomplete_value` rows, the same three the round-trip baseline has, which is worth
+      knowing: on this corpus the two oracles happen to partition identically. The conformance anchor now runs whatever
+      the differential said, and the script exits on the combined verdict — verified both ways
+      (empty baseline: 1 NEW CAMP, exit 1, anchor still ran and passed 0/119). The policy entry
+      was left alone deliberately: widening `c-embedded-nul-string-projection` from one file to
+      "any input" would also excuse a C truncation that has nothing to do with an embedded NUL.
+      Original note below.
+
+      **`materialize.sh` had no baseline, so over a fuzzed corpus a known-legal divergence
+      failed it — and took the conformance anchor down with it.** `run.sh` diffs its camps
+      against `results/known-clusters.txt`; `materialize.sh` has no equivalent, and
+      `oracle/policy.yaml`'s exceptions are keyed to a *file*
+      (`c-embedded-nul-string-projection` → `applies_to: findings/F-0018-…/embedded_nul.bin`),
+      so a fuzzed input with the same root cause lands as a hard `accept_value` divergence.
+      Measured 2026-10-13 over `corpus/interesting` (25507 × 20 drivers): **19 divergences, all
+      of them one input** (`381da1befda7`) × 19 driver pairs, all F-0018 — `c` projects a
+      `string_array` element holding an embedded NUL to the first NUL (`t0:` against
+      `t4:000e7374`). The round-trip pass accounts for the identical camp (CLUSTER 3) without
+      complaint, because its baseline matches on the camp *signature*, not on the input.
+      The second half is worse: the comparator's non-zero exit meets `set -e` *before* the
+      C-anchor conformance check (`engine/structured/materialize.py`), so the half of this
+      oracle that catches a family-wide-wrong dump is skipped exactly when a divergence exists.
+      Either give `materialize.sh` a `BASELINE` like `run.sh`'s, or widen the policy entry from
+      one file to the root cause — and run the anchor regardless of the differential's verdict.
+
 - [x] **DONE 2026-08-16 — enforced, and the input it names is now in a gate.** Decision: keep
       the block and teach `comparator.py` to read it, rather than delete it. A difference on the
       named axis for the named input now prints `[allowed] … <id>` and does not fail the run.
@@ -1091,6 +1120,39 @@ here:
       reproducers + 2 controls promoted into `corpus/regression/` (`F0026_*`, gate 77 → 81). Issue closed.
 
 ## Open — CI / infra
+
+- [ ] **A cancelled nightly job reports nothing.** `check-nightly-steps.py` turns a failed
+      non-blocking step into a red run, but it is a step itself, so a job cancellation — the 2 h
+      ceiling, a runner eviction — kills it too and the run reads as `cancelled` rather than red.
+      38231657547 (2026-10-12) went that way: no verdict produced and no signal that none was.
+      The two-job split and the raised ceilings make it less likely, not visible. Needs something
+      outside the job: a final job with `if: cancelled()`, or a scheduled check that reads the
+      previous run's conclusion. Until then, `cancelled` in `gh run list` is the only tell, which
+      is exactly the "nobody reads it" shape `known-clusters.txt` exists to avoid.
+
+- [x] **DONE 2026-10-13 — split into two jobs, each with its own ceiling.** `fuzz` runs the
+      engines and uploads the grown corpus; `cluster` downloads that artifact and runs both
+      cluster steps, so the oracle has a budget the engines cannot spend. `fuzz` also went from
+      120 to 150 min, because its own half measured 117. **Not** fixed by this: nothing notices a
+      *cancellation* (see the item below it), and the per-step roster rebuild that makes the fuzz
+      half 102 min is untouched — build reuse is still the big lever (`docs/CI.md` follow-ups).
+      Original note below.
+
+      **The nightly exceeded its 2 h job ceiling, and the clustering was what got cut.**
+      `nightly.yml` carries `timeout-minutes: 120`. The eleven scheduled runs from 2026-10-02
+      to 10-11 took 101–112 min; 38231657547 (10-12) was cancelled at 2h0m45s. Both cluster
+      steps run last, so the step that produces the actual verdict is the first thing lost:
+      there the probe cluster step got ~2 min, died inside the roster build, and the union step
+      never started. The corpus was still uploaded, so the artifact looks normal while carrying
+      no cluster report — its `results/CLUSTERS.md` is just the checked-out repo copy. The
+      2026-10-08 signal does not catch this either: a cancellation kills
+      `check-nightly-steps.py` too, so the run reports as `cancelled`, not red.
+      Where the time went: bootstrap 15 min, the eight fuzz engines 09:59→11:41 (102 min against
+      a 75 min `FUZZ_TIME` budget — the rest is one roster rebuild per step), ~2 min left over.
+      Every added driver widens each of those rebuilds, and the JS leg joined the roster on
+      10-13, so the ceiling will keep being hit. Three levers: cut `FUZZ_TIME`; build the roster
+      once and reuse it (the same lever as the build-reuse follow-up in `docs/CI.md`); or split
+      fuzzing and clustering into separate jobs so the oracle gets its own budget.
 
 - [ ] **`chunk_invariance.py`'s per-feed timeout aborts the whole pass on a fuzzed corpus.**
       `CHUNK_FEED_TIMEOUT` defaults to 120 s per driver per chunking; py-pure at chunk size 1

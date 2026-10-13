@@ -8,6 +8,15 @@
 # inventory are uploaded as artifacts for a human to triage (F-0006/7/8/9 workflow).
 # The corpus is cached between runs so coverage compounds night over night.
 #
+# TWO JOBS, ONE BUDGET EACH. Fuzzing and clustering were a single job until 2026-10-13,
+# and the fuzzing grew into the whole 2 h ceiling: 38231657547 was cancelled with the
+# probe cluster step 2 min in and the union step not yet started, so that night produced
+# a corpus and no verdict. A cancellation also kills the reporting step, so the run read
+# as `cancelled` rather than red — the failure was invisible twice over. The oracle now
+# has a `timeout-minutes` of its own that the engines cannot eat into. `cluster` takes the
+# grown corpus from `fuzz`'s artifact rather than the cache, so a missing upload fails it
+# loudly instead of quietly clustering whatever the checkout happened to carry.
+#
 # Non-blocking by design: a fresh divergence is expected signal, not a build break —
 # triage stays human (the corelibs are other repos; cross-repo auto-filing is a
 # later step).
@@ -31,9 +40,14 @@ permissions:
   packages: read
 
 jobs:
+  # The engines. 150, not the 120 this job carried until 2026-10-13: the fuzz half alone
+  # measured 117 min in 38231657547 (bootstrap 15 + 102 across the eight engines, most of
+  # which is one roster rebuild per step), so it was inside its own ceiling by 3 min — and
+  # a cancelled job does not run `if: always()` steps, which would have cost the corpus
+  # upload too. Headroom, not a budget increase: FUZZ_TIME is unchanged.
   fuzz:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     container:
       image: ghcr.io/sofa-buffers/crucible-ci:latest
       credentials:
@@ -157,6 +171,74 @@ jobs:
           CORPUS=corpus/interesting-union FUZZ_SEEDS=corpus/union-deep \
           FUZZ_TIME=$(( ${{ github.event.inputs.fuzz_time || '1800' }} / 4 )) ./scripts/fuzz-go.sh
 
+      # The corpus is what the next night compounds on and what `cluster` below consumes, so
+      # it is uploaded here, before any oracle runs — a cancellation in `cluster` must not cost
+      # the night's fuzzing. results/CLUSTERS.md is deliberately NOT in this artifact: this job
+      # never writes one, and shipping the checked-out copy made the artifact look like it
+      # carried a report when the cluster step had died (2026-10-12).
+      - name: Upload corpus + crashes
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-${{ github.run_id }}
+          path: |
+            corpus/crashes/
+            corpus/interesting/
+            corpus/interesting-union/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # The non-blocking steps above keep the job going — a Go panic is a finding to upload, not
+      # a reason to stop — but a step that stops working then says nothing: the Go engines
+      # (2026-08, 2026-10-01) and both cluster steps (2026-10-05…07, a driver that no longer
+      # compiled) each went dark for days on a green run. Their real outcome is only in
+      # `steps.<id>.outcome`, so every one of them carries an `id` (enforced by
+      # `check-nightly-steps.py --lint` in replay.yml's catalog job), and this step turns any
+      # failure among them into an annotation, a summary line, and a red run. It runs after the
+      # upload, so the artifact is never lost to it.
+      - name: Non-blocking step outcomes (red when any of them failed)
+        if: always()
+        env:
+          STEPS: ${{ toJSON(steps) }}
+        run: python3 scripts/check-nightly-steps.py
+
+  # The oracle, with a wall-clock budget the engines cannot spend. `if: always()` because
+  # every fuzz step is non-blocking: a failed engine still leaves a corpus worth clustering,
+  # and `fuzz` itself only goes red *after* its upload.
+  cluster:
+    runs-on: ubuntu-latest
+    needs: fuzz
+    if: always()
+    timeout-minutes: 120
+    container:
+      image: ghcr.io/sofa-buffers/crucible-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Bootstrap (corelibs + sofabgen @ the branch under test)
+        env:
+          SOFABGEN_TOKEN: ${{ secrets.SOFABGEN_TOKEN }}
+        # The same family as `fuzz` bootstrapped: both jobs resolve FAMILY_BRANCH from the
+        # ref the run was triggered on. A family fix that lands between the two jobs is in
+        # this one and not in the corpus that was grown — the same caveat the single job had
+        # against a fix landing mid-run (docs/CI.md).
+        run: ./scripts/bootstrap.sh
+
+      # Fails the job if the artifact is absent, which is the point: clustering the empty
+      # corpus of a fresh checkout would otherwise report "all accounted for" and mean nothing.
+      - name: Download the grown corpus
+        uses: actions/download-artifact@v7
+        with:
+          name: nightly-${{ github.run_id }}
+
+      - name: Corpus sizes (what is about to be clustered)
+        run: |
+          echo "interesting:       $(ls corpus/interesting       2>/dev/null | wc -l) input(s)"
+          echo "interesting-union: $(ls corpus/interesting-union 2>/dev/null | wc -l) input(s)"
+
       # Clusters the grown corpus and diffs every camp against results/known-clusters.txt.
       # A camp is in that file only once it is EXPLAINED (a catalogued finding, a legal
       # divergence, a benign soft axis), so anything else turns this step red — in an
@@ -191,27 +273,26 @@ jobs:
           CORPUS=corpus/interesting-union BASELINE=results/known-clusters-union.txt \
             ./scripts/run.sh
 
-      - name: Upload findings artifacts
+      # The cluster report, under its own name: `nightly-<id>` is the corpus, written by the
+      # job before this one. Two artifacts rather than one because they are produced by two
+      # jobs with two budgets — and because the report existing at all is now the signal that
+      # the oracle actually ran.
+      - name: Upload cluster report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: nightly-${{ github.run_id }}
-          path: |
-            corpus/crashes/
-            corpus/interesting/
-            corpus/interesting-union/
-            results/CLUSTERS.md
+          name: nightly-clusters-${{ github.run_id }}
+          path: results/CLUSTERS.md
           if-no-files-found: ignore
           retention-days: 14
 
-      # The non-blocking steps above keep the job going — a Go panic is a finding to upload, not
-      # a reason to stop — but a step that stops working then says nothing: the Go engines
-      # (2026-08, 2026-10-01) and both cluster steps (2026-10-05…07, a driver that no longer
-      # compiled) each went dark for days on a green run. Their real outcome is only in
-      # `steps.<id>.outcome`, so every one of them carries an `id` (enforced by
-      # `check-nightly-steps.py --lint` in replay.yml's catalog job), and this step turns any
-      # failure among them into an annotation, a summary line, and a red run. It runs after the
-      # upload, so the artifact is never lost to it.
+      # Both cluster steps are `continue-on-error`, and a step that stops working otherwise says
+      # nothing: GitHub reports it as a success in the UI and the jobs API alike (2026-10-05…07,
+      # a driver that no longer compiled, went dark for three nights on green runs). Their real
+      # outcome is only in `steps.<id>.outcome`, so each carries an `id` (enforced by
+      # `check-nightly-steps.py --lint` in replay.yml's catalog job) and this step turns a
+      # failure into an annotation, a summary line and a red run. After the upload, so the
+      # report is never lost to it.
       - name: Non-blocking step outcomes (red when any of them failed)
         if: always()
         env:

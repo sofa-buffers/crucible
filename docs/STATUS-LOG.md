@@ -14,6 +14,82 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-13 (last) — the nightly's two findings from the triage, fixed: a budget for the oracle, and a baseline for the materialized one
+
+Both came out of the triage entry below, and neither is a wire bug — they are the harness
+failing to report.
+
+**Decision: `nightly.yml` is two jobs, because one job meant the fuzzing could spend the
+oracle's budget.** `fuzz` runs the eight engines and uploads the grown corpus as
+`nightly-<run_id>`; `cluster` downloads that artifact and runs both cluster steps, uploading
+`nightly-clusters-<run_id>`. The split, not merely a bigger ceiling, because the failure mode
+was *ordering*: the oracle ran last, so it absorbed every overrun. Three details are
+deliberate. The corpus is uploaded **before** any oracle runs, so a failure in `cluster` cannot
+cost the night's fuzzing. `cluster` reads the corpus from the **artifact**, not the cache — a
+missing upload fails it loudly rather than quietly clustering an empty checkout. And `fuzz` no
+longer ships `results/CLUSTERS.md`: shipping the checked-out copy is what made 38231657547's
+artifact look like it carried a report when the cluster step had died, which cost a chunk of
+this session before the log said otherwise. `fuzz` also went 120 → 150 min, since its own half
+measured 117 and a cancelled job does not run `if: always()` steps either.
+*Not fixed:* nothing notices a **cancellation** — `check-nightly-steps.py` is a step, so a
+cancel kills it too and the run reads `cancelled`, not red. Logged in `TODO.md` as open; the
+split makes it less likely, not visible.
+
+**Decision: `materialize.sh` gets a baseline, and its conformance anchor stops depending on
+the differential.** `CLUSTER=1 BASELINE=results/known-clusters-materialized.txt` routes the run
+through the same `cluster.py` camp machinery `run.sh` uses, over the materialized payload. This
+is what makes the pass usable over a fuzzed corpus at all: `policy.yaml`'s exceptions are keyed
+to an input **file**, so a fuzzed input hitting an already-explained root cause can match none
+of them — measured as 19 hard `accept_value` divergences, all one input, all F-0018. A camp
+signature does not depend on which input produced it. The policy entry was **left narrow on
+purpose**: widening `c-embedded-nul-string-projection` to "any input" would also excuse a C
+truncation with no embedded NUL in it.
+The second half is the real bug: the comparator's non-zero exit met `set -e` *before* the
+C-anchor check, so the half of this oracle that catches a family-wide-wrong dump was skipped
+exactly when a divergence existed. The status is captured now and the anchor always runs, with
+the script exiting on the combined verdict. Verified both ways — with the baseline, 3/3
+accounted over 25507 × 20 and the anchor green 0/119; against an empty baseline, `1 NEW CAMP`,
+exit 1, and the anchor still ran.
+`results/known-clusters-materialized.txt` is a **separate** file from `known-clusters.txt`
+because the two oracles diff different payloads, so a camp explained for one is not
+automatically explained for the other. On this corpus they happen to partition identically
+(the same three camps), which is a fact about the corpus, not a reason to merge the files.
+
+## 2026-10-13 (later still) — nightlies 37756595827 … 38231657547 triaged — quiet; the last one never clustered, out of wall-clock
+
+- The five scheduled nightlies since 37599016108 (2026-10-08 … 10-12) all fuzzed, with **no
+  crashes in any engine**. Four of them clustered clean (3/3 block, 1/1 union accounted, no new
+  camp). The fifth, **38231657547** (10-12), was **cancelled at 2h0m45s** against
+  `timeout-minutes: 120`: its probe cluster step got ~2 min and died inside the roster build, and
+  the union step never started. The corpus was still uploaded, so the artifact looks ordinary —
+  its `results/CLUSTERS.md` is just the checked-out repo copy, not a report. The 2026-10-08
+  red-on-failed-step signal does not cover this: a cancellation kills
+  `check-nightly-steps.py` too, so the run reads as `cancelled` rather than red.
+- **This is a budget problem, not a corpus problem.** The eleven scheduled runs from 10-02 to
+  10-11 took 101–112 min, so the headroom was 8–19 min before the JS leg joined the roster on
+  10-13. In 38231657547: bootstrap 15 min, the eight fuzz engines 09:59→11:41 (102 min against a
+  75 min `FUZZ_TIME` budget — the remainder is one roster rebuild per step), ~2 min left for the
+  oracle. Both cluster steps run last, so the step that produces the verdict is the first thing
+  lost, and every driver added widens each of those rebuilds. Written up in `TODO.md`
+  (CI / infra) with the three levers; not decided here.
+- Artifact 38231657547 merged into the local corpus: `interesting` 25234 → 25507,
+  `interesting-union` 8577 → 9667.
+- Local round at family `main` (corelib-c-cpp and corelib-java moved; both verified rebuilt
+  rather than served from a stale artifact), sofabgen 0.0.0-20261012221330-63eab81867a3, 0 commits
+  behind the tip: re-cluster **3/3 accounted** over 25507 and **1/1** over 9667, no new camp —
+  `kotlin-js`, `rust-nostd-dyn` and `rust-nostd-h09` joined existing camps in every one, none
+  alone. Chunk invariance (`--modes chunk,scrub`, `CHUNK_FEED_TIMEOUT=2400`) **0 over 25507 × 19**;
+  encode invariance **0 over 25507 × 20**.
+- **materialize was run on the fuzzed corpus this time, and it is the one pass that is not
+  green**: 19 `accept_value` divergences over 25507 × 20 — all of them *one* input
+  (`381da1befda7`) × 19 driver pairs, and all of them **F-0018**, whose C projection to the first
+  NUL is legal (`policy c-embedded-nul-string-projection`). Nothing new, but it exits 1 and
+  `set -e` then skips the C-anchor conformance half. Recorded in `TODO.md` (engine & oracles):
+  the policy exception is keyed to one *file*, so a fuzzed input with the same root cause cannot
+  match it, while `run.sh` matches camps on the signature and passes.
+- `CI.md` said the nightly cron is `02:37`; `nightly.yml` has had `42 2 * * *` for a while.
+  Corrected.
+
 ## 2026-10-13 (later) — the gate `kotlin-js` was still missing: the `limits` tag
 
 Yesterday's un-quarantine put the JS leg in the blocking roster with one tag, `blocking`,
