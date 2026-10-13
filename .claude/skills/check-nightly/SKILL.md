@@ -44,10 +44,17 @@ and the camp verdict — often enough to know whether this is a 5-minute or a 2-
 Into the scratchpad, never straight into the repo — a stale artifact must not silently
 become the local corpus:
 
+**Two artifacts since 2026-10-13**, because the nightly is two jobs: `nightly-<run-id>` is
+the corpus + crashes, written by `fuzz`; `nightly-clusters-<run-id>` is the cluster report,
+written by `cluster`. **The second one missing means the oracle did not run** — that is the
+signal it was split to give, so check for it before concluding the night was quiet.
+
 ```sh
 DL=<scratchpad>/nightly-<run-id>
 gh run download <run-id> -n nightly-<run-id> -D "$DL"
 ls "$DL"/corpus/interesting | wc -l ; ls "$DL"/corpus/crashes
+gh run download <run-id> -n nightly-clusters-<run-id> -D "$DL/clusters" || \
+  echo "NO CLUSTER REPORT — the oracle did not run; re-cluster locally (step 4)"
 ```
 
 Artifacts expire after 14 days; if it is gone, re-run `nightly.yml` via
@@ -142,11 +149,20 @@ Refuted hypotheses are worth recording: each one narrows the next isolate.
 The round-trip oracle is not the whole net:
 
 ```sh
-./scripts/materialize.sh                                             # value defects the round-trip can't see
-                                                                     # (defaults to corpus/structured; CORPUS= to widen)
-CORPUS=corpus/interesting ./scripts/run-chunked.sh --modes chunk,scrub
+CLUSTER=1 BASELINE=results/known-clusters-materialized.txt \
+  CORPUS=corpus/interesting ./scripts/materialize.sh                 # value defects the round-trip can't see
+CORPUS=corpus/interesting CHUNK_FEED_TIMEOUT=2400 \
+  ./scripts/run-chunked.sh --modes chunk,scrub
 CORPUS=corpus/interesting ./scripts/run-encode.sh
 ```
+
+**Both overrides are load-bearing over a fuzzed corpus, and both defaults are documented as
+insufficient for one.** `materialize.sh` without `CLUSTER=1 BASELINE=` reports already-explained
+divergences as hard ones — policy exceptions are keyed to an input *file*, so a fuzzed input
+cannot match one (19 of them on 2026-10-13, all F-0018). `CHUNK_FEED_TIMEOUT` caps the feed per
+*whole corpus per driver*, not per input, and its 120 s default is for the hand-written corpora
+(`oracle/chunk_invariance.py` says so); exceeded, the `TimeoutExpired` ends the run and every
+driver after it in roster order goes unchecked while the summary still prints the ones before.
 
 `--modes chunk,scrub` deliberately omits `split`: its per-`k` sweep is O(maxlen) per driver
 and takes ~44 h over a fuzzed corpus (`docs/TODO.md`). The chunked pass over the fuzzed
