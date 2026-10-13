@@ -1,0 +1,19 @@
+# Accounted-for cluster camps of the MATERIALIZED oracle — the baseline
+# `scripts/materialize.sh` with `CLUSTER=1 BASELINE=…` diffs against.
+#
+# Separate from results/known-clusters.txt because the two oracles compare different
+# payloads: that one diffs the re-encoded wire bytes, this one the full walk of the
+# decoded value (oracle/materialized.md). A root cause can be visible to one and not the
+# other, so a camp explained there is not automatically explained here.
+#
+# Why this file exists at all: `oracle/policy.yaml`'s allowed divergences are keyed to an
+# input FILE, which works for the hand-written gates and cannot work over a fuzzed corpus
+# — a fuzzed input that hits an already-explained root cause matches no policy entry and
+# reads as a hard divergence. A camp signature does not depend on which input produced it.
+#
+# A camp belongs here ONLY once it is explained: a catalogued finding, a legal divergence,
+# or a benign soft axis. Anything else is reported as NEW and the run exits non-zero.
+
+accept:c | accept:cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,java,kotlin-js,kotlin-jvm,kotlin-native,py-cython,py-pure,rust-nostd,rust-nostd-dyn,rust-nostd-h09,rust-std,typescript,zig  # F-0018 — embedded NUL in a string_array element; the C object API stores strings NUL-terminated, so its materialized element is the projection to the first NUL (t0: against t4:000e7374) while the 19 length-carrying profiles keep all four bytes. Legal, same root cause as the round-trip camp (policy c-embedded-nul-string-projection); here it needs a camp row because a fuzzed input cannot match that policy entry's applies_to.
+I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-nostd-dyn,rust-nostd-h09,rust-std,typescript,zig | I:java,kotlin-js,kotlin-jvm,kotlin-native  # benign — java and all three Kotlin legs emit an incomplete_value payload on I; the verdict is unanimous (policy incomplete_value: soft). Same soft axis as the matching row in known-clusters.txt: it is visible to both oracles because the payload is handed back on I either way.
+I:c,cpp,cpp-c-cpp,cpp-c-cpp-dyn,cpp-fixed,csharp,dart,go,py-cython,py-pure,rust-nostd,rust-nostd-dyn,rust-nostd-h09,rust-std,typescript,zig | I:java | I:kotlin-js,kotlin-jvm,kotlin-native  # benign, same soft axis as the row above — the verdict is unanimous I; here java and the three Kotlin legs each hand back an incomplete_value payload and the two payloads differ. The row above covers the case where they agree; this one where they do not.

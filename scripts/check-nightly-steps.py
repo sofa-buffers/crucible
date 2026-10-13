@@ -7,8 +7,9 @@ working: GitHub reports such a step as a success, in the UI and in the jobs API 
 result is only in the workflow's `steps.<id>.outcome`, so this script reads that.
 
   STEPS='${{ toJSON(steps) }}' python3 scripts/check-nightly-steps.py
-      the last step of nightly.yml: one annotation + one summary line per failed step, exit 1
-      when any failed (the artifact upload runs before it, so nothing is lost to the red run)
+      the last step of EACH nightly.yml job (`fuzz` and `cluster` since 2026-10-13; `steps` is
+      job-scoped, so each job reports its own): one annotation + one summary line per failed
+      step, exit 1 when any failed (the artifact upload runs before it, so nothing is lost)
 
   python3 scripts/check-nightly-steps.py --lint [workflow]
       static, in replay.yml's catalog job: every `continue-on-error` step carries an `id`.
@@ -22,8 +23,9 @@ WORKFLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".gith
 
 
 def steps_of(text):
-    """The steps of a workflow as dicts of their top-level keys, by indentation alone (the
-    nightly is one job; no YAML library is needed to see `- name:` / `id:` / a flag)."""
+    """The steps of a workflow as dicts of their top-level keys, by indentation alone. Every
+    job's steps sit at the same indentation, so this sees all of them across jobs — which is
+    what --lint wants; no YAML library is needed to see `- name:` / `id:` / a flag."""
     steps, cur, ind = [], None, None
     for line in text.splitlines():
         s = line.lstrip()

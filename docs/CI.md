@@ -8,7 +8,7 @@ as the corelibs churn. See PLAN §10/§12.
 |---|---|---|---|
 | [`image.yml`](../.github/workflows/image.yml) | `.devcontainer/Dockerfile` change · manual | — | build the 14-toolchain image (incl. the Dart SDK and the Kotlin toolchain — Gradle, kotlinc and Kotlin/Native), push to GHCR |
 | [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | the catalog + participation checks, then build all drivers and run the eight **green** gates + the two streaming gates |
-| [`nightly.yml`](../.github/workflows/nightly.yml) | 02:37 UTC daily (dispatched late; see below) · manual | no | fuzz → grow corpus → cluster → upload artifacts |
+| [`nightly.yml`](../.github/workflows/nightly.yml) | 02:42 UTC daily (dispatched late; see below) · manual | no | two jobs: `fuzz` (grow the corpus, upload it) → `cluster` (cluster it against the baselines, upload the report) |
 
 ## The image (`image.yml`) — the linchpin
 
@@ -115,10 +115,30 @@ artifact upload) reads `steps.<id>.outcome`: every failure becomes an error anno
 the job summary, and a red run. The red run is the signal; it still blocks nothing. A new
 `continue-on-error` step without an `id` fails the `catalog` job of `replay.yml`.
 
+**`nightly.yml` is two jobs, and the second one is the oracle.** `fuzz` runs the eight
+engines and uploads the grown corpus as `nightly-<run_id>`; `cluster` downloads that
+artifact and runs both cluster steps, uploading its report as `nightly-clusters-<run_id>`.
+They are separate jobs because they were one until 2026-10-13 and the fuzzing grew into the
+whole ceiling: 38231657547 was cancelled at 2h0m45s with the probe cluster step 2 min in and
+the union step not started, so that night produced a corpus and no verdict. Two consequences
+worth knowing. **The corpus is uploaded before any oracle runs**, so a failure in `cluster`
+cannot cost the night's fuzzing — and `cluster` takes it from the artifact rather than the
+cache, so a missing upload fails it loudly instead of quietly clustering an empty checkout.
+**Two artifacts, and the second one existing is the signal that the oracle ran** — `fuzz`
+deliberately does not ship `results/CLUSTERS.md`, because shipping the checked-out copy made
+a dead cluster step look like a report.
+
+**A cancelled job reports nothing.** `check-nightly-steps.py` runs as the last step of each
+job and turns a failed non-blocking step red, but a cancellation kills that step too, so the
+run reads as `cancelled` rather than red — the 10-12 failure was invisible twice over. The
+`timeout-minutes` are set with headroom against the measured wall clock for that reason
+(`fuzz` 150 against ~117 min measured, `cluster` 120), but the gap is not a monitor: nothing
+currently notices a cancellation. That is still open (`TODO.md`, CI / infra).
+
 **The cron time is a request, not a promise.** Scheduled runs queue on GitHub's
 shared scheduler and are dispatched under load, so "nightly" regularly arrives in the
 morning: on an unchanged `0 3 * * *` the job started between +0.5 h and +4.5 h late
-depending on the week, with two outliers past +10 h. The cron therefore sits at `:37`
+depending on the week, with two outliers past +10 h. The cron therefore sits at `:42`
 rather than the top of the hour, which is the most contended slot — a mitigation, not
 a fix. Two consequences when reading a run: its wall-clock start says nothing about
 the fuzz budget (that is `FUZZ_TIME`), and it bootstraps the family at whatever `main`
