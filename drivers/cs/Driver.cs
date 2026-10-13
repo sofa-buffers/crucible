@@ -433,7 +433,8 @@ internal static class Driver
             }
         }
         catch (SofabException e) { return ErrLine(e); }
-        catch (Exception) { return "R other"; }
+        // OutOfMemoryException is a crash, not a verdict (a StackOverflow is uncatchable anyway).
+        catch (Exception e) when (e is not OutOfMemoryException) { return "R other"; }
 
         // INCOMPLETE: bytes ended mid-message — the third verdict, not an error. A
         // bare `I`: the partial value is not a decode result, so it is not re-encoded.
@@ -454,7 +455,7 @@ internal static class Driver
             enc = EncodeVia(m);
         }
         catch (SofabException e) { return "E " + RejectClass(e); }
-        catch (Exception) { return "E other"; }
+        catch (Exception e) when (e is not OutOfMemoryException) { return "E other"; }
 
         var sb = new StringBuilder("A ");
         foreach (byte b in enc) sb.Append(b.ToString("x2"));

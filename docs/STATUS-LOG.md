@@ -78,10 +78,11 @@ one-shot path calls the generated decode with the empty input.
 carrier the API documents: rejections from generated visitor code reach the caller as
 `UncheckedIOException` around the `SofabException`, although `IStream.feed` declares and
 documents `SofabException` — filed as corelib-java#129 (corelib boundary; no schema
-knowledge needed). Two smaller API gaps noted, not filed: generated Java `encode()` reports
-a refusal as an untyped `RuntimeException`; generated Go has no caller-buffer encode
-surface and keeps its encoder options unexported, so the encode-fail path restates
-`WithMaxDepth`.
+knowledge needed). Generated Go has no push decoder and no caller-buffer encode, and its
+encoder options are unexported — filed as generator#747; the Go driver decodes the chunk
+axes through the generated `Probe__DecodeFrom` and restates the push construction (scrub
+only) and `WithMaxDepth` (encode-fail/stream) with that issue cited. Noted, not filed:
+generated Java `encode()` documents its refusal as an untyped `RuntimeException`.
 
 **Decision: Crucible does not grep generated code.** `scripts/check-encode-bounds.py`
 regex-modelled where each backend places its encode guards (573 lines, with a self-test of
@@ -100,7 +101,18 @@ encode and scrub paths now fail loudly, unreachable "guess the length" walker fa
 fail loudly. Zig: driver allocation failure no longer prints as a corelib `buffer_full`;
 the scrub axis runs (the "zig borrows" claim in the docs was stale). Rust: the `limit`
 feature is a `--cfg` instead of an edit to the generated `Cargo.toml`. Kotlin: dead
-unwrap, silent unknown-union-tag skip. Stale comments across all drivers.
+unwrap, silent unknown-union-tag skip. Catch-alls no longer swallow VM errors: kotlin,
+dart and csharp let a stack overflow / out-of-memory surface as a crash instead of
+printing `R other`. Stale comments across all drivers.
+
+**Second pass, from the closing review of this change.** `oracle/projection.py` first
+compared the two trees after dropping every default leaf, which let *any* other value
+split ride along as long as one string held a NUL (a lost wrapper length, a dropped
+all-zero blob). It now drops nothing: the trees must be identical except that a string
+the projection itself cut to "" may be absent, with a sequence left holding only such
+strings. The cases — the real F-0018 shapes and those counterexamples — are pinned in
+`scripts/check-oracle-verdicts.py` (catalog job). `sweep_run.py` now fails a malformed
+line even when every driver prints it.
 
 **Correction to the review itself:** it called Zig's chunked verdict a contract breach
 (no `finish()`). Wrong — the generated Zig `feed` returns the `sofab.Status`, which is

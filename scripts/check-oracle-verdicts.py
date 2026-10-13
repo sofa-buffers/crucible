@@ -13,6 +13,9 @@ that cannot be reached by agreement either: the forbidden `usage` class, and `E`
 
     ./scripts/check-oracle-verdicts.py
 
+It also pins oracle/projection.py's NUL-projection relation (the cause a cluster camp
+is tagged with for F-0018), which matches only on inputs no corpus is guaranteed to hold.
+
 Exit 0 = every case below reacted as oracle/canonical.md says it must.
 """
 import os
@@ -75,8 +78,60 @@ CASES = [
 ]
 
 
+def projection_cases():
+    """oracle/projection.py's NUL-projection relation, which tags a cluster camp with
+    F-0018's cause: true for the real shapes, false for any other value split — including
+    one that merely sits next to a NUL-carrying string."""
+    sys.path.insert(0, os.path.join(ROOT, "engine", "structured"))
+    sys.path.insert(0, os.path.join(ROOT, "oracle"))
+    from gen import fstr, fblob, hdr, scalar_u, WT_SEQ_BEG, WT_SEQ_END
+    from projection import related
+
+    def seq(fid, body):
+        return hdr(fid, WT_SEQ_BEG) + body + bytes([WT_SEQ_END])
+
+    def a(b):
+        return "A " + b.hex()
+
+    nul = "\0"
+    return [
+        ("a top-level string cut at its NUL",
+         related(a(seq(8, fstr(2, "A"))), a(seq(8, fstr(2, "A" + nul + "B")))), True),
+        ("a string cut to empty may be omitted with its sequence",
+         related(a(scalar_u(0, 5)), a(seq(8, fstr(2, nul + "B")) + scalar_u(0, 5))), True),
+        ("a wrapper's last element cut to empty stays written",
+         related(a(seq(200, fstr(0, "q") + fstr(4, ""))),
+                 a(seq(200, fstr(0, "q") + fstr(4, nul + "st")))), True),
+        ("an interior wrapper element cut to empty may be omitted",
+         related(a(seq(200, fstr(4, "z"))),
+                 a(seq(200, fstr(1, nul + "x") + fstr(4, "z")))), True),
+        ("the materialized form",
+         related("A {0:t1:41}", "A {0:t3:410042}"), True),
+        ("a different string is not a projection",
+         related(a(seq(8, fstr(2, "X"))), a(seq(8, fstr(2, "A" + nul + "B")))), False),
+        ("a lost wrapper length beside a NUL string is not a projection",
+         related(a(seq(8, fstr(2, "a")) + seq(200, fstr(0, "q") + fstr(1, ""))),
+                 a(seq(8, fstr(2, "a" + nul + "b")) + seq(200, fstr(0, "q") + fstr(4, "")))),
+         False),
+        ("a dropped all-zero blob beside a NUL string is not a projection",
+         related(a(seq(8, fstr(2, "a"))),
+                 a(seq(8, fstr(2, "a" + nul + "b")) + fblob(3, bytes(3)))), False),
+        ("a dropped explicit zero beside a NUL string is not a projection",
+         related(a(seq(8, fstr(2, "a"))),
+                 a(seq(8, fstr(2, "a" + nul + "b")) + scalar_u(1, 0))), False),
+        ("identical values are not a projection",
+         related(a(seq(8, fstr(2, "A"))), a(seq(8, fstr(2, "A")))), False),
+        ("a malformed line is not a projection",
+         related("A {0:t1:4", "A {0:t3:410042}"), False),
+    ]
+
+
 def main():
     fail = 0
+    for desc, got, want in projection_cases():
+        ok = got == want
+        print(f"  {'ok  ' if ok else 'FAIL'} projection: {desc}")
+        fail += not ok
     with tempfile.TemporaryDirectory() as tmp:
         corpus = os.path.join(tmp, "corpus")
         os.makedirs(corpus)

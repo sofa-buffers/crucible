@@ -23,8 +23,10 @@ Both canonical forms are handled:
   the projection is applied to the text directly;
 * the round-trip form (oracle/canonical.md) carries the re-encoded wire. The wire is
   self-describing (CORELIB_PLAN §4), so both lines are parsed into a field tree, the
-  projection is applied to every string, and the trees are compared after dropping the
-  default leaves a canonical encoder omits (a string cut to empty is such a leaf).
+  projection is applied to every string, and the trees must then be identical — except
+  that a string the projection cut to "" may be absent (a canonical encoder omits an
+  empty string), as may a sequence left holding only such strings. Nothing else is
+  normalized: a lost array element, a dropped zero, an emptied blob still breaks it.
 
 Anything that does not parse is *not* related — the conservative answer, which leaves
 the camp to be reported as new.
@@ -115,33 +117,56 @@ def _parse_seq(b, i, nested):
     return out, i
 
 
-def _normalize(tree, project):
-    """Drop default leaves and empty sequences; cut strings at NUL when `project`."""
-    out = {}
+_ERASED = "erased"   # marks a string the projection itself cut to empty
+
+
+def _project(tree):
+    """(tree with every string cut at its first NUL, whether anything changed).
+
+    A string the cut turns into "" is marked: a canonical encoder may then omit it (an
+    empty string is a default) — and only it, plus a sequence it leaves empty. Nothing
+    else is dropped or normalized, so any other difference still breaks the relation."""
+    out, changed = {}, False
     for fid, val in tree.items():
         if isinstance(val, dict):
-            val = _normalize(val, project)
-            if not val:
-                continue
-        elif val[0] == "fix":
-            payload = val[2]
-            if project and val[1] == _FL_STRING:
-                payload = payload.split(b"\0", 1)[0]
-            if not any(payload):
-                continue                # "" / empty blob / +0.0 — omitted when default
-            val = ("fix", val[1], payload)
-        elif val[0] == "n" and val[1] == 0:
-            continue
-        elif val[0] in ("arr", "arrfix") and not val[-1]:
-            continue
+            val, c = _project(val)
+            changed |= c
+        elif val[0] == "fix" and val[1] == _FL_STRING and b"\0" in val[2]:
+            cut = val[2].split(b"\0", 1)[0]
+            val = ("fix", val[1], cut, _ERASED) if not cut else ("fix", val[1], cut)
+            changed = True
         out[fid] = val
-    return out
+    return out, changed
 
 
-def _wire_tree(hexstr, project):
-    b = bytes.fromhex(hexstr)
-    tree, _ = _parse_seq(b, 0, False)
-    return _normalize(tree, project)
+def _erasable(val):
+    if isinstance(val, dict):
+        return bool(val) and all(_erasable(v) for v in val.values())
+    return len(val) == 4 and val[3] == _ERASED
+
+
+def _matches(proj, got):
+    """Is `got` exactly `proj`, except that a projection-erased string (and a sequence
+    holding only such strings) may be absent?"""
+    if any(fid not in proj for fid in got):
+        return False
+    for fid, pv in proj.items():
+        if fid not in got:
+            if not _erasable(pv):
+                return False
+            continue
+        gv = got[fid]
+        if isinstance(pv, dict):
+            if not isinstance(gv, dict) or not _matches(pv, gv):
+                return False
+        elif isinstance(gv, dict) or pv[:3] != gv:
+            return False
+    return True
+
+
+def _wire_tree(hexstr):
+    tree, _ = _parse_seq(bytes.fromhex(hexstr), 0, False)
+    return tree
 
 
 def related(line, other, relation=NUL_PROJECTION):
@@ -152,10 +177,10 @@ def related(line, other, relation=NUL_PROJECTION):
     if not (line.startswith("A ") and other.startswith("A ")):
         return False
     a, b = line[2:], other[2:]
-    if a.startswith(("{", "[")) or b.startswith(("{", "[")):
-        return a == _project_materialized(b)
     try:
-        return _wire_tree(a, False) == _wire_tree(b, True) and \
-            _wire_tree(b, False) != _wire_tree(b, True)
+        if a.startswith(("{", "[")) or b.startswith(("{", "[")):
+            return a == _project_materialized(b)
+        proj, changed = _project(_wire_tree(b))
+        return changed and _matches(proj, _wire_tree(a))
     except (_Malformed, ValueError):
         return False

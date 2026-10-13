@@ -29,10 +29,8 @@ IFS='
 set -- $DRIVER_ARGS
 IFS=$_oldifs
 
-# The encode-side bound guards (generator#656) are STATIC: a refusal is only reachable
-# from the wire through a decoder bug, so no corpus can show that a profile still has
-# them. Assert it right after the build, where the generated code is on disk, rather
-# than leaving "this profile silently stopped refusing" to be noticed by nothing.
+# No driver may be built with an encode-bound opt-out switched on (generator#656): the
+# build recipes and the generated Cargo.toml files are checked right after the build.
 # SKIP_ENCODE_BOUNDS=1 for a run that deliberately builds a subset.
 if [ "${SKIP_ENCODE_BOUNDS:-0}" != "1" ]; then
     python3 "$ROOT/scripts/check-encode-bounds.py" >&2

@@ -97,8 +97,9 @@ def run_axis(name, emitter="emit"):
         # Axis-aware, matching oracle/policy.yaml (as comparator.py does): a verdict
         # split (A/I/R/L) is HARD, and so is a payload split on an agreed verdict — the
         # accept value, the reject class and the limit class are all hard axes. An `I`
-        # carries no payload: one that does parses as "?" and lands as a verdict split.
-        if len(set(verds.values())) > 1:
+        # carries no payload: one that does parses as "?" — a malformed line, which fails
+        # even when every driver prints it (as the comparator's per-line check does).
+        if len(set(verds.values())) > 1 or "?" in verds.values():
             divergences.append((fn, vals))
             continue
         v = next(iter(verds.values()))

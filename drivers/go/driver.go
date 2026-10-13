@@ -42,9 +42,10 @@ var materialized = os.Getenv("SOFAB_MATERIALIZE") == "1"
 
 // The streaming-DECODE axis (drivers/common/CONTRACT.md "Decode side"): how the
 // bytes of each record reach the decoder. Unset is the one-shot Probe__Decode.
-// Set, the record goes through a resumable sofab.Decoder in pieces — the same
-// Probe__New + sofab.NewDecoder(m) the generated Probe__DecodeFrom builds, fed with
-// Decoder.Feed (meta: chunked_decode=push).
+// SOFAB_SPLIT/SOFAB_CHUNK pull: the generated Probe__DecodeFrom reads the record
+// through a reader that yields one planned chunk per Read.
+// SOFAB_CHUNK_SCRUB pushes: Decoder.Feed on driver-owned chunk copies, scrubbed
+// after each call (meta: chunked_decode=push, since one path pushes).
 var (
 	splitAt   = 0     // SOFAB_SPLIT=k: two chunks, [0,k) then [k,end)
 	chunkSize = 0     // SOFAB_CHUNK=n: fixed-size chunks of n bytes (wins over split)
@@ -200,9 +201,10 @@ func reportForeign() {
 //	stream  -> Serialize() into an encoder this driver builds, with the SOFAB_FLUSH
 //	           window, so the encoder crosses a buffer boundary every n bytes
 func encodeVia(m *msg.Probe) ([]byte, error) {
-	// encOpts restates the generated _Probe__EncOpts (unexported): the generated
-	// Encode and EncodeTo bound every encoder they build to Probe__MaxDepth, and an
-	// encoder this driver builds must be the same encoder.
+	// encOpts restates the generated _Probe__EncOpts, which is unexported
+	// (generator#747): the generated Encode and EncodeTo bound every encoder they
+	// build to Probe__MaxDepth, and an encoder this driver builds must be the same
+	// encoder.
 	encOpts := []sofab.Option{sofab.WithMaxDepth(msg.Probe__MaxDepth)}
 	// SOFAB_ENCODE_FAIL=n (CONTRACT.md): hand the encoder a destination of n bytes with
 	// NO sink behind it, so a message that does not fit is REFUSED (ErrBufferFull)
@@ -211,9 +213,10 @@ func encodeVia(m *msg.Probe) ([]byte, error) {
 	// the wire that branch is unreachable, because every value re-encoded here came out
 	// of this driver's own decoder and is in-bounds by construction.
 	//
-	// The generated API has no encode-into-a-caller-buffer entry point, so this builds
-	// the encoder itself — with exactly the options the generated Encode/EncodeTo pass
-	// (encOpts), so the only thing that differs from Encode() is the destination.
+	// The generated API has no encode-into-a-caller-buffer entry point
+	// (generator#747), so this builds the encoder itself — with exactly the options
+	// the generated Encode/EncodeTo pass (encOpts), so the only thing that differs
+	// from Encode() is the destination.
 	if failAfter > 0 {
 		e, err := sofab.NewEncoderBuffer(make([]byte, failAfter), 0, encOpts...)
 		if err != nil {
@@ -519,67 +522,88 @@ func decodeVerdict(err error) string {
 	}
 }
 
-// decodeChunked decodes one record through a resumable decoder, fed in pieces
-// (drivers/common/CONTRACT.md "Decode side"). The decoder is the one the generated
-// Probe__DecodeFrom builds — Probe__New() bound to sofab.NewDecoder, no options —
-// but fed through the corelib's public push surface, Decoder.Feed, so the driver
-// chooses every chunk boundary and owns every chunk buffer. (Probe__DecodeFrom
-// itself pulls through a scratch buffer of its own, which SOFAB_CHUNK_SCRUB could
-// not reach.)
+// chunkPlan cuts one record into the pieces the decode side feeds
+// (drivers/common/CONTRACT.md "Decode side"): chunk>0 → fixed-size chunks of
+// `chunk` bytes (last one short); else 0<split<len → [0,split) then [split,len);
+// else one chunk holding the whole record. A record of length 0 is ONE empty
+// chunk — the decoder answers it, never the driver. The pieces are windows into
+// data.
+func chunkPlan(data []byte, split, chunk int) [][]byte {
+	switch {
+	case chunk > 0:
+		var out [][]byte
+		for off := 0; off < len(data); off += chunk {
+			out = append(out, data[off:min(off+chunk, len(data))])
+		}
+		if len(out) == 0 {
+			out = append(out, data)
+		}
+		return out
+	case split > 0 && split < len(data):
+		return [][]byte{data[:split], data[split:]}
+	default:
+		return [][]byte{data}
+	}
+}
+
+// chunkReader hands a chunk plan to an io.Reader consumer: each Read returns at
+// most the rest of the current chunk and never spans two, so the generated
+// Probe__DecodeFrom (whose FeedFrom feeds every Read's bytes as one chunk) sees
+// exactly the planned boundaries — as long as a chunk fits its 4096-byte scratch
+// buffer; a larger chunk is cut further, which only adds boundaries. An empty
+// chunk yields nothing, so the empty record reads as an immediate io.EOF.
+type chunkReader struct {
+	chunks [][]byte
+}
+
+func (r *chunkReader) Read(p []byte) (int, error) {
+	for len(r.chunks) > 0 && len(r.chunks[0]) == 0 {
+		r.chunks = r.chunks[1:]
+	}
+	if len(r.chunks) == 0 {
+		return 0, io.EOF
+	}
+	n := copy(p, r.chunks[0])
+	r.chunks[0] = r.chunks[0][n:]
+	return n, nil
+}
+
+// decodeChunked decodes one record delivered in pieces (drivers/common/CONTRACT.md
+// "Decode side").
 //
-// The chunk plan: chunk>0 → fixed-size chunks of `chunk` bytes (last one short);
-// else 0<split<len → [0,split) then [split,len); else one chunk holding the whole
-// record. A record of length 0 is ONE empty chunk, fed once — the decoder answers
-// it, never the driver.
+// Without scrub it PULLS: the generated Probe__DecodeFrom reads the record through
+// a chunkReader. Its result is mapped like the one-shot path's: nil → the message,
+// sofab.ErrIncomplete → I, anything else → its reject class. FeedFrom feeds each
+// Read in order, stops at the first error (terminal), and after EOF answers with
+// the decoder's outcome — an Incomplete mid-stream is never terminal there.
 //
-// The verdict comes from what Feed returns (contract rule 3: corelib-go has no
-// finish step; the outcome Feed returns is the status). A non-nil error is
-// terminal and returned as-is; an Incomplete mid-stream only says those bytes ended
-// mid-field, so feeding goes on; after the last chunk, Complete → the message,
-// Incomplete → sofab.ErrIncomplete, exactly as Probe__Decode/Probe__DecodeFrom
-// report it.
-//
-// With scrub, each chunk is a copy the driver owns and is overwritten with 0xA5
-// once Feed returns: Feed borrows a chunk only for the call (§6.0), so a decoder
-// that kept a window into it would read scrubbed bytes.
+// With scrub it PUSHES, because DecodeFrom drains into a scratch buffer of its own
+// that the driver cannot reach: each chunk is a copy the driver owns, handed to
+// Decoder.Feed and overwritten with 0xA5 once Feed returns. Feed borrows a chunk
+// only for the call (§6.0), so a decoder that kept a window into it would read
+// scrubbed bytes. This is the one place the driver restates generated code — the
+// Probe__New + sofab.NewDecoder(m) construction of Probe__DecodeFrom — because the
+// generated API has no push decoder for a message (generator#747). The verdict is
+// what Feed returns (contract rule 3: corelib-go has no finish step): a non-nil
+// error is terminal; after the last chunk, Complete → the message, Incomplete →
+// sofab.ErrIncomplete, as Probe__DecodeFrom reports it.
 func decodeChunked(data []byte, split, chunk int, scrub bool) (*msg.Probe, error) {
+	plan := chunkPlan(data, split, chunk)
+	if !scrub {
+		return msg.Probe__DecodeFrom(&chunkReader{chunks: plan})
+	}
 	m := msg.Probe__New()
 	d := sofab.NewDecoder(m)
-
-	step := len(data)
-	if chunk > 0 {
-		step = chunk
-	} else if split > 0 && split < len(data) {
-		step = split
-	}
-
 	var out sofab.Outcome
-	off := 0
-	for {
-		n := len(data) - off
-		if n > step {
-			n = step
-		}
-		if chunk <= 0 && off > 0 { // a two-way split is two chunks, not fixed-size
-			n = len(data) - off
-		}
-		piece := data[off : off+n]
-		if scrub {
-			piece = append([]byte(nil), piece...)
-		}
+	for _, c := range plan {
+		piece := append([]byte(nil), c...)
 		var err error
 		out, err = d.Feed(piece)
-		if scrub {
-			for i := range piece {
-				piece[i] = 0xA5
-			}
+		for i := range piece {
+			piece[i] = 0xA5
 		}
 		if err != nil {
 			return nil, err
-		}
-		off += n
-		if off >= len(data) {
-			break // the empty record took exactly one (empty) Feed above
 		}
 	}
 	if out != sofab.Complete {
