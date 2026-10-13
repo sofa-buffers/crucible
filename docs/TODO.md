@@ -1100,8 +1100,8 @@ here:
       with the corpus size, or report a timed-out driver as `[TIMEOUT]` and carry on with the
       rest — the second is the one that cannot hide drivers.
 
-- [ ] **The Kotlin target has three of its four KMP legs; the JS one is verified and
-      waiting on an image.** `drivers/kotlin/` runs corelib-kotlin-mp on `jvm`, `linuxX64`
+- [ ] **The Kotlin target has three of its four KMP legs, and all three run in the gates
+      since 2026-10-13.** `drivers/kotlin/` runs corelib-kotlin-mp on `jvm`, `linuxX64`
       (2026-08-18) and,
       since 2026-10-02, `js` (IR, Node). Both blockers the JS leg had collected closed on
       2026-10-12: **G-0046** (generator#716, 2026-10-07; Crucible's half — the walker reading
@@ -1111,9 +1111,8 @@ here:
       relationship). A third one surfaced behind them and is fixed in the same change: the
       compiler zip does not ship `kotlin-dom-api-compat`, which holds `org.khronos.webgl` —
       the corelib's `Seq.fp32BitsView` needs it, and Kotlin's partial linkage defers the
-      missing symbol to run time. The leg is green on all seven gates locally (20 drivers);
-      lifting its quarantine waits on a CI image carrying that klib, which is only built
-      after the Dockerfile change lands. What stays open after that: no `limits` tag, so it
+      missing symbol to run time. The leg is green on all seven gates (20 drivers) and in the
+      blocking roster since 2026-10-13. What stays open: no `limits` tag, so it
       is absent from the limit suite — those rows are the heap profiles whose corelib
       reports LIMIT_EXCEEDED, and whether Kotlin/JS qualifies has not been checked.
       `linuxArm64` is cheap but only tests a cross-compile on an x86 runner — worth it on an

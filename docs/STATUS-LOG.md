@@ -52,6 +52,33 @@ The materialize result is the end-to-end proof for G-0046: `043_f32_snan.bin` an
 `083_arr_fp32_nan_bits.bin` now agree with the family on the JS leg, which is where they
 did not.
 
+## 2026-10-13 — `kotlin-js` is in the gates: three blockers, closed in sequence
+
+The row carries `blocking` from today, and the sequence is worth keeping because each
+blocker was only visible once the one in front of it was gone:
+
+1. **G-0046** — the generated Kotlin visitor took an fp32 as a widened `Float`, so
+   Kotlin/JS quieted a signaling NaN. Fixed upstream by generator#716 (2026-10-07), plus
+   this repo's half: the materialized walker reading the raw-bits channel.
+2. **crucible#244** — the image's `kotlinc` was older than the Kotlin the corelib builds
+   its klibs with, which an older `kotlinc` ignores *silently*. Fixed by the Dockerfile's
+   2.4.21 pin, with `check-kotlin-version.py` asserting the relationship from now on.
+3. **crucible#247** — the compiler distribution does not ship `kotlin-dom-api-compat`,
+   which holds the `org.khronos.webgl` that the corelib's `Seq.fp32BitsView` needs. That
+   helper is *how* (1) was fixed, so (3) existed only because (1) had been: the fix for
+   one blocker created the next. Kotlin's partial linkage deferred the unresolved symbol
+   to run time, so it arrived looking like a corelib bug, in corelib frames.
+
+And the lift itself needed its own merge: the CI image is only rebuilt after a Dockerfile
+change reaches main, so a PR that both adds the klib and un-quarantines the row cannot
+pass its own CI. Twice in two days the same shape — crucible#244 had it one level up — and
+both times the honest move was to split rather than to find a way around the gate.
+
+Green on all seven gates, 20 drivers: seeds, regression (265), conformance, structured
+(119), materialize (0 divergences, C anchor still 0/119 against the independent
+reference), encode invariance (`kotlin-js` 119 × 9 configs), chunk invariance, destination
+failure at 1/16/64 bytes.
+
 ## 2026-10-12 (last, really) — `kotlin-js` verified, and still quarantined for one more merge
 
 Both blockers closed within the day, and a third surfaced behind them (the next entry). The
