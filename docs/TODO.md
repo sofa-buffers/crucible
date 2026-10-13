@@ -1112,11 +1112,13 @@ here:
       compiler zip does not ship `kotlin-dom-api-compat`, which holds `org.khronos.webgl` —
       the corelib's `Seq.fp32BitsView` needs it, and Kotlin's partial linkage defers the
       missing symbol to run time. The leg is green on all seven gates (20 drivers) and in the
-      blocking roster since 2026-10-13. What stays open: no `limits` tag, so it
-      is absent from the limit suite — those rows are the heap profiles whose corelib
-      reports LIMIT_EXCEEDED, and whether Kotlin/JS qualifies has not been checked.
-      `linuxArm64` is cheap but only tests a cross-compile on an x86 runner — worth it on an
-      arm64 runner, not before.
+      blocking roster since 2026-10-13, and in the limit roster since the same day: it
+      qualifies for the same reason the other two legs do, because `LimitExceeded` is
+      declared in the corelib's `commonMain` and the generated probe is one heap-container
+      output for all three targets. Measured: `L` on the over-cap vectors, `A` under,
+      agreeing with the other twelve rows in all four dimensions.
+      What stays open is the fourth leg: `linuxArm64` is cheap but only tests a
+      cross-compile on an x86 runner — worth it on an arm64 runner, not before.
 - [ ] **The Kotlin/Native leg has no coverage front-end.** Jazzer steers the JVM leg
       (`drivers/kotlin/FuzzProbe.kt`), and both legs are replayed against the corpus it
       grows — but Kotlin/Native exposes no libFuzzer entry point, so nothing steers by

@@ -77,12 +77,18 @@ kotlin-native      kotlin   native         blocking,limits   drivers/kotlin/buil
 # mismatch via the Dockerfile's 2.4.21 pin (crucible#244); and the missing
 # `kotlin-dom-api-compat.klib`, which holds the `org.khronos.webgl` the corelib's
 # `Seq.fp32BitsView` needs (crucible#247 — and Kotlin's partial linkage had deferred that
-# one to run time, so it arrived looking like a corelib bug). No `limits` tag: the JS leg
-# is not in the limit roster, which is its own open item (docs/TODO.md).
+# one to run time, so it arrived looking like a corelib bug).
+#
+# It carries `limits` for the same reason the other two Kotlin rows do, and the reason is
+# one level below the target: `LimitExceeded` is declared in the corelib's `commonMain`
+# (`Types.kt`), not per target, and the generated probe is one sofabgen output with heap
+# containers for all three legs. So the JS leg can represent an unbounded field and can
+# report the cap — the two halves membership takes. Verified 2026-10-13 by building it
+# against the unbounded schema and running the suite.
 #
 # NOTE for a stale container: `build.sh js` exits 3 or 1 when the local kotlinc is older
 # than the corelib's Kotlin or the dom-api klib is absent, and with this row in the
 # blocking roster that aborts the roster build rather than one leg. Rebuild the
 # devcontainer from .devcontainer/Dockerfile (crucible#217), or run with ROSTER_TAG= and
 # a hand-picked subset.
-kotlin-js          kotlin   js             blocking          drivers/kotlin/build/js/driver
+kotlin-js          kotlin   js             blocking,limits   drivers/kotlin/build/js/driver
