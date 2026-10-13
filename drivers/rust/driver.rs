@@ -7,7 +7,7 @@
 // below resolve unchanged.
 //
 // Single-pass decode via the generated fallible `Probe::try_decode` (sofabgen
-// 0.16.0 — G-0001 fixed, see docs/SOFABGEN.md): it runs the real generated visitor
+// 0.16.0 — G-0001 fixed, see findings/G-0001-*/NOTES.md): it runs the real generated visitor
 // AND returns the §7 outcome as a `Result`, so one call yields both the verdict
 // and the value. This replaced the earlier two-pass workaround, which recovered
 // the verdict by re-running `IStream::feed` against a null visitor because the old
@@ -17,8 +17,9 @@
 // converges with the family on those inputs (was the F-0003 residual divergence).
 //
 // LimitExceeded (generator#102) maps to a fourth verdict `L`, gated behind the
-// `limit` cargo feature: the arm is std-only (corelib-rs-no-std's Error has no
-// LimitExceeded variant), so build.sh enables `limit` for the `rs` variant only.
+// `crucible_limit` cfg: the arm is std-only (corelib-rs-no-std's Error has no
+// LimitExceeded variant), so build.sh passes `--cfg crucible_limit` (via RUSTFLAGS,
+// leaving the generated Cargo.toml as sofabgen wrote it) for the `rs` variant only.
 // It fires solely under a configured cap (limit mode); with no cap it never occurs,
 // so the default conformance run is unchanged.
 //
@@ -121,14 +122,12 @@ fn read_stream_cfg() -> StreamCfg {
     cfg
 }
 
-// How the record is cut on its way into the decoder. Never an empty chunk: k<=0,
-// k>=len and n>=len all mean one chunk holding the whole record. A zero-length record
-// yields no chunks at all.
+// How the record is cut on its way into the decoder. k<=0, k>=len and n>=len all mean
+// one chunk holding the whole record. A zero-length record is ONE empty chunk, fed once
+// (CONTRACT.md streaming rule 4): the decoder, not the driver, answers the empty
+// message. No other chunk is ever empty.
 fn slices(cfg: &StreamCfg, len: usize) -> Vec<(usize, usize)> {
-    if len == 0 {
-        return Vec::new();
-    }
-    if cfg.chunk > 0 {
+    if cfg.chunk > 0 && len > 0 {
         return (0..len)
             .step_by(cfg.chunk)
             .map(|o| (o, std::cmp::min(cfg.chunk, len - o)))
@@ -271,9 +270,10 @@ fn reject_class(e: Error) -> &'static str {
 // but blind to a decode that differs only where the sparse-canonical wire elides —
 // canonical.md §Tradeoff). This path instead walks the DECODED value and dumps every
 // field + every array element explicitly, matching engine/structured/materialize.py
-// byte-for-byte. The value is already faithful (the decoder fills numeric/fp arrays
-// to N, grows the wrapper Vecs to highest-populated-index + 1, and omitted scalar
-// fp fields decode to their +0.0 default), so we dump it as-is with no normalization.
+// byte-for-byte. Every array — numeric/fp as well as the wrappers — is a
+// length-carrying container (`Vec` / `heapless::Vec`) whose length is what the decoder
+// read, and omitted scalar fp fields decode to their +0.0 default, so we dump the
+// value as-is with no normalization.
 //
 // The walker itself is NOT hand-written: `materialize_gen.py` unrolls the schema
 // descriptor (oracle/materialized-schema.json) into straight-line field-access code
@@ -337,7 +337,7 @@ fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool, cfg: &St
             // made it.
             let _ = writeln!(out, "I");
         }
-        #[cfg(feature = "limit")]
+        #[cfg(crucible_limit)]
         Err(DecodeError::Sofab(Error::LimitExceeded)) => {
             // LIMIT_EXCEEDED (generator#102, limit mode only): a configured
             // receiver-side cap on a schema-unbounded field was exceeded. A policy

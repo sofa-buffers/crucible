@@ -1,9 +1,5 @@
 // Crucible Java driver — materialized value dump (oracle/materialized.md).
 //
-// Lives in package `message` (not crucible) on purpose: the generated nested probe
-// classes (ProbeNested, ProbeArrays, ProbeArraysNested) are package-private, so a
-// reflective walk of their fields must sit inside their package.
-//
 // SCHEMA-AGNOSTIC: the value walk is driven entirely by the GENERATED descriptor
 // (oracle/materialized-schema.json, produced by engine/structured/schema.py) loaded
 // at runtime, NOT by a hardcoded field-by-field walk. Only the per-kind leaf
@@ -20,7 +16,7 @@
 //   * floats are raw IEEE bit patterns (floatToRawIntBits / doubleToRawLongBits),
 //     MSB-first, %x treating the int/long as unsigned hex.
 //   * strings/blobs are "<tag><utf8-byte-length>:<bytes-hex>".
-package message;
+package crucible;
 
 import java.io.IOException;
 import java.lang.reflect.Array;
@@ -32,6 +28,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import message.Probe;
 
 public final class ProbeDump {
     private ProbeDump() {}
@@ -226,13 +224,11 @@ public final class ProbeDump {
         return (List<Object>) node.get("fields");
     }
 
-    /** Reflective field access by schema name: fields are public and named exactly the
-     *  schema names; the nested container classes are package-private (this class is in
-     *  their package), so setAccessible clears any access check. */
+    /** Reflective field access by schema name: the generated classes and their fields
+     *  are public and named exactly the schema names, so no access check is bypassed. */
     private static Object field(Object value, String name) {
         try {
             Field f = value.getClass().getField(name);
-            f.setAccessible(true);
             return f.get(value);
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException("no schema field '" + name + "' on " + value.getClass(), e);

@@ -33,28 +33,27 @@ SOFABGEN="$ROOT/tools/sofabgen"
 CXX="${CXX:-g++}"
 CC="${CC:-cc}"
 
-# HASLIM: two properties of the pure-C++ corelib that the c-cpp wrapper does not
-# share, so the shared driver.cpp guards the code needing them.
-#   CRUCIBLE_HAS_LIMIT_EXCEEDED — its sofab::Error carries LimitExceeded (the heap
-#     profile, generator#102); the c-cpp wrapper's Error does NOT (fixed-capacity),
-#     so the L verdict is compiled in only here. Only the cpp variant is in limit
-#     mode — the c-cpp fixed-capacity profile cannot generate an unbounded field
-#     (see scripts/run-limits.sh).
-#   CRUCIBLE_ISTREAM_TAKES_LIMITS — since corelib-cpp#128 its IStreamInline and
-#     IStreamObject take the receiver's field-span cap as a constructor argument with
-#     no default (§6.2.1 leaves the library no number to invent), so the streams
-#     driver.cpp builds by hand must state it. The c-cpp wrapper takes no such
-#     argument, and its one-argument constructor is what the absent macro selects.
+# COREDEF: CRUCIBLE_CORELIB_CPP marks the pure-C++ corelib. The shared driver.cpp
+# calls the generated try_decode in every profile; the macro selects only where the
+# two corelibs' public APIs genuinely differ:
+#   - its sofab::Error carries LimitExceeded (generator#102), so the L verdict is
+#     compiled in only here; the c-cpp wrapper's Error has no such code. Only the cpp
+#     variant is in limit mode (see scripts/run-limits.sh).
+#   - the chunked-decode axes drive a stream by hand (no generated decoder(),
+#     crucible#132), built the way that profile's generated try_decode builds it:
+#     corelib-cpp's IStreamInline takes the receiver's field-span cap as a constructor
+#     argument with no default (corelib-cpp#128), the c-cpp wrapper's generated
+#     try_decode uses an argument-less IStreamObject.
 # STRICT: strict UTF-8 (MESSAGE_SPEC §8 / CORELIB_PLAN §6.4). The fuzzer runs the
 # check ON so an invalid-UTF-8 `string` is family-uniformly rejected (F-0004). The
 # pure-C++ corelib (cpp) defaults SOFAB_STRICT_UTF8=1 already; only the c-cpp
 # (C-corelib) profile defaults OFF for footprint and must opt in explicitly.
 CCPP_SRC="src/object.c src/istream.c src/ostream.c src/utf8.c"
 case "$VARIANT" in
-    cpp)       CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: {} }";                                     CSRC=""; HASLIM="-DCRUCIBLE_HAS_LIMIT_EXCEEDED -DCRUCIBLE_ISTREAM_TAKES_LIMITS"; STRICT="" ;;
-    cpp-fixed) CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: { allow_dynamic: false } }";               CSRC=""; HASLIM="-DCRUCIBLE_HAS_LIMIT_EXCEEDED -DCRUCIBLE_ISTREAM_TAKES_LIMITS"; STRICT="" ;;
-    c-cpp)     CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp } }";                     CSRC=""; HASLIM=""; STRICT="-DSOFAB_ENABLE_STRICT_UTF8" ;;
-    c-cpp-dyn) CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp, allow_dynamic: true } }"; CSRC=""; HASLIM=""; STRICT="-DSOFAB_ENABLE_STRICT_UTF8" ;;
+    cpp)       CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: {} }";                                     CSRC=""; COREDEF="-DCRUCIBLE_CORELIB_CPP"; STRICT="" ;;
+    cpp-fixed) CORELIB="$ROOT/vendor/corelib-cpp";   INC="-I$CORELIB/include";     CFG="targets: { cpp: { allow_dynamic: false } }";               CSRC=""; COREDEF="-DCRUCIBLE_CORELIB_CPP"; STRICT="" ;;
+    c-cpp)     CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp } }";                     CSRC=""; COREDEF=""; STRICT="-DSOFAB_ENABLE_STRICT_UTF8" ;;
+    c-cpp-dyn) CORELIB="$ROOT/vendor/corelib-c-cpp"; INC="-I$CORELIB/src/include"; CFG="targets: { cpp: { corelib: c-cpp, allow_dynamic: true } }"; CSRC=""; COREDEF=""; STRICT="-DSOFAB_ENABLE_STRICT_UTF8" ;;
     *) echo "unknown variant '$VARIANT' (want: cpp | cpp-fixed | c-cpp | c-cpp-dyn)" >&2; exit 2 ;;
 esac
 # Both c-cpp configurations compile and link the C corelib's sources; only the
@@ -99,12 +98,6 @@ python3 "$HERE/materialize_gen.py" "$GEN/materialize_gen.inc" "$SCHEMA" >&2
 SAN=""
 [ "${SANITIZE:-1}" = "1" ] && SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
 
-# Limit mode (LIMITS set) runs against the *unbounded* probe-dyn schema, which has no
-# §5.2 schema bounds — so the driver decodes with a bare feed there, not the generated
-# try_decode (see driver.cpp). Signal it to the driver.
-LIMMODE=""
-[ -n "${LIMITS:-}" ] && LIMMODE="-DCRUCIBLE_LIMIT_MODE"
-
 # c-cpp compiles the C corelib sources (C99) with the same sanitizers, then links.
 COBJS=""
 if [ -n "$CSRC" ]; then
@@ -119,6 +112,6 @@ fi
 
 echo "==> [cpp:$VARIANT] compiling driver ($CXX${SAN:+, sanitized})" >&2
 # shellcheck disable=SC2086
-"$CXX" -std=c++20 -O1 -Wall $SAN $HASLIM $LIMMODE $STRICT -I"$GEN" $INC "$HERE/driver.cpp" $COBJS -o "$OUT/driver" >&2
+"$CXX" -std=c++20 -O1 -Wall $SAN $COREDEF $STRICT -I"$GEN" $INC "$HERE/driver.cpp" $COBJS -o "$OUT/driver" >&2
 
 echo "$OUT/driver"

@@ -1,6 +1,6 @@
 lang=dart
 corelib=corelib-dart
-framework=dart-ffi-libfuzzer
+framework=none
 pacemaker=false
 chunked_decode=push
 encode_surfaces=new,to,stream

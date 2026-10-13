@@ -276,9 +276,9 @@ fn matBytes(out: anytype, tag: u8, s: []const u8) !void {{
     for (s) |b| try out.print("{{x:0>2}}", .{{b}});
 }}
 
-/// Walk the decoded `m` and emit its materialized-value form to `out`. String and
-/// blob bytes borrow the input buffer (zero-copy decode), so this must run before
-/// the per-record arena reset — the driver's accept path already guarantees that.
+/// Walk the decoded `m` and emit its materialized-value form to `out`. The message
+/// owns its string and blob bytes, allocated from the driver's per-record arena, so
+/// this must run before that arena is reset — the driver's accept path guarantees it.
 pub fn materialize(out: anytype, m: *const message.Probe) !void {{
 {body}
 }}

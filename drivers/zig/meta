@@ -1,6 +1,6 @@
 lang=zig
 corelib=corelib-zig
-framework=zig-fuzz
+framework=none
 pacemaker=false
 chunked_decode=push
 encode_surfaces=new,stream

@@ -11,8 +11,8 @@
 // The mapping to the canonical verdict is 1:1 — complete→A, incomplete→I,
 // invalid→R, limitExceeded→L — the same shape as the Go driver.
 //
-// The Dart coverage engine (dart:ffi shared lib + a C libFuzzer harness, like
-// Zig) is a separate front-end; this file is the replay path only.
+// There is no Dart coverage front-end (meta: framework=none): Dart has no
+// first-party libFuzzer. This file is the replay path only.
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -82,12 +82,11 @@ void _checkCfg() {
   }
 }
 
-// How the record is cut on its way in. Never an empty chunk; a 0-byte record
-// yields none at all.
+// How the record is cut on its way in. Never an empty chunk, except that a 0-byte
+// record is exactly one empty chunk, fed once like any other (CONTRACT rule 4).
 List<Uint8List> _chunksOf(Uint8List data) {
   final len = data.length;
-  if (len == 0) return const [];
-  if (_chunk > 0) {
+  if (_chunk > 0 && len > 0) {
     final out = <Uint8List>[];
     for (var o = 0; o < len; o += _chunk) {
       out.add(Uint8List.fromList(data.sublist(o, o + _chunk > len ? len : o + _chunk)));
@@ -174,11 +173,11 @@ String canonical(Uint8List data) {
       // Chunked decode via the generated ProbeDecoder, taken ONLY when a chunking
       // variable is set — the default stays the one-shot tryDecode byte for byte,
       // which is what makes the gate meaningful: it then compares two genuinely
-      // different code paths. Verdict from the last feed(), never from finish().
-      // A record with no chunks (a zero-length one) feeds nothing and keeps
-      // `complete`: zero bytes are the valid empty message.
+      // different code paths. Verdict from the last feed(), never from finish()
+      // (CONTRACT rule 3: finish() returns null here where other backends throw).
+      // There is always at least one chunk, so `st` is always a feed()'s answer.
       final d = Probe.decoder(out);
-      st = sofab.DecodeStatus.complete;
+      st = sofab.DecodeStatus.incomplete;
       for (final c in _chunksOf(data)) {
         st = d.feed(c);
         // Scrub: the chunk is a copy the driver owns, so overwriting it after feed
@@ -194,16 +193,24 @@ String canonical(Uint8List data) {
     return 'R other';
   }
 
-  // INCOMPLETE (MESSAGE_SPEC §7): bytes end inside a field/varint or an open
-  // sequence — the third verdict, neither accept nor reject. corelib-dart returns
-  // no partial value here, so emit the bare `I`.
-  if (st == sofab.DecodeStatus.incomplete) return 'I';
-  // LIMIT_EXCEEDED (generator#102, limit mode only): a configured receiver-side
-  // cap on a schema-unbounded field. A policy rejection distinct from INVALID.
-  if (st == sofab.DecodeStatus.limitExceeded) return 'L';
-  // INVALID: malformed regardless of what follows. Reject class is coarse
-  // (soft axis, see oracle/policy.yaml) — the status carries no finer code.
-  if (st == sofab.DecodeStatus.invalid) return 'R invalid_msg';
+  // An exhaustive switch (no `default`): a status corelib-dart adds later fails the
+  // build here instead of falling through to an accept.
+  switch (st) {
+    case sofab.DecodeStatus.complete:
+      break;
+    // INCOMPLETE (MESSAGE_SPEC §7): bytes end inside a field/varint or an open
+    // sequence — the third verdict, neither accept nor reject. Bare `I`.
+    case sofab.DecodeStatus.incomplete:
+      return 'I';
+    // LIMIT_EXCEEDED (generator#102, limit mode only): a configured receiver-side
+    // cap on a schema-unbounded field. A policy rejection distinct from INVALID.
+    case sofab.DecodeStatus.limitExceeded:
+      return 'L';
+    // INVALID: malformed regardless of what follows. Reject class is coarse
+    // (soft axis, see oracle/policy.yaml) — the status carries no finer code.
+    case sofab.DecodeStatus.invalid:
+      return 'R invalid_msg';
+  }
 
   // COMPLETE. In materialize mode, dump the decoded value (oracle/materialized.md);
   // otherwise re-encode with the corelib's own sparse-canonical encoder and emit the

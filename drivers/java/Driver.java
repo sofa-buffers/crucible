@@ -9,7 +9,7 @@
 // bytes into the passed `Probe` and returns what `IStream.feed` answered, so
 // one call yields both the three-valued VERDICT (its returned status, or the
 // SofabException it throws on malformed input) and the decoded VALUE (the filled
-// `Probe`, re-encoded for the A/I hex). This replaces the earlier two-pass
+// `Probe`, re-encoded for the A hex). This replaces the earlier two-pass
 // workaround that re-ran `IStream.feed` against a null visitor because the plain
 // `Probe.decode` discarded the status.
 //
@@ -21,6 +21,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -84,13 +85,12 @@ public final class Driver {
     }
     private static final boolean CHUNKING = SPLIT != 0 || CHUNK != 0 || SCRUB;
 
-    /** How the record is cut on its way in. Never an empty chunk; a 0-byte record
-     *  yields none at all. */
+    /** How the record is cut on its way in. A 0-byte record is ONE empty chunk, fed
+     *  once like any other (CONTRACT.md); otherwise no chunk is empty. */
     private static List<byte[]> chunksOf(byte[] data) {
         List<byte[]> out = new ArrayList<>();
         int len = data.length;
-        if (len == 0) return out;
-        if (CHUNK > 0) {
+        if (CHUNK > 0 && len > 0) {
             for (int o = 0; o < len; o += CHUNK) {
                 int n = Math.min(CHUNK, len - o);
                 byte[] c = new byte[n];
@@ -151,10 +151,11 @@ public final class Driver {
             case ARGUMENT:    return "argument";
             // USAGE was removed in corelib-java#49; the canonical "usage" class
             // stays in oracle/canonical.md for the corelibs that still have it.
-            // Anything unmapped falls through to the invalid_msg default below.
             case BUFFER_FULL: return "buffer_full";
-            case INVALID_MSG:
-            default:          return "invalid_msg";
+            case INVALID_MSG: return "invalid_msg";
+            // LIMIT_EXCEEDED never gets here (errLine answers `L` first); an error
+            // code this switch does not know is `other`, never folded into a class.
+            default:          return "other";
         }
     }
 
@@ -165,43 +166,34 @@ public final class Driver {
     }
 
     // A RE-ENCODE that was refused (generator#656: a value past a declared
-    // count/maxlen/width is refused with SofabError.ARGUMENT). Two rules:
-    //
-    //   on A  -> the `E <class>` verdict. NOT `R`: the decode just accepted these
-    //            bytes, so calling them malformed states the opposite of what happened
-    //            (oracle/canonical.md "The fifth verdict `E`").
-    //   on I  -> the bare `I`. The payload is dropped, the verdict is not: `I` is a
-    //            decode fact and hard, its hex a soft, optional payload. Letting an
-    //            encode failure rewrite it to `R`/`E` is the I-into-R collapse F-0001
-    //            exists to catch — and this driver is the only one that emits
-    //            `I <hex>` at all, so it was the only one where it could happen.
-    private static String refused(char verdict, String cls) {
-        return verdict == 'I' ? "I" : "E " + cls;
-    }
-
-    private static String hexValue(char verdict, Probe m) {
-        // Value for an A (COMPLETE) or I (INCOMPLETE) line: re-encode the decoded
-        // message -> hex (oracle/canonical.md). For I this is the partial value
-        // filled before truncation (the `incomplete_value` axis is soft in Phase 2;
-        // the verdict itself is hard).
+    // count/maxlen/width is refused with SofabError.ARGUMENT) is the `E <class>`
+    // verdict. NOT `R`: the decode just accepted these bytes, so calling them
+    // malformed states the opposite of what happened (oracle/canonical.md "The
+    // fifth verdict `E`"). Only an A line re-encodes; `I` carries no payload.
+    private static String hexValue(Probe m) {
+        // Value for an A (COMPLETE) line: re-encode the decoded message -> hex
+        // (oracle/canonical.md).
         byte[] enc;
         try {
             enc = encodeVia(m);
         } catch (SofabException e) {
             // Before IOException, which SofabException extends: the category is the
             // whole point of the `E` line, and the generic arm would flatten it.
-            return refused(verdict, rejectClass(e));
+            return "E " + rejectClass(e);
         } catch (IOException e) {
-            return refused(verdict, "other");
+            return "E other";
         } catch (RuntimeException e) {
-            Throwable c = (e.getCause() != null) ? e.getCause() : e;
-            if (c instanceof SofabException) {
-                return refused(verdict, rejectClass((SofabException) c));
+            // The generated `Probe.encode()` documents its refusal as a
+            // RuntimeException wrapping the SofabException `serialize` raised (its
+            // signature has no checked exception), so that carrier keeps its class.
+            // Any other RuntimeException is `other`.
+            if (e.getCause() instanceof SofabException) {
+                return "E " + rejectClass((SofabException) e.getCause());
             }
-            return refused(verdict, "other");
+            return "E other";
         }
         StringBuilder sb = new StringBuilder();
-        sb.append(verdict).append(' ');
+        sb.append("A ");
         for (byte b : enc) {
             sb.append(String.format("%02x", b & 0xff));
         }
@@ -220,10 +212,9 @@ public final class Driver {
                 // byte, which is also what makes the gate meaningful: it then compares
                 // two genuinely different code paths. The verdict is the last feed()'s
                 // return value, never finish(), which throws mid-field (CONTRACT.md).
-                // A record with no chunks (a zero-length one) feeds nothing and keeps
-                // COMPLETE: zero bytes are the valid empty message.
+                // The chunk plan is never empty, so the decoder always answers.
                 Probe.Decoder d = Probe.decoder();
-                status = DecodeStatus.COMPLETE;
+                status = null;
                 for (byte[] c : chunksOf(data)) {
                     status = d.feed(c);
                     // Scrub: the chunk is a copy the driver owns, so overwriting it
@@ -236,27 +227,32 @@ public final class Driver {
             }
         } catch (SofabException e) {
             return errLine(e);
-        } catch (RuntimeException e) {
-            // Generated decode raises rejections from inside the visitor as an
-            // unchecked wrapper (e.g. UncheckedIOException around a SofabException),
-            // so the real category — including LIMIT_EXCEEDED — arrives here rather
-            // than the checked branch above. Unwrap to preserve the L/R distinction;
-            // a genuinely foreign RuntimeException still falls through to "R other".
-            Throwable c = (e.getCause() != null) ? e.getCause() : e;
-            if (c instanceof SofabException) {
-                return errLine((SofabException) c);
+        } catch (UncheckedIOException e) {
+            // corelib-java's IStream.feed documents this carrier: a rejection raised by
+            // the generated visitor (a schema bound, a receiver cap — LIMIT_EXCEEDED
+            // included) leaves feed as an UncheckedIOException wrapping the
+            // SofabException, not as the SofabException itself. That is the API an
+            // application has today, so unwrap exactly that and keep the L/R split.
+            // Upstream: https://github.com/sofa-buffers/corelib-java/issues/129
+            // ("IStream.feed rethrows the UncheckedIOException carrier instead of the
+            // documented SofabException") — this arm goes when that is fixed.
+            if (e.getCause() instanceof SofabException) {
+                return errLine((SofabException) e.getCause());
             }
+            return "R other";
+        } catch (RuntimeException e) {
             return "R other";
         }
         // INCOMPLETE (MESSAGE_SPEC §7): bytes end mid-message — the third canonical
-        // verdict, neither accept (A) nor reject (R). Not an error. COMPLETE emits A.
-        char verdict = (status == DecodeStatus.INCOMPLETE) ? 'I' : 'A';
+        // verdict, neither accept (A) nor reject (R). Not an error, and a bare `I`:
+        // the partial value is not a decode result, so it is not re-encoded.
+        if (status == DecodeStatus.INCOMPLETE) return "I";
         // Materialized mode replaces only the A payload with the decoded-value dump
-        // (oracle/materialized.md); I keeps the round-trip hex of its partial value.
-        if (verdict == 'A' && MATERIALIZE) {
-            return "A " + message.ProbeDump.dump(m);
+        // (oracle/materialized.md).
+        if (MATERIALIZE) {
+            return "A " + ProbeDump.dump(m);
         }
-        return hexValue(verdict, m);
+        return hexValue(m);
     }
 
     private static boolean readFully(InputStream in, byte[] buf, int n) throws IOException {

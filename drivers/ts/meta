@@ -1,8 +1,8 @@
 lang=typescript
 corelib=corelib-ts
-framework=jazzer.js
+framework=none
 pacemaker=false
 chunked_decode=push
-encode_surfaces=stream
+encode_surfaces=new,stream
 encode_fail=yes
 min_output_buffer=1

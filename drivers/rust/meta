@@ -1,6 +1,6 @@
 lang=rust
 corelib=corelib-rs,corelib-rs-no-std
-framework=cargo-fuzz
+framework=none
 pacemaker=false
 variants=rs,rs-no-std
 chunked_decode=push

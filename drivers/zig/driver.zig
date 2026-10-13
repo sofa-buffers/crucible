@@ -4,13 +4,15 @@
 // decodes each into the probe message via the generated corelib-zig code, and
 // writes one canonical line (oracle/canonical.md) per record to stdout.
 //
-// Like Go/Python/Java/TS/C# (and unlike Rust/C++), the generated Zig decode is
-// fallible: `Probe.decode` returns `sofab.Error!Probe`, so the verdict is a
-// `catch`. Zig 0.16 std.Io: main takes `std.process.Init` (for `io`/`gpa`),
-// stdin/stdout go through `std.Io.File` reader/writer interfaces.
+// The generated Zig decode is fallible: `Probe.decode` returns
+// `DecodeError!Probe` (the corelib's error set plus IncompleteMessage), so the
+// verdict is a `catch`. Zig 0.16 std.Io: main takes `std.process.Init` (for
+// `io`/`gpa`), stdin/stdout go through `std.Io.File` reader/writer interfaces.
 //
-// The generated decode is zero-copy: `m.s` borrows from `data`, so the canonical
-// line is emitted while `data` is still alive (before it is freed).
+// A decoded message owns its bytes (generated message.zig header): strings, blobs
+// and array storage are copied into the allocator passed to decode, on the one-shot
+// path as on the streaming one. That allocator is the per-record arena, so the
+// message lives until the next record resets it.
 const std = @import("std");
 const message = @import("message.zig");
 const sofab = @import("sofab");
@@ -29,8 +31,8 @@ const sofab = @import("sofab");
 // reshapes materialize_gen.zig with zero hand-editing here. (Zig 0.16 comptime
 // field access needs field names at compile time, and string vs blob are both
 // []const u8 — so the descriptor is unrolled to source rather than walked at
-// runtime.) Strings/blobs borrow `data` (zero-copy), so the dump is written while
-// `data` is still alive (before reset).
+// runtime.) Strings/blobs live in the per-record arena, so the dump is written
+// before the next record resets it.
 const matgen = @import("materialize_gen.zig");
 
 // ---- the streaming axes (drivers/common/CONTRACT.md) --------------------------
@@ -39,20 +41,16 @@ const matgen = @import("materialize_gen.zig");
 // so neither streaming surface of the generated API is reachable through it. Unset,
 // every variable below is today's behaviour byte for byte.
 //
-// The verdict is what the last feed() returned, not finish() (which returns an error
-// mid-field). It used to come from a status() accessor beside feed; CORELIB_PLAN
-// §5.2.1 closed that door ("no second place to ask"), so the generated Decoder no
-// longer has one.
+// The verdict is the sofab.Status the last feed() returned: in this backend that
+// return value IS the decoder's status, which CONTRACT.md streaming rule 3 says to
+// read where a backend exposes one (CORELIB_PLAN §5.2.1 makes it the only place to
+// ask -- there is no separate status() accessor). finish() is not used for the
+// verdict: rule 3 routes it through finish() only for backends with no status.
 //
-// SOFAB_CHUNK_SCRUB used to be inapplicable here: the generated Decoder borrowed a
-// string/blob that arrived whole inside one chunk, and required a fed chunk to
-// outlive the message, so scrubbing violated the backend's contract instead of
-// testing it. generator#295 removed the borrow from the STREAMING path — the
-// decoder now owns its payloads, and only the contiguous one-shot decode still
-// borrows, from the caller's own buffer where that is safe. So the scrub axis
-// applies here like everywhere else, and the exit-3 carve-out is gone: a carve-out
-// that outlives its reason is exactly the silent exclusion these mechanisms exist
-// to prevent.
+// SOFAB_CHUNK_SCRUB applies here like everywhere else: the generated Decoder copies
+// every string and blob out of the chunk (generator#295; message.zig: "a fed chunk
+// does not have to outlive the message"), so a scrubbed chunk must not change the
+// line. There is no exit-3 carve-out for it.
 const StreamCfg = struct {
     split: usize = 0,
     chunk: usize = 0,
@@ -106,9 +104,16 @@ fn readStreamCfg(init: std.process.Init) StreamCfg {
     return cfg;
 }
 
+// A driver-side allocation failure is the driver's own problem, never a corelib
+// verdict: it must not be dressed up as `R`/`E <class>`. Fail the run loudly instead.
+fn driverOom() noreturn {
+    std.debug.print("crucible-zig: driver allocation failed (out of memory)\n", .{});
+    std.process.exit(1);
+}
+
 // The class a refused RE-ENCODE carries. `anyerror` rather than the corelib's error
-// set: the stream arm can also surface an allocation failure, which is the driver's
-// own problem and must not be dressed up as a corelib code.
+// set, because the allocating encode() also carries std.mem.Allocator.Error; that
+// one is handled (as driverOom) before this mapping is reached.
 fn encode_class(e: anyerror) []const u8 {
     return switch (e) {
         error.InvalidArgument => "argument",
@@ -117,14 +122,16 @@ fn encode_class(e: anyerror) []const u8 {
     };
 }
 
-// Sink for the streaming encode: collect what the OStream flushes.
+// Sink for the streaming encode: collect what the OStream flushes. The sink cannot
+// return an error, and silently dropping bytes would forge a short `A <hex>`, so an
+// allocation failure here ends the run.
 const EncAcc = struct {
     list: std.ArrayListUnmanaged(u8) = .empty,
     alloc: std.mem.Allocator,
 
     fn sink(ctx: ?*anyopaque, data: []const u8) void {
         const self: *EncAcc = @ptrCast(@alignCast(ctx.?));
-        self.list.appendSlice(self.alloc, data) catch {};
+        self.list.appendSlice(self.alloc, data) catch driverOom();
     }
 };
 
@@ -139,7 +146,9 @@ pub fn main(init: std.process.Init) !void {
         false;
 
     const cfg = readStreamCfg(init);
-    const chunking = cfg.split != 0 or cfg.chunk != 0;
+    // SOFAB_CHUNK_SCRUB alone also takes the decoder path (one whole chunk, scrubbed
+    // after feed), so the lifetime oracle runs even without a split.
+    const chunking = cfg.split != 0 or cfg.chunk != 0 or cfg.scrub;
 
     var inbuf: [8192]u8 = undefined;
     var stdin_reader = std.Io.File.stdin().readerStreaming(io, &inbuf);
@@ -169,23 +178,22 @@ pub fn main(init: std.process.Init) !void {
         const data = try a.alloc(u8, n);
         if (n > 0) try in.readSliceAll(data);
 
-        // decode -> re-encode -> hex (oracle/canonical.md). m borrows string bytes
-        // from `data` (kept alive until the next reset), so encode can read them.
+        // decode -> re-encode -> hex (oracle/canonical.md). The decoded message owns
+        // its bytes (copied into the arena), so `data` plays no part after decode.
         //
         // The chunked path is taken ONLY when a chunking variable is set, so the
         // default stays the one-shot Probe.decode byte for byte — which is what
         // makes the gate meaningful: it then compares two genuinely different code
-        // paths. `data` outlives the message either way (arena reset per record),
-        // which is exactly the lifetime this backend documents as required.
+        // paths.
         const m = (if (chunking) blk: {
             var acc: message.Probe = .{};
             var d = message.Probe.decoder(&acc, a);
             var off: usize = 0;
-            // The verdict is what the LAST feed returned. A record with no bytes
-            // feeds nothing and keeps `.complete`: zero bytes are the valid empty
-            // message.
-            var st: sofab.Status = .complete;
-            while (off < n) {
+            var st: sofab.Status = undefined;
+            // A zero-length record is ONE empty chunk, fed once (CONTRACT.md
+            // streaming rule 4): the decoder answers the empty message, not the
+            // driver. Otherwise no chunk is ever empty.
+            while (true) {
                 var step: usize = if (cfg.chunk > 0) cfg.chunk else n;
                 if (cfg.chunk == 0 and cfg.split > 0 and cfg.split < n and off == 0)
                     step = cfg.split;
@@ -194,8 +202,7 @@ pub fn main(init: std.process.Init) !void {
                 // decoder that borrowed from the chunk instead of copying out of it
                 // reads back 0xA5.
                 const piece = if (cfg.scrub) blk2: {
-                    const copy = a.alloc(u8, step) catch break :blk @as(
-                        message.DecodeError!message.Probe, error.BufferFull);
+                    const copy = a.alloc(u8, step) catch driverOom();
                     @memcpy(copy, data[off .. off + step]);
                     break :blk2 copy;
                 } else data[off .. off + step];
@@ -203,8 +210,10 @@ pub fn main(init: std.process.Init) !void {
                     message.DecodeError!message.Probe, e);
                 if (cfg.scrub) @memset(@constCast(piece), 0xA5);
                 off += step;
+                if (off >= n) break;
             }
-            // Verdict from the last feed's return, never from finish() (CONTRACT.md).
+            // Verdict from the status the last feed returned (CONTRACT.md streaming
+            // rule 3); `.complete` there means the record ended on a field boundary.
             if (st == .incomplete)
                 break :blk @as(message.DecodeError!message.Probe, error.IncompleteMessage);
             break :blk @as(message.DecodeError!message.Probe, acc);
@@ -241,9 +250,9 @@ pub fn main(init: std.process.Init) !void {
             continue;
         };
         // Accept. In materialize mode (oracle/materialized.md) dump the decoded
-        // value's fields/elements explicitly instead of re-encoding to wire. m
-        // borrows string/blob bytes from `data` (alive until the next reset), so
-        // the whole dump is written now, before the loop resets the arena.
+        // value's fields/elements explicitly instead of re-encoding to wire. m's
+        // string/blob bytes live in the arena, so the whole dump is written now,
+        // before the loop resets it.
         if (materialize_mode) {
             try out.writeAll("A ");
             try matgen.materialize(out, &m);
@@ -262,13 +271,13 @@ pub fn main(init: std.process.Init) !void {
         // branch is unreachable, because every value re-encoded here came out of this
         // driver's own decoder and is in-bounds by construction.
         const enc = (if (cfg.fail > 0) blk: {
-            const sbuf = a.alloc(u8, cfg.fail) catch break :blk error.BufferFull;
+            const sbuf = a.alloc(u8, cfg.fail) catch driverOom();
             var os = sofab.OStream.init(sbuf);
             m.serialize(&os) catch |e| break :blk @as(anyerror![]u8, e);
             break :blk @as(anyerror![]u8, sbuf[0..os.bytesUsed()]);
         } else if (cfg.enc_stream) blk: {
             const cap = if (cfg.flush > 0) cfg.flush else message.Probe.MAX_SIZE;
-            const sbuf = a.alloc(u8, cap) catch break :blk error.BufferFull;
+            const sbuf = a.alloc(u8, cap) catch driverOom();
             var acc = EncAcc{ .alloc = a };
             var os = sofab.OStream.initFlush(sbuf, 0, &acc, EncAcc.sink);
             // Hand the encoder's OWN error up instead of relabelling it: this arm
@@ -281,7 +290,9 @@ pub fn main(init: std.process.Init) !void {
         } else m.encode(a)) catch |e| {
             // The decode ACCEPTED and the re-encode of that value was REFUSED: its
             // own verdict, never a reject class — the bytes were not malformed
-            // (oracle/canonical.md "The fifth verdict `E`").
+            // (oracle/canonical.md "The fifth verdict `E`"). An allocation failure
+            // in encode() is the driver's arena failing, not a refusal.
+            if (e == error.OutOfMemory) driverOom();
             try out.print("E {s}\n", .{encode_class(e)});
             try out.flush();
             continue;

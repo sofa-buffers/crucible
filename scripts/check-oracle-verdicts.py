@@ -61,11 +61,17 @@ CASES = [
      {"a": "R invalid_msg", "b": "R invalid_msg"}, False, []),
     ("the abolished `usage` class fails per line, as before",
      {"a": "R usage", "b": "R usage"}, True, ["reject_class_forbidden"]),
-    # I is a decode fact: dropping the optional payload must not be a divergence,
-    # because that is exactly what a driver does when a partial value will not
-    # re-encode (CONTRACT.md "A refused re-encode is not a decode verdict").
-    ("I with and without its payload differs only on the soft axis",
-     {"a": "I", "b": "I 00"}, False, ["incomplete_value"]),
+    # I has no payload (oracle/canonical.md "The `I` line has no payload"): one that
+    # carries one is outside the grammar, and that fails per line — even unanimously.
+    ("unanimous bare I agrees",
+     {"a": "I", "b": "I"}, False, []),
+    ("an I with a payload is a malformed line, even unanimously",
+     {"a": "I 00", "b": "I 00"}, True, ["malformed_line"]),
+    # The payload is compared inside every verdict camp, not only the reference's: when
+    # the reference rejects, two accepters with different values are still a split.
+    ("a value split outside the reference's camp is reported",
+     {"a": "R invalid_msg", "b": "A 00", "c": "A 01"}, True,
+     ["verdict", "accept_value", "outside the reference's camp"]),
 ]
 
 

@@ -5,7 +5,7 @@ corelib=corelib-kotlin-mp
 framework=jazzer
 pacemaker=false
 # One driver source per KMP target: `jvm` (VarHandle word access), `native`
-# (linuxX64, indexed shifts) and `js` (Kotlin/JS on Node; quarantined, G-0046) — three rows in drivers/roster.
+# (linuxX64, indexed shifts) and `js` (Kotlin/JS on Node) — three rows in drivers/roster.
 variants=jvm,native,js
 chunked_decode=push
 encode_surfaces=new,to,stream

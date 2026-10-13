@@ -489,7 +489,11 @@ here:
       or verdict mismatch. Wired into `nightly.yml`, `continue-on-error`, same shape as the Go
       block-path engine. See `docs/STATUS-LOG.md` 2026-09-23 for the design and what was verified.
 
-- [ ] **Teach the go REPLAY driver the chunked axis.** Found while planning crucible#178:
+- [x] **DONE 2026-10-13 — the go replay driver runs the chunked axis.** `drivers/go/driver.go`
+      feeds `SOFAB_SPLIT`/`SOFAB_CHUNK`/`SOFAB_CHUNK_SCRUB` through `sofab.Decoder.Feed`,
+      `meta` says `chunked_decode=push`, and `roster.sh caps chunked` puts `go` into
+      `run-chunked.sh` by construction. Original note below.
+      ~~Teach the go REPLAY driver the chunked axis.~~ Found while planning crucible#178:
       `drivers/go/meta` still declares `chunked_decode=none` and `docs/ARCHITECTURE.md`'s
       streaming table repeats it, but that is now stale — `corelib-go` gained a resumable push
       decoder (`sofab.Decoder.Feed`) since the declaration was written, and crucible#178's new
@@ -538,9 +542,8 @@ here:
 
 - [x] **DONE — every driver that can, does.** The headline below ("no driver implements them yet")
       described 2026-08-04 and was never corrected: `scripts/run-chunked.sh` runs **14 drivers**
-      today. `go` is the one absence and a declared one — corelib-go has no resumable decoder, so
-      `drivers/go/meta` says `chunked_decode=none` and the gate's participant list is derived from
-      that rather than typed. Since 2026-08-16 the gate also asserts each driver's stderr
+      today; `go` joined on 2026-10-13, so every roster driver participates. The gate's
+      participant list is derived from each `meta` rather than typed. Since 2026-08-16 the gate also asserts each driver's stderr
       announcement, so honouring the variables is proven per run instead of assumed.
       ~~Chunked re-feed in the drivers (`SOFAB_SPLIT`, `SOFAB_CHUNK`, `SOFAB_CHUNK_SCRUB`)~~ —
       the oracle and the gate exist and now implement **all three cuts** (`oracle/chunk_invariance.py`,
@@ -859,8 +862,7 @@ here:
       a *refusal* path — a value past a declared `count`/`maxlen`/width is refused rather than
       written or clamped — and nothing here can drive a value INTO an encoder: the replay
       protocol's only input is wire bytes, so every value a driver encodes came out of its own
-      decoder and is in-bounds by construction. What exists instead is one static assertion that
-      the guards are present (`scripts/check-encode-bounds.py`) and one verdict for the
+      decoder and is in-bounds by construction. What exists instead is one verdict for the
       contradiction if a decoder ever admits an over-bound value (`E`, oracle/canonical.md). The
       cells themselves — a value filled past its bound through the generated setters, per
       backend and per variant, with the clamping containers' expected output — are upstream in
@@ -879,11 +881,12 @@ here:
       over the grown corpus went **15 → 17 clusters**: two divergence classes the C-steered
       corpus had never produced (see `results/CLUSTERS.md`; both untriaged). That is the thesis
       of this item, demonstrated rather than argued.
-      *Remaining:* entry points exist but are unwired for **ts** (`drivers/ts/fuzz.ts`), **java**
-      (`drivers/java/FuzzProbe.java`, Jazzer present), **csharp** (`drivers/cs/Fuzz.cs`, SharpFuzz
-      present); **rust** has none at all (cargo-fuzz present) and is the most valuable next one —
-      six of the eight open findings involve a rust backend, so its paths are where the family is
-      demonstrably weakest. zig/dart remain placeholders.
+      *Remaining:* entry points exist but are unwired for **java**
+      (`drivers/java/FuzzProbe.java`, Jazzer present) and **csharp** (`drivers/cs/Fuzz.cs`,
+      SharpFuzz present); **rust** has none at all (cargo-fuzz present) and is the most valuable
+      next one — six of the eight open findings involve a rust backend, so its paths are where the
+      family is demonstrably weakest. ts, zig, dart and python have none (their unwired
+      placeholders were deleted 2026-10-13; `meta` says `framework=none`).
 
 - [ ] **Differential-cluster A/B** of the grammar vs byte-level corpora — the mutator's real
       "done when". Ideally in the nightly. (Mutator itself is built; `engine/mutator/DESIGN.md`.)

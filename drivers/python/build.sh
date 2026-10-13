@@ -49,8 +49,6 @@ if [ ! -x "$VENV/bin/python" ]; then
     "$VENV/bin/pip" install -q --upgrade pip >&2
     "$VENV/bin/pip" install -q cython >&2
     install_corelib_py
-    "$VENV/bin/pip" install -q atheris >&2 2>/dev/null \
-        || echo "==> [python] atheris not installed (needs clang; only the coverage front-end uses it)" >&2
 elif [ ! -f "$STAMP" ] || [ -n "$(find "$CORELIB/src" "$CORELIB/pyproject.toml" "$CORELIB/setup.py" -newer "$STAMP" 2>/dev/null | head -1)" ]; then
     echo "==> [python] corelib-py changed since the venv was built — reinstalling (Cython ext)" >&2
     install_corelib_py

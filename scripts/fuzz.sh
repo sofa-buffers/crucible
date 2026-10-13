@@ -70,18 +70,17 @@ fi
 echo "==> [$TAG] generating C types from schema" >&2
 rm -rf "$GEN"; mkdir -p "$GEN" "$INTERESTING" "$CORP" "$CRASH" "$ROOT/drivers/c/build"
 "$SOFABGEN" --lang c --in "$SCHEMA_FILE" --out "$GEN" >&2
-# generator 0c746f21: files are probe_sofab.{c,h} + shared sofab-defs.{c,h}; driver.c wants probe.h
-if [ ! -f "$GEN/probe.h" ] && [ -f "$GEN/probe_sofab.h" ]; then
-    printf '#include "probe_sofab.h"\n' > "$GEN/probe.h"
-fi
 
-echo "==> [$TAG] building libFuzzer target (clang: fuzzer+ASan+UBSan)" >&2
+echo "==> [$TAG] building libFuzzer target (clang: fuzzer+ASan+UBSan, strict UTF-8)" >&2
+# The same corelib configuration as the replay driver (drivers/c/build.sh): strict
+# UTF-8 on, which pulls in utf8.c. A pacemaker built without it would steer on a
+# corelib the differential run does not test.
 # shellcheck disable=SC2086
-"$CC" -DCRUCIBLE_LIBFUZZER $STREAM_DEFINE -std=c11 -O1 -g \
+"$CC" -DCRUCIBLE_LIBFUZZER $STREAM_DEFINE -DSOFAB_ENABLE_STRICT_UTF8 -std=c11 -O1 -g \
     -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer \
     -I"$GEN" -I"$CORELIB/src/include" -I"$ROOT/engine/mutator" \
     "$ROOT/drivers/c/driver.c" "$ROOT/engine/mutator/sofab_mutator.c" "$GEN"/*.c \
-    "$CORELIB/src/object.c" "$CORELIB/src/istream.c" "$CORELIB/src/ostream.c" \
+    "$CORELIB/src/object.c" "$CORELIB/src/istream.c" "$CORELIB/src/ostream.c" "$CORELIB/src/utf8.c" \
     -o "$BIN" >&2
 
 FINDINGS=""

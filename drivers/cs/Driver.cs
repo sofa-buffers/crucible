@@ -185,8 +185,9 @@ internal static class Driver
             }
             case "array":
             {
-                // Fixed-count numeric/fp array, materialized to its full N in memory:
-                // every element emitted, no trailing trim (that only elides on the wire).
+                // Fixed-count numeric/fp array: the generated decoder allocates it at the
+                // wire count M (`new T[count]`, count <= the schema's N), so every element
+                // it holds is emitted and its length is the signal (oracle/materialized.md).
                 // IList, not Array: the backend emits `T[]` for a numeric element type
                 // but `List<bool>` for a boolean one, and both implement IList.
                 var arr = (System.Collections.IList)value;
@@ -286,8 +287,8 @@ internal static class Driver
     // call, so neither streaming surface of the generated API is reachable through
     // it. Unset, every variable below is today's behaviour byte for byte.
     //
-    // C#'s generated Decoder exposes Status, so the verdict comes from there rather
-    // than from Finish(), which throws when the stream ended mid-field.
+    // The verdict is what the LAST Feed() returned (CONTRACT.md: the feed return IS
+    // the status), never Finish(), which throws when the stream ended mid-field.
     private static int EnvInt(string name) =>
         int.TryParse(Environment.GetEnvironmentVariable(name), out var v) ? v : 0;
 
@@ -329,14 +330,13 @@ internal static class Driver
         }
     }
 
-    /// How the record is cut on its way in. Never an empty chunk; a 0-byte record
-    /// yields none at all.
+    /// How the record is cut on its way in. A 0-byte record is ONE empty chunk, fed
+    /// once like any other (CONTRACT.md); otherwise no chunk is empty.
     private static List<byte[]> ChunksOf(byte[] data)
     {
         var outp = new List<byte[]>();
         int len = data.Length;
-        if (len == 0) return outp;
-        if (Chunk > 0)
+        if (Chunk > 0 && len > 0)
         {
             for (int o = 0; o < len; o += Chunk)
             {
@@ -415,10 +415,9 @@ internal static class Driver
                 // return value, never Finish(). It used to be read from a Status
                 // property beside Feed; CORELIB_PLAN §5.2.1 closed that door ("no
                 // second place to ask"), so the generated Decoder no longer has one.
-                // A record with no chunks (a zero-length one) feeds nothing and keeps
-                // Complete: zero bytes are the valid empty message.
+                // The chunk plan is never empty, so the decoder always answers.
                 var d = new Probe.Decoder();
-                status = DecodeStatus.Complete;
+                status = default;
                 foreach (var c in ChunksOf(data))
                 {
                     status = d.Feed(c);
@@ -436,8 +435,8 @@ internal static class Driver
         catch (SofabException e) { return ErrLine(e); }
         catch (Exception) { return "R other"; }
 
-        // INCOMPLETE: bytes ended mid-message — the third verdict, not an error.
-        // (Optional I <hex> partial-value payload is not materialized here.)
+        // INCOMPLETE: bytes ended mid-message — the third verdict, not an error. A
+        // bare `I`: the partial value is not a decode result, so it is not re-encoded.
         if (status == DecodeStatus.Incomplete) return "I";
 
         // COMPLETE, materialize mode (oracle/materialized.md): dump the decoded

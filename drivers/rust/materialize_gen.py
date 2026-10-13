@@ -9,8 +9,8 @@ engine/structured/schema.py) and EMITS a Rust source file that implements
     pub fn materialize(m: &Probe) -> String
 
 by UNROLLING the descriptor into explicit field-access code: struct -> recurse the
-access path (`m.nested.f32`), array -> loop the `[T;count]`, wrapper -> loop the
-container. The Rust field names are the schema names verbatim.
+access path (`m.nested.f32`), array -> walk the length-carrying `Vec` as
+a slice, wrapper -> loop the container. The Rust field names are the schema names verbatim.
 
 The emitted source is included into the driver (build.sh drops it next to main.rs and
 driver.rs `include!`s it), so a schema change regenerates the walker with zero hand

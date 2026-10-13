@@ -40,46 +40,31 @@ import (
 // Only the per-kind LEAF formatting below is schema-specific.
 var materialized = os.Getenv("SOFAB_MATERIALIZE") == "1"
 
+// The streaming-DECODE axis (drivers/common/CONTRACT.md "Decode side"): how the
+// bytes of each record reach the decoder. Unset is the one-shot Probe__Decode.
+// Set, the record goes through a resumable sofab.Decoder in pieces — the same
+// Probe__New + sofab.NewDecoder(m) the generated Probe__DecodeFrom builds, fed with
+// Decoder.Feed (meta: chunked_decode=push).
+var (
+	splitAt   = 0     // SOFAB_SPLIT=k: two chunks, [0,k) then [k,end)
+	chunkSize = 0     // SOFAB_CHUNK=n: fixed-size chunks of n bytes (wins over split)
+	scrub     = false // SOFAB_CHUNK_SCRUB=1: overwrite each fed chunk with 0xA5
+)
+
 // The streaming-ENCODE axis (drivers/common/CONTRACT.md "Encode side"): which call
 // produces the `A <hex>`. The family is byte-canonical — one value has exactly one
 // encoding — so all three surfaces must emit identical bytes, and SOFAB_FLUSH must
-// not change them either. Only the decode side is absent here: corelib-go has no
-// resumable decoder, so `meta` declares chunked_decode=none and the chunked gate
-// leaves this driver out (docs/ARCHITECTURE.md's streaming table).
+// not change them either.
 var (
 	encSurface = "new" // new | to | stream
 	flushSize  = 0     // 0 = unset; only meaningful for `stream`
 	failAfter  = 0     // SOFAB_ENCODE_FAIL=n — the destination takes n bytes
 
 	// How often the sink was handed memory that is NOT the installed output buffer.
-	// CORELIB_PLAN §5.1.6 forbids that outright, so this is an assertion and not an
-	// axis: any count above zero fails the run (see reportForeign).
-	//
-	// WHERE THIS CHECK COMES FROM, because it fires from nowhere if you have not seen
-	// the history. The permission it now refuses existed for FIFTEEN DAYS:
-	//
-	//   2026-08-08  documentation 27ad9a0 — §5.1 ALLOWS an encoder to hand a
-	//               string/blob run to its sink directly, by the caller's permission.
-	//   2026-08-17  crucible 703f100 — we build an axis for it: SOFAB_PASSTHROUGH=1,
-	//               a `pass_through` key in every meta, and a gate demanding this
-	//               counter be > 0, since identical bytes cannot tell a used
-	//               permission from an ignored one.
-	//   2026-08-23  documentation 8d9e668 — §5.1.6 WITHDRAWS it, six days later, as
-	//               one of four prohibitions that "remove features rather than adding
-	//               rules": "It only ever worked under chunked encoding, and there it
-	//               contradicted what a chunk is: a flushed unit may be a fragment of
-	//               a lower-layer protocol, framed by the caller -- foreign memory in
-	//               the middle of that sequence is not such a fragment. Four sub-rules
-	//               existed only to keep it safe; all gone."
-	//   2026-08-24  corelib-go db4933b — deletes WithPassThrough, citing that clause.
-	//   2026-09-14  this driver stops compiling against it. The measurement is kept and
-	//               its PASS CONDITION FLIPPED: was `> 0` (prove the permission was
-	//               exercised), is now `== 0` (prove it never happens). Same counter,
-	//               same withinBuffer, opposite verdict.
-	//
-	// So if this ever fires: it is not a new rule, it is the 2026-08-23 prohibition
-	// finally being checked. The decision and what it replaced are in
-	// docs/STATUS-LOG.md (2026-09-14); the contract is drivers/common/CONTRACT.md.
+	// CORELIB_PLAN §5.1.6 forbids that outright — a sink only ever receives bytes
+	// inside the installed output buffer, with no pass-through permission to claim —
+	// so this is an assertion and not an axis: any count above zero fails the run
+	// (see reportForeign). Why the check exists: docs/STATUS-LOG.md (2026-09-14).
 	ptForeign = 0
 )
 
@@ -99,10 +84,26 @@ func withinBuffer(outer, inner []byte) bool {
 	return false
 }
 
-// parseEncodeCfg resolves the axis before any record is written, because both
+// parseStreamCfg resolves both axes before any record is written, because both
 // failures the contract names must land *before* output: an unknown surface, and a
 // buffer below this port's declared floor.
-func parseEncodeCfg() {
+func parseStreamCfg() {
+	for _, v := range []struct {
+		name string
+		dst  *int
+	}{{"SOFAB_SPLIT", &splitAt}, {"SOFAB_CHUNK", &chunkSize}} {
+		if s := os.Getenv(v.name); s != "" {
+			n, err := strconv.Atoi(s)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "crucible-go: bad %s=%s\n", v.name, s)
+				os.Exit(2)
+			}
+			*v.dst = n
+		}
+	}
+	if s := os.Getenv("SOFAB_CHUNK_SCRUB"); s != "" && s != "0" {
+		scrub = true
+	}
 	if s := os.Getenv("SOFAB_ENCODE"); s != "" {
 		switch s {
 		case "new", "to", "stream":
@@ -144,13 +145,20 @@ func parseEncodeCfg() {
 }
 
 // announceCfg prints the resolved configuration on stderr (never parsed). Stdout is
-// byte-identical across all three surfaces when they are correct, so without this a
-// driver that ignored the variables would be indistinguishable from one that honours
-// them — which is the vacuous pass the gate's opt-in roster exists to prevent.
+// byte-identical across every chunking and all three surfaces when they are correct,
+// so without this a driver that ignored the variables would be indistinguishable from
+// one that honours them — which is the vacuous pass the gate's opt-in roster exists to
+// prevent.
 func announceCfg() {
-	if encSurface != "new" || flushSize != 0 || failAfter != 0 {
-		fmt.Fprintf(os.Stderr, "crucible-go: streaming cfg enc=%s flush=%d fail=%d\n",
-			encSurface, flushSize, failAfter)
+	if splitAt != 0 || chunkSize != 0 || scrub ||
+		encSurface != "new" || flushSize != 0 || failAfter != 0 {
+		sc := 0
+		if scrub {
+			sc = 1
+		}
+		fmt.Fprintf(os.Stderr, "crucible-go: streaming cfg split=%d chunk=%d scrub=%d "+
+			"enc=%s flush=%d fail=%d\n",
+			splitAt, chunkSize, sc, encSurface, flushSize, failAfter)
 	}
 }
 
@@ -174,13 +182,10 @@ func reportForeign() {
 		fmt.Fprintf(os.Stderr, "crucible-go: CORELIB_PLAN §5.1.6 — every byte a sink "+
 			"receives must lie inside the installed output buffer; %d handover(s) did "+
 			"not\n", ptForeign)
-		// Say where the rule came from, not just which number it is. §5.1.6 withdrew a
-		// permission this repo had an axis for six days earlier, so someone meeting this
-		// failure cold will reasonably ask whether the check itself is the bug.
-		fmt.Fprintf(os.Stderr, "crucible-go: this refuses a pass-through the spec "+
-			"ALLOWED until documentation 8d9e668 (2026-08-23) withdrew it; corelib-go "+
-			"dropped WithPassThrough on 2026-08-24. History and the decision to keep "+
-			"the check: docs/STATUS-LOG.md (2026-09-14). Contract: "+
+		// Point at where the rule and the decision to check it are recorded, so a
+		// reader meeting this failure cold need not wonder whether the check is the bug.
+		fmt.Fprintf(os.Stderr, "crucible-go: there is no pass-through permission; "+
+			"why this is checked: docs/STATUS-LOG.md (2026-09-14). Contract: "+
 			"drivers/common/CONTRACT.md\n")
 		os.Exit(1)
 	}
@@ -195,14 +200,22 @@ func reportForeign() {
 //	stream  -> Serialize() into an encoder this driver builds, with the SOFAB_FLUSH
 //	           window, so the encoder crosses a buffer boundary every n bytes
 func encodeVia(m *msg.Probe) ([]byte, error) {
+	// encOpts restates the generated _Probe__EncOpts (unexported): the generated
+	// Encode and EncodeTo bound every encoder they build to Probe__MaxDepth, and an
+	// encoder this driver builds must be the same encoder.
+	encOpts := []sofab.Option{sofab.WithMaxDepth(msg.Probe__MaxDepth)}
 	// SOFAB_ENCODE_FAIL=n (CONTRACT.md): hand the encoder a destination of n bytes with
 	// NO sink behind it, so a message that does not fit is REFUSED (ErrBufferFull)
 	// rather than truncated — CORELIB_PLAN §5.1 forbids returning partial output as if
 	// it were complete. It is also the only way the `E` mapping below ever runs: from
 	// the wire that branch is unreachable, because every value re-encoded here came out
 	// of this driver's own decoder and is in-bounds by construction.
+	//
+	// The generated API has no encode-into-a-caller-buffer entry point, so this builds
+	// the encoder itself — with exactly the options the generated Encode/EncodeTo pass
+	// (encOpts), so the only thing that differs from Encode() is the destination.
 	if failAfter > 0 {
-		e, err := sofab.NewEncoderBuffer(make([]byte, failAfter), 0)
+		e, err := sofab.NewEncoderBuffer(make([]byte, failAfter), 0, encOpts...)
 		if err != nil {
 			return nil, err
 		}
@@ -237,7 +250,7 @@ func encodeVia(m *msg.Probe) ([]byte, error) {
 				}
 				acc = append(acc, b...)
 				return nil
-			})
+			}, encOpts...)
 		if err != nil {
 			return nil, err
 		}
@@ -477,26 +490,116 @@ func encodeClass(err error) string {
 	}
 }
 
+// decodeVerdict maps a non-nil decode error to its canonical line (without the
+// newline) by the error's identity. The fuzz target's verdictClass uses it too, so
+// the replay driver and the coverage engine cannot classify one error two ways.
+//
+//	ErrIncomplete     -> I   INCOMPLETE (MESSAGE_SPEC §7): neither accept nor reject;
+//	                         no payload (the generated decode returns no partial value)
+//	ErrLimitExceeded  -> L   a configured receiver-side cap (generator#102, limit mode
+//	                         only): a policy rejection, distinct from INVALID
+//	ErrInvalidMsg     -> R invalid_msg
+//	ErrArgument       -> R argument      (§6.3's InvalidArgument)
+//	ErrBufferFull     -> R buffer_full
+//	anything else     -> R other         (e.g. an error generated code raised itself)
+func decodeVerdict(err error) string {
+	switch {
+	case errors.Is(err, sofab.ErrIncomplete):
+		return "I"
+	case errors.Is(err, sofab.ErrLimitExceeded):
+		return "L"
+	case errors.Is(err, sofab.ErrInvalidMsg):
+		return "R invalid_msg"
+	case errors.Is(err, sofab.ErrArgument):
+		return "R argument"
+	case errors.Is(err, sofab.ErrBufferFull):
+		return "R buffer_full"
+	default:
+		return "R other"
+	}
+}
+
+// decodeChunked decodes one record through a resumable decoder, fed in pieces
+// (drivers/common/CONTRACT.md "Decode side"). The decoder is the one the generated
+// Probe__DecodeFrom builds — Probe__New() bound to sofab.NewDecoder, no options —
+// but fed through the corelib's public push surface, Decoder.Feed, so the driver
+// chooses every chunk boundary and owns every chunk buffer. (Probe__DecodeFrom
+// itself pulls through a scratch buffer of its own, which SOFAB_CHUNK_SCRUB could
+// not reach.)
+//
+// The chunk plan: chunk>0 → fixed-size chunks of `chunk` bytes (last one short);
+// else 0<split<len → [0,split) then [split,len); else one chunk holding the whole
+// record. A record of length 0 is ONE empty chunk, fed once — the decoder answers
+// it, never the driver.
+//
+// The verdict comes from what Feed returns (contract rule 3: corelib-go has no
+// finish step; the outcome Feed returns is the status). A non-nil error is
+// terminal and returned as-is; an Incomplete mid-stream only says those bytes ended
+// mid-field, so feeding goes on; after the last chunk, Complete → the message,
+// Incomplete → sofab.ErrIncomplete, exactly as Probe__Decode/Probe__DecodeFrom
+// report it.
+//
+// With scrub, each chunk is a copy the driver owns and is overwritten with 0xA5
+// once Feed returns: Feed borrows a chunk only for the call (§6.0), so a decoder
+// that kept a window into it would read scrubbed bytes.
+func decodeChunked(data []byte, split, chunk int, scrub bool) (*msg.Probe, error) {
+	m := msg.Probe__New()
+	d := sofab.NewDecoder(m)
+
+	step := len(data)
+	if chunk > 0 {
+		step = chunk
+	} else if split > 0 && split < len(data) {
+		step = split
+	}
+
+	var out sofab.Outcome
+	off := 0
+	for {
+		n := len(data) - off
+		if n > step {
+			n = step
+		}
+		if chunk <= 0 && off > 0 { // a two-way split is two chunks, not fixed-size
+			n = len(data) - off
+		}
+		piece := data[off : off+n]
+		if scrub {
+			piece = append([]byte(nil), piece...)
+		}
+		var err error
+		out, err = d.Feed(piece)
+		if scrub {
+			for i := range piece {
+				piece[i] = 0xA5
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		off += n
+		if off >= len(data) {
+			break // the empty record took exactly one (empty) Feed above
+		}
+	}
+	if out != sofab.Complete {
+		return nil, sofab.ErrIncomplete
+	}
+	return m, nil
+}
+
 // canonical writes the canonical line for one candidate input
 // (oracle/canonical.md: decode -> re-encode -> hex).
 func canonical(w *bufio.Writer, data []byte) {
-	m, err := msg.Probe__Decode(data)
+	var m *msg.Probe
+	var err error
+	if splitAt != 0 || chunkSize != 0 || scrub {
+		m, err = decodeChunked(data, splitAt, chunkSize, scrub)
+	} else {
+		m, err = msg.Probe__Decode(data)
+	}
 	if err != nil {
-		if errors.Is(err, sofab.ErrIncomplete) {
-			// INCOMPLETE (MESSAGE_SPEC §7): decode ended mid-message — the third
-			// canonical verdict, neither accept nor reject. The corelib returns no
-			// partial value here (Probe__Decode drops it), so emit the bare `I`.
-			fmt.Fprint(w, "I\n")
-			return
-		}
-		if errors.Is(err, sofab.ErrLimitExceeded) {
-			// LIMIT_EXCEEDED (generator#102, limit mode only): a configured receiver-side
-			// cap on a schema-unbounded field. A policy rejection distinct from INVALID.
-			fmt.Fprint(w, "L\n")
-			return
-		}
-		// Coarse reject class (class comparison is soft; see oracle/policy.yaml).
-		fmt.Fprint(w, "R invalid_msg\n")
+		fmt.Fprintf(w, "%s\n", decodeVerdict(err))
 		return
 	}
 	if materialized {
@@ -519,7 +622,7 @@ func canonical(w *bufio.Writer, data []byte) {
 }
 
 func main() {
-	parseEncodeCfg()
+	parseStreamCfg()
 	announceCfg()
 	if materialized {
 		loadSchema()

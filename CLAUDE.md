@@ -148,9 +148,9 @@ exists), then record the new driver's quirks in `ARCHITECTURE.md`.
   SharpFuzz, Jazzer.js). This mirrors the corelib repos' setup. The C pacemaker
   additionally needs clang/llvm there (`apt-get install clang libclang-rt-dev
   llvm`); replay drivers build with gcc.
-- **Guard the empty message.** corelib-c-cpp `sofab_istream_feed` asserts
-  `datalen>0` (a debug precondition), so drivers must treat `len==0` as the valid
-  empty message rather than feeding it through.
+- **Feed the empty message; don't answer it.** A `len==0` record is the valid
+  all-default message and goes through the generated decode like any other (one empty
+  chunk). A driver that short-circuits it asserts the verdict instead of testing it.
 - **Persistent-mode drivers, never process-per-input.** The generator's
   `encode`/`decode` CLI is process-per-input and emits general JSON — it is *not*
   the fuzz driver. Reusing it caps throughput ~1000× and blurs
@@ -162,11 +162,12 @@ exists), then record the new driver's quirks in `ARCHITECTURE.md`.
   PLAN §10.
 - **Zig fuzzing is immature** (Zig 0.16); the Zig driver may need libFuzzer via C
   interop rather than built-in fuzzing. Confirm before committing the approach.
-- **Generated decode may not surface the verdict.** The Rust `Probe::decode` is
-  infallible (drops `feed`'s `Result`), so `drivers/rust/` reads the corelib's
-  real accept/reject from a second `IStream::feed` pass. When adding a language,
-  check whether its generated decode returns the error; if not, capture the
-  corelib's real result and log the codegen gap as a `G-00NN` finding folder.
+- **Use the generated code like an application, nothing more.** Call the generated
+  entry points themselves, never a hand-copied body or a corelib internal, and never
+  absorb a defect in the driver or a walker (no `v ? 1 : 0`, no exception unwrapping
+  the API does not document). If the generated API cannot surface what the contract
+  needs, that is a `G-00NN` codegen finding to file — not a driver workaround.
+  `drivers/common/CONTRACT.md` ("Decode core requirements") is the rule.
 - **A driver builds against multiple corelibs via one source.** `drivers/rust/`
   has one `driver.rs` for both `corelib-rs` and `corelib-rs-no-std`, selected by
   `build.sh <variant>` and registered as two drivers in `run.sh`. Mirror this if

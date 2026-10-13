@@ -26,6 +26,8 @@ additionally wires `Limits{SOFAB_MAX_DYN_BUFFERED_FIELD}`, a byte-size reassembl
 element caps ([generator#228](https://github.com/sofa-buffers/generator/issues/228)), which would spuriously
 `LimitExceed` a valid at-cap array. So the driver uses a bare `feed` under `CRUCIBLE_LIMIT_MODE` (element caps
 still enforced by the generated `deserialize`); `try_decode` runs in normal mode where F-0032 lives.
+*Since 2026-10-13 the caveat is gone:* generator#228 is closed, the bypass passed the same cap anyway, and
+limit mode now goes through `try_decode` too (`CRUCIBLE_LIMIT_MODE` was removed; limit-mode output unchanged).
 
 **Axis:** malform×truncation (§5.2), verdict split. **Codegen for go/ts/dart/zig/rust** (maxlen/count/id are
 schema facts, so the bound check *and its ordering* are generated code; F-0024 was this exact bug in the Rust
