@@ -187,6 +187,10 @@ String canonical(Uint8List data) {
     } else {
       st = Probe.tryDecode(data, out);
     }
+  } on StackOverflowError {
+    rethrow; // a crash, and the harness must see it as one
+  } on OutOfMemoryError {
+    rethrow;
   } catch (_) {
     // The generated tryDecode is not expected to throw on any input; if it does
     // that is itself worth surfacing, mapped to the coarse `other` reject class.
@@ -225,6 +229,10 @@ String canonical(Uint8List data) {
     // value past a declared count/maxlen/width is refused with invalidArgument
     // (oracle/canonical.md "The fifth verdict `E`").
     return 'E ${_encodeClass(e)}';
+  } on StackOverflowError {
+    rethrow; // a crash, and the harness must see it as one
+  } on OutOfMemoryError {
+    rethrow;
   } catch (_) {
     return 'E other';
   }

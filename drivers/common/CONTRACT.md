@@ -104,7 +104,9 @@ otherwise drift eleven ways, so it is normative:
    never answers it itself — that would assert the verdict instead of testing it. A
    zero-length feed is legal in every corelib (CORELIB_PLAN §5.2: the status is a
    property of the bytes consumed, computable at any byte boundary; corelib-c-cpp's
-   `sofab_istream_feed` documents `feed(ctx, NULL, 0)` as the canonical spelling).
+   `sofab_istream_feed` documents `feed(ctx, NULL, 0)` as the canonical spelling). Where
+   the chunk axes go through a generated *pull* surface (Go's `Probe__DecodeFrom`), the
+   driver hands it an empty reader and the generated code decides how to feed it.
 5. Never synthesize an empty chunk beyond that one: `k<=0`, `k>=len` and `n>=len` all
    mean one chunk holding the whole record, i.e. today's behaviour.
 

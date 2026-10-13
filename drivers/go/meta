@@ -2,6 +2,8 @@ lang=go
 corelib=corelib-go
 framework=go-native-fuzz
 pacemaker=false
+# SOFAB_SPLIT/SOFAB_CHUNK pull: the generated Probe__DecodeFrom reads a per-chunk reader.
+# SOFAB_CHUNK_SCRUB pushes: Decoder.Feed on driver-owned copies (generator#747).
 chunked_decode=push
 encode_surfaces=new,to,stream
 encode_fail=yes

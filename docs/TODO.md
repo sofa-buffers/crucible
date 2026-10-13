@@ -1216,7 +1216,8 @@ here:
       capability; `run-encode.sh` and `run-chunked.sh` call it instead of carrying a list. The
       derived lists matched the hand-written ones exactly (encode 15, chunked 14 — `go` absent by
       its declared `chunked_decode=none`), so this changed the mechanism without changing who
-      runs. `SOFAB_*_DRIVERS` still overrides for isolating one driver. Original note below.
+      runs. `SOFAB_*_DRIVERS` still overrides for isolating one driver. (`go` joined the
+      chunked gate on 2026-10-13, see the go replay item above.) Original note below.
       ~~The two streaming gates keep their own driver list, by hand.~~ `run-chunked.sh` and
       `run-encode.sh` each hard-code a 14-name `SUPPORTED` default beside `drivers/roster`'s fifteen
       rows — the copied-list shape CLAUDE.md warns about, and it already misleads: the chunked gate's

@@ -169,7 +169,9 @@ private fun acceptLine(m: Probe): String {
         encodeVia(m)
     } catch (e: SofabException) {
         return "E " + rejectClass(e)
-    } catch (e: Throwable) {
+    } catch (e: RuntimeException) {
+        // An Error (stack overflow, out of memory) is not caught: it is a crash, and the
+        // harness must see it as one rather than as a verdict line.
         return "E other"
     }
     val sb = StringBuilder(2 + enc.size * 2)
@@ -214,8 +216,9 @@ private fun canonical(data: ByteArray): String {
         // The corelib and the generated visitor throw SofabException itself (a
         // RuntimeException in corelib-kotlin-mp), never wrapped.
         return errLine(e)
-    } catch (e: Throwable) {
-        // Anything else thrown out of a decode is outside the taxonomy.
+    } catch (e: RuntimeException) {
+        // Any other exception out of a decode is outside the taxonomy. An Error is not
+        // caught: it is a crash, and the harness must see it as one.
         return "R other"
     }
     // INCOMPLETE (MESSAGE_SPEC §7): bytes end mid-message — the third canonical
