@@ -230,7 +230,7 @@ jobs:
       # Fails the job if the artifact is absent, which is the point: clustering the empty
       # corpus of a fresh checkout would otherwise report "all accounted for" and mean nothing.
       - name: Download the grown corpus
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: nightly-${{ github.run_id }}
 
