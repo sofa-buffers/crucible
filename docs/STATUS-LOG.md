@@ -14,6 +14,38 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-13 (later) — the gate `kotlin-js` was still missing: the `limits` tag
+
+Yesterday's un-quarantine put the JS leg in the blocking roster with one tag, `blocking`,
+and the entry left its own loose end written down: no `limits` tag, and nobody had checked
+whether Kotlin/JS qualifies for the limit roster. Checked now, and it does.
+
+**Membership is not a property of the target.** The limit suite takes two things from a
+row (`drivers/roster`): a heap profile, because a fixed-capacity one cannot represent an
+unbounded field at all, and a corelib whose `Error` carries `LIMIT_EXCEEDED`, because
+otherwise the driver has no way to say `L`. Both answers for Kotlin sit one level *below*
+the KMP target — `LimitExceeded` is declared in corelib-kotlin-mp's `commonMain/Types.kt`,
+not per target, and the generated probe is one sofabgen output with heap containers for
+`jvm`, `native` and `js` alike. So no leg can qualify without the others, which is the
+real reason this was never a question about Kotlin/JS: it was a question nobody asked when
+the row was added with the minimum tag that made CI green.
+
+**Measured, not assumed.** `LIMITS=8 SCHEMA=schema/probe-dyn.sofab.yaml drivers/kotlin/build.sh js`
+builds clean — nothing in the JS arm needed a change, as `SCHEMA`/`LIMITS` are read before
+the per-target branch. The suite then ran the full roster, now **13 rows**: arr 3×13,
+str 2×13, blb 2×13, default 6×13, **0 divergences**.
+
+And because a new row agreeing with twelve others is also what a row that answers nothing
+looks like, the JS leg was read on its own: `over_arr.bin` → `L`, `over_str.bin` → `L`,
+`under_*` and `at_arr_8.bin` → `A` with the decoded bytes. The verdict is really produced
+there.
+
+*Reading a single driver by hand:* write **every** record first, then read the lines —
+`drivers/kotlin/build/js/driver` is Node with block-buffered stdout, so a
+request/response loop that waits for each line deadlocks on the first one. That is why
+`oracle/comparator.py` feeds the whole stream in one `subprocess.run` and splits the
+output afterwards; it is not just convenience.
+
 ## 2026-10-12 (the actual last) — the JS leg's third blocker: a klib the compiler zip does not ship
 
 Un-quarantining `kotlin-js` turned the seed gate red on the first try, and the crash read
