@@ -88,6 +88,15 @@ static void md_hex(FILE *o, const uint8_t *b, size_t n)
     for (size_t i = 0; i < n; i++) fprintf(o, "%02x", b[i]);
 }
 
+/* Field (or holder slot) count of a descriptor. corelib-c-cpp packs it into
+ * `count_extent` with the default image's extent and reads it through a static
+ * `_field_count()` (object.c) that is not exported — this mirrors that decoding. */
+static size_t md_field_count(const sofab_object_descr_t *info)
+{
+    if (info->fixed_seq & SOFAB_OBJECT_SEQ_HOLDER) return (size_t)info->count_extent;
+    return (size_t)(info->count_extent & SOFAB_OBJECT_DESCR_FIELD_COUNT_MAX);
+}
+
 static void md_value(FILE *o, const sofab_object_descr_t *info,
                      const sofab_object_descr_field_t *f, const uint8_t *base);
 static void md_obj(FILE *o, const sofab_object_descr_t *info, const uint8_t *base);
@@ -117,7 +126,7 @@ static int md_slot_empty(const sofab_object_descr_t *info,
         return md_rdu(p, f->element_size) == 0;
     case SOFAB_OBJECT_FIELDTYPE_SEQUENCE: {
         const sofab_object_descr_t *nested = info->nested_list[f->nested_idx];
-        for (size_t i = 0; i < nested->field_count; i++)
+        for (size_t i = 0; i < md_field_count(nested); i++)
             if (!md_slot_empty(nested, &nested->field_list[i], p)) return 0;
         return 1;
     }
@@ -220,10 +229,10 @@ static void md_value(FILE *o, const sofab_object_descr_t *info,
             size_t n;
             if (lw) {
                 n = (size_t)md_rdu(p, lw);
-                if (n > nested->field_count) n = nested->field_count;
+                if (n > md_field_count(nested)) n = md_field_count(nested);
             } else {
                 n = 0;
-                for (size_t i = 0; i < nested->field_count; i++)
+                for (size_t i = 0; i < md_field_count(nested); i++)
                     if (!md_slot_empty(nested, &nested->field_list[i], p)) n = i + 1;
             }
             fputc('[', o);
@@ -252,7 +261,7 @@ static void md_union(FILE *o, const sofab_object_descr_t *info, const uint8_t *b
     sofab_object_descr_id_t which;
     memcpy(&which, base, sizeof which);          /* the tag is at offset 0 (object.h) */
     fputc('{', o);
-    for (size_t i = 0; i < info->field_count; i++) {
+    for (size_t i = 0; i < md_field_count(info); i++) {
         const sofab_object_descr_field_t *f = &info->field_list[i];
         if (f->id != which) continue;
         fprintf(o, "%u:", (unsigned)f->id);
@@ -265,7 +274,7 @@ static void md_union(FILE *o, const sofab_object_descr_t *info, const uint8_t *b
 static void md_obj(FILE *o, const sofab_object_descr_t *info, const uint8_t *base)
 {
     fputc('{', o);
-    for (size_t i = 0; i < info->field_count; i++) {
+    for (size_t i = 0; i < md_field_count(info); i++) {
         const sofab_object_descr_field_t *f = &info->field_list[i];
         if (i) fputc(';', o);
         fprintf(o, "%u:", (unsigned)f->id);
