@@ -1,7 +1,7 @@
 # G-0048 — the Java backend emits no named constants for an `enum`: the field is a bare `long`
 
 **Status:** 🔴 **OPEN** — found 2026-10-14 while adding `enum` / `bitfield` to `probe` (crucible#211). API-level, not wire-observable: no gate can see it, and every gate is green with it. Owner: **generator** (the Java backend), not a corelib.
-**Issue:** — (draft written 2026-10-14, not filed yet)
+**Issue:** [generator#758](https://github.com/sofa-buffers/generator/issues/758) (filed 2026-10-14)
 
 **Found 2026-10-14** on branch `worktree-probe-enum-bitfield`, sofabgen
 `0.0.0-20261014101647-9b68239d849a` (generator main `9b68239d849a`), documentation
