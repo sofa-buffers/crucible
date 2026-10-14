@@ -102,8 +102,8 @@ fail loudly. Zig: driver allocation failure no longer prints as a corelib `buffe
 the scrub axis runs (the "zig borrows" claim in the docs was stale). Rust: the `limit`
 feature is a `--cfg` instead of an edit to the generated `Cargo.toml`. Kotlin: dead
 unwrap, silent unknown-union-tag skip. Catch-alls no longer swallow VM errors: kotlin,
-dart and csharp let a stack overflow / out-of-memory surface as a crash instead of
-printing `R other`. Stale comments across all drivers.
+dart, csharp, typescript and python let a stack overflow / out-of-memory surface as a
+crash instead of printing `R other`. Stale comments across all drivers.
 
 **Second pass, from the closing review of this change.** `oracle/projection.py` first
 compared the two trees after dropping every default leaf, which let *any* other value

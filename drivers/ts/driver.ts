@@ -276,6 +276,9 @@ function materialize(m: Probe): string {
 // reach this: they are verdicts of their own (`I`, `L`), classified by the callers.
 // Anything that is not a SofabError is surfaced as "other" rather than hidden.
 function errorClass(e: unknown): string {
+  // A stack overflow is a crash, not a verdict: rethrow it so the harness sees the
+  // driver die. (V8 has no catchable out-of-memory; it aborts the process.)
+  if (e instanceof RangeError && /call stack/i.test(e.message)) throw e;
   if (e instanceof SofabError) {
     switch (e.code) {
       case SofabErrorCode.InvalidMsg: return "invalid_msg";

@@ -115,6 +115,10 @@ def _materialize(m) -> str:
 # over aliases is what went stale here before. Anything else — another SofaError, or a
 # non-corelib failure — is `other`: surfaced, never folded into a class it is not.
 def _fail_class(e: Exception) -> str:
+    # Out of memory or out of stack is a crash, not a verdict: re-raise it so the
+    # harness sees the driver die instead of reading an `R other` / `E other` line.
+    if isinstance(e, (MemoryError, RecursionError)):
+        raise e
     if isinstance(e, SofaDecodeError):
         return "invalid_msg"
     if isinstance(e, SofaArgumentError):
