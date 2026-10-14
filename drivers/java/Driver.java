@@ -185,7 +185,8 @@ public final class Driver {
         } catch (RuntimeException e) {
             // The generated `Probe.encode()` documents its refusal as a
             // RuntimeException wrapping the SofabException `serialize` raised (its
-            // signature has no checked exception), so that carrier keeps its class.
+            // signature has no checked exception), so that carrier keeps its class —
+            // generator#748; this unwrap goes when encode() declares SofabException.
             // Any other RuntimeException is `other`.
             if (e.getCause() instanceof SofabException) {
                 return "E " + rejectClass((SofabException) e.getCause());

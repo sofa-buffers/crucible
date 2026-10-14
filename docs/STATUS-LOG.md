@@ -81,8 +81,9 @@ documents `SofabException` — filed as corelib-java#129 (corelib boundary; no s
 knowledge needed). Generated Go has no push decoder and no caller-buffer encode, and its
 encoder options are unexported — filed as generator#747; the Go driver decodes the chunk
 axes through the generated `Probe__DecodeFrom` and restates the push construction (scrub
-only) and `WithMaxDepth` (encode-fail/stream) with that issue cited. Noted, not filed:
-generated Java `encode()` documents its refusal as an untyped `RuntimeException`.
+only) and `WithMaxDepth` (encode-fail/stream) with that issue cited. Generated Java
+`encode()`/`decode()` wrap the `SofabException` in a bare `RuntimeException` — filed as
+generator#748; the driver's encode-path unwrap cites it.
 
 **Decision: Crucible does not grep generated code.** `scripts/check-encode-bounds.py`
 regex-modelled where each backend places its encode guards (573 lines, with a self-test of
