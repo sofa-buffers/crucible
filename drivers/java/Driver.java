@@ -21,7 +21,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -227,20 +226,9 @@ public final class Driver {
                 status = Probe.tryDecode(data, m);
             }
         } catch (SofabException e) {
+            // Every rejection arrives as the SofabException feed declares, including
+            // one raised by generated code inside the visitor (corelib-java#129).
             return errLine(e);
-        } catch (UncheckedIOException e) {
-            // corelib-java's IStream.feed documents this carrier: a rejection raised by
-            // the generated visitor (a schema bound, a receiver cap — LIMIT_EXCEEDED
-            // included) leaves feed as an UncheckedIOException wrapping the
-            // SofabException, not as the SofabException itself. That is the API an
-            // application has today, so unwrap exactly that and keep the L/R split.
-            // Upstream: https://github.com/sofa-buffers/corelib-java/issues/129
-            // ("IStream.feed rethrows the UncheckedIOException carrier instead of the
-            // documented SofabException") — this arm goes when that is fixed.
-            if (e.getCause() instanceof SofabException) {
-                return errLine((SofabException) e.getCause());
-            }
-            return "R other";
         } catch (RuntimeException e) {
             return "R other";
         }
