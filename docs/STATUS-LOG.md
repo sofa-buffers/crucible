@@ -14,6 +14,104 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-14 — probe grew an enum and a bitfield; the declared-width rule reaches every position
+
+crucible#211. `probe` had no `enum` and no `bitfield`, so no gate could see either bound. The
+rule at documentation `main@b6586b5` (MESSAGE_SPEC §1, §7, §7.1, §7.3) is the **declared
+width**. An `enum` is a signed integer bounded by the smallest signed type that holds every
+declared constant. A `bitfield` is an unsigned integer bounded by the smallest unsigned type
+that holds its highest declared `pos`. A value inside the width that names no constant or sets
+an undeclared bit is valid and is stored as received. A value outside the width is `INVALID`.
+This replaces the closed-type rule (2026-09-08), which was withdrawn on 2026-09-14. Verified
+with sofabgen `0.0.0-20261014101647-9b68239d849a` and every corelib at its main tip.
+
+- **Change.** Four `$defs` types: `Level` `{-128, -3, 0, 1, 127}` → `i8`, `Code`
+  `{-1000, 2, 7, 300}` → `i16`, `Perm` pos 0/1/3 → `u8`, `Wide` pos 0/9/31 → `u32`. They sit
+  at 12 positions: root scalars 205-208, root compact arrays 209-212 (count 5), `nested`
+  children 10/11, and `struct_array` element fields 3/4. No existing id moved.
+  `corpus/structured` gained 26 vectors (119-144, appended). `sweep_positions` gained 12
+  positions. `sweep_overbound` gained 90 vectors, and `sweep_malform_truncate` gained 2
+  malformations, and `wiretype_sweep` 12 over-width mismatches (707 in total). The Java walker
+  (`ProbeDump.leaf()`) and the Rust walker (`_ARR_FN`) learned enum and bitfield **array
+  elements**; both had known the kinds only as scalars. The reference `materialize.py` learned
+  both kinds, with the reference-only `default`. The other eight walkers and the C anchor
+  needed no change.
+- **Decision: own position categories, and the width test lives in `sweep_overbound`.** The
+  enum and bitfield positions get their own categories (`scalar_enum`, `scalar_bits`,
+  `arr_enum`, `arr_bits`) instead of reusing `s`/`u`. That way `CAT_TO_CONSTRUCT` gives
+  `wiretype_sweep` the §7.3 consequence for free: an unsigned header at an enum position, or a
+  signed header at a bitfield position, is a skipped field. Both sides of the width belong to
+  the strict axis: over-width `reject`, the at-bound values, and the in-width undeclared values.
+  The test values are derived from the declaration, never hard-coded.
+- **Decision: bitfield undeclared bits expect `accept`, not `identity`; a booleans profile is
+  a dormant policy entry.** §1 (l.150-156) leaves it to the storage whether those bits survive
+  a decode and re-encode. Enums do get `identity` (l.115-122: stored as received, as the
+  declared integer type). `accept` only drops the comparison against the input: the agreement
+  oracle still compares the value across drivers, and so do the seeds, `sweep_truncation`'s
+  rich message and every axis built on `valid_field` (5/6 set bit 2, undeclared in both
+  bitfields). Every current profile stores a bitfield as one integer and keeps the bits, so the
+  family is held to keeping them, and an integer profile that masks them is caught (§1: "not
+  masked away on decode"). A profile that stored named booleans would split that agreement
+  legally. Moving the vectors out would not have helped, since agreement pins them anyway;
+  instead `oracle/policy.yaml` gained the dormant `bitfield-undeclared-bits-storage` entry,
+  to be scoped to those inputs if such a profile joins.
+- **Decision: a non-zero `Code` default with no 0 constant.** §1 makes a 0-less enum declare a
+  default, and §2 reconstructs it on absence. A received `0` is therefore a valid in-width value
+  that differs from the default and must be written back. An all-default `struct_array`
+  element in an id gap must come back as `code = 7`. The materialized all-default dump prints
+  `s7` at both `code` fields.
+- **Decision: the descriptor's `default` key is reference-only.** `schema.py` puts it on an
+  enum/bitfield node when the declared default is non-zero. `materialize.py` and `gen.py`
+  read it; a walker never does, because it prints what the generated code decoded
+  (drivers/common/CONTRACT.md).
+- **Decision: enum constants on the width edges.** `Level` declares `-128` and `127`, so the
+  width vectors (`128` → reject, `-128` / `127` → identity) also test how a backend derives
+  the width from the constants (§1 l.70-72: "the smallest signed integer type that holds
+  every one of them"). A derivation that is off by one would pick `i16` for `127`. With no
+  constant on an edge, the vectors only checked that the derived width agreed with Crucible's.
+- **Decision: a mistyped enum/bitfield field is skipped before any width check.** §7.3
+  (l.742-746) skips it and l.752-754 puts value range outside that clause. The generic
+  mismatch payloads (`U=5`, `S=3`) are inside every width and cannot tell a skip from a
+  decoder that checks the width first, so `wiretype_sweep` places each enum/bitfield mismatch
+  again with a payload outside the declared width under either varint reading. Expected:
+  accept, field absent.
+- **Decision: one `declared_width()`.** `schema.py` is the only place in Crucible that derives
+  the width. `sweep_positions` takes it from there, and through its position table so does
+  every axis.
+- **Measured.** `gates.sh` ran every `replay.yml` gate in sequence over the 20-driver roster.
+  All 22 exit 0, on a full re-run after the review follow-ups (edge constants, over-width
+  §7.3 mismatches, the dormant policy entry).
+  - Round trip, materialized and cross-encode over `corpus/structured`: 145 inputs, 0
+    divergences. The C anchor has 0/145 mismatches against the reference, with no `?` in its
+    vocabulary.
+  - Sweep axes, each with 0 divergences and 0 conformance failures:
+    - `sweep_overbound` 160 (accept 41 / identity 26 / reject 93)
+    - `wiretype_sweep` 707 (12 of them the over-width §7.3 mismatches)
+    - `sweep_truncation` 270
+    - `sweep_malform_truncate` 103 (15 malformations)
+    - `sweep_reserved_subtype` 199
+    - `sweep_fixlen_array_subtype` 196
+    - `sweep_repeated_id` 170
+    - `sweep_tolerance` 100
+    - `sweep_empty_frame` 44
+  - Union, deep union, limits, chunk invariance, encode-fail and the streaming encode are
+    green too.
+  - The width is enforced in every backend. Most do it in generated code. In C and the
+    c-cpp profiles the corelib does it (corelib-c-cpp's object layer by element size, and its
+    C++ wrapper's `read(intN_t&)`), from the destination width the generated code declares.
+    In Python, corelib-py does it from the `min_value`/`max_value` the generated binding
+    passes. No backend disagrees at any of the 12 positions.
+- **Finding: G-0048 (generator, Java backend, open, not filed yet).** Java materializes an
+  `enum` as a bare `long` with no named constants. MESSAGE_SPEC §1 (l.119-122) names Java and
+  requires "named constants beside it". Kotlin, Dart and Rust emit them. The generator's own
+  ARCHITECTURE records the Java gap as deliberate, which conflicts with the spec. No gate can
+  see this, since it is API-level, so it does not affect any gate. Draft issue written; the
+  user decides on filing.
+- **Not done here.** Plain integer *scalars* still have no width sweep of their own (only the
+  F-0033 regression inputs); this is in `docs/TODO.md`. crucible#211's body already matched this
+  design (rewritten earlier today). Its closing note with these numbers was not posted from this
+  change.
+
 ## 2026-10-14 — the last two driver restatements go: generator#747 / #748 landed
 
 The 2026-10-13 review left two places where a driver restated generated code, each citing

@@ -66,6 +66,12 @@ _MSG_KEY = {
     # `f` is not here: element fields are read out of the element dict by NAME in the
     # struct_wrapper branch, not through this table.
     ("nested", "flag"): "nflag", ("flag",): "flag", ("flag_array",): "flagarr",
+    # crucible#211 — enum / bitfield (2026-10-14). The struct_array element's `code` /
+    # `perm` are read by name in the struct_wrapper branch, like `f`.
+    ("level",): "level", ("code",): "code", ("perm",): "perm", ("mask",): "mask",
+    ("level_array",): "levelarr", ("code_array",): "codearr",
+    ("perm_array",): "permarr", ("mask_array",): "maskarr",
+    ("nested", "level"): "nlevel", ("nested", "mask"): "nmask",
 }
 
 
@@ -130,6 +136,11 @@ def _walk(node, msg, path):
     # already normalized every non-zero spelling away (that is the rule under test).
     if kind == "bool":   return _u(1 if msg.get(key) else 0)
     if kind == "s":      return _s(msg.get(key, 0))
+    # MESSAGE_SPEC §1: an enum / bitfield is the stored integer — never a constant name, never
+    # masked. An absent field decodes to its declared default (§2), which the descriptor
+    # carries for the reference only (`default`, schema.py); a walker never reads it.
+    if kind == "enum":     return _s(msg.get(key, node.get("default", 0)))
+    if kind == "bitfield": return _u(msg.get(key, node.get("default", 0)))
     if kind == "fp32":
         v = msg.get(key, 0.0)                       # raw bytes are explicit (no omit-normalize)
         return _f32(v if isinstance(v, bytes) else _scalar_fp(v))
@@ -143,8 +154,10 @@ def _walk(node, msg, path):
         if node["elem"] == "bool":
             # an array of boolean is an array of unsigned 0/1 (MESSAGE_SPEC §4.7)
             return _num_array([1 if v else 0 for v in vals], False)
-        if node["elem"] in ("u", "s"):
-            return _num_array(vals, node["elem"] == "s")
+        if node["elem"] in ("u", "s", "enum", "bitfield"):
+            # an enum array is a compact SIGNED array, a bitfield array a compact UNSIGNED
+            # one (MESSAGE_SPEC §3); each element is printed as stored
+            return _num_array(vals, node["elem"] in ("s", "enum"))
         return _fp_array(vals, _f32 if node["elem"] == "fp32" else _f64)
     if kind == "wrapper":
         items = msg.get(key, [])
@@ -161,10 +174,14 @@ def _walk(node, msg, path):
         fmts = {"u": (_u, 0), "s": (_s, 0), "string": (_text, ""), "blob": (_blob, b""),
                 # §4.4 inside a wrapper element: `false` is the element field's default
                 "bool": (lambda v: _u(1 if v else 0), False)}
-        return _arr([
-            _obj([(c["id"], fmts[c["kind"]][0](e.get(c["name"], fmts[c["kind"]][1])))
-                  for c in node["fields"]])
-            for e in items])
+
+        def fmt(c, e):
+            if c["kind"] in ("enum", "bitfield"):
+                # the element field's declared default: a gap element reconstructs it (§5.1)
+                return (_s if c["kind"] == "enum" else _u)(e.get(c["name"], c.get("default", 0)))
+            f, d = fmts[c["kind"]]
+            return f(e.get(c["name"], d))
+        return _arr([_obj([(c["id"], fmt(c, e)) for c in node["fields"]]) for e in items])
     raise ValueError(f"unhandled kind {kind!r}")
 
 

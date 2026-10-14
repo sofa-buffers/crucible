@@ -116,10 +116,22 @@ Rules that make it byte-reproducible across 13 languages:
   walker that printed every option would print one option out of another's bytes. A `which`
   that names no option prints `{}` (a visible failure).
 - **An `enum` emits `s<value>` and a `bitfield` emits `u<value>`** — the integer, in the same
-  shape as any signed / unsigned leaf. They are their own descriptor kinds only because most
-  languages hold them as a native enum or flags type that a walker must convert. The bound is
-  the declared WIDTH, not the named members (MESSAGE_SPEC §1): an enum holds 127 or -1 and a
-  bitfield 255 without a declared bit, and the API must hand the integer back.
+  shape as any signed / unsigned leaf, as a scalar and as an array element alike (an `array`
+  node whose `elem` is `enum` / `bitfield` is a compact signed / unsigned array, MESSAGE_SPEC
+  §3). They are their own descriptor kinds only because most languages hold them as a native
+  enum or flags type that a walker must convert. The bound is the declared WIDTH, not the named
+  members (MESSAGE_SPEC §1): an enum holds 127 or -1 and a bitfield 255 without a declared bit,
+  and the API must hand the integer back. The walker prints the **stored integer**: it never
+  maps it to a constant name, never masks a bitfield to its declared bits or to its width, and
+  never substitutes the default. An absent field of an enum whose declared default is non-zero
+  (`code` in `probe`, default 7) prints `s7` because the decoded value **is** 7 (MESSAGE_SPEC §2
+  initialization), not because the walker knows the default — the descriptor's `default` key
+  on such a node is for the reference (`engine/structured/materialize.py`) only, and a walker
+  that read it would hide a decode that lost the value. A sign correction such as reading a
+  `u8` element held in a signed `byte` as `0..255` is a representation conversion and is
+  allowed only for a container of **exactly** the declared width; narrowing a wider holder (a
+  `long`, a `ULong`, a 64-bit `int`) to the declared width in a walker would be masking, and
+  would hide exactly the over-width store MESSAGE_SPEC §7 forbids.
 - **An array whose elements are unions, or are themselves arrays** (`node_wrapper` in the
   descriptor) emits `[` + the container's ACTUAL elements in index order + `]`, each element
   through the item node: a union element prints its held option, an array element prints its
@@ -127,10 +139,11 @@ Rules that make it byte-reproducible across 13 languages:
   are default elements (a union at `default_id` at its default), and nothing is padded to
   `count`.
 
-Example — the all-defaults `probe` (schema `schema/probe.sofab.yaml`):
+Example — the all-defaults `probe` (schema `schema/probe.sofab.yaml`; the empty message,
+`corpus/structured/000_00_defaults.bin` — the reference's own output, not hand-written):
 
 ```
-A {0:u0;1:s0;2:u0;3:s0;4:u0;5:s0;6:u0;7:s0;10:{0:f00000000;1:F0000000000000000;2:t0:;3:b0:};100:{0:[u0,u0,u0,u0,u0];1:[s0,s0,s0,s0,s0];2:[u0,u0,u0,u0,u0];3:[s0,s0,s0,s0,s0];4:[u0,u0,u0,u0,u0];5:[s0,s0,s0,s0,s0];6:[u0,u0,u0,u0,u0];7:[s0,s0,s0,s0,s0];10:{0:[f00000000,f00000000,f00000000,f00000000,f00000000];1:[F0000000000000000,F0000000000000000,F0000000000000000,F0000000000000000,F0000000000000000]}};200:[];201:[]}
+A {0:u0;1:s0;2:u0;3:s0;4:u0;5:s0;6:u0;7:s0;10:{0:f00000000;1:F0000000000000000;2:t0:;3:b0:;9:u0;10:s0;11:u0};100:{0:[];1:[];2:[];3:[];4:[];5:[];6:[];7:[];10:{0:[];1:[]}};200:[];201:[];202:[];203:u0;204:[];205:s0;206:s7;207:u0;208:u0;209:[];210:[];211:[];212:[]}
 ```
 
 The `engine/structured/materialize.py` reference is the ground truth; every driver's

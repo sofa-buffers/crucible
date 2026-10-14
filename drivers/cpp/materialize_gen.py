@@ -20,7 +20,7 @@ ONLY the member API both share: `.size()`, `operator[]`, `.data()` for string/bl
 
 Descriptor: `{ "message": ..., "fields": [node, ...] }`; node has `id`, `name`,
 `kind`. Kinds: leaf `u|s|fp32|fp64|string|blob`; `struct` (+`fields`); `array`
-(+`elem` u|s|fp32|fp64, +`count`); `wrapper` (+`elem` string|blob, +`count`). The
+(+`elem` u|s|bool|enum|bitfield|fp32|fp64, +`count`); `wrapper` (+`elem` string|blob, +`count`). The
 C++ member name for each node is its schema `name` (confirmed against both
 drivers/cpp/gen/{cpp,c-cpp}/probe.hpp); paths join with `.`.
 
@@ -125,7 +125,7 @@ def _emit(node, acc, out, ind, depth):
 
 def _emit_elem(elem, acc, out, ind, depth):
     pad = "    " * ind
-    # array elem: u|s|fp32|fp64 ; wrapper elem: string|blob — all leaves.
+    # array elem: u|s|bool|enum|bitfield|fp32|fp64 ; wrapper elem: string|blob — all leaves.
     out.append(pad + _leaf(elem, acc))
 
 

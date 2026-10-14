@@ -46,8 +46,10 @@ def _b(bb): bb = bytes(bb); return f"b{len(bb)}:{bb.hex()}"
 # so a native bool renders as u1/u0 — while a port that kept the RAW wire value (a
 # non-normalized `2`) renders `u2`, which is the divergence this form exists to surface.
 def _bool(v): return f"u{int(v)}"
-# enum / bitfield arrive as IntEnum / IntFlag: int() hands over the plain integer
-# (also for values outside the named members), printed like `s` / `u`.
+# enum / bitfield: the decode path stores the plain wire integer (only the field's
+# default is an IntEnum / IntFlag member), so int() hands over the stored value as-is —
+# also one that names no constant or sets an undeclared bit — printed like `s` / `u`.
+# Never mapped to a member name, never masked (MESSAGE_SPEC §1).
 def _enum(v): return f"s{int(v)}"
 def _bits(v): return f"u{int(v)}"
 

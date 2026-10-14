@@ -205,12 +205,20 @@ public final class ProbeDump {
         return sb.toString();
     }
 
-    /** Format a single leaf value given its descriptor kind (`u|s|fp32|fp64|string|blob`). */
+    /** Format a single leaf value given its descriptor kind
+     *  (`u|s|enum|bitfield|bool|fp32|fp64|string|blob`). */
     private static String leaf(String kind, Object value) {
         switch (kind) {
             case "u":      return u(value);
             case "bool":   return bool(value);
             case "s":      return s(value);
+            // An enum / bitfield element is the stored integer as-is: never mapped to a
+            // constant name, never masked to the declared bits (MESSAGE_SPEC §1). The
+            // element arrives boxed from the declared-width native array (byte[]/short[]
+            // for an enum, byte[]/int[] for a bitfield); `u()` only undoes Java's signed
+            // reading of that exact-width storage, it does not narrow the value.
+            case "enum":     return s(value);
+            case "bitfield": return u(value);
             case "fp32":   return f32(value);
             case "fp64":   return f64(value);
             case "string": return text(value);

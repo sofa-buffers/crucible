@@ -102,7 +102,11 @@ fn mz_arr_f64(out: &mut String, a: &[f64]) {
 }
 '''
 
+# An enum array is a slice of the declared-width signed integer (`Vec<i8>`, `heapless::Vec<i16,
+# N>`) and a bitfield array one of the unsigned word, so they print through the generic
+# signed/unsigned helpers: the stored integer as it is, never mapped to a constant or masked.
 _ARR_FN = {"u": "mz_arr_u", "bool": "mz_arr_bool", "s": "mz_arr_s",
+           "enum": "mz_arr_s", "bitfield": "mz_arr_u",
            "fp32": "mz_arr_f32", "fp64": "mz_arr_f64"}
 
 

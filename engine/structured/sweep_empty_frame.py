@@ -151,10 +151,14 @@ def emit(out_dir):
         # `arr_bool` builds as unsigned: §4.7 gives an array of boolean the unsigned
         # array wire form. Spelled out rather than left to the fp64 `else`, which would
         # have emitted an fp64 array at a boolean position and swept nothing.
-        if p.cat in ("arr_u", "arr_bool"): body = arr_u(p.fid, [])
-        elif p.cat == "arr_s":    body = arr_s(p.fid, [])
+        # An enum array is a compact SIGNED array, a bitfield array a compact UNSIGNED one
+        # (MESSAGE_SPEC §3). Every category is named: an unknown one raises instead of
+        # silently becoming an fp64 array, the trap the boolean arrays once fell into.
+        if p.cat in ("arr_u", "arr_bool", "arr_bits"): body = arr_u(p.fid, [])
+        elif p.cat in ("arr_s", "arr_enum"): body = arr_s(p.fid, [])
         elif p.cat == "arr_fp32": body = arr_fp(p.fid, [], "<f", FL_FP32)
-        else:                     body = arr_fp(p.fid, [], "<d", FL_FP64)
+        elif p.cat == "arr_fp64": body = arr_fp(p.fid, [], "<d", FL_FP64)
+        else: raise ValueError(f"sweep_empty_frame: no count-0 builder for {p.cat!r}")
         vectors.append((f"{p.tag()}_count0.bin",
                         MARKER + place(p.path, body), "accept"))
 

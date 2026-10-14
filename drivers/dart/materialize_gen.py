@@ -29,7 +29,7 @@ Dart type gotchas the leaf emitters handle (see oracle/materialized.md):
 Descriptor shape (JSON): { "message": "probe", "fields": [node, ...] }
   node.kind: leaf u|s|fp32|fp64|string|blob
              struct  (+ fields[])
-             array   (+ elem u|s|fp32|fp64, + count)   -> List<int>/List<double>, actual length
+             array   (+ elem u|s|bool|enum|bitfield|fp32|fp64, + count)   -> List<int>/List<double>, actual length
              wrapper (+ elem string|blob,  + count)    -> List<String>/List<Uint8List>, actual length
 
 Usage: materialize_gen.py OUT.dart [SCHEMA_PATH]

@@ -22,8 +22,9 @@ is neither listed nor honest:
      the vendored corelib-c-cpp defines must have a `case` in `md_value()`. A new tag
      then fails here, by name, instead of as a family-wide divergence.
   3. **every walker knows every kind.** Every kind in `oracle/materialized-schema.json`
-     must be named by every materialized-value walker. `enum` and `bitfield` are the
-     next two (docs/TODO.md); this is what makes a walker that missed one fail by name.
+     must be named by every materialized-value walker. The probe descriptor carries
+     `enum` and `bitfield` since crucible#211 (as scalars and as array elements); this is
+     what makes a walker that missed a kind fail by name.
 
 Check 2 reads vendor/, so it needs `scripts/bootstrap.sh` first; `--static` runs 1 and 3
 only (the catalog job has no vendor/). How the GENERATED code reaches its corelib is not

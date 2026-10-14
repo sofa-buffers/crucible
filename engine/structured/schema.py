@@ -27,7 +27,14 @@ drivers/reference consume). Kinds:
                                    and the walker must print the integer (`s<value>`)
   bitfield                         a `bitfield`: an unsigned integer (`u<value>`); its own kind for
                                    the same reason (a native flags type, not a number)
-  array   { elem: u|s|fp32|fp64, count }   an inline fixed-count numeric/fp array
+                                   An `enum` / `bitfield` scalar node carries `default: <int>` when
+                                   its declared default is non-zero. That key is REFERENCE-ONLY
+                                   (engine/structured/materialize.py, the generators of vectors):
+                                   a walker never reads it — it prints the value the generated code
+                                   decoded, and an absent field decodes to its default by itself
+  array   { elem: u|s|bool|enum|bitfield|fp32|fp64, count }
+                                   an inline fixed-count compact array; `enum` and `bitfield`
+                                   elements are a compact signed / unsigned array (MESSAGE_SPEC §3)
   wrapper { elem: string|blob, count }     a dynamic index-keyed element sequence
   struct_wrapper { count, fields: [...] }  a wrapper whose elements are struct
                                            sequences (array-of-struct, §5.2)
@@ -73,11 +80,70 @@ def _resolve(o):
     return o
 
 
+# --- the declared width of an enum / bitfield (MESSAGE_SPEC §1, §7.1) ----------------------
+# The ONE place in Crucible that derives it. An `enum` is bounded by the smallest SIGNED type
+# holding every declared constant ("signed whatever the constants are", §1); a `bitfield` by the
+# smallest UNSIGNED type holding its highest declared `pos` — never by the set of constants or
+# the mask the flags form.
+
+def _deref(o, root):
+    """`{ $ref: "#/$defs/<cat>/<Name>" }` resolved against the loaded YAML `root`; else `o`."""
+    if isinstance(o, dict) and set(o) == {"$ref"}:
+        node = root
+        for part in o["$ref"].lstrip("#/").split("/"):
+            node = node[part]
+        return node
+    return o
+
+
+def enum_values(spec, root):
+    """The declared constants of an enum field / array `items` spec (`KEY: int` or
+    `KEY: {value: int}`, generator schema README)."""
+    consts = _deref(spec["enum"], root)
+    return [c["value"] if isinstance(c, dict) else c for c in consts.values()]
+
+
+def bitfield_flags(spec, root):
+    """The declared flags of a bitfield field / array `items` spec: {name: {pos, default?}}."""
+    return _deref(spec["bits"], root)
+
+
+def declared_width(spec, root):
+    """`i8`..`i64` for an enum, `u8`..`u64` for a bitfield (field spec or array `items` spec)."""
+    t = spec["type"]
+    for w in (8, 16, 32, 64):
+        if t == "enum":
+            vals = enum_values(spec, root)
+            if -(1 << (w - 1)) <= min(vals) and max(vals) <= (1 << (w - 1)) - 1:
+                return f"i{w}"
+        elif t == "bitfield":
+            if max(f["pos"] for f in bitfield_flags(spec, root).values()) < w:
+                return f"u{w}"
+        else:
+            raise ValueError(f"declared_width: {t!r} is neither an enum nor a bitfield")
+    raise ValueError(f"declared_width: no width holds {spec!r}")
+
+
+def declared_default(spec, root):
+    """The decoded value of an absent enum / bitfield field (§2): an enum field's `default`, a
+    bitfield's flags with `default: true` folded into the mask; 0 when none is declared."""
+    if spec["type"] == "enum":
+        return int(spec.get("default", 0))
+    if spec["type"] == "bitfield":
+        return sum(1 << f["pos"] for f in bitfield_flags(spec, root).values()
+                   if isinstance(f, dict) and f.get("default"))
+    raise ValueError(f"declared_default: {spec['type']!r} is neither an enum nor a bitfield")
+
+
 def _field(name, spec):
     t = spec["type"]
     node = {"id": spec["id"], "name": name}
     if t in _SCALAR:
         node["kind"] = _SCALAR[t]
+        if t in ("enum", "bitfield"):
+            d = declared_default(spec, _ROOT)
+            if d:
+                node["default"] = d   # reference-only (see the module docstring)
     elif t == "struct":
         node["kind"] = "struct"
         node["fields"] = _fields(spec["fields"])
