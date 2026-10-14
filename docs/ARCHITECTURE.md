@@ -349,10 +349,11 @@ the vacuous pass the gates' opt-in rosters guard against, one level down.
   **Status-returning single-pass decode:** the generated
   `DecodeStatus Probe.tryDecode(byte[], Probe)` (sofabgen 0.16.0, G-0008 fix) fills
   the message and returns the §7 status — `INCOMPLETE`→`I`, `COMPLETE`→`A`, and a
-  rejection→`R <class>` by `SofabError` code (`other` for anything unmapped). A
-  rejection raised by generated visitor code arrives as `java.io.UncheckedIOException`
-  around the `SofabException` (corelib-java#129), so the driver unwraps exactly that
-  carrier, as an application has to today.
+  rejection→`R <class>` by `SofabError` code (`other` for anything unmapped). Every
+  rejection — one raised by generated visitor code included — arrives as the
+  `SofabException` `feed` declares (corelib-java#129, fixed in corelib-java#130), so
+  the decode path catches exactly that. Only the encode path still unwraps: the
+  generated `encode()` wraps its refusal in a bare `RuntimeException` (generator#748).
   This replaced the earlier two-pass G-0008 workaround (a null-visitor `feed` for
   the verdict + `decode` for the value). Fields `u`/`i` are widened to `long` by the
   Java backend but hold in-range u32/i32 values, so decimal printing matches;

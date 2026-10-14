@@ -78,7 +78,10 @@ one-shot path calls the generated decode with the empty input.
 carrier the API documents: rejections from generated visitor code reach the caller as
 `UncheckedIOException` around the `SofabException`, although `IStream.feed` declares and
 documents `SofabException` — filed as corelib-java#129 (corelib boundary; no schema
-knowledge needed). Generated Go has no push decoder and no caller-buffer encode, and its
+knowledge needed). Fixed the next morning in corelib-java#130 (merged 2026-10-14, 68bbd5a):
+`feed` now throws the `SofabException` for every code, and the driver's decode-path
+unwrap is gone — output unchanged over the four main corpora on five axes and in limit
+mode. Generated Go has no push decoder and no caller-buffer encode, and its
 encoder options are unexported — filed as generator#747; the Go driver decodes the chunk
 axes through the generated `Probe__DecodeFrom` and restates the push construction (scrub
 only) and `WithMaxDepth` (encode-fail/stream) with that issue cited. Generated Java
