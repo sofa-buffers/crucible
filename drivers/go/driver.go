@@ -44,8 +44,8 @@ var materialized = os.Getenv("SOFAB_MATERIALIZE") == "1"
 // bytes of each record reach the decoder. Unset is the one-shot Probe__Decode.
 // SOFAB_SPLIT/SOFAB_CHUNK pull: the generated Probe__DecodeFrom reads the record
 // through a reader that yields one planned chunk per Read.
-// SOFAB_CHUNK_SCRUB pushes: Decoder.Feed on driver-owned chunk copies, scrubbed
-// after each call (meta: chunked_decode=push, since one path pushes).
+// SOFAB_CHUNK_SCRUB pushes: the generated Probe__NewDecoder's Feed on driver-owned
+// chunk copies, scrubbed after each call (meta: chunked_decode=push).
 var (
 	splitAt   = 0     // SOFAB_SPLIT=k: two chunks, [0,k) then [k,end)
 	chunkSize = 0     // SOFAB_CHUNK=n: fixed-size chunks of n bytes (wins over split)
@@ -201,11 +201,6 @@ func reportForeign() {
 //	stream  -> Serialize() into an encoder this driver builds, with the SOFAB_FLUSH
 //	           window, so the encoder crosses a buffer boundary every n bytes
 func encodeVia(m *msg.Probe) ([]byte, error) {
-	// encOpts restates the generated _Probe__EncOpts, which is unexported
-	// (generator#747): the generated Encode and EncodeTo bound every encoder they
-	// build to Probe__MaxDepth, and an encoder this driver builds must be the same
-	// encoder.
-	encOpts := []sofab.Option{sofab.WithMaxDepth(msg.Probe__MaxDepth)}
 	// SOFAB_ENCODE_FAIL=n (CONTRACT.md): hand the encoder a destination of n bytes with
 	// NO sink behind it, so a message that does not fit is REFUSED (ErrBufferFull)
 	// rather than truncated — CORELIB_PLAN §5.1 forbids returning partial output as if
@@ -213,20 +208,14 @@ func encodeVia(m *msg.Probe) ([]byte, error) {
 	// the wire that branch is unreachable, because every value re-encoded here came out
 	// of this driver's own decoder and is in-bounds by construction.
 	//
-	// The generated API has no encode-into-a-caller-buffer entry point
-	// (generator#747), so this builds the encoder itself — with exactly the options
-	// the generated Encode/EncodeTo pass (encOpts), so the only thing that differs
-	// from Encode() is the destination.
+	// The generated EncodeInto is exactly that surface: the caller's buffer, no sink.
 	if failAfter > 0 {
-		e, err := sofab.NewEncoderBuffer(make([]byte, failAfter), 0, encOpts...)
+		dst := make([]byte, failAfter)
+		n, err := m.EncodeInto(dst)
 		if err != nil {
 			return nil, err
 		}
-		m.Serialize(e)
-		if err := e.Flush(); err != nil {
-			return nil, err
-		}
-		return e.Bytes(), nil
+		return dst[:n], nil
 	}
 	switch encSurface {
 	case "to":
@@ -253,7 +242,7 @@ func encodeVia(m *msg.Probe) ([]byte, error) {
 				}
 				acc = append(acc, b...)
 				return nil
-			}, encOpts...)
+			}, msg.Probe__EncodeOptions()...)
 		if err != nil {
 			return nil, err
 		}
@@ -577,23 +566,20 @@ func (r *chunkReader) Read(p []byte) (int, error) {
 // Read in order, stops at the first error (terminal), and after EOF answers with
 // the decoder's outcome — an Incomplete mid-stream is never terminal there.
 //
-// With scrub it PUSHES, because DecodeFrom drains into a scratch buffer of its own
-// that the driver cannot reach: each chunk is a copy the driver owns, handed to
-// Decoder.Feed and overwritten with 0xA5 once Feed returns. Feed borrows a chunk
-// only for the call (§6.0), so a decoder that kept a window into it would read
-// scrubbed bytes. This is the one place the driver restates generated code — the
-// Probe__New + sofab.NewDecoder(m) construction of Probe__DecodeFrom — because the
-// generated API has no push decoder for a message (generator#747). The verdict is
-// what Feed returns (contract rule 3: corelib-go has no finish step): a non-nil
-// error is terminal; after the last chunk, Complete → the message, Incomplete →
-// sofab.ErrIncomplete, as Probe__DecodeFrom reports it.
+// With scrub it PUSHES through the generated Probe__NewDecoder, because DecodeFrom
+// drains into a scratch buffer of its own that the driver cannot reach: each chunk is
+// a copy the driver owns, handed to Feed and overwritten with 0xA5 once Feed returns.
+// Feed borrows a chunk only for the call (§6.0), so a decoder that kept a window into
+// it would read scrubbed bytes. The verdict is what Feed returns (contract rule 3:
+// the decoder has no finish step): a non-nil error is terminal; after the last chunk,
+// Complete → the message, Incomplete → sofab.ErrIncomplete, as Probe__DecodeFrom
+// reports it.
 func decodeChunked(data []byte, split, chunk int, scrub bool) (*msg.Probe, error) {
 	plan := chunkPlan(data, split, chunk)
 	if !scrub {
 		return msg.Probe__DecodeFrom(&chunkReader{chunks: plan})
 	}
-	m := msg.Probe__New()
-	d := sofab.NewDecoder(m)
+	d := msg.Probe__NewDecoder()
 	var out sofab.Outcome
 	for _, c := range plan {
 		piece := append([]byte(nil), c...)
@@ -609,7 +595,7 @@ func decodeChunked(data []byte, split, chunk int, scrub bool) (*msg.Probe, error
 	if out != sofab.Complete {
 		return nil, sofab.ErrIncomplete
 	}
-	return m, nil
+	return d.Message(), nil
 }
 
 // canonical writes the canonical line for one candidate input

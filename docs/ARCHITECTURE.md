@@ -234,7 +234,7 @@ where the per-language work went:
 | driver | chunked decode | encode surfaces | notes |
 |---|---|---|---|
 | c | `_decoder_init` + `_decoder_feed`; **no `status`** — the last feed's return is it | `to`, `stream` | no allocating encode, so the driver's **default** path is already `to` |
-| cpp ×4 | **no generated `decoder()`** — driven by hand, as `try_decode`'s own `IStreamInline` fed in pieces | `new`, `to`, `stream` | a bare `IStreamObject` would decode under different rules and report a try_decode-vs-feed difference as a chunk-invariance failure |
+| cpp ×4 | **no generated `decoder()`** — driven by hand, as `try_decode`'s own construction fed in pieces: `reset()` then an `IStreamInto<Probe>` bound to the destination (with the receiver `Limits` on corelib-cpp) | `new`, `to`, `stream` | any other construction would decode under different rules and report a try_decode-vs-feed difference as a chunk-invariance failure |
 | rust ×4 | `decoder()` → `feed`/`finish`; **no `status`** | `new`, `stream` | `finish()` feeds an empty chunk to probe end-of-input — what makes a truncated stream an error, not a half-filled value |
 | java, csharp | `decoder()` → `feed`, `message()`; **no `status()`** — the last feed's return is it | `new`, `to`, `stream` | |
 | dart | `decoder(out)` → `feed`, `status` | `new`, `to`, `stream` | the backend the "never `finish()`" rule exists for: it returns **null** where the others throw — and the only one that still carries a `status` accessor beside `feed`, which §5.2.1 forbids (generator#555); its `finish()` is built on it |
@@ -242,7 +242,7 @@ where the per-language work went:
 | typescript | `new ProbeDecoder()` → `feed`; **no `status`** | `new`, `stream` | `new` is the generated `encode()`; there is no `encodeTo()`. Every declared flush size down to 1 encodes; a too-small flush buffer is refused by the corelib's `OStream` constructor (exit 3), and a mid-encode `BufferFull` is an `E buffer_full` line |
 | python ×2 | `Probe.decoder()` → `feed`, `message`; **no `status`** | `new`, `stream` | **the one driver that scrubs**: `feed` takes any buffer and borrows it for the call only, so the chunks are `bytearray`s this driver overwrites after every `feed` — `SOFAB_CHUNK_SCRUB` runs here and passes. Pull-shaped until corelib-py#142 (2026-09-02) |
 | kotlin ×2 | `decoder()` → `feed`, `message`; **no `status`** | `new`, `to`, `stream` | identical on both legs — the streaming surfaces live in `commonMain`, so the JVM and native rows differ only in the machine code under them |
-| go | split/chunk: the generated `Probe__DecodeFrom(io.Reader)` over a reader that yields one planned chunk per `Read`; scrub: `Probe__New()` + `sofab.NewDecoder(m)` → `Feed` | `new`, `to`, `stream` | `Probe__DecodeFrom` pulls into its own scratch buffer, which the driver cannot scrub, and Go generates no push decoder (generator#747) — so only the scrub axis restates that construction |
+| go | split/chunk: the generated `Probe__DecodeFrom(io.Reader)` over a reader that yields one planned chunk per `Read`; scrub: the generated `Probe__NewDecoder()` → `Feed`, `Message()` | `new`, `to`, `stream` | `Probe__DecodeFrom` pulls into its own scratch buffer, which the driver cannot scrub, so the scrub axis pushes; both are generated surfaces, so both get exercised. `SOFAB_ENCODE_FAIL` goes through the generated `EncodeInto`, the stream surface's sink encoder through `Probe__EncodeOptions()` |
 
 Every participating driver **announces its configuration on stderr** when a variable is
 set. Without that, a driver that silently ignored the variables would be
@@ -352,8 +352,8 @@ the vacuous pass the gates' opt-in rosters guard against, one level down.
   rejection→`R <class>` by `SofabError` code (`other` for anything unmapped). Every
   rejection — one raised by generated visitor code included — arrives as the
   `SofabException` `feed` declares (corelib-java#129, fixed in corelib-java#130), so
-  the decode path catches exactly that. Only the encode path still unwraps: the
-  generated `encode()` wraps its refusal in a bare `RuntimeException` (generator#748).
+  the decode path catches exactly that, and so does the encode path: the generated
+  `encode()` declares its refusal since generator#748.
   This replaced the earlier two-pass G-0008 workaround (a null-visitor `feed` for
   the verdict + `decode` for the value). Fields `u`/`i` are widened to `long` by the
   Java backend but hold in-range u32/i32 values, so decimal printing matches;
