@@ -921,14 +921,13 @@ here:
       axes. The over-index / `maxlen` blob paths (§7.1) that F-0013 could not test for lack of a field
       are now **green** (all 12 reject); the §7.4 wrapper re-open surfaced **F-0026** (corelib-c-cpp,
       open). The C++ heap `_BlobSeq` guard held.
-- [ ] **More corner-case schemas** beyond the single full-scale `probe`:
-  - **recursive types** (`$ref`, trees) to exercise `MAX_DEPTH`, and a **map** (`array of
-    struct{k,v}`) — the last format features `probe` doesn't cover.
-  - *(update 2026-07-23: `MAX_DEPTH` is already exercised by `engine/structured/sweep_framing.py`
-    — the past-`MAX_DEPTH` nesting vector that surfaced F-0029 — but via synthetic bytes, not a
-    recursive `$ref` schema. The **map** (`array of struct{k,v}`) is modeled in `schema.py`
-    (`struct_wrapper`) yet held out of `probe` pending F-0030 — that is the "WP-05 completion"
-    residue item at the top of this file.)*
+- [ ] **A recursive schema** (crucible#212): no schema here uses a type that refers to itself
+  (`$ref`, trees — MESSAGE_SPEC §5.4), the last format feature `probe` doesn't cover.
+  `MAX_DEPTH` is already exercised by `engine/structured/sweep_framing.py` — the past-`MAX_DEPTH`
+  nesting vector that surfaced F-0029 — but via synthetic bytes, not through a generated decoder
+  walking a self-referential schema. *(The **map** half of this item is done: `struct_array`,
+  id 202, `array of struct{k,v,...}`, has been in `probe` since WP-05, 2026-07-27; corrected
+  2026-10-14.)*
 - [x] **Corpus hygiene — DONE 2026-08-02: 5994 → 579, all 15 clusters intact.** But **not**
       by `-merge` alone, which this item proposed and which turns out to be actively wrong:
       the plain merge gives 503 files and **6 clusters**, silently discarding the corpus
@@ -1252,10 +1251,11 @@ here:
       what changed is the price, and it is now the dominant cost of a push. Adding the next driver multiplies by fifteen again, so this
       stops being a tidiness item at about the point the next language arrives.
       **Where the rebuilds are**, because despite this item's title it is not all
-      `replay.yml`: the gate scripts build for themselves — `run-chunked.sh:56` and
-      `run-encode.sh:50` each call `run.sh`, `sweep.sh` calls it three times (probe, union,
-      probe again — lines 38/68/72, since it re-points the roster at another schema and
-      back), and `materialize.sh:41` goes through `roster.sh build` directly. So a fix
+      `replay.yml`: the gate scripts build for themselves — `run-chunked.sh:53` and
+      `run-encode.sh:59` each call `run.sh`, `sweep.sh` calls it three times (probe, union,
+      probe again — lines 38/82/86, since it re-points the roster at another schema and
+      back), and `materialize.sh:82` goes through `roster.sh build` directly (line numbers
+      as of 2026-10-14; the roster is 20 drivers now). So a fix
       belongs in `roster.sh` — the one place every one of them passes through — and not in
       the workflow, which is why the title is slightly misleading about where to look.
 - [ ] **Devcontainer image**: verify it builds and every driver builds *inside* it (so far
@@ -1265,11 +1265,13 @@ here:
       **No longer blocked (2026-08-18):** the `image.yml` item above is closed, and in fact
       the evidence is already partly in hand — `replay.yml`'s `differential` job runs inside
       `ghcr.io/sofa-buffers/crucible-ci:latest` and builds **every driver** there on each run,
-      so "every driver builds inside the image" is demonstrated for the CI image. What is
-      still unverified is the **devcontainer** image specifically (`.devcontainer/Dockerfile`),
-      which is a different artifact from the CI one; the remaining work is checking whether
-      the two have drifted, and if they are meant to be the same image, saying so in one place
-      rather than maintaining two.
+      so "every driver builds inside the image" is demonstrated for the CI image.
+      **Re-scoped 2026-10-14 (crucible#217):** there are not two images. `image.yml` builds
+      `crucible-ci:latest` from `.devcontainer/Dockerfile`, and `devcontainer.json` builds from
+      the same file. What remains is that the devcontainer **builds locally** instead of pulling
+      the published image, so a long-lived local container lags the CI one — as it did after
+      crucible#244 (kotlinc 2.4.10 locally, 2.4.21 pinned). Fix: use the published image in
+      `devcontainer.json`, or report when the container is older than its Dockerfile.
 - [ ] **OSS-Fuzz** onboarding for continuous fuzzing (eventual).
 
 ## Done — key harness milestones (finding history is in `../results/FINDINGS.md`)
