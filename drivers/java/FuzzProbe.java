@@ -5,19 +5,21 @@
 //   jazzer --cp=build/classes:sofab.jar:jazzer_standalone.jar \
 //          --target_class=crucible.FuzzProbe
 //
-// Must never crash the JVM on any input; a decode failure is the expected
-// RuntimeException and is swallowed. Cross-implementation divergence is caught by
-// the differential comparator, not here.
+// A rejection is the SofabException the generated decode() declares, and is
+// expected. Anything else thrown — an unchecked exception out of the generated
+// visitor or the corelib — is a finding, so it is not caught. Cross-implementation
+// divergence is caught by the differential comparator, not here.
 package crucible;
 
 import message.Probe;
+import org.sofabuffers.sofab.SofabException;
 
 public final class FuzzProbe {
     public static void fuzzerTestOneInput(byte[] data) {
         try {
             Probe.decode(data);
-        } catch (RuntimeException expected) {
-            // malformed input -> RuntimeException; not a finding
+        } catch (SofabException expected) {
+            // malformed (or incomplete) input; not a finding
         }
     }
 }

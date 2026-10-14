@@ -3,7 +3,7 @@
 //   c-cpp  -> corelib-c-cpp      (the C++ wrapper over the C corelib)
 //
 // build.sh selects which `sofab/sofab.hpp` is on the include path; the generated
-// probe.hpp and the sofab:: API (IStreamObject, Result, Error) are the same across
+// probe.hpp and the sofab:: API (IStreamInto, Result, Error) are the same across
 // both except where CRUCIBLE_CORELIB_CPP says otherwise, so this one source builds
 // against either.
 //
@@ -40,9 +40,9 @@
 // CRUCIBLE_CORELIB_CPP (set by build.sh for cpp / cpp-fixed) marks the pure-C++
 // corelib. The two corelibs' public APIs genuinely differ in two places this driver
 // touches, and the macro selects between them:
-//   - corelib-cpp's IStreamInline / IStreamObject take the receiver's field-span budget
+//   - corelib-cpp's IStreamInto takes the receiver's field-span budget
 //     (CORELIB_PLAN §6.2.1) as a constructor argument with no default (corelib-cpp#128);
-//     the c-cpp wrapper's take none. Only the hand-driven chunked stream needs it.
+//     the c-cpp wrapper's takes none. Only the hand-driven chunked stream needs it.
 //   - corelib-cpp's sofab::Error carries LimitExceeded (the `L` verdict); the c-cpp
 //     wrapper's does not.
 //
@@ -179,10 +179,9 @@ static std::vector<std::pair<std::size_t, std::size_t>> slices(std::size_t len)
 // chunked axes cannot be reached through it. The stream is built exactly the way THIS
 // profile's generated try_decode builds it (gen/<variant>/probe.hpp), so the pieces are
 // the only difference and a chunk-invariance failure cannot be a construction difference:
-//   - corelib-cpp: reset the destination, bind an IStreamInline to its `deserialize`
-//     with the generated receiver budget, decode into it directly;
-//   - corelib-c-cpp: decode into a fresh IStreamObject<Probe> and copy it over the
-//     destination only on success.
+// reset the destination and decode into it through an IStreamInto<Probe> — on
+// corelib-cpp with the generated receiver budget, which that constructor requires
+// (generator#749 made both profiles emit this one shape).
 // The verdict is the last feed's Result — C++ has no `finish()`, so this Result *is* the
 // status the contract requires the verdict to come from. An error that is not
 // `incomplete` is terminal and stops the feeding, per the contract.
@@ -194,15 +193,11 @@ static sofab::IStreamImpl::Result decode_streamed(const std::uint8_t *data,
                                                   std::size_t len,
                                                   message::Probe &m)
 {
-#ifdef CRUCIBLE_CORELIB_CPP
     m.reset();
-    sofab::IStreamInline *isp = nullptr;
-    sofab::IStreamInline is{[&m, &isp](sofab::id id, std::size_t size, std::size_t count) {
-        m.deserialize(*isp, id, size, count);
-    }, kReceiverLimits};
-    isp = &is;
+#ifdef CRUCIBLE_CORELIB_CPP
+    sofab::IStreamInto<message::Probe> is{m, kReceiverLimits};
 #else
-    sofab::IStreamObject<message::Probe> is;
+    sofab::IStreamInto<message::Probe> is{m};
 #endif
 
     // Result has no public constructor in either corelib, so the verdict is held in an
@@ -224,9 +219,6 @@ static sofab::IStreamImpl::Result decode_streamed(const std::uint8_t *data,
         }
         if (!r->ok() && !r->incomplete()) break;   // INVALID is terminal
     }
-#ifndef CRUCIBLE_CORELIB_CPP
-    if (r->ok()) m = *is;
-#endif
     return *r;
 }
 

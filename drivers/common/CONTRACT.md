@@ -242,7 +242,7 @@ same stream, and every backend has this one shape:
 |---|---|
 | `c` | `message_probe__encode(m, dst, n, &used)` |
 | `cpp` ×4 | `encodeTo(dst, n)` |
-| `go` | `sofab.NewEncoderBuffer(make([]byte, n), 0)` |
+| `go` | `m.EncodeInto(make([]byte, n))` |
 | `java`, `csharp`, `kotlin` | `new OStream(new byte[n])` |
 | `dart` | `sofab.Encoder.overBuffer(Uint8List(n))` |
 | `python` | `Encoder.over_buffer(bytearray(n), 0)` |

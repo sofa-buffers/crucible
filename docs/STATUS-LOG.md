@@ -14,6 +14,38 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-14 — the last two driver restatements go: generator#747 / #748 landed
+
+The 2026-10-13 review left two places where a driver restated generated code, each citing
+the generator issue that would make it unnecessary. Both landed on generator main
+(e7554e2c) the next morning; this removes the restatements. Verified with sofabgen
+0.0.0-20261014085723-e7554e2c5ba6 and every corelib at its main tip.
+
+- **go (generator#747 → generator#751).** The scrub axis now pushes through the generated
+  `Probe__NewDecoder()` / `Feed` / `Message()` instead of rebuilding `Probe__DecodeFrom`'s
+  `Probe__New` + `sofab.NewDecoder(m)`. `SOFAB_ENCODE_FAIL` encodes through the generated
+  `EncodeInto(dst)`, and the stream surface's sink encoder takes `Probe__EncodeOptions()`
+  instead of a restated `WithMaxDepth(Probe__MaxDepth)`. Split/chunk still pull through
+  `Probe__DecodeFrom`, so both generated decode surfaces stay exercised.
+- **java (generator#748 → generator#752).** `encode()` declares `throws IOException` and
+  `decode()` `throws SofabException`; the driver's encode-path `RuntimeException` unwrap
+  is gone. `FuzzProbe` (crucible#254) no longer compiled against that generator — it
+  caught `RuntimeException` as the expected rejection; it now catches `SofabException`,
+  and an unchecked throwable escapes to Jazzer as the finding it is. `build.sh` does not
+  compile it, so it was compiled by hand and run over the four main corpora (399 inputs,
+  nothing escaped).
+- **cpp, not asked for but required (generator#749).** The generated `try_decode` now
+  decodes in place on both profiles — `_out.reset(); IStreamInto<Probe> _in{_out}` (with
+  the receiver `Limits` on corelib-cpp). The chunk-axis stream the driver builds must be
+  built the same way or the chunk-invariance gate compares two constructions instead of
+  two deliveries, so `decode_streamed` follows: `IStreamInline` + `deserialize` (cpp) and
+  the copy-on-ok `IStreamObject` (c-cpp) are both replaced by that one shape.
+
+Before/after over seeds, regression, conformance and structured on nine axes (plain,
+materialize, chunk 1, split 3, scrub, stream, flush 20, encode-fail 8 and 40) for java,
+go and the four cpp profiles: 0 changed lines in 54 comparisons, and every chunked/scrubbed
+run equals the whole-record run.
+
 ## 2026-10-13 (review) — the drivers use the generated code the way an application does
 
 A review of `main` @ f6807e4 asked one question of every driver, walker and gate: does
