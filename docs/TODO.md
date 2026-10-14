@@ -1162,8 +1162,9 @@ here:
       with the corpus size, or report a timed-out driver as `[TIMEOUT]` and carry on with the
       rest — the second is the one that cannot hide drivers.
 
-- [ ] **The Kotlin target has three of its four KMP legs, and all three run in the gates
-      since 2026-10-13.** `drivers/kotlin/` runs corelib-kotlin-mp on `jvm`, `linuxX64`
+- [x] **DONE 2026-10-14 — the Kotlin target runs every leg Crucible can run, and all three
+      are in the gates since 2026-10-13** (crucible#213 closed). `drivers/kotlin/` runs
+      corelib-kotlin-mp on `jvm`, `linuxX64`
       (2026-08-18) and,
       since 2026-10-02, `js` (IR, Node). Both blockers the JS leg had collected closed on
       2026-10-12: **G-0046** (generator#716, 2026-10-07; Crucible's half — the walker reading
@@ -1179,8 +1180,8 @@ here:
       declared in the corelib's `commonMain` and the generated probe is one heap-container
       output for all three targets. Measured: `L` on the over-cap vectors, `A` under,
       agreeing with the other twelve rows in all four dimensions.
-      What stays open is the fourth leg: `linuxArm64` is cheap but only tests a
-      cross-compile on an x86 runner — worth it on an arm64 runner, not before.
+      The corelib's fourth target, `linuxArm64`, is out of scope: Crucible has no arm64
+      runner, and a cross-compile on x86 tests nothing the `linuxX64` leg does not.
 - [ ] **The Kotlin/Native leg has no coverage front-end.** Jazzer steers the JVM leg
       (`drivers/kotlin/FuzzProbe.kt`), and both legs are replayed against the corpus it
       grows — but Kotlin/Native exposes no libFuzzer entry point, so nothing steers by
