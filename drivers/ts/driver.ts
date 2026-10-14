@@ -113,7 +113,7 @@ interface SchemaNode {
   fields?: SchemaNode[];
   options?: SchemaNode[];
   default_id?: number;
-  elem?: "u" | "bool" | "s" | "fp32" | "fp64" | "string" | "blob";
+  elem?: "u" | "bool" | "s" | "enum" | "bitfield" | "fp32" | "fp64" | "string" | "blob";
   count?: number;
   item?: SchemaNode;   // node_wrapper: the (nameless) element node
 }

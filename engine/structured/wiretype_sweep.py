@@ -42,7 +42,7 @@ from gen import (
     WT_SEQ_BEG, WT_SEQ_END, WT_ARR_U, WT_ARR_S, FL_FP32, FL_FP64, FL_STRING, FL_BLOB,
     hdr, varint, scalar_u, scalar_s, fixlen, arr_u, arr_s, arr_fp,
 )
-from sweep_positions import POSITIONS, CAT_TO_CONSTRUCT  # noqa: E402  (the ONE model)
+from sweep_positions import POSITIONS, CAT_TO_CONSTRUCT, INT_RANGE  # noqa: E402  (the ONE model)
 
 # --- the wire constructs we place, one representative body each ---------------
 # Each builder takes a field id and returns the full field bytes (header + body).
@@ -112,11 +112,45 @@ def emit(out_dir):
             with open(os.path.join(out_dir, name), "wb") as fh:
                 fh.write(data)
             vectors.append((name, data, "accept"))
+    for name, data, expect in _overwidth_mismatches():
+        with open(os.path.join(out_dir, name), "wb") as fh:
+            fh.write(data)
+        vectors.append((name, data, expect))
     for name, data, expect in _sized_mismatches():
         with open(os.path.join(out_dir, name), "wb") as fh:
             fh.write(data)
         vectors.append((name, data, expect))
     return vectors
+
+
+# --- the skip comes before the width check ----------------------------------------
+# The generic payloads above (U=5, S=3) sit inside every declared width, so at an enum or
+# bitfield position they cannot tell a skip from a decoder that runs the width check
+# first. §7.3 (l.742-746) skips a mistyped field and MUST NOT decode its payload into the
+# declared field, and l.752-754 puts value-range conformance outside that clause: a field
+# with the wrong wire type never reaches the width check. So the mismatch is placed again
+# with a payload OUTSIDE the position's declared width under either reading of the
+# varint — an unsigned 2*(hi+1) at an enum position (raw > hi, zig-zag-decoded hi+1), a
+# signed -(hi+1) at a bitfield position (raw 2*hi+1 > hi, negative as signed). Expected:
+# accept, the field absent, exactly like the in-width mismatch.
+_WIDTH_MISMATCH = {"scalar_enum": "U", "arr_enum": "ARR_U",
+                   "scalar_bits": "S", "arr_bits": "ARR_S"}
+
+
+def _overwidth_mismatches():
+    out = []
+    for p in POSITIONS:
+        cname = _WIDTH_MISMATCH.get(p.cat)
+        if cname is None:
+            continue
+        hi = INT_RANGE[p.itype][1]
+        body = {"U": lambda fid: scalar_u(fid, 2 * (hi + 1)),
+                "ARR_U": lambda fid: arr_u(fid, [2 * (hi + 1)]),
+                "S": lambda fid: scalar_s(fid, -(hi + 1)),
+                "ARR_S": lambda fid: arr_s(fid, [-(hi + 1)])}[cname](p.fid)
+        out.append((f"{p.tag()}_{cname}_mism_overwidth.bin", place(list(p.path), p.fid, body),
+                    "accept"))
+    return out
 
 
 # --- the skip does not depend on the size of what is skipped ------------------

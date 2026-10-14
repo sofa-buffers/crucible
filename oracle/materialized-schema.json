@@ -70,6 +70,16 @@
           "id": 9,
           "name": "flag",
           "kind": "bool"
+        },
+        {
+          "id": 10,
+          "name": "level",
+          "kind": "enum"
+        },
+        {
+          "id": 11,
+          "name": "mask",
+          "kind": "bitfield"
         }
       ]
     },
@@ -191,6 +201,17 @@
           "id": 2,
           "name": "f",
           "kind": "bool"
+        },
+        {
+          "id": 3,
+          "name": "code",
+          "kind": "enum",
+          "default": 7
+        },
+        {
+          "id": 4,
+          "name": "perm",
+          "kind": "bitfield"
         }
       ]
     },
@@ -204,6 +225,55 @@
       "name": "flag_array",
       "kind": "array",
       "elem": "bool",
+      "count": 5
+    },
+    {
+      "id": 205,
+      "name": "level",
+      "kind": "enum"
+    },
+    {
+      "id": 206,
+      "name": "code",
+      "kind": "enum",
+      "default": 7
+    },
+    {
+      "id": 207,
+      "name": "perm",
+      "kind": "bitfield"
+    },
+    {
+      "id": 208,
+      "name": "mask",
+      "kind": "bitfield"
+    },
+    {
+      "id": 209,
+      "name": "level_array",
+      "kind": "array",
+      "elem": "enum",
+      "count": 5
+    },
+    {
+      "id": 210,
+      "name": "code_array",
+      "kind": "array",
+      "elem": "enum",
+      "count": 5
+    },
+    {
+      "id": 211,
+      "name": "perm_array",
+      "kind": "array",
+      "elem": "bitfield",
+      "count": 5
+    },
+    {
+      "id": 212,
+      "name": "mask_array",
+      "kind": "array",
+      "elem": "bitfield",
       "count": 5
     }
   ]

@@ -141,6 +141,17 @@ def malformations():
     h = hdr(203, WT_U)
     f = h + b"\xff" * 10 + b"\x02"
     out.append(("bool_varint_over_64bit", f, len(h) + 10))
+    # an enum / a bitfield-array element outside its DECLARED WIDTH (crucible#211;
+    # MESSAGE_SPEC §1, §7.1): root `level` (enum Level, i8) = 128 and `perm_array` (bitfield
+    # Perm, u8 elements) = [1, 256]. Each value is provably over-width only once its varint
+    # is complete, so `invalid_at` is the end of the body (no earlier provability is claimed:
+    # the spec states none). With that, the `_complete` and `_trunc_tail` vectors are the
+    # whole contribution: INVALID must still dominate the trailing incomplete varint (§5.2).
+    from gen import scalar_s
+    f = scalar_s(205, 128)
+    out.append(("enum_over_width", f, len(f)))
+    f = arr_u(211, [1, 256])
+    out.append(("bits_array_elem_over_width", f, len(f)))
     return out
 
 

@@ -43,7 +43,7 @@ internal static class Driver
         Environment.GetEnvironmentVariable("SOFAB_MATERIALIZE") == "1";
 
     // A descriptor node (recursive): the generated schema shape, loaded at startup.
-    // Leaf: id/name/kind. struct: +fields. array: +elem(u|s|fp32|fp64)+count.
+    // Leaf: id/name/kind. struct: +fields. array: +elem(u|s|bool|enum|bitfield|fp32|fp64)+count.
     // wrapper: +elem(string|blob)+count.
     private sealed class SchemaNode
     {

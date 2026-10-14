@@ -21,6 +21,12 @@ reject** (`R`), plus an at-bound control that all drivers must **accept**:
                               exercises the _BlobSeq heap path F-0013 left untested.
   * numeric array element   -> a value outside the declared element WIDTH, at both ends
                               for signed types, plus at-bound controls  expect R / A
+  * enum (scalar, array elem) -> outside the DECLARED WIDTH its constants imply, both ends
+                              and beyond i32, expect R; at both ends, an undeclared in-width
+                              value and (Code) 0 != the default: expect identity
+  * bitfield (scalar, elem)  -> over the width its highest pos implies and 2^64-1, expect R;
+                              at the top and an undeclared bit: accept; declared bits: identity
+  * enum / bitfield array    -> the over-width element LAST as well, and the count vectors
 
 **The width is a bound too** (added 2026-08-03). documentation#32 made a scalar's declared
 width a normative validity bound — §1: "not merely a storage hint" — and that binds an
@@ -39,6 +45,23 @@ container to the declared magnitude. (A large *over-maxlen* is inherently declar
 + truncated — the §5.2 precedence corner — so it lives on the malform×truncation axis,
 WP-09, not here.)
 
+**Enum and bitfield: the declared width, both sides** (crucible#211, 2026-10-14). MESSAGE_SPEC
+§1 bounds an `enum` by the smallest SIGNED type holding every declared constant and a `bitfield`
+by the smallest UNSIGNED type holding its highest declared `pos` — not by the set of constants or
+the mask the flags form. §7 / §7.1: outside that width is INVALID on every target, whatever its
+storage could hold ("an `enum` held in a language's 32- or 64-bit integer is rejected outside the
+width its constants declare"); inside it a value is valid even when it names no constant or sets
+an undeclared bit, and is never masked. The width comes from `Position.itype`, which
+`schema.declared_width` derives from the declaration (the one place that rule lives). An in-width
+ENUM value is stored as received (§1), so its vectors expect `identity`; for a BITFIELD the
+survival of undeclared bits through a re-encode is a storage choice the spec leaves open (§1: "a
+**storage** question the format deliberately leaves open"), so vectors carrying undeclared bits
+expect only `accept`, and only the declared-bits control expects `identity`. `accept` drops
+the comparison against the INPUT, not the agreement oracle: the drivers must still print the
+same value, so the family as built (every profile stores a bitfield as one integer) is held to
+keeping the bits. A profile that stores named booleans would split that agreement legally —
+the dormant `bitfield-undeclared-bits-storage` entry in oracle/policy.yaml is where it goes.
+
 Positions and wire primitives come from `sweep_positions.py` / `gen.py`.
 
 Usage: python3 engine/structured/sweep_overbound.py [out_dir]
@@ -52,7 +75,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from gen import (  # noqa: E402
     WT_FIX, WT_SEQ_BEG, WT_SEQ_END, FL_FP32, FL_FP64, FL_STRING, FL_BLOB,
-    hdr, varint, fixlen, arr_u, arr_s, arr_fp,
+    hdr, varint, fixlen, arr_u, arr_s, arr_fp, scalar_u, scalar_s,
 )
 from sweep_positions import POSITIONS, INT_RANGE, place  # noqa: E402
 
@@ -80,12 +103,74 @@ def _big_fixlen(fid, subtype, declared_len, payload=b"AAAA"):
     return hdr(fid, WT_FIX) + varint((declared_len << 3) | subtype) + payload
 
 
+def _enum_bits_width(p):
+    """The declared-width vectors at one enum / bitfield position, scalar or array (the
+    value goes into element 0 of `[v] + [1]*(n-1)`). See the module docstring."""
+    lo, hi = INT_RANGE[p.itype]              # a KeyError here = a 64-bit width: nothing to sweep
+    is_enum = p.cat in ("scalar_enum", "arr_enum")
+    is_arr = p.cat in ("arr_enum", "arr_bits")
+    n = p.count
+
+    def at(v, last=False):
+        if not is_arr:
+            return place(p.path, (scalar_s if is_enum else scalar_u)(p.fid, v))
+        vals = [1] * (n - 1) + [v] if last else [v] + [1] * (n - 1)
+        return place(p.path, (arr_s if is_enum else arr_u)(p.fid, vals))
+
+    def identity(name, v):
+        # the canonical form by construction: one field, framed once — unless the value is the
+        # declared default, which the canonical form omits (a scalar only; an array element
+        # has no default)
+        assert is_arr or v != p.default, f"{p.tag()}: identity value {v} is the default"
+        return (name, at(v), "identity")
+
+    tag = p.tag()
+    out = []
+    if is_enum:
+        # the nearest in-width value naming no constant: above the highest constant, else
+        # below the lowest, else (constants on both edges, as Level's) the first gap
+        undeclared = next(v for v in (*range(max(p.consts) + 1, hi + 1),
+                                      *range(min(p.consts) - 1, lo - 1, -1),
+                                      *range(lo, hi + 1))
+                          if v not in p.consts)
+        assert lo <= undeclared <= hi and undeclared not in p.consts
+        out += [(f"{tag}_enum_over_width.bin", at(hi + 1), "reject"),
+                (f"{tag}_enum_under_width.bin", at(lo - 1), "reject"),
+                # a 32-bit holder that wraps instead of checking (§7.1, l.707-711)
+                (f"{tag}_enum_over_i32.bin", at(2**31), "reject"),
+                (f"{tag}_enum_under_i32.bin", at(-(2**31) - 1), "reject"),
+                identity(f"{tag}_enum_at_max_ctl.bin", hi),
+                identity(f"{tag}_enum_at_min_ctl.bin", lo),
+                identity(f"{tag}_enum_undeclared_ctl.bin", undeclared)]
+        if not is_arr and p.default != 0:
+            # 0 names no constant here, is in width, and differs from the default: written
+            # and kept (§1 "stored as received")
+            assert 0 not in p.consts
+            out.append(identity(f"{tag}_enum_zero_nondefault_ctl.bin", 0))
+    else:
+        free = next(b for b in range(int(p.itype[1:])) if b not in p.consts)
+        declared = sum(1 << b for b in p.consts)
+        out += [(f"{tag}_bits_over_width.bin", at(hi + 1), "reject"),
+                # masked to the width this would read back as the at-max value, so a masking
+                # port shows as a verdict split (§7: "never silently masked")
+                (f"{tag}_bits_over_u64.bin", at(2**64 - 1), "reject"),
+                (f"{tag}_bits_at_max_ctl.bin", at(hi), "accept"),
+                (f"{tag}_bits_undeclared_ctl.bin", at(1 << free), "accept"),
+                identity(f"{tag}_bits_declared_ctl.bin", declared)]
+    if is_arr:
+        # an element check that stops after the first element
+        out.append((f"{tag}_elem_over_width_last.bin", at(hi + 1, last=True), "reject"))
+    return out
+
+
 def emit(out_dir):
-    vectors = []  # (name, bytes, expect)  expect in {"reject","accept"}
+    vectors = []  # (name, bytes, expect)  expect in {"reject","accept","identity"}
 
     for p in POSITIONS:
         tag = p.tag()
-        if p.cat in ("arr_u", "arr_s", "arr_bool"):
+        if p.cat in ("scalar_enum", "scalar_bits", "arr_enum", "arr_bits"):
+            vectors += _enum_bits_width(p)
+        if p.cat in ("arr_u", "arr_s", "arr_bool", "arr_enum", "arr_bits"):
             n = p.count
             # `arr_bool` is swept here for its COUNT: §7.1 binds an array of boolean
             # exactly like any other array (count 5 is a schema bound, and M > N is
@@ -94,7 +179,7 @@ def emit(out_dir):
             # skipped. That is the §4.4 rule, not an omission: a boolean carries no
             # width bound, and the positive half of that ("256 IS a legal true") is
             # asserted by sweep_tolerance.py.
-            signed = p.cat == "arr_s"
+            signed = p.cat in ("arr_s", "arr_enum")
             # `1..n` are legal booleans but non-canonical ones, so at a boolean position
             # they would make this §7.1 count vector assert §4.4's normalization too and
             # go red on G-0042. Elements stay canonical here; §4.4 is sweep_tolerance's.
@@ -113,7 +198,8 @@ def emit(out_dir):
             # masking an over-width array element survived F-0033's closure and needed a
             # 4-hour fuzz round to surface (generator#279). The bound comes from the
             # schema via `p.itype`, not a literal.
-            rng = INT_RANGE.get(p.itype)
+            # (enum / bitfield arrays: the width vectors are _enum_bits_width's, above)
+            rng = INT_RANGE.get(p.itype) if p.cat in ("arr_u", "arr_s") else None
             if rng:
                 lo, hi = rng
                 enc = arr_s if signed else arr_u

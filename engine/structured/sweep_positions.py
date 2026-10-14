@@ -26,6 +26,14 @@ A `Position` is one field slot in `schema/probe.sofab.yaml`:
                                                      but their OWN value rule: every
                                                      non-zero reads as true and carries
                                                      no width bound
+           'scalar_enum' 'arr_enum'                  an `enum` (crucible#211) — the SIGNED wire
+                                                     form (S / ARR_S, MESSAGE_SPEC §7.3) but its
+                                                     OWN value rule: bounded by the DECLARED WIDTH
+                                                     its constants imply (`itype`, §1), and a field
+                                                     may declare a non-zero `default`
+           'scalar_bits' 'arr_bits'                  a `bitfield` — the UNSIGNED wire form (U /
+                                                     ARR_U), bounded by the width its highest `pos`
+                                                     implies (`itype`, §1)
            'fp32' 'fp64' 'str' 'blob'                fixlen leaves
            'arr_u' 'arr_s' 'arr_fp32' 'arr_fp64'     compact/fixlen arrays
            'seq_struct'                               a struct sequence (opens a scope)
@@ -34,6 +42,10 @@ A `Position` is one field slot in `schema/probe.sofab.yaml`:
                                                       inside a wrapper sequence)
   elem   for a wrapper, the element category ('str' for string_array,
          'blob' for blob_array)
+  itype  the declared integer width: an array's element type, and for an enum / bitfield
+         (scalar or array) the width `schema.declared_width` derives from its declaration
+  default  an enum / bitfield scalar's declared default (0 unless the schema names one)
+  consts an enum's declared constant values / a bitfield's declared bit positions
 
 Every axis filters positions by `cat` (e.g. §7.4 repeated-id cares about the
 sequence positions; §7.1 over-bound cares about arrays and bounded strings/blobs;
@@ -60,9 +72,17 @@ from gen import (  # noqa: E402
     WT_SEQ_BEG, WT_SEQ_END, FL_FP32, FL_FP64, FL_STRING, FL_BLOB,
     hdr, scalar_u, scalar_s, fixlen, arr_u, arr_s, arr_fp,
 )
+import schema  # noqa: E402  (declared_width / declared_default: the one place that rule lives)
 
 SCHEMA = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       "..", "..", "schema", "probe.sofab.yaml")
+
+
+def _consts(spec, root):
+    """An enum's declared constant values, or a bitfield's declared `pos`es (sorted)."""
+    if spec["type"] == "enum":
+        return tuple(sorted(schema.enum_values(spec, root)))
+    return tuple(sorted(f["pos"] for f in schema.bitfield_flags(spec, root).values()))
 
 
 def _load_bounds(path=SCHEMA):
@@ -88,6 +108,14 @@ def _load_bounds(path=SCHEMA):
                 # element as much as a scalar — the axis needs the width from the schema
                 # rather than a literal (WP-11). F-0052 is what the gap cost.
                 b["itype"] = it.get("type", "")
+                if b["itype"] in ("enum", "bitfield"):
+                    # an enum / bitfield element is bounded by its DECLARED WIDTH (§1, §3)
+                    b["consts"] = _consts(it, y)
+                    b["itype"] = schema.declared_width(it, y)
+            elif t in ("enum", "bitfield"):
+                b["itype"] = schema.declared_width(spec, y)
+                b["default"] = schema.declared_default(spec, y)
+                b["consts"] = _consts(spec, y)
             elif t in ("string", "blob") and "maxlen" in spec:
                 b["maxlen"] = spec["maxlen"]
             out[(tuple(scope), fid)] = b
@@ -114,8 +142,19 @@ def _maxlen(path, fid):
 
 
 def _itype(path, fid):
-    """The declared element type of an array position ('u8', 'i16', 'fp32', …)."""
+    """The declared element type of an array position ('u8', 'i16', 'fp32', …), or the
+    declared width of an enum / bitfield scalar."""
     return _BOUNDS.get((path, fid), {}).get("itype", "")
+
+
+def _default(path, fid):
+    """The declared default of an enum / bitfield scalar (0 when none)."""
+    return _BOUNDS.get((path, fid), {}).get("default", 0)
+
+
+def _decl(path, fid):
+    """An enum's declared constants / a bitfield's declared positions (scalar or array)."""
+    return _BOUNDS.get((path, fid), {}).get("consts", ())
 
 
 # Inclusive value range a declared integer width admits (§1: "a validity bound, not
@@ -138,6 +177,8 @@ class Position:
     itype: str = ""      # declared element type of an array ('u8', 'i16', 'fp32', …)
     count: int = 0       # schema count for arrays / wrappers
     maxlen: int = 0      # schema maxlen for strings / blobs
+    default: int = 0     # declared default of an enum / bitfield scalar
+    consts: tuple = ()   # enum: the declared constant values; bitfield: the declared `pos`es
 
     def tag(self):
         scope = "root" if not self.path else "_".join(map(str, self.path))
@@ -194,13 +235,26 @@ POSITIONS = [
     # is position-driven sweeps the boolean wire form wherever the schema puts one.
     Position((), 203, "scalar_bool"),
     Position((), 204, "arr_bool", count=_count((), 204), itype=_itype((), 204)),
+    # enum / bitfield (crucible#211) — four positions per kind: root scalars, root compact
+    # arrays, a struct child (10/10, 10/11) and a wrapper-element field (202/0/3, 202/0/4).
+    # `itype` is the DECLARED WIDTH the declaration implies (schema.declared_width).
+    *[Position(path, fid, cat, itype=_itype(path, fid), default=_default(path, fid),
+               consts=_decl(path, fid))
+      for path, fid, cat in (((), 205, "scalar_enum"), ((), 206, "scalar_enum"),
+                             ((), 207, "scalar_bits"), ((), 208, "scalar_bits"),
+                             ((10,), 10, "scalar_enum"), ((10,), 11, "scalar_bits"),
+                             ((202, 0), 3, "scalar_enum"), ((202, 0), 4, "scalar_bits"))],
+    *[Position((), fid, cat, count=_count((), fid), itype=_itype((), fid), consts=_decl((), fid))
+      for fid, cat in ((209, "arr_enum"), (210, "arr_enum"),
+                       (211, "arr_bits"), (212, "arr_bits"))],
 ]
 
 SEQ_POSITIONS = [p for p in POSITIONS if p.cat in ("seq_struct", "seq_wrapper")]
 # `scalar_bool` is IN: §7.4's merge-vs-replace question is about the field slot, not
 # about the value type, and `valid_field` gives a boolean two distinguishable variants
 # (true / false) so the axis can still tell which occurrence won.
-SCALAR_POSITIONS = [p for p in POSITIONS if p.cat in ("scalar_u", "scalar_s", "scalar_bool")]
+SCALAR_POSITIONS = [p for p in POSITIONS
+                    if p.cat in ("scalar_u", "scalar_s", "scalar_bool", "scalar_enum", "scalar_bits")]
 ARRAY_POSITIONS = [p for p in POSITIONS if p.cat.startswith("arr_")]
 
 # cat -> the ONE wire construct that is a §7.3 *control* at a position of that cat
@@ -213,6 +267,10 @@ CAT_TO_CONSTRUCT = {
     # every one of them" — a boolean's §7.3 control is therefore exactly `U`, and an
     # array of boolean reuses the unsigned array wire form (§4.7).
     "scalar_bool": "U", "arr_bool": "ARR_U",
+    # §7.3 again: "an `enum` maps to the **signed**-integer wire type (§1, §4.5) and is
+    # well-formed for that one" — so at an enum position U / ARR_U are mismatches and MUST
+    # be skipped; a bitfield is in the unsigned list above, so there S / ARR_S are.
+    "scalar_enum": "S", "arr_enum": "ARR_S", "scalar_bits": "U", "arr_bits": "ARR_U",
     "fp32": "FIX_fp32", "fp64": "FIX_fp64", "str": "FIX_str", "blob": "FIX_blob",
     "arr_u": "ARR_U", "arr_s": "ARR_S", "arr_fp32": "ARR_fp32", "arr_fp64": "ARR_fp64",
     "seq_struct": "SEQ", "seq_wrapper": "SEQ", "seq_swrapper": "SEQ",
@@ -287,6 +345,13 @@ def valid_field(cat, fid, variant=0):
     # able to tell the occurrences apart, since a boolean has no third value to use.
     if cat == "scalar_bool": return scalar_u(fid, 1 if variant % 2 == 0 else 0)
     if cat == "arr_bool":    return arr_u(fid, [1] * (1 + variant % 2))
+    # enum: a NEGATIVE value (zig-zag), inside every declared width, never 0 and never the
+    # `Code` default 7; bitfield: 5/6, inside every width. Both name no constant on purpose
+    # (in-width unnamed values are valid, MESSAGE_SPEC §1).
+    if cat == "scalar_enum": return scalar_s(fid, -v)
+    if cat == "arr_enum":    return arr_s(fid, [-v])
+    if cat == "scalar_bits": return scalar_u(fid, v)
+    if cat == "arr_bits":    return arr_u(fid, [v])
     if cat == "arr_u":    return arr_u(fid, [v])
     if cat == "arr_s":    return arr_s(fid, [v])
     if cat == "arr_fp32": return arr_fp(fid, [1.0 + variant], "<f", FL_FP32)
@@ -301,11 +366,14 @@ def valid_field(cat, fid, variant=0):
 # distinguish merge (both kept) from replace (first lost); the rest are available for
 # any axis that wants a wider reopen and keep the model complete.
 STRUCT_CHILDREN = {
-    (10,):     [("fp32", 0), ("fp64", 1), ("str", 2), ("blob", 3), ("scalar_bool", 9)],
+    # APPEND only: struct_children() indexes these lists by `variant`
+    (10,):     [("fp32", 0), ("fp64", 1), ("str", 2), ("blob", 3), ("scalar_bool", 9),
+                ("scalar_enum", 10), ("scalar_bits", 11)],
     (100,):    [("arr_u", 0), ("arr_s", 1), ("arr_u", 2), ("arr_s", 3),
                 ("arr_u", 4), ("arr_s", 5), ("arr_u", 6), ("arr_s", 7)],
     (100, 10): [("arr_fp32", 0), ("arr_fp64", 1)],
-    (202, 0):  [("scalar_u", 0), ("str", 1), ("scalar_bool", 2)],  # struct_array element {k, v, f}
+    (202, 0):  [("scalar_u", 0), ("str", 1), ("scalar_bool", 2),     # struct_array element
+                ("scalar_enum", 3), ("scalar_bits", 4)],              # {k, v, f, code, perm}
 }
 
 def struct_children(scope, variant):

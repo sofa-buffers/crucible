@@ -47,7 +47,7 @@ Kotlin type notes the leaf emitters rely on (see oracle/materialized.md):
 Descriptor shape (JSON): { "message": "probe", "fields": [node, ...] }
   node.kind: leaf u|s|fp32|fp64|string|blob
              struct         (+ fields[])
-             array          (+ elem u|s|fp32|fp64, + count)  -> UByteArray/IntArray/…
+             array          (+ elem u|s|bool|enum|bitfield|fp32|fp64, + count)  -> UByteArray/IntArray/…
              wrapper        (+ elem string|blob,  + count)   -> MutableList<String|ByteArray>
              struct_wrapper (+ fields[])                     -> MutableList<generated>
 

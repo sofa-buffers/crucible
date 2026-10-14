@@ -69,7 +69,7 @@ run_dim() {
 run_dim arr $ALL
 run_dim str $ALL
 run_dim blb $ALL
-# Not a cap dimension: probe-dyn is the only schema declaring a field `default:`, and
+# Not a cap dimension: probe-dyn is the only schema with a non-empty array `default:`, and
 # this gate is the only one that builds against it. MESSAGE_SPEC §2's empty-frame table
 # says an array wrapper is the one position where a conformant encoder emits an empty
 # frame — and only where the declared default is non-empty, because otherwise "absent"

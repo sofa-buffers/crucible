@@ -55,7 +55,13 @@ def rich_message():
         # was untrue for booleans until they were added here, and the axis would have
         # swept every other field boundary and skipped theirs.
         "flag": True, "nflag": True, "flagarr": [True, False, True],
-        "structarr": [{"k": 1, "v": "a", "f": True}, {"k": 2, "f": True}],
+        # enum / bitfield at all twelve positions (crucible#211), with in-width values that
+        # name no constant / set undeclared bits — valid, so every prefix is still A or I
+        "level": 50, "code": 0, "perm": 4, "mask": 1 << 30,
+        "levelarr": [-128, 50], "codearr": [8, -32768], "permarr": [255, 4],
+        "maskarr": [2**32 - 1, 2], "nlevel": -128, "nmask": (1 << 31) | 2,
+        "structarr": [{"k": 1, "v": "a", "f": True, "code": 0, "perm": 4},
+                      {"k": 2, "f": True, "code": 8, "perm": 255}],
     })
 
 

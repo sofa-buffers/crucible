@@ -21,7 +21,7 @@ Descriptor shape (JSON): { "message": "probe", "fields": [node, ...] }
   node: id, name, kind
   kind: leaf u|s|fp32|fp64|string|blob
         struct  (+ fields[])
-        array   (+ elem u|s|fp32|fp64, + count)   -> native FixedArray(T, count)
+        array   (+ elem u|s|bool|enum|bitfield|fp32|fp64, + count)   -> native FixedArray(T, count)
         wrapper (+ elem string|blob,  + count)    -> []const []const u8 slice
 
 Zig field names are the schema `name`s verbatim (verified against the generated

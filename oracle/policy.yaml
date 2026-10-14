@@ -181,6 +181,32 @@ allow:
       by default; OFF pinned to raw-or-reject, never lossy). Verified 2026-09-23 at
       documentation main@c5cb2d86.
 
+  # DORMANT — crucible#211. Recorded so the first hit is recognized as legal instead of
+  # filed as a finding. Every profile in drivers/roster stores a `bitfield` as one integer
+  # and keeps undeclared bits, and the gate corpora rely on that: corpus/structured (the
+  # eb_* seeds), sweep_truncation's rich message, the `valid_field` value at a bitfield
+  # position (5/6, bit 2 undeclared) and sweep_overbound's `bits_*_ctl` accept vectors all
+  # set undeclared bits and are compared on value across the family. Masking them on
+  # decode while still storing one integer stays a bug (§1: "not masked away on decode").
+  - id: bitfield-undeclared-bits-storage
+    applies_to: []          # dormant — no roster entry stores a bitfield as named booleans
+    axis: accept_value
+    reason: >-
+      A target that materializes a `bitfield` as a set of named booleans cannot hold a bit
+      the schema does not declare, so it decodes an in-width value with an undeclared bit
+      (`perm = 4`, `mask = 2^32-1`) and re-encodes only its declared bits, where a target
+      that stores one integer re-encodes the value unchanged. Both accept; only the value
+      differs. If such a profile joins the roster, scope `applies_to` to the inputs above
+      that set undeclared bits (matching is by bytes) and confirm the divergence is limited
+      to those bits; a value split on DECLARED bits is still a bug.
+    spec: >-
+      MESSAGE_SPEC §1, "Undeclared bits are not masked away on decode ... Whether those
+      bits survive a decode-and-re-encode round trip is a **storage** question the format
+      deliberately leaves open — a target that materializes the field as one integer
+      preserves them, one that materializes it as a set of named booleans does not, and
+      neither is more conformant than the other" (l.150-156). Verified 2026-10-14 at
+      documentation main@b6586b5.
+
 # PLAN §8 is now RESOLVED. The open question was: is decoding of truncated input
 # specified (one correct outcome) or undefined? MESSAGE_SPEC §7 (finish-less
 # three-valued decode) settles it: truncated input is INCOMPLETE — a distinct,

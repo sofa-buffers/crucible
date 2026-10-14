@@ -893,32 +893,29 @@ here:
 
 ## Open — schemas & corpus
 
-- [ ] **`probe` carries no `enum` and no `bitfield`, and both became CLOSED types.** MESSAGE_SPEC
-      gained two normative bounds on 2026-09-08 (doc #89/#90): an `enum`'s bound is the **set of
-      constants the schema declares** — the signed-32-bit wire range is the ceiling of the *wire
-      type*, not of the field, so a value inside that range the schema does not declare is
-      `INVALID` all the same — and a `bitfield`'s bound is the **mask of declared positions**
-      (`v & ~mask == 0`), which is *not* "every bit up to the highest declared one": positions
-      0/1/3 give `mask = 0b1011`, so `4` is `INVALID`. §7.3 also moved `enum` from the unsigned to
-      the **signed** wire type, and `boolean` is the explicit exception — canonical on encode,
-      tolerant on decode, every non-`0` read as true and normalized (§4.4).
-      `sofabgen` implemented all of it in generator#530 and added corpus coverage of its own in
-      generator#532 — **Crucible has none.** `schema/probe.sofab.yaml` declares 0 enum and 0
-      bitfield (sofabgen's own validate line says so on every build), so the whole family could
-      disagree on either bound and every gate here would stay green.
-      *(Update 2026-09-18: the **`boolean`** third of this item is **DONE** — `probe` now declares
-      four boolean positions and `sweep_tolerance` owns the §4.4 tolerance rule; it found F-0064
-      and G-0042 on its first run. `enum` and `bitfield` are still open, and this item now means
-      only those two. The boolean work is also the template for them: a schema kind of its own, the
-      unsigned/signed wire form via `CAT_TO_CONSTRUCT`, and the value rule asserted on the axis that
-      can see it — for enum/bitfield that is the **strict** side (a value outside the declared set
-      or mask is INVALID), so their vectors belong in `sweep_overbound`, not in the tolerance axis.)* That is the exact shape this
-      repo exists to catch, and it is a *coverage* gap rather than a passing test.
-      **Work:** add an `enum` and a `bitfield` field to `probe` — scalar and inside a composite,
-      matching generator#532's shape — with a non-contiguous constant set and a non-contiguous bit
-      mask, since a contiguous one cannot tell the set/mask rule from a range check. Then sweep the
-      undeclared values: a constant outside the set, a bit outside the mask, and the boundary the
-      wire type still admits.
+- [x] **`probe` carries no `enum` and no `bitfield`; both are bounded by their DECLARED WIDTH**
+      (crucible#211) — **DONE 2026-10-14.** The rule at documentation `main@b6586b5` (MESSAGE_SPEC
+      §1, §7, §7.1, §7.3): an `enum` is a signed integer bounded by the smallest signed type holding
+      every declared constant, a `bitfield` an unsigned integer bounded by the smallest unsigned type
+      holding its highest declared `pos`; a value inside the width that names no constant or sets
+      an undeclared bit is valid and stored as received, a value outside it is `INVALID`. (The
+      2026-09-08 closed-type rule — set of constants / mask of positions — that this entry used to
+      describe was withdrawn on 2026-09-14.) `probe` now declares `Level` (i8, constants on both edges), `Code` (i16, no 0
+      constant, `default: 7`), `Perm` (u8) and `Wide` (u32) at 12 positions: root scalars, root
+      compact arrays, `nested` children and `struct_array` element fields. Evidence: every
+      `replay.yml` gate exits 0 over the 20-driver roster — `corpus/structured` 145 vectors (26 new)
+      with 0 divergences on the round trip, the materialized oracle (C anchor 0/145 mismatches vs
+      the reference) and cross-encode; `sweep_overbound` 160 vectors (+90: in-width unnamed /
+      undeclared-bit `accept`/`identity`, at-bound `identity`, over-width `reject` on both sides),
+      `wiretype_sweep` 707 (§7.3 signed/unsigned skip, with in- and out-of-width payloads), 0 divergences and 0 conformance failures on
+      every axis. One API-level codegen gap no gate can see was written up as **G-0048** (Java emits
+      no named enum constants; generator).
+- [ ] **Plain integer scalars have no systematic width sweep.** The enum/bitfield width is swept
+      at every position by `sweep_overbound`, and so is the element width of every plain numeric
+      array (its `_elem_over_width` / `_elem_at_width_ctl` vectors, F-0052); the plain `u8`..`i64`
+      *scalars* (root, `nested` and the `struct_array` element `k`) are covered only by the F-0033
+      regression inputs. Add their over-width vectors (by one, both sides) to the same axis,
+      modelled on the array-element block.
 
 - [x] **blob array** — **DONE 2026-07-21.** Added `blob_array` (id 201) to `probe` + all six sweep
       axes. The over-index / `maxlen` blob paths (§7.1) that F-0013 could not test for lack of a field

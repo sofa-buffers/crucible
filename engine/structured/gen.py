@@ -27,8 +27,11 @@ Covers the top-level scalars (u8..i64), the `nested` struct (fp32/fp64/string/bl
 the numeric arrays (id 100: u8..i64 + nested fp32/fp64), the `string_array` (id 200,
 the index-keyed element sequence — F-0008's neighbourhood) and the `blob_array`
 (id 201, its blob analogue — F-0013's _BlobSeq path) and the `struct_array` (id 202,
-the array-of-struct whose elements are themselves sequences). Writes raw wire (no
-length prefix) to corpus/structured/.
+the array-of-struct whose elements are themselves sequences), the §4.4 booleans
+(ids 203/204, nested child 9, element field 2) and the enums and bitfields of
+crucible#211 (root scalars 205-208, compact arrays 209-212, nested children 10/11,
+element fields 3/4), each inside its declared width. Writes raw wire (no length
+prefix) to corpus/structured/.
 
 Array lengths follow documentation#31: `count` is a **capacity**, so the wire count
 is the array's length — nothing is trimmed on encode and nothing is filled on decode,
@@ -39,6 +42,9 @@ Usage: python3 engine/structured/gen.py [out_dir]   (default corpus/structured)
 import os
 import struct
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import schema  # noqa: E402  (the declared enum defaults; one source with the descriptor)
 
 # --- wire primitives (CORELIB_PLAN §4) --------------------------------------
 def varint(n: int) -> bytes:
@@ -112,6 +118,19 @@ SCALARS = [("u8", 0, False), ("i8", 1, True), ("u16", 2, False), ("i16", 3, True
 NUM_ARRAYS = [("au8", 0, False), ("ai8", 1, True), ("au16", 2, False), ("ai16", 3, True),
               ("au32", 4, False), ("ai32", 5, True), ("au64", 6, False), ("ai64", 7, True)]
 
+def _declared_default(*ids):
+    """The declared default of the enum / bitfield leaf at field-id path `ids`, read from the
+    descriptor (schema.py) — never a literal here; 0 when the schema declares none."""
+    fields, node = schema.descriptor()["fields"], {}
+    for i in ids:
+        node = next(f for f in fields if f["id"] == i)
+        fields = node.get("fields", [])
+    return node.get("default", 0)
+
+CODE_DEFAULT = _declared_default(206)            # root `code` (enum Code, MESSAGE_SPEC §1)
+ECODE_DEFAULT = _declared_default(202, 3)        # struct_array element `code`
+
+
 def _leaf_elements(items, enc, empty):
     """Wrapper-array body for leaf elements under the §2 sparse rule: interior
     defaults omitted (id gap), the last element always written."""
@@ -152,6 +171,10 @@ def encode(msg: dict) -> bytes:
     # driven from sweep_tolerance.py, which writes the non-canonical spellings by
     # hand and requires them to re-encode to exactly what this function emits.
     if msg.get("nflag"): nested += scalar_u(9, 1)
+    # nested.level (child 10, enum Level -> signed) / nested.mask (child 11, bitfield
+    # Wide -> unsigned): omitted at their declared default (0 for both), like any field
+    if msg.get("nlevel", 0): nested += scalar_s(10, msg["nlevel"])
+    if msg.get("nmask", 0):  nested += scalar_u(11, msg["nmask"])
     out += _framed(10, bytes(nested))
     # arrays struct (id 100) — each array omitted when empty, arrays.nested (id 10)
     # omitted when both fp arrays are, the whole frame omitted when everything is
@@ -184,6 +207,10 @@ def encode(msg: dict) -> bytes:
         if e.get("k", 0): body += scalar_u(0, e["k"])
         if e.get("v", ""): body += fstr(1, e["v"])
         if e.get("f"):     body += scalar_u(2, 1)      # §4.4 boolean, canonical 1
+        # element `code` (enum Code, declared default 7): omitted at 7, written at any
+        # other value INCLUDING 0 (in width, names no constant, ≠ the default)
+        if e.get("code", ECODE_DEFAULT) != ECODE_DEFAULT: body += scalar_s(3, e["code"])
+        if e.get("perm", 0): body += scalar_u(4, e["perm"])   # bitfield Perm
         if body or i == len(selems) - 1:          # interior all-default -> gap
             sw += hdr(i, WT_SEQ_BEG) + body + bytes([WT_SEQ_END])
     out += _framed(202, bytes(sw))
@@ -194,6 +221,18 @@ def encode(msg: dict) -> bytes:
     if msg.get("flag"): out += scalar_u(203, 1)
     flags = msg.get("flagarr")
     if flags: out += arr_u(204, [1 if b else 0 for b in flags])
+    # crucible#211 — enum (signed wire type) and bitfield (unsigned wire type), each
+    # omitted at its declared default: 0, except `code` whose enum has no 0 constant
+    # and so declares `default: 7` (MESSAGE_SPEC §1). The arrays are compact signed /
+    # unsigned arrays (§3) — no element omission, the count word is the length.
+    if msg.get("level", 0): out += scalar_s(205, msg["level"])
+    if msg.get("code", CODE_DEFAULT) != CODE_DEFAULT: out += scalar_s(206, msg["code"])
+    if msg.get("perm", 0):  out += scalar_u(207, msg["perm"])
+    if msg.get("mask", 0):  out += scalar_u(208, msg["mask"])
+    if msg.get("levelarr"): out += arr_s(209, msg["levelarr"])
+    if msg.get("codearr"):  out += arr_s(210, msg["codearr"])
+    if msg.get("permarr"):  out += arr_u(211, msg["permarr"])
+    if msg.get("maskarr"):  out += arr_u(212, msg["maskarr"])
     return bytes(out)
 
 def _is_special(v):
@@ -392,6 +431,58 @@ def vectors():
                                    "str": "b", "flagarr": [True, True, False, True, True],
                                    "structarr": [{"k": 2, "v": "x", "f": True},
                                                  {"f": True}]}))
+    # --- enum and bitfield (crucible#211, 2026-10-14) — the value space INSIDE the width ---
+    # MESSAGE_SPEC §1 bounds an enum by its DECLARED WIDTH (the smallest signed type holding
+    # every constant: Level -> i8, Code -> i16) and a bitfield by the smallest unsigned type
+    # holding its highest pos (Perm -> u8, Wide -> u32). A value inside that width is VALID
+    # even when it names no constant or sets an undeclared bit, and is stored as received —
+    # never masked, never clamped. Every vector here is therefore a valid message; the
+    # over-width side lives in sweep_overbound.py. Like every seed, each one is compared on
+    # its VALUE across the family (accept_value: hard), so the vectors that set undeclared
+    # bits also pin that the family agrees on keeping them. Every current profile stores a
+    # bitfield as one integer; one that stores named booleans may drop them (§1, l.150-155)
+    # and is covered by the dormant `bitfield-undeclared-bits-storage` entry in
+    # oracle/policy.yaml, not by changing these vectors. `code` declares `default: 7` (its
+    # enum has no 0 constant), so `code = 0` is a real, written value and an absent `code`
+    # decodes to 7. Level's MIN/MAX sit on the i8 edges, so eb_level_min/max are named.
+    # Appended at the END for the numbering reason stated above.
+    out.append(("eb_level_declared_neg", {"level": -3}))
+    out.append(("eb_level_undeclared", {"level": 50}))
+    out.append(("eb_level_min", {"level": -128}))
+    out.append(("eb_level_max", {"level": 127}))
+    out.append(("eb_code_zero", {"code": 0}))
+    out.append(("eb_code_declared_neg", {"code": -1000}))
+    out.append(("eb_code_undeclared", {"code": 8}))
+    out.append(("eb_code_min", {"code": -32768}))
+    out.append(("eb_code_max", {"code": 32767}))
+    out.append(("eb_perm_declared", {"perm": 0b1011}))                    # R|W|X
+    out.append(("eb_perm_undeclared_bit", {"perm": 0b0100}))              # bit 2: undeclared
+    out.append(("eb_perm_max", {"perm": 255}))
+    out.append(("eb_mask_top_declared", {"mask": 1 << 31}))               # TS bigint carrier
+    out.append(("eb_mask_undeclared_bit", {"mask": 1 << 30}))
+    out.append(("eb_mask_max", {"mask": 2**32 - 1}))
+    out.append(("eb_nested", {"nlevel": -128, "nmask": (1 << 31) | 4}))
+    out.append(("eb_nested_undeclared", {"nlevel": 2, "nmask": 2}))
+    out.append(("eb_level_array", {"levelarr": [-128, -3, 0, 50, 127]}))
+    # a `7` element is a value, not "the default": compact arrays omit no element (§3)
+    out.append(("eb_code_array", {"codearr": [0, -32768, 32767, 7, 8]}))
+    out.append(("eb_code_array_short", {"codearr": [0]}))
+    out.append(("eb_perm_array", {"permarr": [0, 4, 11, 255, 0]}))       # trailing 0 kept
+    out.append(("eb_mask_array", {"maskarr": [2**32 - 1, 1 << 31, 0, 1 << 30, 513]}))
+    out.append(("eb_sw_elem", {"structarr": [{"code": 0, "perm": 4}]}))
+    # the interior all-default element is an id gap (§5.1) and reconstructs code = 7
+    out.append(("eb_sw_gap_default", {"structarr": [{"code": 300, "perm": 255}, {},
+                                                    {"code": -1000}]}))
+    out.append(("eb_sw_k_only", {"structarr": [{"k": 1}]}))               # code at 7: omitted
+    # every new position at once, beside older fields, so a port that binds the wrong slot
+    # shows a value divergence rather than a verdict one
+    out.append(("eb_combo_all", {"u8": 9, "i16": -2, "str": "e", "flag": True,
+                                 "level": 127, "code": 300, "perm": 0b1111, "mask": 513,
+                                 "levelarr": [1, -3], "codearr": [-1000, 2, 7],
+                                 "permarr": [1, 2, 8], "maskarr": [1, 1 << 9, 1 << 31],
+                                 "nlevel": -3, "nmask": 1 << 9,
+                                 "structarr": [{"k": 3, "code": 2, "perm": 8},
+                                               {"code": 7, "perm": 0}, {"perm": 2}]}))
     return out
 
 # --- union message (schema/probe-union.sofab.yaml) — WP-02 ------------------

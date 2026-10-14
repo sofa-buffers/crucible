@@ -2,8 +2,9 @@
 #
 # This is the family's full-scale example (mirrors arena's schema/message.sofab.yaml
 # and the c-cpp fuzzer's full_scale_example): every scalar width, fp32/fp64, a
-# string, a blob, eight numeric arrays, nested fp arrays, an array of strings, and
-# an array of blobs.
+# string, a blob, eight numeric arrays, nested fp arrays, an array of strings, an
+# array of blobs, an array of structs, a boolean, and two enums and two bitfields
+# (scalars, compact arrays, a struct child and a wrapper-element field each).
 # It exercises far more of the wire format than the Phase-1 `probe`.
 #
 # The message is intentionally still keyed `probe` so the generated type name
@@ -11,6 +12,27 @@
 # schema-agnostic under the round-trip canonical form (oracle/canonical.md) — need
 # no changes when the schema scales. Field ids are the wire ids.
 version: 1
+$defs:
+  enum:
+    # MESSAGE_SPEC §1: an enum is bounded by its DECLARED WIDTH, the smallest SIGNED
+    # type holding every constant. Non-contiguous, a negative constant and a 0 constant:
+    # i8, so -128..127 is valid (50 names no constant) and 128 is INVALID. MIN and MAX
+    # sit ON the i8 edges, so a width derivation that is off by one (picks i16 for 127,
+    # or rejects -128) shows up in the width vectors instead of hiding inside the type.
+    Level: { MIN: -128, LOW: -3, OFF: 0, ON: 1, MAX: 127 }
+    # -1000 and 300 force i16 (-32768..32767). NO 0 constant, so every field of this
+    # type MUST declare a default naming a constant (§1, "A field's default must still
+    # name a constant"): `default: 7`. A received 0 is then a valid, in-width, unnamed
+    # value that differs from the default, and must be written back.
+    Code: { NEG: -1000, TWO: 2, SEVEN: 7, BIG: 300 }
+  bitfield:
+    # §1: bounded by the smallest UNSIGNED type holding the highest declared pos, not by
+    # the mask the flags form. Positions 0/1/3 -> u8 (0..255); bit 2 is undeclared and
+    # valid; 256 is INVALID.
+    Perm: { R: { pos: 0 }, W: { pos: 1 }, X: { pos: 3 } }
+    # Highest pos 31 -> u32 (0..2^32-1). Pos 31 is also where the TypeScript backend
+    # carries a bitfield as a bigint, so that carrier is exercised.
+    Wide: { LO: { pos: 0 }, MID: { pos: 9 }, HI: { pos: 31 } }
 messages:
   probe:
     summary: |
@@ -37,6 +59,9 @@ messages:
           # A `boolean` inside a struct scope. Child id 9 deliberately: id 4 is the
           # "unknown id inside nested" every framing sweep places (sweep_framing.py).
           flag:        { id: 9, type: boolean }
+          # an enum and a bitfield as struct children (crucible#211)
+          level:       { id: 10, type: enum, enum: { $ref: "#/$defs/enum/Level" } }
+          mask:        { id: 11, type: bitfield, bits: { $ref: "#/$defs/bitfield/Wide" } }
 
       arrays:
         id: 100
@@ -89,6 +114,10 @@ messages:
             v: { id: 1, type: string, maxlen: 16 }
             # the fourth boolean position: inside a wrapper *element* sequence
             f: { id: 2, type: boolean }
+            # a non-zero enum default inside a wrapper ELEMENT: an interior all-default
+            # element is an id gap (§5.1) and must come back with code = 7, not 0
+            code: { id: 3, type: enum, enum: { $ref: "#/$defs/enum/Code" }, default: 7 }
+            perm: { id: 4, type: bitfield, bits: { $ref: "#/$defs/bitfield/Perm" } }
 
       # CORELIB_PLAN §4.4 — `boolean` has no wire type of its own: it is an unsigned
       # integer, **canonical on encode** (`true` -> 1) and **tolerant on decode**
@@ -111,3 +140,18 @@ messages:
         id: 204
         type: array
         items: { type: boolean, count: 5 }
+
+      # crucible#211 (2026-10-14): enum and bitfield, each bounded by its declared width
+      # (MESSAGE_SPEC §1, §7, §7.1). Ids 205-212 continue the append pattern of 200..204;
+      # no committed corpus file uses any of them, nested child ids 10/11 or element
+      # field ids 3/4.
+      level:       { id: 205, type: enum, enum: { $ref: "#/$defs/enum/Level" } }
+      code:        { id: 206, type: enum, enum: { $ref: "#/$defs/enum/Code" }, default: 7 }
+      perm:        { id: 207, type: bitfield, bits: { $ref: "#/$defs/bitfield/Perm" } }
+      mask:        { id: 208, type: bitfield, bits: { $ref: "#/$defs/bitfield/Wide" } }
+      # §3: an array of enum is a compact SIGNED array, of bitfield a compact UNSIGNED
+      # array; each element is bounded like the scalar.
+      level_array: { id: 209, type: array, items: { type: enum, enum: { $ref: "#/$defs/enum/Level" }, count: 5 } }
+      code_array:  { id: 210, type: array, items: { type: enum, enum: { $ref: "#/$defs/enum/Code" }, count: 5 } }
+      perm_array:  { id: 211, type: array, items: { type: bitfield, bits: { $ref: "#/$defs/bitfield/Perm" }, count: 5 } }
+      mask_array:  { id: 212, type: array, items: { type: bitfield, bits: { $ref: "#/$defs/bitfield/Wide" }, count: 5 } }
