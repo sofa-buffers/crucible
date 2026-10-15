@@ -14,6 +14,20 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-15 — G-0048 resolved: Java enums and bitfields get named constants
+
+generator#763 (`d2f79dd1`, closes generator#758) emits a holder class of `long` constants per
+enum and bitfield type — a flag as its mask — beside the unchanged `long` field, and links each
+field to it with `@see`. Verified with that build's `sofabgen-linux-amd64` artifact on `probe`:
+`Level`/`Code`/`Perm`/`Wide` are generated, and the Java driver's output over the four main
+corpora is identical with the old and new generator on four axes (0 changed lines). G-0048 is
+closed with `**Guard:** none`: the defect is not wire-observable, and the generator's new
+`tests/conformance/java/NamedConstants.java` leg is what re-checks it.
+
+Not yet the bootstrap default: generator CI run 38688582104 for `d2f79dd1` concluded `failure`
+through five "Set up job" infrastructure failures, so `scripts/bootstrap.sh` still installs the
+previous green build until a green run lands.
+
 ## 2026-10-14 — probe grew an enum and a bitfield; the declared-width rule reaches every position
 
 crucible#211. `probe` had no `enum` and no `bitfield`, so no gate could see either bound. The
