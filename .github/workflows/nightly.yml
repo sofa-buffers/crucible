@@ -231,8 +231,11 @@ jobs:
       # corpus of a fresh checkout would otherwise report "all accounted for" and mean nothing.
       - name: Download the grown corpus
         uses: actions/download-artifact@v8
+        # The upload's root is `corpus/` (the common ancestor of its paths), so the
+        # artifact holds `interesting/`, `interesting-union/`, `crashes/` at its top level.
         with:
           name: nightly-${{ github.run_id }}
+          path: corpus
 
       - name: Corpus sizes (what is about to be clustered)
         run: |
