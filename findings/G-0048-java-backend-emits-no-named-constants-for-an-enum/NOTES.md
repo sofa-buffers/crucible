@@ -1,7 +1,8 @@
 # G-0048 — the Java backend emits no named constants for an `enum`: the field is a bare `long`
 
-**Status:** 🔴 **OPEN** — found 2026-10-14 while adding `enum` / `bitfield` to `probe` (crucible#211). API-level, not wire-observable: no gate can see it, and every gate is green with it. Owner: **generator** (the Java backend), not a corelib.
-**Issue:** [generator#758](https://github.com/sofa-buffers/generator/issues/758) (filed 2026-10-14)
+**Status:** ✅ **RESOLVED** — fixed upstream in [generator#763](https://github.com/sofa-buffers/generator/pull/763) (merged 2026-10-15, `d2f79dd1`, "feat(java): named constants beside enum and bitfield fields"). Every enum and bitfield type now gets a holder class of `long` constants beside the unchanged `long` field — a flag as its mask — and each field's javadoc points at it with `@see`. Owner: **generator** (the Java backend), not a corelib.
+**Issue:** [generator#758](https://github.com/sofa-buffers/generator/issues/758) (filed 2026-10-14, closed 2026-10-15)
+**Guard:** none — not wire-observable, so no Crucible gate can see it; the generator's own conformance leg `tests/conformance/java/NamedConstants.java` (added in generator#763) compiles against the constants under `-Xlint:all -Werror`, so a regression breaks the generator's CI.
 
 **Found 2026-10-14** on branch `worktree-probe-enum-bitfield`, sofabgen
 `0.0.0-20261014101647-9b68239d849a` (generator main `9b68239d849a`), documentation
@@ -61,3 +62,24 @@ consistency point (C gained `#define`s per flag in generator#606), not a MUST.
 Every Crucible oracle compares wire verdicts and stored values. A missing constant changes
 neither: the 20-driver differential, the materialized oracle and cross-encode are all green
 on the new enum positions. The draft issue carries the evidence instead of a reproducer.
+
+## Resolution (verified 2026-10-15)
+
+Verified with the sofabgen build of generator main `d2f79dd1`
+(`0.0.0-20261015054610-d2f79dd114a4`, the `sofabgen-linux-amd64` artifact of generator CI run
+38688582104, checksum verified) on Crucible's `probe` schema:
+
+- the generated package now carries `Level.java`, `Code.java`, `Perm.java` and `Wide.java` beside
+  `Probe*.java` — e.g. `public static final long MIN = -128L; … MAX = 127L;` in `Level`, and
+  `R = 1L << 0`, `W = 1L << 1`, `X = 1L << 3` in `Perm`;
+- each enum and bitfield field in `Probe.java` carries `/** @see Level */` (and so on);
+- the fields stay `long`, so nothing on the wire changed: the Java replay driver's output over
+  `corpus/{seeds,regression,conformance,structured}` (425 inputs) is identical with the old and
+  the new generator — plain, `SOFAB_MATERIALIZE=1`, `SOFAB_CHUNK=1` and `SOFAB_ENCODE_FAIL=8`, 0
+  changed lines.
+
+That CI run concluded `failure`, but only through five jobs that failed in "Set up job"
+(runner infrastructure: lang-typescript, lang-kotlin, lang-zig, hermetic, lang-docs); the Java
+leg and the artifact build are green. Until a fully green run exists, `scripts/bootstrap.sh`
+keeps installing the previous green build (`9b68239d849a`), which is harmless here: no Crucible
+gate depends on the holder classes.
