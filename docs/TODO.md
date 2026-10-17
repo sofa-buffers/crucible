@@ -124,6 +124,17 @@ here:
 
 ## Open — engine & oracles
 
+- [ ] **Reuse invariance: the chunked decoders that take a destination.** `run-reuse.sh`
+      covers the whole-buffer reuse entry points only. Dart's `Probe.decoder(out)` and Zig's
+      `Probe.decoder(out, alloc)` also decode into a caller-owned object, and a `Decoder`
+      that is reset and fed again is the streaming twin of the same promise. Compose
+      `SOFAB_REUSE` with the chunk axes once the generated decoders document what a reused
+      destination may hold.
+- [ ] **Reuse invariance: rows that refuse today.** c, rust-nostd ×3, py ×2 and zig exit 3
+      under `SOFAB_REUSE=1` because their generated decode promises nothing about a reused
+      destination. Flip a row's `meta` `reuse_decode` when its backend gains one (rs-no-std
+      declined it in corelib-rs-no-std#133).
+
 - [x] **DONE 2026-10-13 — `materialize.sh` got a baseline, and the anchor no longer depends on
       the differential.** `CLUSTER=1 BASELINE=results/known-clusters-materialized.txt` reduces the
       run to camps and diffs them against the accounted-for set, the way `run.sh` does; the new baseline

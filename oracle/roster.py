@@ -88,3 +88,23 @@ def min_output_buffer(builder):
     """
     v = meta(builder).get("min_output_buffer", "")
     return None if v == "" else int(v)
+
+
+def reuse_decode(builder, arg):
+    """Whether this roster row's generated decode takes a reusable destination.
+
+    `meta`'s `reuse_decode` is `all`, `none`, or a comma list of the build.sh variant
+    arguments that have it. It is per variant, not per backend, because one source can
+    build against corelibs that differ here: rust's `rs` decodes into a caller-owned
+    destination (generator#755) and the three rs-no-std rows do not
+    (corelib-rs-no-std#133). A missing declaration is an error, never an assumed `none`:
+    a backend that silently drops out of the gate is the failure the gate exists for.
+    """
+    v = meta(builder).get("reuse_decode")
+    if v is None:
+        raise KeyError(f"drivers/{builder}/meta declares no reuse_decode")
+    if v == "all":
+        return True
+    if v == "none":
+        return False
+    return arg in v.split(",")

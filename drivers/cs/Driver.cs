@@ -303,6 +303,19 @@ internal static class Driver
     private static readonly string Encode0 = InitEncode();
     private static readonly bool Chunking = Split != 0 || Chunk != 0 || Scrub;
 
+    // SOFAB_REUSE=1 (CONTRACT.md, "Reused destination"): every record decodes into ONE
+    // destination held for the whole run, through TryDecode(data, msg), which resets it
+    // first. Each line must equal the fresh-destination one. null = a fresh decode.
+    private static readonly Probe Reused = InitReuse();
+
+    private static Probe InitReuse()
+    {
+        var s = Environment.GetEnvironmentVariable("SOFAB_REUSE");
+        if (string.IsNullOrEmpty(s) || s == "0") return null;
+        Console.Error.WriteLine("crucible-cs: reuse=1");
+        return new Probe();
+    }
+
     private static string InitEncode()
     {
         var e = Environment.GetEnvironmentVariable("SOFAB_ENCODE");
@@ -426,6 +439,11 @@ internal static class Driver
                     if (Scrub) Array.Fill(c, (byte)0xA5);
                 }
                 m = d.Message;
+            }
+            else if (Reused != null)
+            {
+                m = Reused;
+                status = Probe.TryDecode(data, m);
             }
             else
             {

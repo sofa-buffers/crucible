@@ -282,6 +282,36 @@ fails per line, because here it is the expected answer and not a contradiction.
 encode_fail=yes|no        whether this driver can hand over a short destination
 ```
 
+### The decode can reuse its destination (`SOFAB_REUSE=1`)
+
+Most backends' generated decode writes into a destination the caller owns and may keep
+across messages — `try_decode(data, &mut out)`, `Probe__TryDecode(data, out)`,
+`TryDecode(data, msg)`, `tryDecode(data, out)` — and documents the same promise: the
+destination is reset first and **reads as a fresh decode**, with nothing of the message it
+held before, on a refusal included. Most also keep the old storage and write into it. Every
+other axis decodes each record into a fresh message, so that path is never taken.
+
+| variable | meaning |
+|---|---|
+| `SOFAB_REUSE=1` | hold **one** destination for the whole run and decode every record into it through the generated reuse entry point |
+
+- The canonical line for each record must equal the one the driver prints with a fresh
+  destination (`oracle/reuse_invariance.py`). It composes with `SOFAB_MATERIALIZE`; it
+  governs the whole-buffer decode only, not the chunk axes.
+- The driver never resets, clears or re-creates the destination itself: the reset is the
+  generated code's promise, and doing it in the driver would turn a finding into a green
+  line.
+- The driver announces `reuse=1` on stderr, because stdout cannot tell honouring the
+  variable from ignoring it.
+- A backend with no reuse entry point **exits 3**, never falls back to a fresh decode.
+
+`meta` declares it per build variant, because one source can build against corelibs that
+differ here (rust's `rs` has it, its `rs-no-std` rows do not):
+
+```
+reuse_decode=all|none|<variant,...>   which roster rows have a reusable destination
+```
+
 ### A refused re-encode is not a decode verdict (`E`)
 
 The re-encode has **three** outcomes, not two, and the third one is new. Since
@@ -365,7 +395,8 @@ built with an encode-bound opt-out switched on.
   that is itself a finding (the coverage front-end + sanitizers exist to catch
   exactly this).
 - No global state carried between records: each record decodes from a fresh,
-  zero-initialized message.
+  zero-initialized message. The one exception is `SOFAB_REUSE=1`, which carries the destination
+  on purpose (see "The decode can reuse its destination").
 
 ## Files per driver
 

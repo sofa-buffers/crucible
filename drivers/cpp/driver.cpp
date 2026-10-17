@@ -148,6 +148,21 @@ static void read_stream_cfg()
 
 static bool chunked() { return g_cfg.split > 0 || g_cfg.chunk > 0 || g_cfg.scrub; }
 
+// SOFAB_REUSE=1 (CONTRACT.md, "Reused destination"): every record decodes into ONE
+// destination held for the whole run. The generated try_decode resets it first and
+// keeps the buffers reset() keeps, so each line must equal the fresh-destination one.
+static message::Probe *g_reused = nullptr;
+
+static void read_reuse_cfg()
+{
+    const char *s = std::getenv("SOFAB_REUSE");
+    if (s && *s && std::strcmp(s, "0") != 0)
+    {
+        g_reused = new message::Probe();
+        std::fputs("crucible-cpp: reuse=1\n", stderr);
+    }
+}
+
 // How the record is cut on its way into the decoder. Never an empty chunk for a
 // non-empty record: k<=0, k>=len and n>=len all mean one chunk holding the whole
 // record. A zero-length record is ONE empty chunk, fed once like any other record
@@ -304,7 +319,8 @@ static EncodeOutcome encode_via(const message::Probe &m)
 
 static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *out)
 {
-    message::Probe m; // schema defaults
+    message::Probe fresh; // schema defaults
+    message::Probe &m = g_reused ? *g_reused : fresh;
 
     // The generated try_decode, called the way an application calls it — in every
     // profile, in limit mode, and for the empty record alike. Only the chunked axes go
@@ -374,6 +390,7 @@ static void decode_and_report(const std::uint8_t *data, std::size_t len, FILE *o
 int main()
 {
     read_stream_cfg();
+    read_reuse_cfg();
     std::vector<std::uint8_t> buf;
     for (;;)
     {

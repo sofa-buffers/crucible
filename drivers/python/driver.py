@@ -166,6 +166,13 @@ _CHUNKING = bool(_SPLIT or _CHUNK or _SCRUB)
 
 
 def _check_cfg() -> None:
+    # SOFAB_REUSE (CONTRACT.md, "Reused destination"): the generated decode returns a
+    # new message and takes no destination, so the axis is refused, never answered by
+    # a fresh decode.
+    if os.environ.get("SOFAB_REUSE", "") not in ("", "0"):
+        sys.stderr.write("crucible-py: SOFAB_REUSE — the generated decode takes no "
+                         "destination (it returns a new message)\n")
+        sys.exit(3)
     # SOFAB_CHUNK_SCRUB used to exit 3 here ("cannot be tested"), because the pull
     # Decoder was handed immutable `bytes` by a reader and there was no buffer this
     # driver could overwrite. The push `feed` takes any buffer and states the lifetime
