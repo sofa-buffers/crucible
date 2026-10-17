@@ -139,6 +139,7 @@ rather than against the family, so they need no second implementation to be usef
 | [Materialized value](#7-materialized-value--element-access-scriptsmaterializesh) | `./scripts/materialize.sh` | element-access oracle — the decoded value dumped field-by-field, catching a decode the round-trip masks |
 | [Chunk invariance](#9-chunk-invariance-scriptsrun-chunkedsh) | `./scripts/run-chunked.sh` | **streaming decode** — the outcome must not depend on how the bytes arrived |
 | [Encode invariance](#10-encode-invariance-scriptsrun-encodesh) | `./scripts/run-encode.sh` | **streaming encode** — every encode surface of one implementation must emit identical bytes |
+| [Reuse invariance](#11-reuse-invariance-scriptsrun-reusesh) | `./scripts/run-reuse.sh` | **reused destination** — decoding into an object that held an earlier message must equal a fresh decode |
 | [Clustering](#8-clustering-cluster1) | `CLUSTER=1 ./scripts/run.sh` | reduce a divergence firehose to root causes |
 
 ### 1. Differential loop (`scripts/run.sh`)
@@ -337,6 +338,18 @@ drivers opt in one at a time — and they are the only gates that can catch a de
 output, indistinguishable from passing, so participation is declared explicitly in each
 script rather than inferred. A backend that genuinely cannot honour a setting exits with a
 distinct code and the gate reports it *inapplicable*, never as a pass.
+
+### 11. Reuse invariance (`scripts/run-reuse.sh`)
+
+Most generated decoders write into an object the caller owns and may keep for the next
+message, and promise that nothing of the earlier message survives. This suite keeps one
+such object per driver for the whole run — after value-rich messages, after rejected and
+truncated ones — and requires every result to equal a decode into a fresh object. Like the
+two suites above it compares an implementation against itself.
+
+```sh
+./scripts/run-reuse.sh                 # corpus/regression, each record primed by corpus/structured
+```
 
 ## Findings & status
 

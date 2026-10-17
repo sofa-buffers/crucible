@@ -62,6 +62,13 @@ private val SCRUB = Io.env("SOFAB_CHUNK_SCRUB").let { it != null && it.isNotEmpt
 private val ENCODE = Io.env("SOFAB_ENCODE").let { if (it.isNullOrEmpty()) "new" else it }
 private val CHUNKING = SPLIT != 0 || CHUNK != 0 || SCRUB
 
+// SOFAB_REUSE=1 (CONTRACT.md, "Reused destination"): every record decodes into ONE
+// destination held for the whole run; tryDecode(data, out) resets it first, so each line
+// must equal the fresh-destination one. null = a fresh Probe per record.
+private val REUSED: Probe? = Io.env("SOFAB_REUSE")
+    .let { it != null && it.isNotEmpty() && it != "0" }
+    .let { on -> if (on) { Io.err("crucible-kotlin: reuse=1"); Probe() } else null }
+
 /** How the record is cut on its way in. Never an empty chunk, except that a 0-byte
  *  record is ONE empty chunk, fed once (CONTRACT.md rule 4): the decoder answers the
  *  empty message, not this driver. Each chunk is a fresh copy this driver owns, which
@@ -186,7 +193,7 @@ private fun acceptLine(m: Probe): String {
 private fun canonical(data: ByteArray): String {
     // One pass: tryDecode fills `m` and returns the corelib's real three-valued
     // outcome (or throws SofabException on malformed input, MESSAGE_SPEC §7).
-    var m = Probe()
+    var m = REUSED ?: Probe()
     // `var`, not `val`: the chunked branch below reassigns it once per fed chunk,
     // because the verdict now arrives as feed()'s return value rather than from a
     // status accessor (CORELIB_PLAN §5.2.1).

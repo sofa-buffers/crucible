@@ -293,6 +293,17 @@ static void read_stream_cfg(void)
     g_cfg.fail = env_long("SOFAB_ENCODE_FAIL");
     e = getenv("SOFAB_CHUNK_SCRUB");
     g_cfg.scrub = e && *e && strcmp(e, "0") != 0;
+    /* SOFAB_REUSE (CONTRACT.md, "Reused destination"): the generated C decode has no
+     * reuse contract -- its header says to call message_probe__init first -- so there
+     * is no destination it promises to reset, and the axis is refused, never answered
+     * by a fresh decode. */
+    e = getenv("SOFAB_REUSE");
+    if (e && *e && strcmp(e, "0") != 0)
+    {
+        fputs("crucible-c: SOFAB_REUSE -- the generated decode has no reusable "
+              "destination (init first)\n", stderr);
+        exit(3);
+    }
     e = getenv("SOFAB_ENCODE");
     /* Whether the variable was PRESENT, not merely which surface it named. `to` is
      * this backend's default (there is no allocating encode), so without this flag

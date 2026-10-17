@@ -14,6 +14,33 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-17 — reuse invariance: a decode into a reused destination against a fresh one
+
+The generator's reuse wave (generator#755 for rust, and the Go, C#, TypeScript and C++
+commits beside it) made most generated decoders write into a destination the caller keeps
+across messages, with one promise: the result reads as a fresh decode. No gate took that
+path, because every driver decoded each record into a fresh message. New axis
+`SOFAB_REUSE=1` (CONTRACT.md): a driver holds one destination for the whole run, decodes
+every record into it through the generated entry point, never resets it itself, and
+announces `reuse=1`. `oracle/reuse_invariance.py` + `scripts/run-reuse.sh` compare each
+record's line with the fresh-destination line over three streams (primed by
+`corpus/structured`, sequential, reversed), each in round-trip and materialized form.
+
+Decisions:
+- **Per variant, not per backend.** `meta`'s `reuse_decode` is `all`, `none` or a list of
+  build variants, because rust's `rs` has the entry point and its rs-no-std rows do not
+  (corelib-rs-no-std#133). `roster.sh caps reuse` derives the participants; every other
+  row must exit 3, which the gate asserts, so no row is silent.
+- **C refuses.** Its generated header says to call `message_probe__init` before decoding,
+  so it promises nothing about a reused destination. Python and Zig return a new message.
+- **Whole-buffer path only.** Composing with the chunk axes is left open (`docs/TODO.md`).
+
+The oracle was checked for teeth: with the Go driver calling `sofab.AcceptBytes` on the
+held destination without the generated `Reset`, it reported 1342 mismatches. With the
+generated entry points, against sofabgen `0.0.0-20261017131832-cda911765150` and every
+corelib at its main tip: 13 participants, 265 inputs x 145 primers x 6 streams,
+0 mismatches; 7 rows refuse with exit 3. No finding.
+
 ## 2026-10-17 — rust driver: follow sofabgen's reused-destination try_decode (generator#755)
 
 generator `ef6b6754` changes the rs profile's `Probe::try_decode` to `try_decode(data, &mut

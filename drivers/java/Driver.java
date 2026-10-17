@@ -62,6 +62,15 @@ public final class Driver {
     private static final int FAIL_AFTER = envInt("SOFAB_ENCODE_FAIL");
     private static final boolean SCRUB;
     private static final String ENCODE;
+    // SOFAB_REUSE=1 (CONTRACT.md, "Reused destination"): every record decodes into ONE
+    // destination held for the whole run; tryDecode(data, out) resets it first, so each
+    // line must equal the fresh-destination one. null = a fresh Probe per record.
+    private static final Probe REUSED;
+    static {
+        String r = System.getenv("SOFAB_REUSE");
+        REUSED = (r != null && !r.isEmpty() && !r.equals("0")) ? new Probe() : null;
+        if (REUSED != null) System.err.println("crucible-java: reuse=1");
+    }
     static {
         String s = System.getenv("SOFAB_CHUNK_SCRUB");
         SCRUB = s != null && !s.isEmpty() && !s.equals("0");
@@ -197,7 +206,7 @@ public final class Driver {
     private static String canonical(byte[] data) {
         // One pass: tryDecode fills `m` and returns the corelib's real three-valued
         // outcome (or throws SofabException on malformed input, MESSAGE_SPEC §7).
-        Probe m = new Probe();
+        Probe m = REUSED != null ? REUSED : new Probe();
         DecodeStatus status;
         try {
             if (CHUNKING) {

@@ -29,6 +29,7 @@ note() { printf '  !! %s\n' "$1" >&2; fail=$((fail + 1)); }
 # The two derived gate rosters, read once (scripts/roster.sh owns the derivation).
 enc_names=$("$ROOT/scripts/roster.sh" caps encode | tr '\n' ' ')
 chk_names=$("$ROOT/scripts/roster.sh" caps chunked | tr '\n' ' ')
+reu_names=$("$ROOT/scripts/roster.sh" caps reuse | tr '\n' ' ')
 
 in_list() { case " $2 " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 metaval() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
@@ -57,6 +58,7 @@ while read -r name builder arg tags binary; do
     gates="differential,sweeps,materialize"
     in_list "$name" "$chk_names" && gates="$gates,chunked"
     in_list "$name" "$enc_names" && gates="$gates,encode"
+    in_list "$name" "$reu_names" && gates="$gates,reuse"
     case ",$tags," in *,limits,*) gates="$gates,limits" ;; esac
     case ",$tags," in *,blocking,*) ;; *) gates="$gates (QUARANTINED)" ;; esac
 
@@ -73,6 +75,12 @@ while read -r name builder arg tags binary; do
         "") note "$name: meta declares no chunked_decode — it must say push, pull or none, so an absence is a statement rather than an oversight" ;;
         *)  note "$name: chunked_decode=$chunked is not push, pull or none" ;;
     esac
+
+    # reuse_decode: all, none, or the build variants that have a reusable destination.
+    # Absent means nobody looked; the reuse gate would then expect this row to exit 3.
+    if [ -z "$(metaval "$meta" reuse_decode)" ]; then
+        note "$name: meta declares no reuse_decode — it must say all, none or the variants that have it"
+    fi
 
     if [ -z "$surfaces" ]; then
         note "$name: meta declares no encode_surfaces — the encode gate cannot place it, and it will be absent without saying so"

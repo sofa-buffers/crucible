@@ -105,6 +105,10 @@ func parseStreamCfg() {
 	if s := os.Getenv("SOFAB_CHUNK_SCRUB"); s != "" && s != "0" {
 		scrub = true
 	}
+	if s := os.Getenv("SOFAB_REUSE"); s != "" && s != "0" {
+		reused = msg.Probe__New()
+		fmt.Fprintln(os.Stderr, "crucible-go: reuse=1")
+	}
 	if s := os.Getenv("SOFAB_ENCODE"); s != "" {
 		switch s {
 		case "new", "to", "stream":
@@ -598,6 +602,11 @@ func decodeChunked(data []byte, split, chunk int, scrub bool) (*msg.Probe, error
 	return d.Message(), nil
 }
 
+// reused is the one destination every record decodes into under SOFAB_REUSE=1
+// (CONTRACT.md, "Reused destination"): Probe__TryDecode resets it first, so each
+// line must equal the fresh-destination one. nil = the default fresh decode.
+var reused *msg.Probe
+
 // canonical writes the canonical line for one candidate input
 // (oracle/canonical.md: decode -> re-encode -> hex).
 func canonical(w *bufio.Writer, data []byte) {
@@ -605,6 +614,8 @@ func canonical(w *bufio.Writer, data []byte) {
 	var err error
 	if splitAt != 0 || chunkSize != 0 || scrub {
 		m, err = decodeChunked(data, splitAt, chunkSize, scrub)
+	} else if reused != nil {
+		m, err = reused, msg.Probe__TryDecode(data, reused)
 	} else {
 		m, err = msg.Probe__Decode(data)
 	}

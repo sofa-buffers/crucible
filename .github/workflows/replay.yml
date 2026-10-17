@@ -217,3 +217,10 @@ jobs:
 
       - name: Encode invariance (streaming encode, opt-in roster)
         run: ./scripts/run-encode.sh
+
+      # The generated decode of most backends takes a destination the caller may keep
+      # across messages and promises it reads as a fresh decode; every gate above
+      # decodes each record into a fresh message. This one keeps one destination per
+      # driver for the whole run (drivers/common/CONTRACT.md, SOFAB_REUSE).
+      - name: Reuse invariance (decode into a reused destination)
+        run: ./scripts/run-reuse.sh
