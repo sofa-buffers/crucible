@@ -268,9 +268,14 @@ the vacuous pass the gates' opt-in rosters guard against, one level down.
   `sofabuffers_generated` for no-std). Registered as two separate drivers
   (`rust-std`, `rust-nostd`) — they are two implementations to compare.
   **Single-pass decode:** the driver calls the generated fallible
-  `Probe::try_decode(&[u8]) -> Result<Probe, DecodeError>` (sofabgen 0.16.0,
-  G-0001 fix) — `Ok`→`A <hex>`, `Err(DecodeError::Incomplete)`→`I`, else
-  `R <class>`. The verdict arrives in **two** types since generator#463 adopted
+  `Probe::try_decode` (sofabgen 0.16.0, G-0001 fix) — `Ok`→`A <hex>`,
+  `Err(DecodeError::Incomplete)`→`I`, else `R <class>`. Its shape differs by
+  corelib since generator#755: on rs it is `try_decode(&[u8], &mut Probe) ->
+  Result<(), DecodeError>` (decode into a caller-owned destination), on rs-no-std
+  still `try_decode(&[u8]) -> Result<Probe, DecodeError>` (corelib-rs-no-std#133
+  declined the reuse). `driver.rs`'s `one_shot()` picks the form behind a
+  `crucible_reuse` cfg that `build.sh` sets for `rs` only; on rs it decodes into a
+  fresh `Probe::default()` per input, so the verdict and value are a one-shot decode. The verdict arrives in **two** types since generator#463 adopted
   the §5.2.1 IStream contract (2026-09-03): `IStream::feed` answers
   `Result<Status, Error>`, because running out of bytes mid-field is an *outcome*
   and only the caller's framing can say whether more bytes are coming, so

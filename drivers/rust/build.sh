@@ -117,8 +117,12 @@ sed -i "s#\${SOFAB_RS_CORELIB}#$CORELIB#" "$OUT/Cargo.toml"
 # above is the one substitution the generator asks for). Every variant gets the
 # `--check-cfg` declaration: without it the gate is an *unknown* cfg name, and rustc's
 # `unexpected_cfgs` lint warns on every build (noise that can mask real warnings).
-RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--check-cfg cfg(crucible_limit)"
-if [ "$VARIANT" = "rs" ]; then RUSTFLAGS="$RUSTFLAGS --cfg crucible_limit"; fi
+#
+# `crucible_reuse` selects the decode-entry shape: on rs, `try_decode(data, &mut out)`
+# writes into a caller-owned destination (generator#755); rs-no-std keeps
+# `try_decode(data) -> Result<Probe, _>` (corelib-rs-no-std#133 declined the reuse).
+RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--check-cfg cfg(crucible_limit) --check-cfg cfg(crucible_reuse)"
+if [ "$VARIANT" = "rs" ]; then RUSTFLAGS="$RUSTFLAGS --cfg crucible_limit --cfg crucible_reuse"; fi
 export RUSTFLAGS
 
 echo "==> [rust:$VARIANT] cargo build (RUSTFLAGS=$RUSTFLAGS)" >&2
