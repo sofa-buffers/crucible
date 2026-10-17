@@ -59,7 +59,7 @@ case "$cmd" in
         IFS=$_oldifs
         ;;
     caps)
-        # `caps <encode|chunked> [tag]` — the roster names whose backend declares the
+        # `caps <encode|chunked|encode_fail|reuse> [tag]` — the roster names whose backend declares the
         # capability in `drivers/<builder>/meta`.
         #
         # This is what the two streaming gates use instead of a hand-written driver
@@ -76,10 +76,10 @@ case "$cmd" in
         cap="${2:-}"
         want="${3:-}"
         case "$cap" in
-            encode|chunked|encode_fail) ;;
-            *) echo "usage: roster.sh caps {encode|chunked|encode_fail} [tag]" >&2; exit 2 ;;
+            encode|chunked|encode_fail|reuse) ;;
+            *) echo "usage: roster.sh caps {encode|chunked|encode_fail|reuse} [tag]" >&2; exit 2 ;;
         esac
-        rows | while read -r name builder _arg _tags _binary; do
+        rows | while read -r name builder arg _tags _binary; do
             meta="$ROOT/drivers/$builder/meta"
             [ -f "$meta" ] || continue
             case "$cap" in
@@ -99,6 +99,18 @@ case "$cmd" in
                     # destination that is too small. `no` is the declared absence.
                     v=$(sed -n 's/^encode_fail=//p' "$meta")
                     [ -n "$v" ] && [ "$v" != "no" ] && printf '%s\n' "$name"
+                    ;;
+                reuse)
+                    # SOFAB_REUSE: whether the generated decode takes a destination
+                    # the caller may reuse. `all`, `none`, or the build.sh variant
+                    # arguments that have it — per variant, because rust's rs has it
+                    # and its rs-no-std rows do not (corelib-rs-no-std#133).
+                    v=$(sed -n 's/^reuse_decode=//p' "$meta")
+                    case "$v" in
+                        all) printf '%s\n' "$name" ;;
+                        ""|none) ;;
+                        *) case ",$v," in *",$arg,"*) printf '%s\n' "$name" ;; esac ;;
+                    esac
                     ;;
             esac
         done

@@ -303,14 +303,58 @@ fn one_shot(data: &[u8]) -> Result<Probe, DecodeError> {
     Probe::try_decode(data)
 }
 
-fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool, cfg: &StreamCfg) {
+// SOFAB_REUSE=1 (CONTRACT.md, "Reused destination"): every record decodes into ONE
+// destination held for the whole run. try_decode resets it first and writes into the
+// storage it holds, so the line must equal the fresh-destination one. The clone is
+// only what the output path reads; the decode itself went into the reused value.
+#[cfg(crucible_reuse)]
+type Reused = Option<Probe>;
+#[cfg(crucible_reuse)]
+fn reuse_dest() -> Reused {
+    let on = matches!(std::env::var("SOFAB_REUSE").as_deref(), Ok(v) if !v.is_empty() && v != "0");
+    if on {
+        eprintln!("crucible-rust: reuse=1");
+    }
+    on.then(Probe::default)
+}
+#[cfg(crucible_reuse)]
+fn decode_into(dest: &mut Reused, data: &[u8]) -> Result<Probe, DecodeError> {
+    match dest {
+        Some(m) => Probe::try_decode(data, m).map(|()| m.clone()),
+        None => one_shot(data),
+    }
+}
+// rs-no-std has no decode into a caller-owned destination (corelib-rs-no-std#133), so
+// SOFAB_REUSE is refused (exit 3) rather than answered by a fresh decode.
+#[cfg(not(crucible_reuse))]
+type Reused = ();
+#[cfg(not(crucible_reuse))]
+fn reuse_dest() -> Reused {
+    if matches!(std::env::var("SOFAB_REUSE").as_deref(), Ok(v) if !v.is_empty() && v != "0") {
+        eprintln!("crucible-rust: SOFAB_REUSE — this corelib's try_decode returns a new value \
+                   (no reusable destination, corelib-rs-no-std#133)");
+        std::process::exit(3);
+    }
+}
+#[cfg(not(crucible_reuse))]
+fn decode_into(_dest: &mut Reused, data: &[u8]) -> Result<Probe, DecodeError> {
+    one_shot(data)
+}
+
+fn canonical(
+    out: &mut impl Write,
+    data: &[u8],
+    materialize_mode: bool,
+    cfg: &StreamCfg,
+    dest: &mut Reused,
+) {
     // The chunked path is taken ONLY when a chunking variable is set, so the default
     // stays the one-shot try_decode byte for byte — which is also what makes the gate
     // meaningful: it then compares two genuinely different code paths.
     let decoded = if cfg.split != 0 || cfg.chunk != 0 || cfg.scrub {
         decode_streamed(cfg, data)
     } else {
-        one_shot(data)
+        decode_into(dest, data)
     };
     match decoded {
         Ok(m) => {
@@ -370,6 +414,7 @@ fn main() {
     // so std::env is available under the no_std corelib too.
     let materialize_mode = std::env::var("SOFAB_MATERIALIZE").as_deref() == Ok("1");
     let cfg = read_stream_cfg();
+    let mut dest = reuse_dest();
 
     let stdin = std::io::stdin();
     let mut r = stdin.lock();
@@ -394,7 +439,7 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        canonical(&mut w, &data, materialize_mode, &cfg);
+        canonical(&mut w, &data, materialize_mode, &cfg, &mut dest);
         w.flush().ok();
     }
 }

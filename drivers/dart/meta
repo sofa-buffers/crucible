@@ -6,3 +6,4 @@ chunked_decode=push
 encode_surfaces=new,to,stream
 encode_fail=yes
 min_output_buffer=1
+reuse_decode=all

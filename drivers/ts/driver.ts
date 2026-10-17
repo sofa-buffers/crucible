@@ -419,13 +419,29 @@ function canonicalChunked(data: Uint8Array): string {
   return acceptLine(m);
 }
 
+// SOFAB_REUSE=1 (CONTRACT.md, "Reused destination"): every record decodes into ONE
+// destination held for the whole run, through Probe.tryDecode(bytes, out), which resets
+// it first and writes over its storage. Each line must equal the fresh-destination one.
+const _REUSED: Probe | null = (() => {
+  const s = process.env.SOFAB_REUSE;
+  if (!s || s === "0") return null;
+  process.stderr.write("crucible-ts: reuse=1\n");
+  return new Probe();
+})();
+
 function canonical(data: Uint8Array): string {
   // decode -> re-encode -> hex (oracle/canonical.md). A zero-length record goes
   // through Probe.decode like any other: the decoder answers the empty message.
   if (_SPLIT || _CHUNK || _SCRUB) return canonicalChunked(data);
   let m: Probe;
   try {
-    m = Probe.decode(data);
+    if (_REUSED) {
+      // tryDecode answers INCOMPLETE as a status where decode() throws it.
+      if (Probe.tryDecode(data, _REUSED) !== DecodeStatus.Complete) return "I";
+      m = _REUSED;
+    } else {
+      m = Probe.decode(data);
+    }
   } catch (e) {
     // INCOMPLETE (truncation) is a distinct hard verdict, not a reject: the
     // stream ended inside a field. Detect it first (canonical.md: never collapse

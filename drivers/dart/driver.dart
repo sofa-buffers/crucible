@@ -62,6 +62,16 @@ final String _encode = (Platform.environment['SOFAB_ENCODE'] ?? '').isEmpty
     : Platform.environment['SOFAB_ENCODE']!;
 final bool _chunking = _split != 0 || _chunk != 0 || _scrub;
 
+// SOFAB_REUSE=1 (CONTRACT.md, "Reused destination"): every record decodes into ONE
+// destination held for the whole run; tryDecode(data, out) resets it first, so each
+// line must equal the fresh-destination one. null = a fresh Probe per record.
+final Probe? _reused = () {
+  final s = Platform.environment['SOFAB_REUSE'] ?? '';
+  if (s.isEmpty || s == '0') return null;
+  stderr.writeln('crucible-dart: reuse=1');
+  return Probe();
+}();
+
 void _checkCfg() {
   if (_encode != 'new' && _encode != 'to' && _encode != 'stream') {
     stderr.writeln('crucible-dart: unknown SOFAB_ENCODE=$_encode '
@@ -164,7 +174,7 @@ String _encodeClass(sofab.SofabException e) {
 // canonical produces the one canonical line for a single candidate input
 // (oracle/canonical.md: decode -> re-encode -> hex on COMPLETE).
 String canonical(Uint8List data) {
-  final out = Probe();
+  final out = _reused ?? Probe();
   // `var`, not `final`: the chunked branch reassigns it once per fed chunk, because
   // the verdict is the last feed()'s return value (§5.2.1, generator#555).
   sofab.DecodeStatus st;

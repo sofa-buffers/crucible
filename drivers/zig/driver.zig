@@ -75,6 +75,16 @@ fn readStreamCfg(init: std.process.Init) StreamCfg {
     if (init.environ_map.get("SOFAB_CHUNK_SCRUB")) |v| {
         cfg.scrub = v.len != 0 and !std.mem.eql(u8, v, "0");
     }
+    // SOFAB_REUSE (CONTRACT.md, "Reused destination"): the generated decode returns a
+    // new message into an allocator and promises nothing about a reused one, so the
+    // axis is refused, never answered by a fresh decode.
+    if (init.environ_map.get("SOFAB_REUSE")) |v| {
+        if (v.len != 0 and !std.mem.eql(u8, v, "0")) {
+            std.debug.print("crucible-zig: SOFAB_REUSE — the generated decode takes no " ++
+                "reusable destination\n", .{});
+            std.process.exit(3);
+        }
+    }
     if (init.environ_map.get("SOFAB_ENCODE")) |e| {
         if (std.mem.eql(u8, e, "stream")) {
             cfg.enc_stream = true;
