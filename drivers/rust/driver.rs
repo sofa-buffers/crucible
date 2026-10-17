@@ -290,6 +290,19 @@ fn reject_class(e: Error) -> &'static str {
 // the round-trip path does.
 include!("materialize_gen.rs");
 
+// One-shot whole-buffer decode. On rs, try_decode writes into a destination the caller
+// owns (generator#755); a fresh default one per input keeps it a one-shot decode.
+// rs-no-std did not take the reuse (corelib-rs-no-std#133) and still returns the value.
+#[cfg(crucible_reuse)]
+fn one_shot(data: &[u8]) -> Result<Probe, DecodeError> {
+    let mut m = Probe::default();
+    Probe::try_decode(data, &mut m).map(|()| m)
+}
+#[cfg(not(crucible_reuse))]
+fn one_shot(data: &[u8]) -> Result<Probe, DecodeError> {
+    Probe::try_decode(data)
+}
+
 fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool, cfg: &StreamCfg) {
     // The chunked path is taken ONLY when a chunking variable is set, so the default
     // stays the one-shot try_decode byte for byte — which is also what makes the gate
@@ -297,7 +310,7 @@ fn canonical(out: &mut impl Write, data: &[u8], materialize_mode: bool, cfg: &St
     let decoded = if cfg.split != 0 || cfg.chunk != 0 || cfg.scrub {
         decode_streamed(cfg, data)
     } else {
-        Probe::try_decode(data)
+        one_shot(data)
     };
     match decoded {
         Ok(m) => {

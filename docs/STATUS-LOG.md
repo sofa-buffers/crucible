@@ -14,6 +14,17 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-17 — rust driver: follow sofabgen's reused-destination try_decode (generator#755)
+
+generator `ef6b6754` changes the rs profile's `Probe::try_decode` to `try_decode(data, &mut
+out) -> Result<(), DecodeError>`; rs-no-std keeps `try_decode(data) -> Result<Probe, _>`
+(corelib-rs-no-std#133 declined the reuse). The shared `driver.rs` stopped compiling for rs.
+It now selects the form behind a new `crucible_reuse` cfg (set by `build.sh` for `rs` only)
+and decodes each input into a fresh `Probe::default()`, which keeps it a one-shot decode. The
+reuse path itself (decoding into a destination that held an earlier message) is not exercised
+by any gate yet. Verified with sofabgen `0.0.0-20261017131832-cda911765150` and every corelib
+at its main tip: all replay.yml gates green, 20 drivers, 0 divergences.
+
 ## 2026-10-15 — G-0048 resolved: Java enums and bitfields get named constants
 
 generator#763 (`d2f79dd1`, closes generator#758) emits a holder class of `long` constants per
