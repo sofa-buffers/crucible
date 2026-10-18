@@ -1,8 +1,8 @@
 # G-0050 — a `$ref` to a def of the wrong category is accepted, and the declared field type is silently replaced
 
-**Status:** 🔴 **OPEN** — filed as generator#776. Owner: **generator** (`internal/model`, every backend).
-**Issue:** [generator#776](https://github.com/sofa-buffers/generator/issues/776) (filed 2026-10-18)
-**Guard:** `schema/ref-forms/reject-{union-body-to-struct,struct-body-to-union,payload-to-union}.sofab.yaml`, checked by `scripts/check-ref-codegen.py` (XFAIL on all 11 targets while this is open; the gate fails once sofabgen refuses them, until the `known:` lines are dropped).
+**Status:** ✅ **RESOLVED** — fixed upstream in [generator#779](https://github.com/sofa-buffers/generator/pull/779) (merged 2026-10-18, `6c03d35b`, "fix(model): a $ref must name the $defs category its site declares"). sofabgen now refuses a `$ref` into the wrong `$defs` group. Owner: **generator** (`internal/model`, every backend), not a corelib.
+**Issue:** [generator#776](https://github.com/sofa-buffers/generator/issues/776) (filed 2026-10-18, closed 2026-10-18)
+**Guard:** `schema/ref-forms/reject-{union-body-to-struct,struct-body-to-union,payload-to-union}.sofab.yaml` (`# expect: reject`), checked by `scripts/check-ref-codegen.py` on all 11 targets.
 
 **Found 2026-10-18** on branch `worktree-ref-schemas-212` (family branch `main`), sofabgen
 `0.0.0-20261017174557-c82ead33edeb` (generator main `c82ead33edeb`), documentation
@@ -53,3 +53,19 @@ Nothing on the wire is malformed: the generated code is self-consistent, only no
 schema says, so every driver built from such a schema would agree with every other. Only a
 check on the generator's input contract sees it — `scripts/check-ref-codegen.py`
 (`# expect: reject`).
+
+## Resolution (verified 2026-10-18)
+
+Verified with the sofabgen build of generator main `61bf3f04` (`0.0.0-20261018151733-61bf3f049efa`,
+the `sofabgen-linux-amd64` artifact of generator CI run 39139819425, checksum verified), which
+contains `6c03d35b`:
+
+- `scripts/check-ref-codegen.py` reported `FIXED?` for all three forms on all 11 targets: each is
+  now refused at validation, e.g. `#/messages/probe/payload/u/oneof: $ref "#/$defs/struct/Vec2"
+  names a $defs/struct, but the field is declared union` — the field's declared `type` is no
+  longer replaced by the target's category;
+- the `# known: G-0050` lines are dropped, so the three forms are plain `reject` expectations:
+  the gate reads 683 cells, 0 failing.
+
+Nothing on the wire changes (the bug produced self-consistent code from an invalid schema), so
+there is no wire-level check; the generator-input check above is the guard.

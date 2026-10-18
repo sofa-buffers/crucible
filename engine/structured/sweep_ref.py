@@ -29,7 +29,8 @@ sites (a, b, al alias, pts, grid, opt.p), a def chain (chain), a def holding $re
 every category (rec), a def holding an inline struct (crate), whole-field copies of a scalar
 (level, power), of a union field (hu) and of a union option (wc), a union alias def (ta), a
 $defs union built from $refs (mx0, mx1), a cross-file chain over three files (far, deep), a
-union from another file (xu), and the payload itself, which is a $ref.
+union from another file (xu), an enum and a bitfield alias def (ea, fa: the alias carries the
+named def's constants and so its width, G-0051), and the payload itself, which is a $ref.
 
 Every vector states its expectation (engine/structured/sweep_run.py checks it):
   ``identity``   the vector IS the canonical form: accepted, re-encodes to its own bytes.
@@ -88,6 +89,8 @@ def WC(v):         return scalar_s(29, v)      # whole-field copy of WithC.c: Hu
 def CD(xs):        return arr_s(30, xs)        # Hue[4], declared default [1, 2]
 def DEEP(b=b""):   return seq(31, b)           # Deep, from probe-ref-deep.defs.yaml
 def XU(b=b""):     return seq(32, b)           # Pair, from probe-ref.defs.yaml, default_id 1 (s)
+def EA(v):         return scalar_s(33, v)      # WideHueA, an enum alias def: i16, default 1
+def FA(v):         return scalar_u(34, v)      # WideModeA, a bitfield alias def: u16, default 2 (w)
 
 # Vec2 { x i32 = 7, y i32 }
 def x(v): return scalar_s(0, v)
@@ -315,6 +318,24 @@ def emit_ref(out_dir=None):
     canon("p_xu_i0_held_written", TAG() + XU(scalar_u(0, 0)))
     canon("p_xu_s_ab", TAG() + XU(fstr(1, "ab")))
     add("p_xu_s_over_maxlen", TAG() + XU(fstr(1, "abc")), "reject")         # Pair.s maxlen 2
+
+    # ---- Q. an enum and a bitfield alias def (G-0051) --------------------------------------
+    # The alias declares the constants of the def it names: WideHue's BIG = 1000 makes the enum
+    # i16, WideMode's flag at pos 9 makes the bitfield u16. Before generator#781 the alias was a
+    # type with one constant named `$ref` = 0, so the field shrank to i8 / u8 and BIG was INVALID.
+    twin("q_ea_one_is_default", TAG() + EA(1), omit)
+    canon("q_ea_zero_written", TAG() + EA(0))
+    canon("q_ea_big_1000", TAG() + EA(1000))                 # a declared constant, past i8
+    canon("q_ea_32767_inside_the_width", TAG() + EA(32767))
+    canon("q_ea_minus_32768_inside_the_width", TAG() + EA(-32768))
+    add("q_ea_32768_over_the_width", TAG() + EA(32768), "reject")
+    add("q_ea_minus_32769_over_the_width", TAG() + EA(-32769), "reject")
+    twin("q_fa_two_is_default", TAG() + FA(2), omit)
+    canon("q_fa_zero_written", TAG() + FA(0))
+    canon("q_fa_hi_512", TAG() + FA(512))                    # the declared flag at pos 9, past u8
+    canon("q_fa_65535_undeclared_bits_kept", TAG() + FA(65535))
+    add("q_fa_65536_over_the_width", TAG() + FA(65536), "reject")
+    canon("q_ea_and_fa", TAG() + EA(1000) + FA(512 | 1))
 
     # ---- M. a composite touching every field, and every prefix of it --------------------
     whole = (TAG(1) + A(x(1)) + B(y(2)) + C0(2) + C2(0) + F(0) + U0(name("ab")) + U1(num(5))

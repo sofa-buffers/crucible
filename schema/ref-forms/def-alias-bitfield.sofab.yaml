@@ -1,6 +1,5 @@
 # form: a bitfield def that is only a $ref to another bitfield def
 # As def-alias-enum: one flag named `$ref` (G-0051); flag pos 9 makes the width u16, not u8.
-# known: G-0051
 # expect: equivalent
 #
 # Document 1 uses $ref; document 2 is the same message with every $ref written out.

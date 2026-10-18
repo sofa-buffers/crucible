@@ -253,3 +253,8 @@ messages:
         type: union
         default_id: 1
         oneof: {i: {id: 0, type: u8}, s: {id: 1, type: string, maxlen: 2}}
+      ea: {id: 33, type: enum, enum: {R: 0, G: 1, BIG: 1000}, default: 1}
+      fa:
+        id: 34
+        type: bitfield
+        bits: {r: {pos: 0}, w: {pos: 1, default: true}, hi: {pos: 9}}

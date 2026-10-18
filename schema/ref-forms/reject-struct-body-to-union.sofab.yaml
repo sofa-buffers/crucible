@@ -1,6 +1,5 @@
 # form: a struct whose fields is $ref to a $defs UNION (category mismatch)
 # sofabgen accepts it and generates a union field: the declared struct is lost.
-# known: G-0050
 # No error text is pinned: sofabgen has no message for this yet; any refusal meets it.
 # expect: reject
 version: 1

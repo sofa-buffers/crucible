@@ -948,9 +948,10 @@ here:
   cycle buys nothing on the wire and costs heap-less targets, encode loops and recursion in all
   generated code; sofabgen already refuses it. `schema/ref-forms/recursive-*` now assert the
   refusal; the spec change is documentation#101 (G-0049).
-- [ ] **An enum / bitfield alias def in `probe-ref`** once G-0051 is fixed (today its Go output
-  does not compile, so it lives in `schema/ref-forms/def-alias-{enum,bitfield}` only), with a
-  constant that needs a wider type than the alias's broken one (`BIG = 1000`).
+- [x] **An enum / bitfield alias def in `probe-ref`** — **DONE 2026-10-18**, after G-0051 was
+  fixed (generator#781). Fields `ea` (enum alias, `BIG = 1000`, i16) and `fa` (bitfield alias,
+  flag at pos 9, u16) with thirteen `q_*` vectors; `run-ref.sh` over 367 vectors × 20 drivers,
+  0 divergences, 0 differences between the alias and the written-out build.
 - [x] **Corpus hygiene — DONE 2026-08-02: 5994 → 579, all 15 clusters intact.** But **not**
       by `-merge` alone, which this item proposed and which turns out to be actively wrong:
       the plain merge gives 503 files and **6 clusters**, silently discarding the corpus
