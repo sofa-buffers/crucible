@@ -55,8 +55,10 @@ case "$cmd" in
             _schema="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
             cat "$_schema" "$(dirname "$_schema")"/*.defs.yaml 2>/dev/null | cksum
             [ -n "${SOFAB_MATERIALIZE_SCHEMA:-}" ] && cksum < "$SOFAB_MATERIALIZE_SCHEMA"
-            git -C "$ROOT" rev-parse HEAD 2>/dev/null
-            git -C "$ROOT" status --porcelain 2>/dev/null
+            # `|| true`: under `set -e` a failing git (no repository; a container whose user
+            # does not own the checkout — "dubious ownership", exit 128) would end the build
+            git -C "$ROOT" rev-parse HEAD 2>/dev/null || true
+            git -C "$ROOT" status --porcelain 2>/dev/null || true
             # what bootstrap.sh installs (gitignored, so `git status` cannot see it): the
             # generator binary and each corelib's commit — not their `status`, since a
             # build leaves artifacts inside vendor/

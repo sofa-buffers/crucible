@@ -15,6 +15,9 @@ runs:
         path: .prepared
     - shell: sh
       run: |
+        # the container's user does not own the checkout: without this, git refuses it
+        # ("dubious ownership"), and scripts/roster.sh's SKIP_BUILD stamp could not see it
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
         tar -xzf .prepared/prepared.tgz
         rm -rf .prepared
         echo "==> prepared workspace: $(./tools/sofabgen --version | head -1); corelibs:" >&2
