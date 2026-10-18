@@ -82,6 +82,11 @@ echo "==> [sweep] union pass (blocking): rebuilding drivers against probe-union"
 SCHEMA="$ROOT/schema/probe-union.sofab.yaml" CORPUS="$ROOT/corpus/union" "$ROOT/scripts/run.sh" >/dev/null
 echo "==> [sweep] union axes: wiretype §7.3 + repeated-id §7.4 + over-bound §7.1 + reserved-subtype §4.6 + truncation §7" >&2
 python3 "$SWEEP" --union
-echo "==> [sweep] rebuilding drivers back to probe (restore the default binary state)" >&2
-CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
+# RESTORE=0 skips it: in a CI job where nothing runs on these binaries afterwards, the rebuild
+# is time spent for nobody (each replay.yml job builds what it needs; SKIP_BUILD can never
+# reuse a build of another schema).
+if [ "${RESTORE:-1}" != "0" ]; then
+    echo "==> [sweep] rebuilding drivers back to probe (restore the default binary state)" >&2
+    CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
+fi
 echo "==> [sweep] done (every axis blocking, probe and union)" >&2

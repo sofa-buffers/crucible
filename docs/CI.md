@@ -7,7 +7,7 @@ as the corelibs churn. See PLAN §10/§12.
 | workflow | trigger | blocking? | what it does |
 |---|---|---|---|
 | [`image.yml`](../.github/workflows/image.yml) | `.devcontainer/Dockerfile` change · manual | — | build the 14-toolchain image (incl. the Dart SDK and the Kotlin toolchain — Gradle, kotlinc and Kotlin/Native), push to GHCR |
-| [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | the catalog + participation checks, then build all drivers and run the eight **green** gates + the two streaming gates |
+| [`replay.yml`](../.github/workflows/replay.yml) | every push to `main` · every PR | **yes** | the catalog + participation checks; one `prepare` job (bootstrap + the prerequisite checks), then six parallel jobs that build the drivers and run every **green** gate |
 | [`nightly.yml`](../.github/workflows/nightly.yml) | 02:42 UTC daily (dispatched late; see below) · manual | no | two jobs: `fuzz` (grow the corpus, upload it) → `cluster` (cluster it against the baselines, upload the report) |
 
 ## The image (`image.yml`) — the linchpin
@@ -31,7 +31,7 @@ changes (or on manual dispatch), with layer caching via `type=gha`.
 
 ## The replay gate (`replay.yml`) — blocking
 
-Two jobs. **`catalog`** runs first and needs no drivers at all. It carries these checks: `scripts/driver-audit.sh`, the per-driver participation ledger (every roster entry must declare what the gates need to place it), the static half of `scripts/check-family-copies.py` (every copy of family logic listed with a verdict, every materialized walker naming every schema kind), the offline sofabgen-pick rule (`check-sofabgen-pick.py`), `check-nightly-steps.py --lint` (every `continue-on-error` step of the nightly carries an `id`, see below), `check-oracle-verdicts.py` (the comparator against stub drivers: each canonical verdict still does what `oracle/canonical.md` says, including the two checks that fire per line rather than on disagreement — the abolished `usage` class and the `E` verdict, neither of which any input produces), and `check-catalog.py`, which asserts that
+Eight jobs. **`catalog`** needs no drivers at all and runs beside the others. It carries these checks: `scripts/driver-audit.sh`, the per-driver participation ledger (every roster entry must declare what the gates need to place it), the static half of `scripts/check-family-copies.py` (every copy of family logic listed with a verdict, every materialized walker naming every schema kind), the offline sofabgen-pick rule (`check-sofabgen-pick.py`), `check-nightly-steps.py --lint` (every `continue-on-error` step of the nightly carries an `id`, see below), and `check-catalog.py`, which asserts that
 `results/FINDINGS.md` and its write-ups declare the same state:
 
 ```sh
@@ -47,27 +47,46 @@ re-checks it. Added 2026-08-03 after all three non-owning
 representations were found stale at once — it exists because intending to keep them in
 sync demonstrably did not.
 
-**`differential`** bootstraps the corelibs (their `main` tips) + sofabgen, builds every
-replay driver, and runs the **green** oracles in sequence; any divergence fails the
-job. All ten, in the order the workflow runs them:
+**`prepare`** bootstraps the corelibs (their `main` tips) + sofabgen **once**, runs the
+checks without which every other job's result would mean nothing, and hands `vendor/` +
+`tools/sofabgen` to the other jobs as an artifact (a tarball: an artifact drops file modes;
+`.github/actions/prepared-workspace` unpacks it). One bootstrap for all jobs is a correctness
+rule, not a saving: bootstrapping per job would let a push to a corelib or the generator
+between two job starts give two jobs two different families.
 
 ```sh
 ./scripts/bootstrap.sh   # always: latest sofabgen CI build (checksum-verified) + corelibs, both @ FAMILY_BRANCH
+python3 scripts/check-oracle-verdicts.py    # the comparator against stub drivers: each canonical verdict still
+                                            #   does what oracle/canonical.md says (incl. the per-line `E`)
+python3 scripts/check-kotlin-version.py     # the image's kotlinc vs the corelib's klibs (crucible#244) — the one silent mismatch
+python3 scripts/check-family-copies.py      # C anchor tags (needs vendor/): the materialized gates' anchor
+```
+
+Then six jobs run **in parallel**, each in the same image, each building the roster it needs;
+any divergence fails its job:
+
+| job | gates |
+|---|---|
+| `codegen` | `python3 scripts/check-ref-codegen.py` — `$ref` codegen equivalence, schema/ref-forms x 11 targets (sofabgen only, no driver build; cells checked in parallel) |
+| `roundtrip` | seed differential (`run.sh`, and inside it `check-encode-bounds.py`: no encode-bound opt-out in any build recipe, #656); `CORPUS=corpus/regression` and `CORPUS=corpus/conformance` `run.sh`; `REGEN=0 cross-encode.sh`; `sweep.sh` (12 blocking axes + the union pass) |
+| `streams` | `run-chunked.sh` and `--modes chunk` over corpus/regression; `run-encode-fail.sh` (the `E` verdict, for real); `run-encode.sh`; `run-reuse.sh`; `materialize.sh` over corpus/structured and corpus/regression |
+| `schemas` | `run-union.sh`; `materialize.sh` over probe-union; `run-union-deep.sh` (differential + conformance + chunk + encode); `materialize.sh` over probe-union-deep; `run-limits.sh` |
+| `ref-roundtrip` | `run-ref.sh --part 1` — probe-ref vs its inline twin: differential + conformance + same answers |
+| `ref-values` | `run-ref.sh --part 2` — the same pair: materialized values, chunk + encode invariance |
+
+The same commands, run locally in one go:
+
+```sh
 ./scripts/run.sh                            # seed differential            (corpus/seeds)
-                                            #   ... and, inside run.sh, check-encode-bounds.py:
-                                            #   no encode-bound opt-out is switched on in any
-                                            #   build recipe (#656)
-python3 scripts/check-kotlin-version.py     # the image's kotlinc vs the corelib's klibs (crucible#244)
-python3 scripts/check-family-copies.py      # C anchor tags (needs vendor/)
 CORPUS=corpus/regression ./scripts/run.sh   # resolved-findings gate       (corpus/regression)
 CORPUS=corpus/conformance ./scripts/run.sh  # §2/§3 canonicality seeds     (corpus/conformance)
 REGEN=0 ./scripts/cross-encode.sh           # cross-encode / structured    (corpus/structured)
+./scripts/sweep.sh                          # structural sweep, 12 blocking axes
 ./scripts/run-union.sh                      # union suite                  (corpus/union)
 ./scripts/run-union-deep.sh                 # deep union suite: differential + conformance + chunk + encode (corpus/union-deep)
 python3 scripts/check-ref-codegen.py        # $ref codegen equivalence: schema/ref-forms x 11 targets (sofabgen only, no build)
 ./scripts/run-ref.sh                        # $ref suite: probe-ref vs its inline twin — differential + conformance + same answers, materialized values, chunk + encode (corpus/ref)
 ./scripts/run-limits.sh                     # limit mode                   (corpus/limits)
-./scripts/sweep.sh                          # structural sweep, 12 blocking axes
 ./scripts/materialize.sh                    # materialized-value oracle    (corpus/structured)
 CORPUS=corpus/regression ./scripts/materialize.sh   # ...and over the findings corpus (values the round trip cannot see)
 SCHEMA=schema/probe-union.sofab.yaml ./scripts/materialize.sh   # ...and over a union schema (the HELD option, read through the API)
@@ -79,6 +98,19 @@ CORPUS=corpus/regression ./scripts/run-chunked.sh --modes chunk   # ...and over 
 ./scripts/run-encode-fail.sh                # destination failure: the `E` verdict, for real
 ```
 
+- **`SKIP_BUILD=1` and `RESTORE=0` in every driver job.** `scripts/roster.sh build` reuses
+  the previous roster build when nothing it depends on changed — every variable a
+  `build.sh` / `materialize_gen.py` reads, the content of the schema (+ its `*.defs.yaml`)
+  and of the materialized table, the checkout, sofabgen and each corelib's commit — so
+  consecutive steps on one schema stop rebuilding twenty drivers; a schema switch changes
+  the stamp and always rebuilds, so a stale binary is never reused. `RESTORE=0` drops the
+  "rebuild back to probe" that `cross-encode.sh`, `sweep.sh`, `run-union-deep.sh` and
+  `run-ref.sh` end with: in a separate job nothing runs on those binaries afterwards.
+  Locally both stay off unless set.
+- **No gate waits for another driver job.** A seed differential as a "smoke test" in front
+  would add a full roster build to the critical path while proving nothing the jobs do not
+  prove themselves (each builds and fails fast). `catalog` stays independent too: a stale
+  index does not make a differential result wrong.
 - **Corelibs pinned to `main`** on purpose: Crucible is a *conformance* fuzzer, so a
   red gate on an upstream regression is exactly the signal we want — it's how we
   work by hand.

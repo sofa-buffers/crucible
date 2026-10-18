@@ -31,5 +31,10 @@ echo "==> [cross-encode] union value differential (corpus/structured-union, prob
 SCHEMA="$ROOT/schema/probe-union.sofab.yaml" CORPUS="$ROOT/corpus/structured-union" \
     "$ROOT/scripts/run.sh" "$@"
 
-echo "==> [cross-encode] restoring probe binaries" >&2
-CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
+# RESTORE=0 skips it: in a CI job where nothing runs on these binaries afterwards, the rebuild
+# is time spent for nobody (each replay.yml job builds what it needs; SKIP_BUILD can never
+# reuse a build of another schema).
+if [ "${RESTORE:-1}" != "0" ]; then
+    echo "==> [cross-encode] restoring probe binaries" >&2
+    CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null
+fi

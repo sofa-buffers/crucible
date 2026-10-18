@@ -16,11 +16,16 @@
 # What the GENERATED CODE looks like under the two spellings is scripts/check-ref-codegen.py's.
 #
 #   ./scripts/run-ref.sh            # all six
-#   ./scripts/run-ref.sh --quick    # passes 1 and 2 only
+#   ./scripts/run-ref.sh --quick    # passes 1 and 2 only (= --part 1)
+#   ./scripts/run-ref.sh --part 2   # passes 3 to 6 only (replay.yml runs the two parts as two jobs)
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-QUICK=0
-[ "${1:-}" = "--quick" ] && QUICK=1
+PART=all
+case "${1:-}" in
+    --quick) PART=1 ;;
+    --part) PART="${2:-}" ;;
+esac
+case "$PART" in all|1|2) ;; *) echo "usage: run-ref.sh [--quick | --part 1|2]" >&2; exit 2 ;; esac
 rc=0
 ANSWERS=$(mktemp)
 DUMPS=$(mktemp)
@@ -32,17 +37,19 @@ REF="$ROOT/schema/probe-ref.sofab.yaml"
 echo "==> [ref] regenerating corpus/ref" >&2
 python3 "$ROOT/engine/structured/sweep_ref.py" "$ROOT/corpus/ref" >&2 || exit 1
 
-echo "==> [ref] 1/6 inline twin: differential + conformance" >&2
-export SCHEMA="$INLINE"
-CORPUS="$ROOT/corpus/ref" "$ROOT/scripts/run.sh" || rc=1
-python3 "$ROOT/engine/structured/sweep_run.py" --ref --save-outputs "$ANSWERS" || rc=1
+if [ "$PART" != "2" ]; then
+    echo "==> [ref] 1/6 inline twin: differential + conformance" >&2
+    export SCHEMA="$INLINE"
+    CORPUS="$ROOT/corpus/ref" "$ROOT/scripts/run.sh" || rc=1
+    python3 "$ROOT/engine/structured/sweep_run.py" --ref --save-outputs "$ANSWERS" || rc=1
 
-echo "==> [ref] 2/6 \$ref schema: differential + conformance + same answers as the twin" >&2
-export SCHEMA="$REF"
-CORPUS="$ROOT/corpus/ref" "$ROOT/scripts/run.sh" || rc=1
-python3 "$ROOT/engine/structured/sweep_run.py" --ref --compare-outputs "$ANSWERS" || rc=1
+    echo "==> [ref] 2/6 \$ref schema: differential + conformance + same answers as the twin" >&2
+    export SCHEMA="$REF"
+    CORPUS="$ROOT/corpus/ref" "$ROOT/scripts/run.sh" || rc=1
+    python3 "$ROOT/engine/structured/sweep_run.py" --ref --compare-outputs "$ANSWERS" || rc=1
+fi
 
-if [ "$QUICK" = "0" ]; then
+if [ "$PART" != "1" ]; then
     # materialize.sh builds the roster against $SCHEMA; the dumps are then taken from that
     # build, with the same derived table it used.
     for pass in 3 4; do
@@ -61,6 +68,11 @@ if [ "$QUICK" = "0" ]; then
     CORPUS="$ROOT/corpus/ref" "$ROOT/scripts/run-encode.sh" || rc=1
 fi
 
-echo "==> [ref] restoring probe binaries" >&2
-SCHEMA="$ROOT/schema/probe.sofab.yaml" CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null || true
+# RESTORE=0 skips it: in a CI job where nothing runs on these binaries afterwards, the rebuild
+# is time spent for nobody (each replay.yml job builds what it needs; SKIP_BUILD can never
+# reuse a build of another schema).
+if [ "${RESTORE:-1}" != "0" ]; then
+    echo "==> [ref] restoring probe binaries" >&2
+    SCHEMA="$ROOT/schema/probe.sofab.yaml" CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null || true
+fi
 exit $rc
