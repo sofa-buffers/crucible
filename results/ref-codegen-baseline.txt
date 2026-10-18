@@ -4075,7 +4075,7 @@ probe-ref java DOC renames=54:8d0a22f96f residuals=+0/-18:a3d8762d78
 probe-ref kotlin DOC renames=54:8d0a22f96f residuals=+0/-18:7f5cd18b5a
 probe-ref python DIFF renames=149:526d3efbd9 residuals=+1734/-7:6788569dfc
 probe-ref rust DIFF renames=54:8d0a22f96f residuals=+384/-3:580b34c1d1
-probe-ref typescript DIFF renames=161:4f7c8999f4 residuals=+1581/-7:2f91abba68
+probe-ref typescript DIFF renames=161:4f7c8999f4 residuals=+1581/-7:f614aab12e
 probe-ref zig DIFF renames=54:8d0a22f96f residuals=+346/-3:d6177dbb67
 struct-field c DIFF renames=6:258efd3547
     file+ only with $ref   [sofab-defs.c]
