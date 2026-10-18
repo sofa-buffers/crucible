@@ -39,3 +39,6 @@ __pycache__/
 
 # Go fuzz seed corpus — regenerated from corpus/ on every scripts/fuzz-go.sh run
 /drivers/go/testdata/
+
+# scripts/roster.sh build stamps (SKIP_BUILD)
+/drivers/.roster-build-*

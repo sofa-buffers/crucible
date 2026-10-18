@@ -61,6 +61,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 
 import yaml
 
@@ -411,27 +412,6 @@ def derive_renames(pairs, corr, ref_vocab, inl_vocab, ren):
     return grew
 
 
-def raw_hunks(mapped, rt):
-    """(path, kind, inline tokens, $ref tokens) for every non-equal run, files paired by path."""
-    out = []
-    for path in sorted(set(mapped) | set(rt)):
-        inls, ref = mapped.get(path, []), rt.get(path)
-        if ref is None:
-            out += [(path + " (file only inline)", "delete", ts, []) for ts in inls]
-            continue
-        if not inls:
-            out.append((path + " (file only with $ref)", "insert", [], ref))
-            continue
-        for k, ts in enumerate(inls):
-            if k:                                     # two inline types fold onto one $ref type
-                out.append((path + " (second inline copy)", "delete", ts, []))
-                continue
-            sm = difflib.SequenceMatcher(None, ts, ref, autojunk=False)
-            out += [(path, tag, ts[i1:i2], ref[j1:j2])
-                    for tag, i1, i2, j1, j2 in sm.get_opcodes() if tag != "equal"]
-    return out
-
-
 def line_pairs(it, rt, ren, corr):
     """Order-free evidence: a line only the inline side holds, set against each equally long
     line of the $ref side that differs from it in identifiers alone, every one of them a
@@ -446,33 +426,19 @@ def line_pairs(it, rt, ren, corr):
     li = pool({p: _lined(t) for p, t in it.items()}, ren)
     lr = pool({p: _lined(t) for p, t in rt.items()}, {})
     only_i = [l.split(" ") for l in li if li[l] > lr.get(l, 0)]
-    by_len = {}
+
+    def skeleton(ts):                                  # two lines that differ in identifiers
+        return tuple("" if IDENT.match(t) else t for t in ts)   # alone share it
+    by_skel = {}
     for l in lr:
         ts = l.split(" ")
-        by_len.setdefault(len(ts), []).append(ts)
+        by_skel.setdefault(skeleton(ts), []).append(ts)
     out = []
     for a in only_i:
-        for b in by_len.get(len(a), []):
+        for b in by_skel.get(skeleton(a), []):
             diff = [(x, y) for x, y in zip(a, b) if x != y]
             if diff and all(IDENT.match(x) and IDENT.match(y) and allowed(x, y, corr) for x, y in diff):
                 out.append((a, b))
-    return out
-
-
-def moved_pairs(hunks):
-    """Each deleted run aligned with the inserted run it most resembles: a block that moved
-    to another place or file carries its renames with it."""
-    dels = [h[2] for h in hunks if h[2] and not h[3]]
-    ins = [h[3] for h in hunks if h[3] and not h[2]]
-    out = []
-    for d in dels:
-        best, score = None, 0.5
-        for i in ins:
-            sm = difflib.SequenceMatcher(None, d, i, autojunk=False)
-            if sm.real_quick_ratio() > score and sm.quick_ratio() > score and sm.ratio() > score:
-                best, score = i, sm.ratio()
-        if best is not None:
-            out.append((d, best))
     return out
 
 
@@ -502,11 +468,35 @@ def compare(ref_files, inl_files, corr):
             m.setdefault(rename_path(p, ren), []).append([ren.get(t, t) for t in it[p]])
         return m
 
+    def lines_of(files, rename):
+        out = {}
+        for path in sorted(files):
+            rows = [" ".join(rename.get(t, t) for t in toks(raw)) for raw in files[path].splitlines()]
+            out.setdefault(rename_path(path, rename), []).append([r for r in rows if r])
+        return out
+
+    def aligned_pairs():
+        """Equal-size replaced runs of LINES, line by line, in files both sides name alike: a
+        line-level alignment (thousands of nearly unique elements) where a token-level one
+        over a whole file (tens of thousands of repeated tokens) is quadratic."""
+        il, rl = lines_of(inl_files, ren), lines_of(ref_files, {})
+        out = []
+        for path, copies in il.items():
+            if path not in rl:
+                continue
+            ref = rl[path][0]
+            sm = difflib.SequenceMatcher(None, copies[0], ref, autojunk=False)
+            for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                if tag == "replace" and i2 - i1 == j2 - j1:
+                    out += [(a.split(" "), b.split(" ")) for a, b in zip(copies[0][i1:i2], ref[j1:j2])]
+        return out
+
+    # Derive the rename from aligned lines of the files both sides name alike, and from every
+    # line one side holds against each line of the other that differs in identifiers alone
+    # (order-free: a block moved to another place or file); pair files through the rename
+    # (a Java/Kotlin file is named after its type); repeat until the rename stops growing.
     for _ in range(6):
-        mapped = mapping()
-        pairs = [(ts[0], rt[p]) for p, ts in mapped.items() if p in rt]
-        hunks0 = raw_hunks(mapped, rt)
-        evidence = pairs + moved_pairs(hunks0) + line_pairs(itl, rtl, ren, corr)
+        evidence = aligned_pairs() + line_pairs(itl, rtl, ren, corr)
         if not derive_renames(evidence, corr, ref_vocab, inl_vocab, ren):
             break
     mapped = mapping()
@@ -617,7 +607,7 @@ def compare(ref_files, inl_files, corr):
 
 
 # ------------------------------------------------------------------- the gate
-def run(forms, langs):
+def run_forms(forms, langs, fixed_check=True):
     rows = []                                        # (form, lang, grade, detail, ok)
     report = {}                                      # (form, lang) -> (grade, ren, hunks)
     models = {}                                      # form -> the two documents model alike
@@ -674,9 +664,50 @@ def run(forms, langs):
                 else:
                     ok, grade, detail = met, ("OK" if met else "FAIL"), got
                 rows.append((f["name"], lang, grade, f"{detail}: {last}"[:160], ok))
-            if f["kind"] == "equivalent" and f["known"] and f["name"] not in xfailed and len(langs) == len(LANGS):
+            if fixed_check and f["kind"] == "equivalent" and f["known"] and f["name"] not in xfailed \
+                    and len(langs) == len(LANGS):
                 rows.append((f["name"], "ir", f"FIXED? {f['known']}",
                              "every target generates it and models it alike — drop the `known:` line", False))
+    return rows, report
+
+
+def _run_one(args):
+    f, lang = args
+    t = time.monotonic()
+    rows, report = run_forms([f], [lang], fixed_check=False)
+    return rows, report, time.monotonic() - t
+
+
+def run(forms, langs, jobs):
+    """run_forms over every (form, target) cell, `jobs` cells at a time (one process each: the
+    work is sofabgen runs plus pure-Python diffing, and one large pair alone would otherwise
+    serialize its 11 targets). Rows and report keep the forms' and targets' order; the
+    target-independent `ir` row is kept once per form."""
+    cells = [(f, lang) for f in forms for lang in langs]
+    if jobs <= 1:
+        results = [_run_one(c) for c in cells]
+    else:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=jobs) as pool:
+            results = list(pool.map(_run_one, cells))
+    rows, report, seen_ir, slow = [], {}, set(), []
+    for (f, lang), (r, rep_, secs) in zip(cells, results):
+        for row in r:
+            if row[1] == "ir":
+                if row[0] in seen_ir:
+                    continue
+                seen_ir.add(row[0])
+            rows.append(row)
+        report.update(rep_)
+        slow.append((secs, f["name"], lang))
+    for f in forms:                                  # a known gap that no cell shows any more
+        if f["kind"] == "equivalent" and f["known"] and len(langs) == len(LANGS) and not any(
+                r[0] == f["name"] and r[2].startswith("XFAIL") for r in rows):
+            rows.append((f["name"], "ir", f"FIXED? {f['known']}",
+                         "every target generates it and models it alike — drop the `known:` line", False))
+    if os.environ.get("REF_CODEGEN_TIMES"):
+        for secs, name, lang in sorted(slow, reverse=True)[:10]:
+            print(f"  {secs:6.1f}s  {name} [{lang}]", file=sys.stderr)
     return rows, report
 
 
@@ -713,6 +744,8 @@ def main():
     ap.add_argument("--only", action="append", help="form name (repeatable)")
     ap.add_argument("--lang", action="append", choices=LANGS)
     ap.add_argument("-v", "--verbose", action="store_true", help="print renames and residuals")
+    ap.add_argument("-j", "--jobs", type=int, default=os.cpu_count() or 1,
+                    help="forms checked in parallel (default: one per CPU)")
     a = ap.parse_args()
     if not os.access(SOFABGEN, os.X_OK):
         print(f"error: no sofabgen at {SOFABGEN} (run scripts/bootstrap.sh)", file=sys.stderr)
@@ -724,7 +757,7 @@ def main():
     langs = a.lang or LANGS
     partial = bool(a.only or a.lang)
 
-    rows, report = run(forms, langs)
+    rows, report = run(forms, langs, a.jobs)
 
     width = max(len(f["name"]) for f in forms)
     print(f"{'form'.ljust(width)}  ir     " + " ".join(l[:6].ljust(6) for l in langs))

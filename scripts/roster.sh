@@ -8,6 +8,7 @@
 #   ./scripts/roster.sh list limits   # only rows tagged `limits`
 #   ./scripts/roster.sh build         # build each, print `--driver name:path` lines
 #   ./scripts/roster.sh build limits  # ... for the tagged subset only
+#   SKIP_BUILD=1 ./scripts/roster.sh build   # reuse the last build if nothing it depends on changed
 #
 # `build` prints its progress on stderr and the comparator arguments on stdout, one
 # per line, so a caller can splice them into "$@" with IFS=newline. It exits non-zero
@@ -37,6 +38,47 @@ case "$cmd" in
         rows
         ;;
     build)
+        # SKIP_BUILD=1 reuses the previous build of this roster subset when nothing a build
+        # depends on has changed since: the stamp covers every variable a drivers/*/build.sh
+        # or materialize_gen.py reads, the CONTENT of the schema (and the *.defs.yaml it may
+        # import) and of the materialized table (a mktemp path differs per run, its content
+        # does not), and the checkout (HEAD + `git status`). Any difference, a missing
+        # binary or no stamp at all: build as usual. CI sets it so that consecutive steps on
+        # one schema stop rebuilding twenty drivers each; a stale binary (a SCHEMA switch,
+        # limit mode) can never be reused, because the switch changes the stamp.
+        _stampfile="$ROOT/drivers/.roster-build-${want:-all}"
+        _stamp=$(
+            echo "tag=$want"
+            for _v in LIMITS LIMCFG SANITIZE SAN CC CXX ZIG RUSTFLAGS KONAN_DATA_DIR KLIB JAR CS_TFM SOFAB_RS_CORELIB; do
+                eval "echo $_v=\${$_v-}"
+            done
+            _schema="${SCHEMA:-$ROOT/schema/probe.sofab.yaml}"
+            cat "$_schema" "$(dirname "$_schema")"/*.defs.yaml 2>/dev/null | cksum
+            [ -n "${SOFAB_MATERIALIZE_SCHEMA:-}" ] && cksum < "$SOFAB_MATERIALIZE_SCHEMA"
+            git -C "$ROOT" rev-parse HEAD 2>/dev/null
+            git -C "$ROOT" status --porcelain 2>/dev/null
+            # what bootstrap.sh installs (gitignored, so `git status` cannot see it): the
+            # generator binary and each corelib's commit — not their `status`, since a
+            # build leaves artifacts inside vendor/
+            [ -f "$ROOT/tools/sofabgen" ] && cksum < "$ROOT/tools/sofabgen"
+            for _d in "$ROOT"/vendor/*/; do git -C "$_d" rev-parse HEAD 2>/dev/null || true; done
+        )
+        _stamp=$(printf '%s\n' "$_stamp" | cksum)
+        if [ "${SKIP_BUILD:-0}" = "1" ] && [ -f "$_stampfile" ] && [ "$(head -n 1 "$_stampfile")" = "$_stamp" ]; then
+            _ok=1
+            for _bin in $(sed -n '2,$p' "$_stampfile" | sed -n 's/^[^:]*://p'); do
+                [ -e "$_bin" ] || _ok=0
+            done
+            if [ "$_ok" = "1" ]; then
+                echo "==> SKIP_BUILD: roster ${want:-all} unchanged since its last build — reusing it" >&2
+                sed -n '2,$p' "$_stampfile" | while IFS= read -r _line; do
+                    printf -- '--driver\n%s\n' "$_line"
+                done
+                exit 0
+            fi
+        fi
+        rm -f "$_stampfile"
+        _built=""
         # A failure inside the loop cannot abort the parent through a pipe, so the
         # rows are materialized first and the loop runs in this shell under `set -e`.
         _rows=$(rows)
@@ -53,10 +95,14 @@ case "$cmd" in
             _bin=$(sh "$ROOT/drivers/$_builder/build.sh" $_arg)
             printf '==> %-14s %s\n' "$_name:" "$_bin" >&2
             printf -- '--driver\n%s:%s\n' "$_name" "$_bin"
+            _built="$_built$_name:$_bin
+"
             IFS='
 '
         done
         IFS=$_oldifs
+        # every build succeeded (set -e): record what was built, for SKIP_BUILD
+        printf '%s\n%s' "$_stamp" "$_built" > "$_stampfile"
         ;;
     caps)
         # `caps <encode|chunked|encode_fail|reuse> [tag]` — the roster names whose backend declares the

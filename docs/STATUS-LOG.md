@@ -14,6 +14,44 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-18 — replay.yml in parallel jobs
+
+The `differential` job of `replay.yml` ran every driver gate in one job, one after another:
+45 min on main (run 39103078446), and 1 h 20 min once crucible#264 added the `$ref` suite
+(16 min) and the `$ref` codegen check (8 min). Most of it was building: almost every step
+rebuilt the twenty drivers, and every schema switch rebuilt them from scratch.
+
+Now `prepare` + six parallel jobs (`codegen`, `roundtrip`, `streams`, `schemas`,
+`ref-roundtrip`, `ref-values`), each in the same image; `catalog` unchanged beside them.
+
+Decisions:
+- **One bootstrap for all jobs**, handed on as a tarball artifact (an artifact drops file
+  modes; `tools/sofabgen` must stay executable). Bootstrapping per job would let a push to a
+  corelib or the generator between two job starts give two jobs two families — a correctness
+  rule, not a saving.
+- **Only real prerequisites gate the parallel jobs**, all in `prepare` and under a minute: the
+  oracle self-check (moved there from `catalog` — with a broken comparator every "0
+  divergences" means nothing), the Kotlin compiler vs the klibs (the one silent toolchain
+  mismatch) and the C anchor tags (the materialized gates' anchor). The seed differential is
+  NOT a gate in front: it would add a full roster build to the critical path and prove nothing
+  each job does not prove itself.
+- **`SKIP_BUILD=1`** (scripts/roster.sh) reuses the previous roster build only when a stamp of
+  everything a build reads still matches — the variables the build scripts and walker
+  generators read, the content of schema and materialized table, the checkout, sofabgen and
+  each corelib's commit. Measured locally: a same-schema step 2 s instead of ≈5 min; a schema
+  switch and the switch back both rebuilt, as they must.
+- **`RESTORE=0`** drops the "rebuild back to probe" four scripts end with; in a separate job
+  nothing runs on those binaries afterwards. Local defaults unchanged.
+- **`run-ref.sh --part 1|2`** splits the `$ref` suite over two jobs.
+- **`check-ref-codegen.py` checks its cells in parallel** (one process per form × target), and
+  its rename derivation now aligns lines instead of whole-file token streams and pairs
+  order-free lines by skeleton (identifiers masked): the full check went from 8 min (CI) to
+  21–23 s locally on 6 loaded cores; its slowest cell (`probe-ref [python]`) from 476 s to 6 s.
+  One cell's residual text changed: `defs-union-ref-options-split [c]` keeps 60 instead of 61
+  renames — one identifier inside a line that is a residual either way, found before only by
+  the quadratic whole-file alignment. Grades and every other cell are unchanged; the three
+  mutation probes (a literal, a swapped statement, a Python dedent) still fail the gate.
+
 ## 2026-10-18 — every `$ref` form, with and without `$ref` (crucible#212)
 
 crucible#212 asked for a recursive schema. sofabgen refuses every cycle, so the issue grew into

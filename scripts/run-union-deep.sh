@@ -39,6 +39,11 @@ if [ "$QUICK" = "0" ]; then
     CORPUS="$ROOT/corpus/union-deep" "$ROOT/scripts/run-encode.sh" || rc=1
 fi
 
-echo "==> [union-deep] restoring probe binaries" >&2
-SCHEMA="$ROOT/schema/probe.sofab.yaml" CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null || true
+# RESTORE=0 skips it: in a CI job where nothing runs on these binaries afterwards, the rebuild
+# is time spent for nobody (each replay.yml job builds what it needs; SKIP_BUILD can never
+# reuse a build of another schema).
+if [ "${RESTORE:-1}" != "0" ]; then
+    echo "==> [union-deep] restoring probe binaries" >&2
+    SCHEMA="$ROOT/schema/probe.sofab.yaml" CORPUS="$ROOT/corpus/seeds" "$ROOT/scripts/run.sh" >/dev/null || true
+fi
 exit $rc

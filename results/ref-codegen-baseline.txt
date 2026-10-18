@@ -2943,7 +2943,7 @@ def-inline-member rust LAYOUT renames=2:bec672c2b4
     folded 1 inline / 0 $ref declaration(s) the other side holds once (one shared type)   [*]
 def-inline-member typescript RENAME renames=7:ee6a46eef5
 def-inline-member zig RENAME renames=2:bec672c2b4
-defs-union-ref-options-split c DIFF renames=61:e592039545
+defs-union-ref-options-split c DIFF renames=60:34b4d4dc9f
     file+ only with $ref   [sofab-defs.c]
     file+ only with $ref   [sofab-defs.h]
     moved 36 top-level declaration(s) held by both sides in another place   [*]
@@ -2962,7 +2962,7 @@ defs-union-ref-options-split c DIFF renames=61:e592039545
     - SOFAB_OBJECT_FIELD ( 1 , message_probe___m1_t , u . c , SOFAB_OBJECT_FIELDTYPE_SIGNED ) ,   [probe_sofab.c]
     - SOFAB_OBJECT_FIELD_SEQUENCE ( 2 , message_probe___m1_t , u . t , SOFAB_OBJECT_FIELDTYPE_SEQUENCE , 1 ) ,   [probe_sofab.c]
     - } ;   [probe_sofab.c]
-    - typedef char _message_Mixed__default_c__defimg_at_u [ ( offsetof ( _message_Mixed__default_c__defimg_t , u ) = = offsetof ( message_probe___m1_t , u ) ) ? 1 : - 1 ] ;   [probe_sofab.c]
+    - typedef char _message_probe___m1__defimg_at_u [ ( offsetof ( _message_Mixed__default_c__defimg_t , u ) = = offsetof ( message_probe___m1_t , u ) ) ? 1 : - 1 ] ;   [probe_sofab.c]
     - const sofab_object_descr_t message_Mixed__default_c__descr = SOFAB_OBJECT_DESCR_UNION ( _message_Mixed__default_c__fields , 3 , _message_Mixed__default_c__nested , 2 , & _message_Mixed__default_c__defaults , message_probe___m1_t , which ) ;   [probe_sofab.c]
     - static const sofab_object_descr_field_t _message_Mixed__default_t__fields [ ] = {   [probe_sofab.c]
     - SOFAB_OBJECT_FIELD_SEQUENCE ( 0 , message_probe___m2_t , u . p , SOFAB_OBJECT_FIELDTYPE_SEQUENCE , 0 ) ,   [probe_sofab.c]

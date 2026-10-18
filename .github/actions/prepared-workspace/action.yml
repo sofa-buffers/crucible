@@ -1,0 +1,21 @@
+# The vendor/ + tools/ the `prepare` job of replay.yml bootstrapped, unpacked into this job's
+# checkout. Every parallel job tests that ONE state: bootstrapping per job would let a corelib
+# or generator push between two job starts give two jobs two different families.
+#
+# A tarball, not the directories: actions/upload-artifact drops file modes, and
+# tools/sofabgen (and every build script under vendor/) must stay executable.
+name: prepared workspace
+description: Download and unpack the vendor/ + tools/ the prepare job bootstrapped
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: prepared-${{ github.run_id }}
+        path: .prepared
+    - shell: sh
+      run: |
+        tar -xzf .prepared/prepared.tgz
+        rm -rf .prepared
+        echo "==> prepared workspace: $(./tools/sofabgen --version | head -1); corelibs:" >&2
+        for d in vendor/*/; do printf '    %s %s\n' "$d" "$(git -C "$d" rev-parse --short HEAD 2>/dev/null || echo ?)" >&2; done

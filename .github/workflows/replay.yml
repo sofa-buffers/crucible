@@ -1,7 +1,7 @@
 # Fast, blocking regression gate — runs on every push and PR.
 #
-# Bootstraps the corelibs + sofabgen at the branch under test, builds all 12 replay
-# drivers, and runs the GREEN oracles: the seed differential, the resolved-findings
+# Bootstraps the corelibs + sofabgen at the branch under test (once, in `prepare`), builds the
+# replay drivers in parallel jobs, and runs the GREEN oracles: the seed differential, the resolved-findings
 # regression corpus, the cross-encode / structured-value differential, the union
 # suite, limit mode, the structural sweep gate, and the materialized-value
 # (element-access) differential. Any divergence fails the run — so a corelib bump
@@ -36,8 +36,8 @@ jobs:
     # the write-ups (scripts/gen-findings.py), so the two can no longer disagree about a
     # state, a pairing or a ticket — only be out of date. The check regenerates and
     # compares, asserts every write-up declares a state, and asserts every closed finding
-    # names the gate that re-checks it. Runs before the heavy differential job because
-    # none of it needs a driver — and because being careful is not a fix.
+    # names the gate that re-checks it. Runs beside the driver jobs, not before them: none
+    # of it needs a driver, and a stale index does not make a differential result wrong.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -53,7 +53,7 @@ jobs:
 
       # crucible#192: every place Crucible reimplements family logic is listed with a
       # verdict, and every materialized-value walker names every schema kind. The half
-      # that needs vendor/ and built drivers runs after the seed differential below.
+      # that needs vendor/ runs in the prepare job below.
       - name: Family copies (static half)
         run: python3 scripts/check-family-copies.py --static
 
@@ -70,15 +70,18 @@ jobs:
       - name: Nightly non-blocking steps are reportable (static)
         run: python3 scripts/check-nightly-steps.py --lint
 
-      # The comparator against stub drivers: does each canonical verdict still do what
-      # oracle/canonical.md says? Here because of `E` (a refused re-encode,
-      # generator#656) — no input produces one, since reaching it needs a decoder bug,
-      # so nothing else in this workflow would notice if its plumbing broke. Same for
-      # the two checks that fail PER LINE rather than on disagreement.
-      - name: Canonical verdicts react as specified (oracle self-check)
-        run: python3 scripts/check-oracle-verdicts.py
-
-  differential:
+  # ---------------------------------------------------------------------------------------
+  # The driver gates run as parallel jobs. They share ONE bootstrap: `prepare` fetches the
+  # corelibs and sofabgen once, runs the checks without which every other job's result would
+  # mean nothing, and hands vendor/ + tools/ to the others (.github/actions/prepared-workspace),
+  # so a push to a corelib or the generator between two job starts cannot make two jobs test
+  # two families. Every other job builds its own roster in the same image.
+  #
+  # In every job: SKIP_BUILD=1 lets consecutive steps on one schema reuse the roster build
+  # (scripts/roster.sh: only when nothing a build depends on changed — a schema switch always
+  # rebuilds), and RESTORE=0 drops the "rebuild back to probe" a suite ends with, which no
+  # later step in a separate job needs.
+  prepare:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/sofa-buffers/crucible-ci:latest
@@ -97,10 +100,15 @@ jobs:
           SOFABGEN_TOKEN: ${{ secrets.SOFABGEN_TOKEN }}
         run: ./scripts/bootstrap.sh   # latest green sofabgen CI build (else release) + corelibs, both @ FAMILY_BRANCH
 
-      - name: Differential over seeds (the green gate)
-        run: ./scripts/run.sh
+      # The comparator against stub drivers: does each canonical verdict still do what
+      # oracle/canonical.md says? Here because of `E` (a refused re-encode,
+      # generator#656) — no input produces one, since reaching it needs a decoder bug,
+      # so nothing else in this workflow would notice if its plumbing broke. Same for
+      # the two checks that fail PER LINE rather than on disagreement. A prerequisite:
+      # with a broken comparator every "0 divergences" below means nothing.
+      - name: Canonical verdicts react as specified (oracle self-check)
+        run: python3 scripts/check-oracle-verdicts.py
 
-      # Asserts the C anchor has a case for every corelib-c-cpp field-type tag.
       # The image's Kotlin compiler must not be older than the Kotlin the corelibs
       # build their klibs with — the one mismatch in this toolchain that is SILENT
       # (crucible#244). Hard on the Dockerfile, which this repo owns and a reviewer can
@@ -109,16 +117,57 @@ jobs:
       - name: Kotlin compiler vs the corelib's klibs
         run: python3 scripts/check-kotlin-version.py
 
+      # Asserts the C anchor has a case for every corelib-c-cpp field-type tag: the
+      # materialized gates' conformance anchor would be blind without it.
       - name: Family copies (C anchor tags)
         run: python3 scripts/check-family-copies.py
 
-      # Every `$ref` form (schema/ref-forms/) generated with and without `$ref` for all 11
-      # targets: the inline twin must BE the dereferenced schema and model alike in the IR; what
-      # the generated code still differs in is held against results/ref-codegen-baseline.txt; the
-      # refused forms (a `$ref` cycle among them) must be refused (known generator gaps are XFAIL).
-      # Needs sofabgen only, no driver build (crucible#212).
+      - name: Hand vendor/ + tools/ to the parallel jobs
+        run: tar -czf prepared.tgz vendor tools/sofabgen
+      - uses: actions/upload-artifact@v7
+        with:
+          name: prepared-${{ github.run_id }}
+          path: prepared.tgz
+          retention-days: 1
+
+  # Every `$ref` form (schema/ref-forms/) generated with and without `$ref` for all 11
+  # targets: the inline twin must BE the dereferenced schema and model alike in the IR; what
+  # the generated code still differs in is held against results/ref-codegen-baseline.txt; the
+  # refused forms (a `$ref` cycle among them) must be refused (known generator gaps are XFAIL).
+  # Needs sofabgen only, no driver build (crucible#212); checks its cells in parallel.
+  codegen:
+    needs: prepare
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/sofa-buffers/crucible-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/prepared-workspace
       - name: $ref codegen equivalence (schema/ref-forms, all targets)
         run: python3 scripts/check-ref-codegen.py
+
+  # The probe schema through the round trip: seeds, the two committed corpora, cross-encode
+  # and the structural sweeps.
+  roundtrip:
+    needs: prepare
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/sofa-buffers/crucible-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      SKIP_BUILD: "1"
+      RESTORE: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/prepared-workspace
+
+      - name: Differential over seeds (the green gate)
+        run: ./scripts/run.sh
 
       # Reproducers for findings that are already fixed: a divergence here means a
       # resolved bug came back. See corpus/regression/README.md.
@@ -136,64 +185,29 @@ jobs:
       - name: Cross-encode over structured values
         run: REGEN=0 ./scripts/cross-encode.sh
 
-      # The union schema — the one wire feature schema/probe.sofab.yaml lacks.
-      - name: Union suite (probe-union schema)
-        run: ./scripts/run-union.sh
-
-      # The union shapes probe-union cannot reach: struct / array / nested / sparse options,
-      # a struct default_id, an array of unions, a union in a struct. Four passes on one
-      # schema (differential, conformance, chunk, encode), so four driver builds.
-      - name: Deep union suite (probe-union-deep schema)
-        run: ./scripts/run-union-deep.sh
-
-      # Every `$ref` form in one message, and its inline twin (crucible#212): one wire format,
-      # two spellings, so each driver must give every corpus/ref vector the same answer under
-      # both builds — and the spec's (identity / same: / reject / not_reject) — and the same
-      # decoded value (the materialized oracle on each build). Six passes, four roster builds.
-      - name: $ref suite (probe-ref schema and its inline twin)
-        run: ./scripts/run-ref.sh
-
-      - name: Limit mode (receiver-side caps)
-        run: ./scripts/run-limits.sh
-
       # Structural sweeps: a normative rule enumerated across EVERY schema position,
       # checked for agreement AND conformance. **All twelve probe axes block** — the last
       # three (framing/ceilings, unknown-sequence, repeated-element-id) were promoted
-      # 2026-08-02 when corelib-c-cpp#126, generator#268 and generator#273 landed; only the
-      # union pass inside sweep.sh is still report-only. sweep.sh rebuilds vs probe, so it is
-      # safe here after limit mode (which leaves probe-dyn binaries).
+      # 2026-08-02 when corelib-c-cpp#126, generator#268 and generator#273 landed; the
+      # union pass inside sweep.sh blocks too. sweep.sh builds vs probe itself first.
       - name: Structural sweep gate (all twelve probe axes blocking)
         run: ./scripts/sweep.sh
 
-      # Element-access oracle (oracle/materialized.md): every driver dumps the DECODED
-      # value (all fields + array elements explicit, floats as raw bits) under
-      # SOFAB_MATERIALIZE=1, catching a decode that differs only where the sparse
-      # round-trip wire elides. Checks agreement (all 12) AND conformance (the C anchor
-      # vs the reference). 75×12 → 0 divergences. Rebuilds vs probe, safe after limit mode.
-      - name: Materialized-value differential (element-access oracle)
-        run: ./scripts/materialize.sh
-
-      # The same oracle over the resolved-findings corpus. The default corpus above holds
-      # canonical values only, so a decode that keeps a non-canonical element raw (G-0044: a
-      # boolean array element 2 held as 2) re-encodes correctly and is invisible to every
-      # round-trip gate; only the decoded-value dump sees it.
-      - name: Materialized-value differential over the resolved-findings corpus
-        run: CORPUS=corpus/regression ./scripts/materialize.sh
-
-      # The same oracle over a UNION schema: every walker reports the HELD option through the
-      # generated API (`{<id>:<value>}`), which the round trip cannot see (an API whose tag names
-      # one option while the encoder writes another re-encodes identically). The value table is
-      # derived from the schema, so this rebuilds the roster against probe-union.
-      - name: Materialized-value differential over a union schema
-        run: SCHEMA=schema/probe-union.sofab.yaml ./scripts/materialize.sh
-
-      # ...and over the DEEP union schema: struct / array / blob / nested-union options, a union in
-      # a struct, enum and bitfield options, arrays of unions and of arrays of unions, `$defs`
-      # unions. There is no independent reference for it (the union reference is defined on
-      # probe-union's messages), so agreement among the 17 drivers, anchored by the C descriptor
-      # walk, is the whole oracle here; the log says so.
-      - name: Materialized-value differential over the deep union schema
-        run: SCHEMA=schema/probe-union-deep.sofab.yaml CORPUS=corpus/union-deep ./scripts/materialize.sh
+  # The probe schema through the decoded value and the per-driver invariants.
+  streams:
+    needs: prepare
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/sofa-buffers/crucible-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      SKIP_BUILD: "1"
+      RESTORE: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/prepared-workspace
 
       # The two STREAMING axes (crucible#132). Both are intra-driver invariants — a
       # driver against itself — so unlike every gate above they need no second
@@ -239,3 +253,100 @@ jobs:
       # driver for the whole run (drivers/common/CONTRACT.md, SOFAB_REUSE).
       - name: Reuse invariance (decode into a reused destination)
         run: ./scripts/run-reuse.sh
+
+      # Element-access oracle (oracle/materialized.md): every driver dumps the DECODED
+      # value (all fields + array elements explicit, floats as raw bits) under
+      # SOFAB_MATERIALIZE=1, catching a decode that differs only where the sparse
+      # round-trip wire elides. Checks agreement (all 12) AND conformance (the C anchor
+      # vs the reference). 75×12 → 0 divergences.
+      - name: Materialized-value differential (element-access oracle)
+        run: ./scripts/materialize.sh
+
+      # The same oracle over the resolved-findings corpus. The default corpus above holds
+      # canonical values only, so a decode that keeps a non-canonical element raw (G-0044: a
+      # boolean array element 2 held as 2) re-encodes correctly and is invisible to every
+      # round-trip gate; only the decoded-value dump sees it.
+      - name: Materialized-value differential over the resolved-findings corpus
+        run: CORPUS=corpus/regression ./scripts/materialize.sh
+
+  # The other schemas: union, deep union, limits (probe-dyn).
+  schemas:
+    needs: prepare
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/sofa-buffers/crucible-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      SKIP_BUILD: "1"
+      RESTORE: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/prepared-workspace
+
+      # The union schema — the one wire feature schema/probe.sofab.yaml lacks.
+      - name: Union suite (probe-union schema)
+        run: ./scripts/run-union.sh
+
+      # The same oracle over a UNION schema: every walker reports the HELD option through the
+      # generated API (`{<id>:<value>}`), which the round trip cannot see (an API whose tag names
+      # one option while the encoder writes another re-encodes identically). The value table is
+      # derived from the schema, so this rebuilds the roster against probe-union.
+      - name: Materialized-value differential over a union schema
+        run: SCHEMA=schema/probe-union.sofab.yaml ./scripts/materialize.sh
+
+      # The union shapes probe-union cannot reach: struct / array / nested / sparse options,
+      # a struct default_id, an array of unions, a union in a struct. Four passes on one
+      # schema (differential, conformance, chunk, encode), so four driver builds.
+      - name: Deep union suite (probe-union-deep schema)
+        run: ./scripts/run-union-deep.sh
+
+      # ...and over the DEEP union schema: struct / array / blob / nested-union options, a union in
+      # a struct, enum and bitfield options, arrays of unions and of arrays of unions, `$defs`
+      # unions. There is no independent reference for it (the union reference is defined on
+      # probe-union's messages), so agreement among the 17 drivers, anchored by the C descriptor
+      # walk, is the whole oracle here; the log says so.
+      - name: Materialized-value differential over the deep union schema
+        run: SCHEMA=schema/probe-union-deep.sofab.yaml CORPUS=corpus/union-deep ./scripts/materialize.sh
+
+      - name: Limit mode (receiver-side caps)
+        run: ./scripts/run-limits.sh
+
+  # Every `$ref` form in one message, and its inline twin (crucible#212): one wire format,
+  # two spellings, so each driver must give every corpus/ref vector the same answer under
+  # both builds — and the spec's (identity / same: / reject / not_reject) — and the same
+  # decoded value (the materialized oracle on each build). Six passes in two jobs.
+  ref-roundtrip:
+    needs: prepare
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/sofa-buffers/crucible-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      SKIP_BUILD: "1"
+      RESTORE: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/prepared-workspace
+      - name: $ref suite, passes 1-2 (round trip, both builds, same answers)
+        run: ./scripts/run-ref.sh --part 1
+
+  ref-values:
+    needs: prepare
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/sofa-buffers/crucible-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      SKIP_BUILD: "1"
+      RESTORE: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/prepared-workspace
+      - name: $ref suite, passes 3-6 (materialized values, chunk, encode)
+        run: ./scripts/run-ref.sh --part 2
