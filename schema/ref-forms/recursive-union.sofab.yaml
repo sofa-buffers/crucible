@@ -1,8 +1,9 @@
 # form: a $defs union with an option that refers back to the union (an expression tree)
-# MESSAGE_SPEC §6 names recursion via $ref to a $defs struct/union; termination: `lit` is default_id.
-# sofabgen refuses every cycle with `circular $ref`.
-# known: G-0049
-# expect: accept
+# A $ref cycle: no recursive types. sofabgen refuses every cycle (`circular $ref`), deliberately
+# (a recursive value member has no finite size on heap-less targets, encode could loop, and
+# all generated code would recurse). MESSAGE_SPEC §5.4 still says "may" — documentation#101
+# makes it forbid them (G-0049, by design for the generator).
+# expect: reject circular $ref
 version: 1
 $defs:
   struct:

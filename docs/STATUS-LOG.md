@@ -22,7 +22,7 @@ that it does not — not on the wire, and ideally not in the generated code eith
 gates, both in `replay.yml`:
 
 - `scripts/check-ref-codegen.py` over `schema/ref-forms/`: 33 forms as pairs (with `$ref` /
-  written out), 21 forms sofabgen must refuse, 4 recursive forms it must accept, × 11 targets.
+  written out) and 25 forms sofabgen must refuse (four of them `$ref` cycles), × 11 targets.
 - `scripts/run-ref.sh` over `schema/probe-ref.sofab.yaml` (33 fields) and its inline twin,
   354 vectors, six passes.
 
@@ -47,12 +47,12 @@ its main tip, family branch `main`, documentation `main@b6586b5`:
   driver crate then warns `dead_code`); a def at N sites is one type where inline gives N; a
   split union gives one type per `default_id` where inline gives one per site. Every residual
   per form and target is in `results/ref-codegen-baseline.txt`.
-- **Three generator gaps**: G-0050 filed as generator#776, G-0051 as generator#777, G-0049 not filed: **G-0049** recursion refused on all targets though
-  MESSAGE_SPEC §5.4 and the generator's schema README allow it (and §5.4 does not say what a
-  heap-less target does with a recursive value type); **G-0050** a struct↔union category
-  mismatch through `$ref` is accepted and the declared type silently replaced; **G-0051** an
-  enum/bitfield def that is only a `$ref` becomes a type with one constant named `$ref` — Go
-  refuses its own output, the others narrow the field's width (found by the review).
+- **Two generator gaps and a spec question**: **G-0050** (generator#776) a struct↔union category
+  mismatch through `$ref` is accepted and the declared type silently replaced; **G-0051**
+  (generator#777) an enum/bitfield def that is only a `$ref` becomes a type with one constant
+  named `$ref` — Go refuses its own output, the others narrow the field's width (found by the
+  review). **G-0049**: sofabgen refuses every recursive `$ref` although MESSAGE_SPEC §5.4 says a
+  struct "may" reference itself — first logged as a generator gap, then decided (below): by design.
 
 A review of the first version (fresh agent, read-only) found: G-0051; two ways the checker could
 grade a real change as rename/layout (Python indentation was invisible; layout compared line
@@ -83,8 +83,16 @@ Decisions:
   `--types` (non-probe schemas only) it marks each union with sofabgen's own type name, which
   the Rust walker now spells instead of guessing; the walker also escapes Rust keywords the way
   the backend does (`crate_`, `r#type`) — both surfaced by the first materialized run.
-- **What stays out of `probe-ref`**: recursion (G-0049) and an enum/bitfield alias (G-0051),
-  because no roster could be built; both live as forms in `schema/ref-forms/`.
+- **No recursive types.** §5.4 is explicit but only a permission ("may", not marked normative,
+  §6 a "proposed extension"). A `$ref` cycle buys nothing on the wire — it is plain nested
+  sequences either way — and costs: heap-less targets cannot hold a recursive value type, encode
+  can loop on a cyclic object graph (§5.4 only says "should" guard), and every generated walker
+  in 11 backends would recurse. A tree stays expressible as a flat array of nodes with index
+  references. So the generator's refusal is right (G-0049 by design), the spec is to forbid it
+  (documentation#101, wording proposed there), and `schema/ref-forms/recursive-*` now expect
+  `reject circular $ref`, so a generator that starts accepting a cycle fails the gate.
+- **What stays out of `probe-ref`**: a `$ref` cycle (refused) and an enum/bitfield alias
+  (G-0051: no roster could be built); both live as forms in `schema/ref-forms/`.
 
 ## 2026-10-18 — nightly 39012657011 (2026-10-17) triaged: quiet, no finding
 

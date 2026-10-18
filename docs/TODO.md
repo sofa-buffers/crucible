@@ -934,30 +934,23 @@ here:
       are now **green** (all 12 reject); the §7.4 wrapper re-open surfaced **F-0026** (corelib-c-cpp,
       open). The C++ heap `_BlobSeq` guard held.
 - [x] **Every `$ref` form, with and without `$ref`** (crucible#212) — **DONE 2026-10-18.**
-  `schema/ref-forms/` (33 equivalent pairs, 21 refused forms, 4 recursive forms) checked by
+  `schema/ref-forms/` (33 equivalent pairs, 25 refused forms, four of them `$ref` cycles) checked by
   `scripts/check-ref-codegen.py` for all 11 targets, and `schema/probe-ref.sofab.yaml` + its
   inline twin run by `scripts/run-ref.sh` (both wired into `replay.yml`). Evidence: 354 vectors ×
   20 drivers under each build — round trip and materialized value — 0 divergences, 0
   conformance failures, 0 answers or values that differ between the two builds, chunk and
   encode invariance 0 mismatches; every pair is the same schema and the same sofabgen model.
   The generated code is byte-identical only where no named type differs (every residual in
-  `results/ref-codegen-baseline.txt`). Three generator gaps written up: **G-0049** (recursion
-  refused), **G-0050** (struct↔union category mismatch accepted), **G-0051** (an enum/bitfield
+  `results/ref-codegen-baseline.txt`). Written up: **G-0049** (recursion refused — by design: no recursive
+  types, the spec is to say so, documentation#101), **G-0050** (struct↔union category mismatch accepted), **G-0051** (an enum/bitfield
   alias def becomes a constant named `$ref`).
-- [ ] **A recursive schema through the generated decoders** (crucible#212, the half that is
-  blocked): sofabgen refuses every cycle (G-0049), so no driver can be built from one.
-  `schema/ref-forms/recursive-*.sofab.yaml` turn from XFAIL into a gate failure the day it
-  generates them; then add a recursive field to `probe-ref` (a tree, a linked list, an
-  expression union), vectors to `sweep_ref.py` that nest it to and past `MAX_DEPTH` through the
-  declared type (today `sweep_framing.py` / `sweep_union_deep.py` reach it only through unknown
-  or declared non-recursive frames), and the heap-less roster rows' refusal, whatever the spec
-  decides for them.
+- [x] **A recursive schema** (crucible#212) — **decided 2026-10-18: no recursive types.** A `$ref`
+  cycle buys nothing on the wire and costs heap-less targets, encode loops and recursion in all
+  generated code; sofabgen already refuses it. `schema/ref-forms/recursive-*` now assert the
+  refusal; the spec change is documentation#101 (G-0049).
 - [ ] **An enum / bitfield alias def in `probe-ref`** once G-0051 is fixed (today its Go output
   does not compile, so it lives in `schema/ref-forms/def-alias-{enum,bitfield}` only), with a
   constant that needs a wider type than the alias's broken one (`BIG = 1000`).
-- [ ] **File G-0049 upstream** (generator; it also needs a documentation decision for heap-less
-  targets) and put the issue link into the write-up. G-0050 and G-0051 are filed (generator#776,
-  generator#777).
 - [x] **Corpus hygiene — DONE 2026-08-02: 5994 → 579, all 15 clusters intact.** But **not**
       by `-merge` alone, which this item proposed and which turns out to be actively wrong:
       the plain merge gives 503 files and **6 clusters**, silently discarding the corpus

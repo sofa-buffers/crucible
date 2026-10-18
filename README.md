@@ -364,7 +364,7 @@ at every site. The two spellings must mean the same thing. Two checks:
 - **Generated code.** Each form in `schema/ref-forms/` is generated with and without `$ref`
   for all 11 targets and compared, ignoring a consistent type rename. What still differs is
   listed per target and held against a baseline. The same check asserts which forms sofabgen
-  must refuse, and that it accepts the recursive types the spec allows.
+  must refuse — a `$ref` cycle (a recursive type) among them.
 
 ```sh
 ./scripts/run-ref.sh                   # both builds over corpus/ref (+ materialized values, chunk and encode invariance)

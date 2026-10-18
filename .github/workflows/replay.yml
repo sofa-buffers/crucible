@@ -115,7 +115,7 @@ jobs:
       # Every `$ref` form (schema/ref-forms/) generated with and without `$ref` for all 11
       # targets: the inline twin must BE the dereferenced schema and model alike in the IR; what
       # the generated code still differs in is held against results/ref-codegen-baseline.txt; the
-      # refused / recursive forms must be refused / accepted (known generator gaps are XFAIL).
+      # refused forms (a `$ref` cycle among them) must be refused (known generator gaps are XFAIL).
       # Needs sofabgen only, no driver build (crucible#212).
       - name: $ref codegen equivalence (schema/ref-forms, all targets)
         run: python3 scripts/check-ref-codegen.py
