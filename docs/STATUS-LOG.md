@@ -14,6 +14,26 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-18 — nightly 39012657011 (2026-10-17) triaged: quiet, no finding
+
+The scheduled run on the `main` family. Fuzz yield: the Go engine ran 17.2 M execs and
+added 47 interesting inputs; the two libFuzzer targets ran 7–47 M execs each. The artifact
+carries no `crashes/` directory. CI's own clustering: main schema 1/1 camp accounted for,
+union-deep 0/0. Merged into the local, gitignored corpora: `corpus/interesting`
+25507 → 26617, `corpus/interesting-union` 9667 → 10918.
+
+Re-measured locally with sofabgen `0.0.0-20261017174557-c82ead33edeb` (newer than the one
+the nightly ran) and every corelib at its main tip:
+
+- round-trip, `corpus/interesting`: 26616 agree, 1 diverge → 1 camp, accounted for (the
+  benign java `incomplete_value` row). kotlin-js, rust-nostd-dyn and rust-nostd-h09 joined
+  its existing camp; the drivers the row names are split as before.
+- union-deep, `corpus/interesting-union`: 10918 agree, 0 camps.
+- materialized (`CLUSTER=1`, materialized baseline): 1 camp, accounted for.
+- chunk invariance (`--modes chunk,scrub`), encode invariance: 20/20 drivers, 0 mismatches.
+- reuse invariance, first run over a fuzzed corpus: 13 participants, 0 mismatches; the
+  other 7 rows refuse with exit 3.
+
 ## 2026-10-17 — reuse invariance: a decode into a reused destination against a fresh one
 
 The generator's reuse wave (generator#755 for rust, and the Go, C#, TypeScript and C++
