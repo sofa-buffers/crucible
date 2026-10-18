@@ -1,0 +1,10 @@
+# form: a $defs category that does not exist (no scalar defs)
+# expect: reject unknown $defs category
+version: 1
+$defs:
+  u8:
+    Byte: { type: u8 }
+messages:
+  probe:
+    payload:
+      tag: { id: 0, type: u8 }

@@ -1,0 +1,25 @@
+# form: a whole field copied by $ref to a field inside a $defs struct (id included)
+# Knobs itself is used nowhere as a type; a target that emits every $defs type emits it anyway.
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  struct:
+    Knobs:
+      level: { id: 2, type: u8, default: 4 }
+      lit:   { id: 3, type: boolean, default: true }
+messages:
+  probe:
+    payload:
+      tag:   { id: 0, type: u8 }
+      level: { $ref: '#/$defs/struct/Knobs/level' }
+      power: { $ref: '#/$defs/struct/Knobs/lit' }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      tag:   { id: 0, type: u8 }
+      level: { id: 2, type: u8, default: 4 }
+      power: { id: 3, type: boolean, default: true }

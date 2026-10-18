@@ -1,0 +1,15 @@
+# form: a $defs struct referring to itself through a plain struct field (a linked list)
+# MESSAGE_SPEC §5.4 allows it (a finite instance exists: the child is omittable).
+# sofabgen refuses every cycle with `circular $ref`.
+# known: G-0049
+# expect: accept
+version: 1
+$defs:
+  struct:
+    Node:
+      value: { id: 0, type: i32 }
+      next:  { id: 1, type: struct, fields: { $ref: '#/$defs/struct/Node' } }
+messages:
+  probe:
+    payload:
+      head: { id: 1, type: struct, fields: { $ref: '#/$defs/struct/Node' } }

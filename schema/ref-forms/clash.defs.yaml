@@ -1,0 +1,6 @@
+# A Vec2 whose body differs from chain-b.defs.yaml's: importing both is a name collision
+# (reject-cross-file-name-collision.sofab.yaml). Not a form.
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 8 }, y: { id: 1, type: i32 } }

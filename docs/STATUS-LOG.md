@@ -14,6 +14,78 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-18 — every `$ref` form, with and without `$ref` (crucible#212)
+
+crucible#212 asked for a recursive schema. sofabgen refuses every cycle, so the issue grew into
+the question behind it: does it matter whether a type is written through `$ref`? The target is
+that it does not — not on the wire, and ideally not in the generated code either. Two new
+gates, both in `replay.yml`:
+
+- `scripts/check-ref-codegen.py` over `schema/ref-forms/`: 33 forms as pairs (with `$ref` /
+  written out), 21 forms sofabgen must refuse, 4 recursive forms it must accept, × 11 targets.
+- `scripts/run-ref.sh` over `schema/probe-ref.sofab.yaml` (33 fields) and its inline twin,
+  354 vectors, six passes.
+
+Measured with sofabgen `0.0.0-20261017174557-c82ead33edeb` (generator main) and every corelib at
+its main tip, family branch `main`, documentation `main@b6586b5`:
+
+- **Wire and value: no difference.** 354 vectors × 20 drivers under each build: 0 divergences,
+  0 conformance failures, 0 driver answers and 0 decoded values (materialized oracle, C anchor
+  complete) that differ between the `$ref` build and the inline build; chunk and encode
+  invariance on the `$ref` build 0 mismatches. Every pair is the same schema dereferenced and
+  the same sofabgen model (IR).
+- **Generated code: identical only where no named type differs.** IDENTICAL on all 11 targets
+  only for pointers outside `$defs` (a struct body or a whole field copied from another
+  message); C for the enum forms (it emits no enum type), C/C++/Java/Kotlin for whole-field,
+  payload and unused-def forms (they emit only reachable types). Everywhere else the type names
+  differ, and they always will: a def is named after the def, an inline type after its path,
+  and the generator's naming rules make the two spellings disjoint. Beyond the rename: C and C++
+  move `$defs` types into `sofab-defs.{h,c,hpp}` with their own guards; Rust marks inline types
+  `#[allow(non_camel_case_types)]`; Java/Kotlin doc comments name `probe.c` vs `Hue`; Go and
+  others order defs differently; csharp/dart/go/python/rust/typescript/zig emit every `$defs`
+  type, used or not (an alias, an unused def or a whole-field source adds a type; Rust's
+  driver crate then warns `dead_code`); a def at N sites is one type where inline gives N; a
+  split union gives one type per `default_id` where inline gives one per site. Every residual
+  per form and target is in `results/ref-codegen-baseline.txt`.
+- **Three generator gaps**: G-0050 filed as generator#776, G-0051 as generator#777, G-0049 not filed: **G-0049** recursion refused on all targets though
+  MESSAGE_SPEC §5.4 and the generator's schema README allow it (and §5.4 does not say what a
+  heap-less target does with a recursive value type); **G-0050** a struct↔union category
+  mismatch through `$ref` is accepted and the declared type silently replaced; **G-0051** an
+  enum/bitfield def that is only a `$ref` becomes a type with one constant named `$ref` — Go
+  refuses its own output, the others narrow the field's width (found by the review).
+
+A review of the first version (fresh agent, read-only) found: G-0051; two ways the checker could
+grade a real change as rename/layout (Python indentation was invisible; layout compared line
+counts, not order); forms and vectors that were missing (Vec2 as a union option, a second array
+site per element def, a `$defs` union built from `$refs`, whole-field copies of union fields and
+options, cross-file chains and collisions, five more refusals); reject forms that accepted any
+error; comment lines making the baseline churn; the materialized oracle not run. All fixed in
+the same change.
+
+Decisions:
+- **The codegen gate grades instead of demanding identity.** Byte identity is impossible for any
+  named type by the generator's naming design, so a hard "must be identical" gate would be red
+  forever. It grades each cell and holds every residual code line, in order, against a
+  baseline, so any change in either direction fails and is reviewed. Comment lines are held as
+  per-file counts only, so a comment reworded upstream does not turn CI red.
+- **A rename must be one the schemas state.** The rename is derived from the two outputs but
+  only accepted where walking both documents pairs an inline type path with a def (a split
+  union's variant or its base name), with every name segment around the type part equal. LAYOUT
+  only ever covers whole top-level declarations both sides hold verbatim; anything else,
+  including the same statements in another order, is DIFF. Mutation probes on the final
+  checker — a literal `!= 7` → `!= 8`, two statements swapped inside a Go function, a Python
+  statement moved out of its block — each turn the cell to DIFF and fail against the baseline.
+- **Two independent equivalence proofs per pair.** sofabgen's IR records that a field has a
+  default but not its value, so the IR comparison alone would miss a wrong default in a
+  hand-written twin; the YAML-level dereference comparison covers it.
+- **`schema.py` dereferences every `$ref` first**, so a `$ref` schema and its inline twin give
+  one descriptor; the probe table (`oracle/materialized-schema.json`) is byte-unchanged. With
+  `--types` (non-probe schemas only) it marks each union with sofabgen's own type name, which
+  the Rust walker now spells instead of guessing; the walker also escapes Rust keywords the way
+  the backend does (`crate_`, `r#type`) — both surfaced by the first materialized run.
+- **What stays out of `probe-ref`**: recursion (G-0049) and an enum/bitfield alias (G-0051),
+  because no roster could be built; both live as forms in `schema/ref-forms/`.
+
 ## 2026-10-18 — nightly 39012657011 (2026-10-17) triaged: quiet, no finding
 
 The scheduled run on the `main` family. Fuzz yield: the Go engine ran 17.2 M execs and

@@ -1,0 +1,8 @@
+# form: two different defs of one name from two files (one namespace for messages and $defs)
+# expect: reject is already defined by
+version: 1
+messages:
+  probe:
+    payload:
+      a: { id: 1, type: struct, fields: { $ref: 'chain-b.defs.yaml#/$defs/struct/Vec2' } }
+      b: { id: 2, type: struct, fields: { $ref: 'clash.defs.yaml#/$defs/struct/Vec2' } }

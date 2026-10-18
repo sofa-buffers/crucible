@@ -1,0 +1,20 @@
+# form: a $defs struct referring to another $defs struct, three deep (Outer -> Middle -> Inner)
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  struct:
+    Outer:  { mid: { id: 0, type: struct, fields: { $ref: '#/$defs/struct/Middle' } }, n: { id: 1, type: u8 } }
+    Middle: { inn: { id: 0, type: struct, fields: { $ref: '#/$defs/struct/Inner' } } }
+    Inner:  { v: { id: 0, type: u8, default: 3 } }
+messages:
+  probe:
+    payload:
+      a: { id: 1, type: struct, fields: { $ref: '#/$defs/struct/Outer' } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      a: { id: 1, type: struct, fields: { mid: { id: 0, type: struct, fields: { inn: { id: 0, type: struct, fields: { v: { id: 0, type: u8, default: 3 } } } } }, n: { id: 1, type: u8 } } }

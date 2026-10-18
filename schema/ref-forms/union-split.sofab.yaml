@@ -1,0 +1,26 @@
+# form: one $defs union at three sites: default_id 0, 1 and omitted (= the lowest id, 0)
+# The $ref form splits the def into one type per effective default_id (u0 and un share one).
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  union:
+    Shape:
+      num:  { id: 0, type: u16, default: 5 }
+      name: { id: 1, type: string, maxlen: 4 }
+      pt:   { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 } } }
+messages:
+  probe:
+    payload:
+      u0: { id: 1, type: union, default_id: 0, oneof: { $ref: '#/$defs/union/Shape' } }
+      u1: { id: 2, type: union, default_id: 1, oneof: { $ref: '#/$defs/union/Shape' } }
+      un: { id: 3, type: union, oneof: { $ref: '#/$defs/union/Shape' } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      u0: { id: 1, type: union, default_id: 0, oneof: { num: { id: 0, type: u16, default: 5 }, name: { id: 1, type: string, maxlen: 4 }, pt: { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 } } } } }
+      u1: { id: 2, type: union, default_id: 1, oneof: { num: { id: 0, type: u16, default: 5 }, name: { id: 1, type: string, maxlen: 4 }, pt: { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 } } } } }
+      un: { id: 3, type: union, oneof: { num: { id: 0, type: u16, default: 5 }, name: { id: 1, type: string, maxlen: 4 }, pt: { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 } } } } }

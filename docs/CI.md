@@ -64,6 +64,8 @@ CORPUS=corpus/conformance ./scripts/run.sh  # §2/§3 canonicality seeds     (co
 REGEN=0 ./scripts/cross-encode.sh           # cross-encode / structured    (corpus/structured)
 ./scripts/run-union.sh                      # union suite                  (corpus/union)
 ./scripts/run-union-deep.sh                 # deep union suite: differential + conformance + chunk + encode (corpus/union-deep)
+python3 scripts/check-ref-codegen.py        # $ref codegen equivalence: schema/ref-forms x 11 targets (sofabgen only, no build)
+./scripts/run-ref.sh                        # $ref suite: probe-ref vs its inline twin — differential + conformance + same answers, materialized values, chunk + encode (corpus/ref)
 ./scripts/run-limits.sh                     # limit mode                   (corpus/limits)
 ./scripts/sweep.sh                          # structural sweep, 12 blocking axes
 ./scripts/materialize.sh                    # materialized-value oracle    (corpus/structured)

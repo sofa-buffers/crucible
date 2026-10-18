@@ -1,0 +1,7 @@
+# form: a cross-file $ref to a file that does not exist
+# expect: reject nope.defs.yaml
+version: 1
+messages:
+  probe:
+    payload:
+      p: { id: 1, type: struct, fields: { $ref: 'nope.defs.yaml#/$defs/struct/Vec2' } }

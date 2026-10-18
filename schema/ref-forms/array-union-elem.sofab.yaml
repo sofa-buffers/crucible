@@ -1,0 +1,21 @@
+# form: an array whose union element is $ref to a $defs union (default_id on items)
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  union:
+    Shape:
+      num:  { id: 0, type: u16, default: 5 }
+      name: { id: 1, type: string, maxlen: 4 }
+      pt:   { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 } } }
+messages:
+  probe:
+    payload:
+      us: { id: 1, type: array, items: { type: union, count: 2, default_id: 2, oneof: { $ref: '#/$defs/union/Shape' } } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      us: { id: 1, type: array, items: { type: union, count: 2, default_id: 2, oneof: { num: { id: 0, type: u16, default: 5 }, name: { id: 1, type: string, maxlen: 4 }, pt: { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 } } } } } }

@@ -29,6 +29,7 @@ exits non-zero if either is non-empty.
 Usage: python3 engine/structured/sweep_run.py [axis ...]   (default: all)
 """
 import importlib
+import json
 import os
 import sys
 import tempfile
@@ -73,7 +74,7 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 DRIVERS = list(roster.drivers(roster.gate_tag()).items())
 
 
-def run_axis(name, emitter="emit"):
+def run_axis(name, emitter="emit", conform=True):
     mod = importlib.import_module(name)
     with tempfile.TemporaryDirectory() as d:
         vectors = getattr(mod, emitter)(d)          # [(fname, bytes, expect)]
@@ -107,6 +108,8 @@ def run_axis(name, emitter="emit"):
             divergences.append((fn, vals))           # accept_value / *_class — hard
             continue
         # agreed on the hard axes — now check conformance
+        if not conform:
+            continue
         exp = expect[fn]
         if exp == "reject" and v != "R":
             conformance.append((fn, f"expected R, all {len(DRIVERS)} emit {v}"))
@@ -162,12 +165,30 @@ def run_axis(name, emitter="emit"):
                     conformance.append(
                         (fn, f"accepted but NOT normalized — re-encode differs from {twin}")
                     )
-    return len(corpus), divergences, conformance
+    return len(corpus), divergences, conformance, {fn: {dn: outs[dn][i] for dn, _ in DRIVERS}
+                                                   for i, (fn, _) in enumerate(corpus)}
 
 
 # The deep union pass: one axis, over schema/probe-union-deep.sofab.yaml (struct / array /
 # nested / sparse / array-of-union / union-in-struct options that probe-union cannot reach).
 DEEP_AXES = ["sweep_union_deep"]
+
+# The $ref pass (crucible#212): one axis, run against schema/probe-ref.sofab.yaml AND its
+# inline twin. `--save-outputs F` keeps every driver's line per vector; `--compare-outputs F`
+# then requires each driver to give the same line under the other build — the two schemas are
+# one wire format, so a driver whose answer depends on whether a type was written through
+# `$ref` diverges from itself (scripts/run-ref.sh).
+REF_AXES = ["sweep_ref"]
+
+
+def take(args, flag):
+    """Remove `flag VALUE` from args; return VALUE (or None)."""
+    if flag not in args:
+        return None
+    i = args.index(flag)
+    val = args[i + 1]
+    del args[i:i + 2]
+    return val
 
 
 def main():
@@ -178,17 +199,31 @@ def main():
     deep = "--union-deep" in args
     if deep:
         args.remove("--union-deep")
-    emitter = "emit_union_deep" if deep else ("emit_union" if union else "emit")
-    axes = args or (DEEP_AXES if deep else (UNION_AXES if union else AXES))
+    ref = "--ref" in args
+    if ref:
+        args.remove("--ref")
+    save, against = take(args, "--save-outputs"), take(args, "--compare-outputs")
+    # --agreement-only: under SOFAB_MATERIALIZE=1 a driver prints the decoded VALUE, not the
+    # re-encoded hex the expectations are stated in, so only agreement (and the twin) applies
+    conform = "--agreement-only" not in args
+    if not conform:
+        args.remove("--agreement-only")
+    emitter = "emit_ref" if ref else ("emit_union_deep" if deep else ("emit_union" if union else "emit"))
+    axes = args or (REF_AXES if ref else (DEEP_AXES if deep else (UNION_AXES if union else AXES)))
     if union:
         print("[sweep] union pass (schema/probe-union.sofab.yaml) — drivers must be "
               "built against probe-union (scripts/sweep.sh does this)")
     if deep:
         print("[sweep] deep union pass (schema/probe-union-deep.sofab.yaml) — drivers must be "
               "built against probe-union-deep (scripts/run-union-deep.sh does this)")
+    if ref:
+        print("[sweep] $ref pass (schema/probe-ref*.sofab.yaml) — drivers must be built against "
+              "one of the two (scripts/run-ref.sh does this)")
     total_div = total_conf = 0
+    saved = {}
     for name in axes:
-        n, div, conf = run_axis(name, emitter)
+        n, div, conf, lines = run_axis(name, emitter, conform)
+        saved[name] = lines
         total_div += len(div); total_conf += len(conf)
         status = "OK" if not div and not conf else "FAIL"
         print(f"[{name}] {n} vectors — {len(div)} divergence(s), "
@@ -202,8 +237,25 @@ def main():
         # SWEEP_ALL=1 prints every failure (a mutation probe wants the full list, not eight)
         for fn, msg in conf[:(len(conf) if os.environ.get("SWEEP_ALL") else 8)]:
             print(f"    NONCONFORM {fn}: {msg}")
-    print(f"\nTOTAL: {total_div} divergence(s), {total_conf} conformance failure(s)")
-    return 1 if (total_div or total_conf) else 0
+    if save:
+        with open(save, "w") as fh:
+            json.dump(saved, fh, indent=0, sort_keys=True)
+    twin_fail = 0
+    if against:
+        with open(against) as fh:
+            other = json.load(fh)
+        for name, lines in saved.items():
+            diffs = [(fn, dn, other.get(name, {}).get(fn, {}).get(dn), line)
+                     for fn, per in sorted(lines.items()) for dn, line in sorted(per.items())
+                     if other.get(name, {}).get(fn, {}).get(dn) != line]
+            twin_fail += len(diffs)
+            print(f"[{name}] vs {os.path.basename(against)}: {len(diffs)} driver answer(s) differ "
+                  f"between the two builds  [{'OK' if not diffs else 'FAIL'}]")
+            for fn, dn, was, now in diffs[:(len(diffs) if os.environ.get("SWEEP_ALL") else 12)]:
+                print(f"    TWIN {fn} [{dn}]: {was!r} (saved) != {now!r} (this build)")
+    print(f"\nTOTAL: {total_div} divergence(s), {total_conf} conformance failure(s)"
+          + (f", {twin_fail} twin difference(s)" if against else ""))
+    return 1 if (total_div or total_conf or twin_fail) else 0
 
 
 if __name__ == "__main__":

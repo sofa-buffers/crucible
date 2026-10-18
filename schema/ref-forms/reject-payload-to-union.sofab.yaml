@@ -1,0 +1,15 @@
+# form: a payload that is $ref to a $defs UNION (a payload is a struct scope)
+# sofabgen accepts it and makes the union's options the payload's fields.
+# known: G-0050
+# No error text is pinned: sofabgen has no message for this yet; any refusal meets it.
+# expect: reject
+version: 1
+$defs:
+  union:
+    Shape:
+      num:  { id: 0, type: u16, default: 5 }
+      name: { id: 1, type: string, maxlen: 4 }
+      pt:   { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 } } }
+messages:
+  probe:
+    payload: { $ref: '#/$defs/union/Shape' }

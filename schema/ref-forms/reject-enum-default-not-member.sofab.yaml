@@ -1,0 +1,10 @@
+# form: a site default that is no constant of the $ref'd enum
+# expect: reject default
+version: 1
+$defs:
+  enum:
+    Hue: { R: 0, G: 1, B: 2 }
+messages:
+  probe:
+    payload:
+      c: { id: 1, type: enum, enum: { $ref: '#/$defs/enum/Hue' }, default: 5 }

@@ -1,0 +1,18 @@
+# form: a bitfield field whose body is $ref to a $defs bitfield (flag defaults live in the def)
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  bitfield:
+    Mode: { r: { pos: 0 }, w: { pos: 1, default: true }, x: { pos: 2 } }
+messages:
+  probe:
+    payload:
+      f: { id: 1, type: bitfield, bits: { $ref: '#/$defs/bitfield/Mode' } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      f: { id: 1, type: bitfield, bits: { r: { pos: 0 }, w: { pos: 1, default: true }, x: { pos: 2 } } }

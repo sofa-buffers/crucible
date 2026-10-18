@@ -1,0 +1,33 @@
+# form: a $defs struct holding $ref'd enum, bitfield and union members
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  enum:
+    Hue: { R: 0, G: 1, B: 2 }
+  bitfield:
+    Mode: { r: { pos: 0 }, w: { pos: 1, default: true } }
+  union:
+    Tiny: { a: { id: 0, type: u8 }, b: { id: 1, type: u32, default: 4 } }
+  struct:
+    Record:
+      c: { id: 0, type: enum, enum: { $ref: '#/$defs/enum/Hue' }, default: 1 }
+      f: { id: 1, type: bitfield, bits: { $ref: '#/$defs/bitfield/Mode' } }
+      u: { id: 2, type: union, default_id: 1, oneof: { $ref: '#/$defs/union/Tiny' } }
+messages:
+  probe:
+    payload:
+      r: { id: 1, type: struct, fields: { $ref: '#/$defs/struct/Record' } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      r:
+        id: 1
+        type: struct
+        fields:
+          c: { id: 0, type: enum, enum: { R: 0, G: 1, B: 2 }, default: 1 }
+          f: { id: 1, type: bitfield, bits: { r: { pos: 0 }, w: { pos: 1, default: true } } }
+          u: { id: 2, type: union, default_id: 1, oneof: { a: { id: 0, type: u8 }, b: { id: 1, type: u32, default: 4 } } }

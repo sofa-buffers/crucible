@@ -1,0 +1,22 @@
+# form: a struct body that is $ref to another message's inline struct (a pointer outside $defs)
+# A pointer outside $defs is an inline copy, not a shared type: this pair should be byte-identical.
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+messages:
+  other:
+    payload:
+      pos: { id: 1, type: struct, fields: { x: { id: 0, type: i32 }, y: { id: 1, type: i32 } } }
+  probe:
+    payload:
+      pos: { id: 1, type: struct, fields: { $ref: '#/messages/other/payload/pos/fields' } }
+---
+version: 1
+messages:
+  other:
+    payload:
+      pos: { id: 1, type: struct, fields: { x: { id: 0, type: i32 }, y: { id: 1, type: i32 } } }
+  probe:
+    payload:
+      pos: { id: 1, type: struct, fields: { x: { id: 0, type: i32 }, y: { id: 1, type: i32 } } }

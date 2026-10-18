@@ -1,0 +1,21 @@
+# form: a local def and an identically named, identical def in another file, both used
+# Structurally identical definitions under one name are one type (generator internal/parser/external.go).
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+messages:
+  probe:
+    payload:
+      a: { id: 1, type: struct, fields: { $ref: 'chain-b.defs.yaml#/$defs/struct/Vec2' } }
+      b: { id: 2, type: struct, fields: { $ref: '#/$defs/struct/Vec2' } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      a: { id: 1, type: struct, fields: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } } }
+      b: { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } } }

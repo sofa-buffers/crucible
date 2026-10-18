@@ -1,0 +1,18 @@
+# form: a $defs struct holding an INLINE nested struct (named after the def, not the site)
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  struct:
+    Crate: { inner: { id: 0, type: struct, fields: { z: { id: 0, type: u8 } } }, w: { id: 1, type: u16 } }
+messages:
+  probe:
+    payload:
+      b: { id: 1, type: struct, fields: { $ref: '#/$defs/struct/Crate' } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      b: { id: 1, type: struct, fields: { inner: { id: 0, type: struct, fields: { z: { id: 0, type: u8 } } }, w: { id: 1, type: u16 } } }

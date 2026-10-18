@@ -1,0 +1,15 @@
+# form: a struct body that is $ref to the inline fields INSIDE a $defs struct
+# The generator schema README names only `#/$defs/<category>/<Name>` as a type reference.
+# A pointer below a def is read as a type key and refused ("unresolved type reference"), while
+# the same kind of pointer into a message (nondefs-pointer.sofab.yaml) is accepted as an inline
+# copy: pointer forms other than the documented one are implementation-defined.
+# expect: reject unresolved type reference
+version: 1
+$defs:
+  struct:
+    Crate: { inner: { id: 0, type: struct, fields: { z: { id: 0, type: u8 } } }, w: { id: 1, type: u16 } }
+messages:
+  probe:
+    payload:
+      b:   { id: 1, type: struct, fields: { $ref: '#/$defs/struct/Crate' } }
+      pos: { id: 2, type: struct, fields: { $ref: '#/$defs/struct/Crate/inner/fields' } }

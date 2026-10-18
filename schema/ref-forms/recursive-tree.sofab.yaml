@@ -1,0 +1,15 @@
+# form: a $defs struct referring to itself through an array element (the §5.4 treenode)
+# MESSAGE_SPEC §5.4 allows it (a finite instance exists: the child is omittable).
+# sofabgen refuses every cycle with `circular $ref`.
+# known: G-0049
+# expect: accept
+version: 1
+$defs:
+  struct:
+    Tree:
+      value:    { id: 0, type: i32 }
+      children: { id: 1, type: array, items: { type: struct, fields: { $ref: '#/$defs/struct/Tree' } } }
+messages:
+  probe:
+    payload:
+      root: { id: 1, type: struct, fields: { $ref: '#/$defs/struct/Tree' } }

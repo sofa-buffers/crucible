@@ -1,0 +1,21 @@
+# form: a whole-field copy of a field of ANOTHER message (a pointer outside $defs)
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+messages:
+  other:
+    payload:
+      lvl: { id: 1, type: u8, default: 3 }
+  probe:
+    payload:
+      lvl: { $ref: '#/messages/other/payload/lvl' }
+---
+version: 1
+messages:
+  other:
+    payload:
+      lvl: { id: 1, type: u8, default: 3 }
+  probe:
+    payload:
+      lvl: { id: 1, type: u8, default: 3 }

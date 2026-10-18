@@ -1,0 +1,8 @@
+# form: a struct whose body is a pointer to its own inline body (a cycle outside $defs)
+# MESSAGE_SPEC §5.4 allows recursion only through a $ref to a $defs struct, so refusing this is right.
+# expect: reject circular $ref
+version: 1
+messages:
+  probe:
+    payload:
+      t: { id: 1, type: struct, fields: { v: { id: 0, type: u8 }, kid: { id: 1, type: struct, fields: { $ref: '#/messages/probe/payload/t/fields' } } } }

@@ -1,0 +1,15 @@
+# form: a payload that is $ref to a struct in another file
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+messages:
+  probe:
+    payload: { $ref: 'chain-b.defs.yaml#/$defs/struct/Vec2' }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      x: { id: 0, type: i32, default: 7 }
+      y: { id: 1, type: i32 }

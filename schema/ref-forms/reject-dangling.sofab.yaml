@@ -1,0 +1,10 @@
+# form: a $ref to a definition that does not exist
+# expect: reject no such definition
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+messages:
+  probe:
+    payload:
+      p: { id: 1, type: struct, fields: { $ref: '#/$defs/struct/Nope' } }

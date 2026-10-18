@@ -204,32 +204,105 @@ def _union_options(d):
     return opts
 
 
+def _dereference(node, path, depth=0):
+    """Every `{$ref}` below `node` replaced by what it points at — a `$defs` body, a whole
+    field, a whole payload, or a definition in another file (`file.yaml#/...`, relative to the
+    file the `$ref` is written in). A `$ref` names nothing the wire carries, so the descriptor
+    of a schema is the descriptor of its dereferenced form (schema/probe-ref.sofab.yaml and its
+    inline twin give one and the same table)."""
+    if depth > 64:
+        raise ValueError(f"{path}: $ref cycle")
+    if isinstance(node, dict) and set(node) == {"$ref"}:
+        f, _, ptr = node["$ref"].partition("#")
+        src = os.path.join(os.path.dirname(path), f) if f else path
+        with open(src) as fh:
+            target = yaml.safe_load(fh)
+        for part in ptr.strip("/").split("/"):
+            target = target[part]
+        return _dereference(target, src, depth + 1)
+    if isinstance(node, dict):
+        return {k: _dereference(v, path, depth) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_dereference(v, path, depth) for v in node]
+    return node
+
+
 def descriptor(path=SCHEMA):
     with open(path) as fh:
         y = yaml.safe_load(fh)
     _ROOT.clear()
     _ROOT.update({"$defs": y.get("$defs", {})})
-    (mname, mspec), = y["messages"].items()   # the schema carries a single message
+    (mname, mspec), = _dereference(y["messages"], path).items()   # the schema carries a single message
     return {"message": mname, "fields": _fields(mspec["payload"])}
 
 
+def annotate_types(desc, path, sofabgen=None):
+    """Mark every union node of `desc` with the generated type it decodes into, as sofabgen's
+    IR states it: `"ir_type": {"path": [...], "variant": <default option> or null}`.
+
+    A union's generated type name is not derivable from its position once `$ref` is involved: a
+    `$defs` union is named after the def, split into one type per effective default_id, and an
+    alias def is a type of its own (schema/probe-ref.sofab.yaml has all three). The generated
+    walkers (cpp, dart, kotlin, rust, zig) spell a union's type name; they take it from here when
+    it is present. The descriptor is walked in step with `sofabgen --dump-ir`, matched by id."""
+    import subprocess
+    tool = sofabgen or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools", "sofabgen")
+    ir = json.loads(subprocess.run([tool, "--dump-ir", "--in", path], check=True,
+                                   capture_output=True, text=True).stdout)
+    named = {n["key"]: n for n in ir.get("named") or []}
+
+    def walk(node, irf):
+        kind = node.get("kind")
+        if kind in ("struct", "union"):
+            nt = named.get(irf.get("ref"))
+            if nt is None:
+                return
+            if kind == "union":
+                node["ir_type"] = {"path": nt["path"], "variant": nt.get("variant")}
+            by_id = {f["id"]: f for f in nt.get("fields") or []}
+            for child in node.get("fields") or node.get("options") or []:
+                if child["id"] in by_id:
+                    walk(child, by_id[child["id"]])
+        elif kind == "struct_wrapper":
+            walk({"kind": "struct", "fields": node["fields"]}, {"ref": irf.get("elem_ref")})
+        elif kind == "node_wrapper":
+            if "elem_items" in irf:
+                walk(node["item"], dict(irf["elem_items"], kind="array"))
+            else:
+                walk(node["item"], {"ref": irf.get("elem_ref")})
+
+    (msg,) = ir["messages"]
+    by_id = {f["id"]: f for f in msg["fields"]}
+    for f in desc["fields"]:
+        if f["id"] in by_id:
+            walk(f, by_id[f["id"]])
+    return desc
+
+
 def main():
-    """schema.py [--json [OUT]] [--schema PATH]   (default schema: schema/probe.sofab.yaml)
+    """schema.py [--json [OUT]] [--schema PATH] [--types]   (default schema: schema/probe.sofab.yaml)
 
     `--json` with no OUT writes oracle/materialized-schema.json; `--schema` picks the schema
-    the descriptor is derived from. Without `--json` the descriptor goes to stdout."""
+    the descriptor is derived from; `--types` adds each union's generated type
+    (`annotate_types`, needs tools/sofabgen). Without `--json` the descriptor goes to stdout."""
     args = sys.argv[1:]
     schema = SCHEMA
     if "--schema" in args:
         i = args.index("--schema")
         schema = args[i + 1]
         del args[i:i + 2]
+    types = "--types" in args
+    if types:
+        args.remove("--types")
     out = None
     if args and args[0] == "--json":
         out = args[1] if len(args) >= 2 else \
             os.path.join(os.path.dirname(os.path.abspath(__file__)),
                          "..", "..", "oracle", "materialized-schema.json")
-    s = json.dumps(descriptor(schema), indent=2)
+    desc = descriptor(schema)
+    if types:
+        annotate_types(desc, schema)
+    s = json.dumps(desc, indent=2)
     if out:
         with open(out, "w") as fh:
             fh.write(s + "\n")

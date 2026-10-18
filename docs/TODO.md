@@ -50,7 +50,8 @@ here:
   unions, `$defs` unions). The `union` node and the `enum` / `bitfield` / `node_wrapper` kinds are in all 17
   walkers and the C anchor; `SCHEMA=… materialize.sh` derives the table; two CI steps. What stays open: the
   deep schema has **no independent reference** (agreement among the drivers plus the C anchor is the whole
-  oracle there), and Rust's type names for `$ref` unions are a heuristic on the generator's naming.
+  oracle there), and Rust's type names for `$ref` unions are a heuristic on the generator's naming (since 2026-10-18 only
+  where the table carries no `ir_type`, i.e. the committed probe table).
 - [x] **WP-05 completion** — DONE 2026-07-27 (see the dated entry above).
 - [x] **WP-08(c) — DONE 2026-08-17: measured, and the family is correct in every cell.** The
   vectors this item asked for now exist — `def_arr` (`array of u32`, `default: [7, 9]`) in
@@ -932,13 +933,31 @@ here:
       axes. The over-index / `maxlen` blob paths (§7.1) that F-0013 could not test for lack of a field
       are now **green** (all 12 reject); the §7.4 wrapper re-open surfaced **F-0026** (corelib-c-cpp,
       open). The C++ heap `_BlobSeq` guard held.
-- [ ] **A recursive schema** (crucible#212): no schema here uses a type that refers to itself
-  (`$ref`, trees — MESSAGE_SPEC §5.4), the last format feature `probe` doesn't cover.
-  `MAX_DEPTH` is already exercised by `engine/structured/sweep_framing.py` — the past-`MAX_DEPTH`
-  nesting vector that surfaced F-0029 — but via synthetic bytes, not through a generated decoder
-  walking a self-referential schema. *(The **map** half of this item is done: `struct_array`,
-  id 202, `array of struct{k,v,...}`, has been in `probe` since WP-05, 2026-07-27; corrected
-  2026-10-14.)*
+- [x] **Every `$ref` form, with and without `$ref`** (crucible#212) — **DONE 2026-10-18.**
+  `schema/ref-forms/` (33 equivalent pairs, 21 refused forms, 4 recursive forms) checked by
+  `scripts/check-ref-codegen.py` for all 11 targets, and `schema/probe-ref.sofab.yaml` + its
+  inline twin run by `scripts/run-ref.sh` (both wired into `replay.yml`). Evidence: 354 vectors ×
+  20 drivers under each build — round trip and materialized value — 0 divergences, 0
+  conformance failures, 0 answers or values that differ between the two builds, chunk and
+  encode invariance 0 mismatches; every pair is the same schema and the same sofabgen model.
+  The generated code is byte-identical only where no named type differs (every residual in
+  `results/ref-codegen-baseline.txt`). Three generator gaps written up: **G-0049** (recursion
+  refused), **G-0050** (struct↔union category mismatch accepted), **G-0051** (an enum/bitfield
+  alias def becomes a constant named `$ref`).
+- [ ] **A recursive schema through the generated decoders** (crucible#212, the half that is
+  blocked): sofabgen refuses every cycle (G-0049), so no driver can be built from one.
+  `schema/ref-forms/recursive-*.sofab.yaml` turn from XFAIL into a gate failure the day it
+  generates them; then add a recursive field to `probe-ref` (a tree, a linked list, an
+  expression union), vectors to `sweep_ref.py` that nest it to and past `MAX_DEPTH` through the
+  declared type (today `sweep_framing.py` / `sweep_union_deep.py` reach it only through unknown
+  or declared non-recursive frames), and the heap-less roster rows' refusal, whatever the spec
+  decides for them.
+- [ ] **An enum / bitfield alias def in `probe-ref`** once G-0051 is fixed (today its Go output
+  does not compile, so it lives in `schema/ref-forms/def-alias-{enum,bitfield}` only), with a
+  constant that needs a wider type than the alias's broken one (`BIG = 1000`).
+- [ ] **File G-0049 upstream** (generator; it also needs a documentation decision for heap-less
+  targets) and put the issue link into the write-up. G-0050 and G-0051 are filed (generator#776,
+  generator#777).
 - [x] **Corpus hygiene — DONE 2026-08-02: 5994 → 579, all 15 clusters intact.** But **not**
       by `-merge` alone, which this item proposed and which turns out to be actively wrong:
       the plain merge gives 503 files and **6 clusters**, silently discarding the corpus

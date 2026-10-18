@@ -1,0 +1,18 @@
+# form: a struct body that is $ref to a $defs struct in ANOTHER file (imported into local $defs)
+# The defs live in schema/ref-forms/shared.defs.yaml; the checker generates beside it.
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+messages:
+  probe:
+    payload:
+      a: { id: 1, type: struct, fields: { $ref: 'shared.defs.yaml#/$defs/struct/Vec2' } }
+      u: { id: 2, type: union, default_id: 1, oneof: { $ref: 'shared.defs.yaml#/$defs/union/Shape' } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      a: { id: 1, type: struct, fields: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } } }
+      u: { id: 2, type: union, default_id: 1, oneof: { num: { id: 0, type: u16, default: 5 }, name: { id: 1, type: string, maxlen: 4 }, pt: { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 } } } } }
