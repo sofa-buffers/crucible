@@ -11,8 +11,7 @@
 # one type per site, cannot.
 #
 # Forms not here: a `$ref` cycle (no recursive types — sofabgen refuses them, deliberately;
-# G-0049, documentation#101), an enum / bitfield alias def (its Go output does not compile,
-# G-0051), and the refused spellings — see schema/ref-forms/, which also holds each form below
+# G-0049, documentation#101) and the refused spellings — see schema/ref-forms/, which also holds each form below
 # as its own minimal pair for the codegen comparison.
 version: 1
 $defs:
@@ -94,12 +93,20 @@ $defs:
       deep: { id: 31, type: struct, fields: { $ref: 'probe-ref-deep.defs.yaml#/$defs/struct/Deep' } }
       # a union from another file
       xu:   { id: 32, type: union, default_id: 1, oneof: { $ref: 'probe-ref.defs.yaml#/$defs/union/Pair' } }
+      # an enum and a bitfield alias def (G-0051): the alias declares the constants of the def
+      # it names, so BIG = 1000 makes the enum i16 and flag pos 9 makes the bitfield u16
+      ea:   { id: 33, type: enum, enum: { $ref: '#/$defs/enum/WideHueA' }, default: 1 }
+      fa:   { id: 34, type: bitfield, bits: { $ref: '#/$defs/bitfield/WideModeA' } }
     # the source of the `hu` copy (id 28 travels with it); used as no type
     Holder: { u: { id: 28, type: union, default_id: 1, oneof: { $ref: '#/$defs/union/Tiny' } } }
   enum:
     Hue: { R: 0, G: 1, B: 2 }
+    WideHue: { R: 0, G: 1, BIG: 1000 }
+    WideHueA: { $ref: '#/$defs/enum/WideHue' }
   bitfield:
     Mode: { r: { pos: 0 }, w: { pos: 1, default: true }, x: { pos: 2 } }
+    WideMode: { r: { pos: 0 }, w: { pos: 1, default: true }, hi: { pos: 9 } }
+    WideModeA: { $ref: '#/$defs/bitfield/WideMode' }
   union:
     Shape:
       num:  { id: 0, type: u16, default: 5 }

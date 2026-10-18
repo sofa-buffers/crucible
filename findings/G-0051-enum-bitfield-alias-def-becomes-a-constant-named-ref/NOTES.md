@@ -1,8 +1,8 @@
 # G-0051 — an `enum` / `bitfield` def that is only a `$ref` to another becomes a type with one constant named `$ref`
 
-**Status:** 🔴 **OPEN** — filed as generator#777. Owner: **generator** (`internal/model`, every backend).
-**Issue:** [generator#777](https://github.com/sofa-buffers/generator/issues/777) (filed 2026-10-18)
-**Guard:** `schema/ref-forms/def-alias-{enum,bitfield}.sofab.yaml`, checked by `scripts/check-ref-codegen.py` (XFAIL while this is open: Go refuses its own output, the IR models the alias differently from the written-out form; the gate fails once both are fixed, until the `known:` lines are dropped). `def-alias-union.sofab.yaml` and `def-alias.sofab.yaml` (struct) are the working controls.
+**Status:** ✅ **RESOLVED** — fixed upstream in [generator#781](https://github.com/sofa-buffers/generator/pull/781) (merged 2026-10-18, `61bf3f04`, "fix(model): a $defs enum or bitfield written as a $ref is an alias"). An enum or bitfield alias def now carries the constants of the def it names, and with them its width. Owner: **generator** (`internal/model`, every backend), not a corelib.
+**Issue:** [generator#777](https://github.com/sofa-buffers/generator/issues/777) (filed 2026-10-18, closed 2026-10-18)
+**Guard:** `schema/ref-forms/def-alias-{enum,bitfield}.sofab.yaml`, checked by `scripts/check-ref-codegen.py` (the alias must model alike to the written-out form, on all 11 targets); and `schema/probe-ref.sofab.yaml` fields `ea` (id 33) and `fa` (id 34) with the `q_*` vectors of `engine/structured/sweep_ref.py`, run by `scripts/run-ref.sh` (`BIG = 1000` and flag pos 9 accepted, past i16 / u16 refused, the same under the alias and written out).
 
 **Found 2026-10-18** by the review of crucible#212's tests, on branch `worktree-ref-schemas-212`
 (family branch `main`), sofabgen `0.0.0-20261017174557-c82ead33edeb` (generator main
@@ -50,7 +50,29 @@ which for an alias holds the single key `$ref`. A struct or union def goes throu
 because it runs on the dereferenced tree. Which constants a type declares is a schema fact; the
 corelib never sees it.
 
-## Why no other gate sees it
+## Why no other gate saw it
 
-No Crucible schema had an enum or bitfield alias. It cannot go into
-`schema/probe-ref.sofab.yaml` while this is open: the Go driver would not build.
+No Crucible schema had an enum or bitfield alias. It could not go into
+`schema/probe-ref.sofab.yaml` while this was open: the Go driver would not build.
+
+## Resolution (verified 2026-10-18)
+
+Verified with the sofabgen build of generator main `61bf3f04` (`0.0.0-20261018151733-61bf3f049efa`,
+the `sofabgen-linux-amd64` artifact of generator CI run 39139819425, checksum verified), every
+corelib at its main tip:
+
+- **Generated code.** `scripts/check-ref-codegen.py` reported `FIXED?` for both forms: every
+  target generates them (Go included) and the IR models the alias like the written-out def. The
+  residuals that remain in `results/ref-codegen-baseline.txt` are the shared def's own
+  declaration — e.g. C++ `enum ModeA : std::uint16_t { ModeA_R = 1, ModeA_W = 2, ModeA_Hi = 512 }`
+  in `sofab-defs.hpp`, where the broken build had `enum ModeA : std::uint8_t { ModeA_$ref = 1 }`
+  and the field `std::uint8_t f = 0` instead of `std::uint16_t f = 2`. The `# known: G-0051`
+  lines are dropped; the gate reads 683 cells, 0 failing.
+- **Wire.** The alias went into `schema/probe-ref.sofab.yaml` as `ea` (enum `WideHueA` →
+  `WideHue { R: 0, G: 1, BIG: 1000 }`, default 1) and `fa` (bitfield `WideModeA` → `WideMode`
+  with flag `hi` at pos 9), written out in `probe-ref-inline.sofab.yaml`. Thirteen `q_*` vectors
+  test them: `BIG = 1000`, ±32767/−32768 and `hi = 512`, `65535` accepted and round-tripped; 32768,
+  −32769 and 65536 refused; each default omitted. `scripts/run-ref.sh` over 367 vectors × 20
+  drivers: 0 divergences and 0 conformance failures under each build, 0 answers and 0
+  materialized values that differ between the alias and the written-out build, chunk and encode
+  invariance 0 mismatches.

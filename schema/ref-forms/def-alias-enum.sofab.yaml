@@ -3,7 +3,6 @@
 # named `$ref` = 0 (G-0051). Go refuses its own output; the others generate it, and the field
 # takes the width of that one constant (i8), so a declared constant outside it (BIG = 1000) is
 # INVALID through the alias and valid written out.
-# known: G-0051
 # expect: equivalent
 #
 # Document 1 uses $ref; document 2 is the same message with every $ref written out.

@@ -14,6 +14,28 @@ superseded; trust `FINDINGS.md` for the current tally.
 
 ---
 
+## 2026-10-18 — G-0050 and G-0051 resolved; the enum and bitfield alias def join `probe-ref`
+
+Both `$ref` codegen defects found by crucible#212's tests were fixed upstream the same day:
+G-0050 by generator#779 (`6c03d35b`: a `$ref` must name the `$defs` category its site
+declares) and G-0051 by generator#781 (`61bf3f04`: an enum or bitfield alias def carries the
+constants, and so the width, of the def it names). Verified with sofabgen
+`0.0.0-20261018151733-61bf3f049efa` (generator CI run 39139819425) and every corelib at its
+main tip.
+
+- `scripts/check-ref-codegen.py` reported `FIXED?` for the five forms that carried a `known:`
+  line; the lines are dropped and the baseline is re-recorded. What remains for the two
+  alias forms is the shared def's own declaration at the right width.
+- The alias forms went into `schema/probe-ref.sofab.yaml` (fields `ea`, `fa`), which the
+  TODO had held back while the Go output did not compile. Thirteen `q_*` vectors pin the
+  width: `BIG = 1000` and the flag at pos 9 accepted, past i16 / u16 refused.
+  `scripts/run-ref.sh`: 367 vectors × 20 drivers, 0 divergences, 0 conformance failures, 0
+  differences between the alias and the written-out build, chunk and encode invariance 0.
+
+Environment note: this session's container had lost `kotlin-dom-api-compat.klib`, so the
+kotlin-js build failed and `run-ref.sh` first reported 159 kotlin-js divergences against the
+stale binary it left behind. Installing the klib as `.devcontainer/Dockerfile` does fixed it.
+
 ## 2026-10-18 — replay.yml in parallel jobs
 
 The `differential` job of `replay.yml` ran every driver gate in one job, one after another:
