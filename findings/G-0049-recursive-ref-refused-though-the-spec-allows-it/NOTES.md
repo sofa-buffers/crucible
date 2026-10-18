@@ -1,79 +1,58 @@
-# G-0049 — sofabgen refuses every recursive `$ref`, though MESSAGE_SPEC §5.4 defines recursive types
+# G-0049 — sofabgen refuses every recursive `$ref`; MESSAGE_SPEC §5.4 still allows it — the spec is what changes
 
-**Status:** 🔴 **OPEN** — not filed upstream yet. Owner: **generator** (the schema loader, every backend); the spec is implicated (see "What a fix has to decide").
-**Issue:** not filed — draft in this write-up
-**Guard:** `schema/ref-forms/recursive-{tree,direct,mutual,union}.sofab.yaml`, checked by `scripts/check-ref-codegen.py` (XFAIL on all 11 targets while this is open; the gate fails once sofabgen accepts them, until the `known:` lines are dropped).
+**Status:** ⚪ **BY DESIGN** — the generator's refusal is the intended behaviour (decided 2026-10-18: no recursive types). What is open is the spec, which still says a struct "may" reference itself: [documentation#101](https://github.com/sofa-buffers/documentation/issues/101). Owner of the remaining work: **documentation** (MESSAGE_SPEC §5.4/§6), then the generator's schema README (l.73, l.113), which repeats it. Not a generator defect.
+**Issue:** [documentation#101](https://github.com/sofa-buffers/documentation/issues/101) (filed 2026-10-18)
+**Guard:** `schema/ref-forms/recursive-{tree,direct,mutual,union}.sofab.yaml` (`# expect: reject circular $ref`), checked by `scripts/check-ref-codegen.py` on all 11 targets: a generator that starts accepting a `$ref` cycle fails the gate.
 
 **Found 2026-10-18** on branch `worktree-ref-schemas-212` (family branch `main`), sofabgen
 `0.0.0-20261017174557-c82ead33edeb` (generator main `c82ead33edeb`), documentation
-`main@b6586b5`.
+`main@b6586b5`. First logged as a generator gap; re-classified the same day.
 
-## The rule
+## What the spec says today
 
-MESSAGE_SPEC §5.4 ("Recursive types", l.599-623 at `b6586b5`):
-
-> a struct may reference itself, directly or through an array element, via a `$ref` to a
-> predefined `$defs` struct. This expresses trees and linked lists:
-> `treenode = struct{ value: i32, children: array of <$ref treenode> }`
-
-with three guardrails (decode bounded by `MAX_DEPTH = 255`; termination reachable through an
-optional or possibly-empty field; the encoder guards a cyclic object graph with the same
-budget). §6 repeats it for the schema: "recursion via `$ref` to a predefined `$defs`
-struct/union". §5.4 does not name mutual recursion (A → B → A); it is read as included, since
-each step is a `$ref` to a `$defs` struct. The generator's own schema README agrees:
-`schema/README.md:113` (at `c82ead33edeb`) lists "recursive types" among the definition types
-whose wire mapping MESSAGE_SPEC specifies, and l.73 calls `struct` "recursive".
+MESSAGE_SPEC §5.4 ("Recursive types", l.599-623 at `b6586b5`): "a struct **may** reference
+itself, directly or through an array element, via a `$ref` to a predefined `$defs` struct.
+This expresses trees and linked lists", with three guardrails (decode bounded by
+`MAX_DEPTH = 255`; termination through an omittable field; the encoder "should" guard a cyclic
+object graph). §6 (l.640) lists "recursion via `$ref` to a predefined `$defs` struct/union".
+It is explicit, but a permission, not a requirement: "may", no MUST, the section is not
+marked normative, and §6 calls itself a "proposed extension". The generator's schema README
+repeats it (`schema/README.md:113` "recursive types", l.73).
 
 ## What sofabgen does
 
-Every cycle is refused while `$ref`s are resolved, before any backend runs, so the result is
-the same on all 11 targets:
+Every cycle is refused while `$ref`s are resolved, before any backend runs, on all 11 targets:
 
 ```
 error: probe.sofab.yaml: #/$defs/struct/Tree/children/items/fields: circular $ref "#/$defs/struct/Tree"
 ```
 
-`internal/parser/parser.go:151` (`circular $ref %q`). Refused alike (`schema/ref-forms/`):
+`internal/parser/parser.go:151`, deliberately — `docs/ARCHITECTURE.md:242-243` "**recursive
+refs are rejected** (a recursive value member has no finite size)". The four forms: the §5.4
+treenode (`Tree.children: array of $ref Tree`), a linked list (`Node.next: $ref Node`), mutual
+recursion (A → B → A through arrays), and an expression union (`Expr.add: $ref Pair`,
+`Pair.l/r: $ref Expr`).
 
-| form | shape |
-|---|---|
-| `recursive-tree` | the §5.4 treenode: `Tree.children: array of $ref Tree` |
-| `recursive-direct` | a linked list: `Node.next: struct $ref Node` (terminates: `next` is omittable) |
-| `recursive-mutual` | `A.bs: array of $ref B`, `B.as: array of $ref A` |
-| `recursive-union` | `Expr = union{ lit: i32, add: struct $ref Pair }`, `Pair = {l, r: union $ref Expr}` |
+## Decision: no recursive types
 
-The refusal is deliberate in the generator's design doc — `docs/ARCHITECTURE.md:242-243`
-"**recursive refs are rejected** (a recursive value member has no finite size)", and l.388 —
-so the generator contradicts both MESSAGE_SPEC §5.4 and its own README.
-`ir.SeqDepth` already returns `ok=false` on a back-edge and `analysis.checkDepth` skips it,
-so the depth code anticipates recursion; the loader never lets it get there.
+A recursive type buys nothing on the wire (it is plain nested sequences either way) and costs:
 
-## Attribution: generator (with a spec question)
+- **Heap-less targets cannot hold it** — a recursive value member has no finite size, and C,
+  `cpp-fixed`, `rust-nostd` and Zig without an allocator hold nested structs inline; §5.4 says
+  nothing about them.
+- **Encode can loop** on an object graph that points back to an ancestor; §5.4 only says
+  "should" guard.
+- **Recursion in all generated code** — defaults, equality, copy, reset, reused-destination
+  decode, JSON — in 11 backends, each needing its own depth guard.
 
-Whether a type may refer to itself is a **schema** fact; the corelib never sees a type
-declaration and decodes a recursive message as plain nested sequences already (the wire is
-unchanged, §5.4 "On the wire this is nothing new"). Crucible's past-`MAX_DEPTH` vectors
-(`engine/structured/sweep_framing.py`, `sweep_union_deep.py`) show every corelib bounds the
-nesting. Only the generator refuses.
+A tree stays expressible as a flat array of nodes with index references, bounded by `count`
+and finite everywhere. documentation#101 proposes the wording (a `$ref` cycle is invalid, a
+generator MUST refuse it) and asks to keep §5.3 "General recursion" and §6's recursive
+`items` — nesting, not self-reference — clearly apart.
 
-## What a fix has to decide
+## Why the wire side needs nothing
 
-The generator's reason is real for part of the roster: a recursive **value** member has no
-finite size, and the heap-less targets (C's fixed object model, `cpp-fixed`, `rust-nostd`,
-Zig without an allocator) hold every nested struct inline. A tree needs indirection — a
-pointer/`Box`/`Option<Box<…>>` or an index into a caller-provided pool — and a heap-less
-target needs a bound on it (a `count` on the recursive array bounds the fan-out, not the
-depth). MESSAGE_SPEC §5.4 says nothing about targets without a heap. So the outcome is either
-
-- the generator implements recursion for the heap targets (indirection per backend; encode
-  guards cycles with `MAX_DEPTH`) and refuses it with a clear message on heap-less ones, and
-  MESSAGE_SPEC §5.4 / CORELIB_PLAN record that profile split; or
-- MESSAGE_SPEC §5.4 and the generator README drop recursion.
-
-Either way the README line and the spec must stop promising what the generator refuses.
-
-## Why no other gate sees it
-
-No Crucible schema could carry a recursive type until this was checked — the generator never
-produced code for one — so the differential and materialized oracles have nothing to run.
-`scripts/check-ref-codegen.py` asserts the expectation (`# expect: accept`) per target.
+Nesting depth is bounded by `MAX_DEPTH = 255` whatever the schema (CORELIB_PLAN §4.9, a
+decoder MUST reject deeper). Crucible sweeps it through declared and unknown frames
+(`engine/structured/sweep_framing.py`, `sweep_union_deep.py`), so a hostile stream cannot
+exhaust a stack with or without recursive types.

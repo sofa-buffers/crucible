@@ -13,8 +13,8 @@ header of each states what sofabgen must do with it:
     ``schema/probe-ref.sofab.yaml`` and its inline twin are checked as one more such pair.
   * ``# expect: reject [text]`` — sofabgen must refuse it on every target (and say
     ``text``).
-  * ``# expect: accept`` — sofabgen must generate it on every target (the recursive types
-    MESSAGE_SPEC §5.4 allows).
+  * ``# expect: accept`` — sofabgen must generate it on every target (no form uses it today;
+    the recursive forms expect ``reject``: no recursive types, documentation#101).
 
 A ``# known: <G-id>`` line marks a form whose expectation sofabgen does not meet yet (a
 refusal that does not come; for a pair, a target that does not generate it or an IR that

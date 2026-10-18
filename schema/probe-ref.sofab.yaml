@@ -10,9 +10,10 @@
 # so a backend that keys it on the shared type gets one site wrong — and the inline twin, with
 # one type per site, cannot.
 #
-# Forms not here because they cannot be built or are refused: recursion (MESSAGE_SPEC §5.4;
-# sofabgen refuses every cycle, G-0049) and the rejected spellings — see schema/ref-forms/,
-# which also holds each form below as its own minimal pair for the codegen comparison.
+# Forms not here: a `$ref` cycle (no recursive types — sofabgen refuses them, deliberately;
+# G-0049, documentation#101), an enum / bitfield alias def (its Go output does not compile,
+# G-0051), and the refused spellings — see schema/ref-forms/, which also holds each form below
+# as its own minimal pair for the codegen comparison.
 version: 1
 $defs:
   struct:
