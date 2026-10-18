@@ -52,10 +52,14 @@ signal it was split to give, so check for it before concluding the night was qui
 ```sh
 DL=<scratchpad>/nightly-<run-id>
 gh run download <run-id> -n nightly-<run-id> -D "$DL"
-ls "$DL"/corpus/interesting | wc -l ; ls "$DL"/corpus/crashes
+ls "$DL"/interesting | wc -l ; ls "$DL"/interesting-union | wc -l ; ls "$DL"/crashes
 gh run download <run-id> -n nightly-clusters-<run-id> -D "$DL/clusters" || \
   echo "NO CLUSTER REPORT — the oracle did not run; re-cluster locally (step 4)"
 ```
+
+The upload's root is `corpus/` (the common ancestor of its paths, `nightly.yml`), so the
+artifact holds `interesting/`, `interesting-union/` and `crashes/` at its **top level** — no
+`corpus/` prefix. `crashes/` is absent, not empty, on a night without crashes.
 
 Artifacts expire after 14 days; if it is gone, re-run `nightly.yml` via
 `gh workflow run nightly.yml -f fuzz_time=<sec>` instead of analysing a stale one.
@@ -68,13 +72,15 @@ measurable at that instant and throws away inputs that start diverging after the
 corelib rewrite. Minimizing is a triage tool for one input, not corpus hygiene.
 
 ```sh
-before=$(ls corpus/interesting | wc -l)
-cp -n "$DL"/corpus/interesting/* corpus/interesting/
-echo "$before -> $(ls corpus/interesting | wc -l)"
-cp -n "$DL"/corpus/crashes/* corpus/crashes/ 2>/dev/null
+for d in interesting interesting-union; do
+  before=$(ls corpus/$d | wc -l)
+  cp --update=none "$DL"/$d/* corpus/$d/
+  echo "$d: $before -> $(ls corpus/$d | wc -l)"
+done
+[ -d "$DL"/crashes ] && cp --update=none "$DL"/crashes/* corpus/crashes/
 ```
 
-`corpus/interesting` and `corpus/crashes` are gitignored — the local accumulation is not in
+`corpus/interesting`, `corpus/interesting-union` and `corpus/crashes` are gitignored — the local accumulation is not in
 git, so state the counts in the report.
 
 ## 3. Freshen the family, then measure
@@ -94,7 +100,11 @@ bootstrap prints before concluding anything about generated code.
 
 ```sh
 CLUSTER=1 TIMEOUT=30 CORPUS=corpus/interesting BASELINE=results/known-clusters.txt ./scripts/run.sh
+SCHEMA=schema/probe-union-deep.sofab.yaml CLUSTER=1 TIMEOUT=30 \
+  CORPUS=corpus/interesting-union BASELINE=results/known-clusters-union.txt ./scripts/run.sh
 ```
+
+The second line is the nightly's union-deep clustering step, over the union corpus it grows.
 
 Always via `run.sh` — it builds the roster and passes `--driver` from `drivers/roster`.
 Calling `oracle/cluster.py`/`comparator.py` directly risks measuring whatever binaries the
@@ -154,7 +164,11 @@ CLUSTER=1 BASELINE=results/known-clusters-materialized.txt \
 CORPUS=corpus/interesting CHUNK_FEED_TIMEOUT=2400 \
   ./scripts/run-chunked.sh --modes chunk,scrub
 CORPUS=corpus/interesting ./scripts/run-encode.sh
+CORPUS=corpus/interesting REUSE_FEED_TIMEOUT=2400 ./scripts/run-reuse.sh
 ```
+
+`REUSE_FEED_TIMEOUT` is the same kind of whole-run cap as `CHUNK_FEED_TIMEOUT` below; the
+reuse oracle's primed stream doubles the record count, so its default does not fit either.
 
 **Both overrides are load-bearing over a fuzzed corpus, and both defaults are documented as
 insufficient for one.** `materialize.sh` without `CLUSTER=1 BASELINE=` reports already-explained
