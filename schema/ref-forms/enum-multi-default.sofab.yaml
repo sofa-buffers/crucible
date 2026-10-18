@@ -1,0 +1,20 @@
+# form: one $defs enum at two sites with different site defaults
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  enum:
+    Hue: { R: 0, G: 1, B: 2 }
+messages:
+  probe:
+    payload:
+      c0: { id: 1, type: enum, enum: { $ref: '#/$defs/enum/Hue' } }
+      c2: { id: 2, type: enum, enum: { $ref: '#/$defs/enum/Hue' }, default: 2 }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      c0: { id: 1, type: enum, enum: { R: 0, G: 1, B: 2 } }
+      c2: { id: 2, type: enum, enum: { R: 0, G: 1, B: 2 }, default: 2 }

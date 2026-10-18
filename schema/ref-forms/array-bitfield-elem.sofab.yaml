@@ -1,0 +1,18 @@
+# form: an array whose bitfield element is $ref to a $defs bitfield
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  bitfield:
+    Mode: { r: { pos: 0 }, w: { pos: 1, default: true }, x: { pos: 2 } }
+messages:
+  probe:
+    payload:
+      fs: { id: 1, type: array, items: { type: bitfield, count: 2, bits: { $ref: '#/$defs/bitfield/Mode' } } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      fs: { id: 1, type: array, items: { type: bitfield, count: 2, bits: { r: { pos: 0 }, w: { pos: 1, default: true }, x: { pos: 2 } } } }

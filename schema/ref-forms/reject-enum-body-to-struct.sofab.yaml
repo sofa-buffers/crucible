@@ -1,0 +1,11 @@
+# form: an enum body that is $ref to a $defs struct
+# Refused for its SHAPE (a struct field is no enum constant), not by a category check: G-0050.
+# expect: reject enum constant requires
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+messages:
+  probe:
+    payload:
+      c: { id: 1, type: enum, enum: { $ref: '#/$defs/struct/Vec2' } }

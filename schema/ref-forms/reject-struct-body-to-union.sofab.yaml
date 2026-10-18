@@ -1,0 +1,16 @@
+# form: a struct whose fields is $ref to a $defs UNION (category mismatch)
+# sofabgen accepts it and generates a union field: the declared struct is lost.
+# known: G-0050
+# No error text is pinned: sofabgen has no message for this yet; any refusal meets it.
+# expect: reject
+version: 1
+$defs:
+  union:
+    Shape:
+      num:  { id: 0, type: u16, default: 5 }
+      name: { id: 1, type: string, maxlen: 4 }
+      pt:   { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 } } }
+messages:
+  probe:
+    payload:
+      s: { id: 1, type: struct, fields: { $ref: '#/$defs/union/Shape' } }

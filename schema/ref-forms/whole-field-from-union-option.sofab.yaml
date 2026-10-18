@@ -1,0 +1,21 @@
+# form: a whole-field copy of an OPTION of a $defs union
+# Tiny and Hue are used as no type... except that the copied field's enum body is a $ref to Hue.
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  enum:
+    Hue: { R: 0, G: 1, B: 2 }
+  union:
+    Tiny: { a: { id: 0, type: u8 }, c: { id: 1, type: enum, enum: { $ref: '#/$defs/enum/Hue' }, default: 2 } }
+messages:
+  probe:
+    payload:
+      c: { $ref: '#/$defs/union/Tiny/c' }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      c: { id: 1, type: enum, enum: { R: 0, G: 1, B: 2 }, default: 2 }

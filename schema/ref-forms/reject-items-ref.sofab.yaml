@@ -1,0 +1,10 @@
+# form: items: {$ref} (the element type must be spelled, its body may be $ref)
+# expect: reject array element type
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+messages:
+  probe:
+    payload:
+      pts: { id: 1, type: array, items: { $ref: '#/$defs/struct/Vec2' } }

@@ -1,0 +1,14 @@
+# Definitions schema/probe-ref.sofab.yaml imports across files (`probe-ref.defs.yaml#/...`).
+# Not a message schema: it has no `messages`, and nothing selects it as SCHEMA. Far refers to a
+# def of this file (Near) and to one of a third file (Deep, resolved relative to THIS file).
+version: 1
+$defs:
+  struct:
+    Far:
+      q:  { id: 0, type: i16, default: -3 }
+      s:  { id: 1, type: string, maxlen: 3 }
+      nr: { id: 2, type: struct, fields: { $ref: '#/$defs/struct/Near' } }
+      dp: { id: 3, type: struct, fields: { $ref: 'probe-ref-deep.defs.yaml#/$defs/struct/Deep' } }
+    Near: { z: { id: 0, type: u8, default: 2 } }
+  union:
+    Pair: { i: { id: 0, type: u8 }, s: { id: 1, type: string, maxlen: 2 } }

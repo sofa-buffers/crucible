@@ -140,6 +140,7 @@ rather than against the family, so they need no second implementation to be usef
 | [Chunk invariance](#9-chunk-invariance-scriptsrun-chunkedsh) | `./scripts/run-chunked.sh` | **streaming decode** — the outcome must not depend on how the bytes arrived |
 | [Encode invariance](#10-encode-invariance-scriptsrun-encodesh) | `./scripts/run-encode.sh` | **streaming encode** — every encode surface of one implementation must emit identical bytes |
 | [Reuse invariance](#11-reuse-invariance-scriptsrun-reusesh) | `./scripts/run-reuse.sh` | **reused destination** — decoding into an object that held an earlier message must equal a fresh decode |
+| [`$ref` suite](#12-ref-suite-scriptsrun-refsh-scriptscheck-ref-codegenpy) | `./scripts/run-ref.sh` | a type written through `$ref` must behave — and generate — like the same type written out |
 | [Clustering](#8-clustering-cluster1) | `CLUSTER=1 ./scripts/run.sh` | reduce a divergence firehose to root causes |
 
 ### 1. Differential loop (`scripts/run.sh`)
@@ -351,6 +352,25 @@ two suites above it compares an implementation against itself.
 ./scripts/run-reuse.sh                 # corpus/regression, each record primed by corpus/structured
 ```
 
+### 12. `$ref` suite (`scripts/run-ref.sh`, `scripts/check-ref-codegen.py`)
+
+A schema may declare a type once under `$defs` and reuse it through `$ref`, or write it out
+at every site. The two spellings must mean the same thing. Two checks:
+
+- **Behaviour.** `schema/probe-ref.sofab.yaml` uses every `$ref` form in one message;
+  `schema/probe-ref-inline.sofab.yaml` is the same message written out. The roster is built
+  against each, and every driver must give every vector the same answer under both builds
+  (the re-encoded bytes and the decoded value), and the answer the spec requires.
+- **Generated code.** Each form in `schema/ref-forms/` is generated with and without `$ref`
+  for all 11 targets and compared, ignoring a consistent type rename. What still differs is
+  listed per target and held against a baseline. The same check asserts which forms sofabgen
+  must refuse, and that it accepts the recursive types the spec allows.
+
+```sh
+./scripts/run-ref.sh                   # both builds over corpus/ref (+ materialized values, chunk and encode invariance)
+python3 scripts/check-ref-codegen.py --report   # grade matrix per form and target, no gate
+```
+
 ## Findings & status
 
 The oracle has caught real disagreements across the family — each minimized,
@@ -388,5 +408,5 @@ catalog and the acceptance test that verifies each fix when it lands.
 | `findings/` | one dir per finding — minimized reproducer(s) + a NOTES.md write-up |
 | `results/` | [`FINDINGS.md`](results/FINDINGS.md) (the catalog) + `CLUSTERS.md` (cluster inventory) |
 | `corpus/regression/` | resolved-findings gate — every fixed finding's reproducer, green in CI |
-| `scripts/` | `bootstrap`, `run`, `cross-encode`, `run-union`, `run-limits`, `fuzz`, `sweep`, `materialize` |
+| `scripts/` | `bootstrap`, `run`, `cross-encode`, `run-union`, `run-limits`, `run-ref`, `fuzz`, `sweep`, `materialize`, `check-ref-codegen` |
 | `.devcontainer/` | fuzzing toolchains (clang/libFuzzer, cargo-fuzz, Jazzer, Atheris, SharpFuzz, Jazzer.js) |

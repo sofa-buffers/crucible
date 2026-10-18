@@ -1,0 +1,6 @@
+# The third file of schema/probe-ref.sofab.yaml's cross-file chain: reached through
+# probe-ref.defs.yaml (Far.dp) and directly (Body.deep), it must stay ONE type. Not a message schema.
+version: 1
+$defs:
+  struct:
+    Deep: { d: { id: 0, type: u8 } }

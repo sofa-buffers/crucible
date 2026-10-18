@@ -1,0 +1,13 @@
+# form: a union whose oneof is $ref to a $defs STRUCT (category mismatch)
+# sofabgen accepts it and generates a plain struct field: the declared union is lost.
+# known: G-0050
+# No error text is pinned: sofabgen has no message for this yet; any refusal meets it.
+# expect: reject
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+messages:
+  probe:
+    payload:
+      u: { id: 1, type: union, oneof: { $ref: '#/$defs/struct/Vec2' } }

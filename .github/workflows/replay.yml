@@ -112,6 +112,14 @@ jobs:
       - name: Family copies (C anchor tags)
         run: python3 scripts/check-family-copies.py
 
+      # Every `$ref` form (schema/ref-forms/) generated with and without `$ref` for all 11
+      # targets: the inline twin must BE the dereferenced schema and model alike in the IR; what
+      # the generated code still differs in is held against results/ref-codegen-baseline.txt; the
+      # refused / recursive forms must be refused / accepted (known generator gaps are XFAIL).
+      # Needs sofabgen only, no driver build (crucible#212).
+      - name: $ref codegen equivalence (schema/ref-forms, all targets)
+        run: python3 scripts/check-ref-codegen.py
+
       # Reproducers for findings that are already fixed: a divergence here means a
       # resolved bug came back. See corpus/regression/README.md.
       - name: Differential over the resolved-findings regression corpus
@@ -137,6 +145,13 @@ jobs:
       # schema (differential, conformance, chunk, encode), so four driver builds.
       - name: Deep union suite (probe-union-deep schema)
         run: ./scripts/run-union-deep.sh
+
+      # Every `$ref` form in one message, and its inline twin (crucible#212): one wire format,
+      # two spellings, so each driver must give every corpus/ref vector the same answer under
+      # both builds — and the spec's (identity / same: / reject / not_reject) — and the same
+      # decoded value (the materialized oracle on each build). Six passes, four roster builds.
+      - name: $ref suite (probe-ref schema and its inline twin)
+        run: ./scripts/run-ref.sh
 
       - name: Limit mode (receiver-side caps)
         run: ./scripts/run-limits.sh

@@ -1,0 +1,10 @@
+# form: a $ref object with a sibling key (fields: {$ref, y})
+# expect: reject "$ref"
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+messages:
+  probe:
+    payload:
+      a: { id: 1, type: struct, fields: { $ref: '#/$defs/struct/Vec2', z: { id: 2, type: u8 } } }

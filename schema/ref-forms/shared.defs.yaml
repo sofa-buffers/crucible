@@ -1,0 +1,11 @@
+# Definitions imported by cross-file.sofab.yaml and reject-cross-file-field.sofab.yaml.
+# Not a form: it carries no `# expect:` line and no message.
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+  union:
+    Shape:
+      num:  { id: 0, type: u16, default: 5 }
+      name: { id: 1, type: string, maxlen: 4 }
+      pt:   { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 } } }

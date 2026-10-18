@@ -1,0 +1,10 @@
+# form: type: {$ref} (a type name is a string)
+# expect: reject type must be a string
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+messages:
+  probe:
+    payload:
+      p: { id: 1, type: { $ref: '#/$defs/struct/Vec2' } }

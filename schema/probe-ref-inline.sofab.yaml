@@ -1,0 +1,255 @@
+# The inline twin of schema/probe-ref.sofab.yaml (crucible#212): the same message with every
+# `$ref` written out, so every type is declared at its site. scripts/run-ref.sh builds the
+# roster against both and requires every driver to answer every input identically;
+# scripts/check-ref-codegen.py asserts that this file IS probe-ref.sofab.yaml dereferenced
+# (and models alike in sofabgen's IR), so an edit to one without the other fails there.
+version: 1
+messages:
+  probe:
+    summary: Every $ref form the generator accepts, in one message (crucible#212).
+    payload:
+      tag: {id: 0, type: u8}
+      a:
+        id: 1
+        type: struct
+        fields: {x: {id: 0, type: i32, default: 7}, y: {id: 1, type: i32}}
+      b:
+        id: 2
+        type: struct
+        fields: {x: {id: 0, type: i32, default: 7}, y: {id: 1, type: i32}}
+      c0: {id: 3, type: enum, enum: {R: 0, G: 1, B: 2}}
+      c2: {id: 4, type: enum, enum: {R: 0, G: 1, B: 2}, default: 2}
+      f:
+        id: 5
+        type: bitfield
+        bits: {r: {pos: 0}, w: {pos: 1, default: true}, x: {pos: 2}}
+      u0:
+        id: 6
+        type: union
+        default_id: 0
+        oneof:
+          num: {id: 0, type: u16, default: 5}
+          name: {id: 1, type: string, maxlen: 4}
+          pt:
+            id: 2
+            type: struct
+            fields: {x: {id: 0, type: i32, default: 7}}
+      u1:
+        id: 7
+        type: union
+        default_id: 1
+        oneof:
+          num: {id: 0, type: u16, default: 5}
+          name: {id: 1, type: string, maxlen: 4}
+          pt:
+            id: 2
+            type: struct
+            fields: {x: {id: 0, type: i32, default: 7}}
+      un:
+        id: 8
+        type: union
+        oneof:
+          num: {id: 0, type: u16, default: 5}
+          name: {id: 1, type: string, maxlen: 4}
+          pt:
+            id: 2
+            type: struct
+            fields: {x: {id: 0, type: i32, default: 7}}
+      pts:
+        id: 9
+        type: array
+        items:
+          type: struct
+          count: 3
+          fields: {x: {id: 0, type: i32, default: 7}, y: {id: 1, type: i32}}
+      cs:
+        id: 10
+        type: array
+        items: {type: enum, count: 4, enum: {R: 0, G: 1, B: 2}}
+      fs:
+        id: 11
+        type: array
+        items:
+          type: bitfield
+          count: 2
+          bits: {r: {pos: 0}, w: {pos: 1, default: true}, x: {pos: 2}}
+      us:
+        id: 12
+        type: array
+        items:
+          type: union
+          count: 2
+          default_id: 2
+          oneof:
+            num: {id: 0, type: u16, default: 5}
+            name: {id: 1, type: string, maxlen: 4}
+            pt:
+              id: 2
+              type: struct
+              fields: {x: {id: 0, type: i32, default: 7}}
+      grid:
+        id: 13
+        type: array
+        items:
+          type: array
+          count: 2
+          items:
+            type: struct
+            count: 2
+            fields: {x: {id: 0, type: i32, default: 7}, y: {id: 1, type: i32}}
+      chain:
+        id: 14
+        type: struct
+        fields:
+          mid:
+            id: 0
+            type: struct
+            fields:
+              inn:
+                id: 0
+                type: struct
+                fields: {v: {id: 0, type: u8, default: 3}}
+          n: {id: 1, type: u8}
+      al:
+        id: 15
+        type: struct
+        fields: {x: {id: 0, type: i32, default: 7}, y: {id: 1, type: i32}}
+      opt:
+        id: 16
+        type: union
+        default_id: 1
+        oneof:
+          p:
+            id: 0
+            type: struct
+            fields: {x: {id: 0, type: i32, default: 7}, y: {id: 1, type: i32}}
+          c: {id: 1, type: enum, enum: {R: 0, G: 1, B: 2}, default: 2}
+          f:
+            id: 2
+            type: bitfield
+            bits: {r: {pos: 0}, w: {pos: 1, default: true}, x: {pos: 2}}
+          m:
+            id: 3
+            type: union
+            default_id: 0
+            oneof: {a: {id: 0, type: u8}, b: {id: 1, type: u32, default: 4}}
+      rec:
+        id: 17
+        type: struct
+        fields:
+          c: {id: 0, type: enum, enum: {R: 0, G: 1, B: 2}, default: 1}
+          f:
+            id: 1
+            type: bitfield
+            bits: {r: {pos: 0}, w: {pos: 1, default: true}, x: {pos: 2}}
+          u:
+            id: 2
+            type: union
+            default_id: 1
+            oneof: {a: {id: 0, type: u8}, b: {id: 1, type: u32, default: 4}}
+      crate:
+        id: 18
+        type: struct
+        fields:
+          inner:
+            id: 0
+            type: struct
+            fields: {z: {id: 0, type: u8}}
+          w: {id: 1, type: u16}
+      level: {id: 19, type: u8, default: 4}
+      power: {id: 20, type: boolean, default: true}
+      far:
+        id: 21
+        type: struct
+        fields:
+          q: {id: 0, type: i16, default: -3}
+          s: {id: 1, type: string, maxlen: 3}
+          nr:
+            id: 2
+            type: struct
+            fields: {z: {id: 0, type: u8, default: 2}}
+          dp:
+            id: 3
+            type: struct
+            fields: {d: {id: 0, type: u8}}
+      cs2:
+        id: 22
+        type: array
+        items: {type: enum, count: 2, enum: {R: 0, G: 1, B: 2}}
+      fs2:
+        id: 23
+        type: array
+        items:
+          type: bitfield
+          count: 3
+          bits: {r: {pos: 0}, w: {pos: 1, default: true}, x: {pos: 2}}
+      us2:
+        id: 24
+        type: array
+        items:
+          type: union
+          count: 3
+          default_id: 0
+          oneof:
+            num: {id: 0, type: u16, default: 5}
+            name: {id: 1, type: string, maxlen: 4}
+            pt:
+              id: 2
+              type: struct
+              fields: {x: {id: 0, type: i32, default: 7}}
+      mx0:
+        id: 25
+        type: union
+        oneof:
+          p:
+            id: 0
+            type: struct
+            fields: {x: {id: 0, type: i32, default: 7}, y: {id: 1, type: i32}}
+          c: {id: 1, type: enum, enum: {R: 0, G: 1, B: 2}, default: 2}
+          t:
+            id: 2
+            type: union
+            default_id: 1
+            oneof: {a: {id: 0, type: u8}, b: {id: 1, type: u32, default: 4}}
+      mx1:
+        id: 26
+        type: union
+        default_id: 1
+        oneof:
+          p:
+            id: 0
+            type: struct
+            fields: {x: {id: 0, type: i32, default: 7}, y: {id: 1, type: i32}}
+          c: {id: 1, type: enum, enum: {R: 0, G: 1, B: 2}, default: 2}
+          t:
+            id: 2
+            type: union
+            default_id: 1
+            oneof: {a: {id: 0, type: u8}, b: {id: 1, type: u32, default: 4}}
+      ta:
+        id: 27
+        type: union
+        default_id: 1
+        oneof: {a: {id: 0, type: u8}, b: {id: 1, type: u32, default: 4}}
+      hu:
+        id: 28
+        type: union
+        default_id: 1
+        oneof: {a: {id: 0, type: u8}, b: {id: 1, type: u32, default: 4}}
+      wc: {id: 29, type: enum, enum: {R: 0, G: 1, B: 2}, default: 1}
+      cd:
+        id: 30
+        type: array
+        default:
+        - 1
+        - 2
+        items: {type: enum, count: 4, enum: {R: 0, G: 1, B: 2}}
+      deep:
+        id: 31
+        type: struct
+        fields: {d: {id: 0, type: u8}}
+      xu:
+        id: 32
+        type: union
+        default_id: 1
+        oneof: {i: {id: 0, type: u8}, s: {id: 1, type: string, maxlen: 2}}

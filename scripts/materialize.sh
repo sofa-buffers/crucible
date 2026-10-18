@@ -62,7 +62,7 @@ if [ "$UNION_MODE" = "1" ]; then
     MAT_SCHEMA_JSON=$(mktemp)
     trap 'rm -f "$MAT_SCHEMA_JSON"' EXIT
     echo "==> [materialize] deriving the schema-type table from $SCHEMA" >&2
-    python3 "$ROOT/engine/structured/schema.py" --json "$MAT_SCHEMA_JSON" --schema "$SCHEMA"
+    python3 "$ROOT/engine/structured/schema.py" --json "$MAT_SCHEMA_JSON" --schema "$SCHEMA" --types
 else
     MAT_SCHEMA_JSON="$ROOT/oracle/materialized-schema.json"
     echo "==> [materialize] checking the generated schema-type table is current" >&2

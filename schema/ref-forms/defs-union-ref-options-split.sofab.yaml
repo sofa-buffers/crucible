@@ -1,0 +1,50 @@
+# form: a $defs union whose options are $ref'd struct / enum / union bodies, split by default_id at two sites
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+  enum:
+    Hue: { R: 0, G: 1, B: 2 }
+  union:
+    Tiny: { a: { id: 0, type: u8 }, b: { id: 1, type: u32, default: 4 } }
+    Mixed:
+      p: { id: 0, type: struct, fields: { $ref: '#/$defs/struct/Vec2' } }
+      c: { id: 1, type: enum, enum: { $ref: '#/$defs/enum/Hue' }, default: 2 }
+      t: { id: 2, type: union, default_id: 1, oneof: { $ref: '#/$defs/union/Tiny' } }
+messages:
+  probe:
+    payload:
+      m0: { id: 1, type: union, oneof: { $ref: '#/$defs/union/Mixed' } }
+      m1: { id: 2, type: union, default_id: 1, oneof: { $ref: '#/$defs/union/Mixed' } }
+      m2: { id: 3, type: union, default_id: 2, oneof: { $ref: '#/$defs/union/Mixed' } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      m0:
+        id: 1
+        type: union
+        oneof:
+          p: { id: 0, type: struct, fields: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } } }
+          c: { id: 1, type: enum, enum: { R: 0, G: 1, B: 2 }, default: 2 }
+          t: { id: 2, type: union, default_id: 1, oneof: { a: { id: 0, type: u8 }, b: { id: 1, type: u32, default: 4 } } }
+      m1:
+        id: 2
+        type: union
+        default_id: 1
+        oneof:
+          p: { id: 0, type: struct, fields: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } } }
+          c: { id: 1, type: enum, enum: { R: 0, G: 1, B: 2 }, default: 2 }
+          t: { id: 2, type: union, default_id: 1, oneof: { a: { id: 0, type: u8 }, b: { id: 1, type: u32, default: 4 } } }
+      m2:
+        id: 3
+        type: union
+        default_id: 2
+        oneof:
+          p: { id: 0, type: struct, fields: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } } }
+          c: { id: 1, type: enum, enum: { R: 0, G: 1, B: 2 }, default: 2 }
+          t: { id: 2, type: union, default_id: 1, oneof: { a: { id: 0, type: u8 }, b: { id: 1, type: u32, default: 4 } } }

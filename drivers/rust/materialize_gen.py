@@ -116,6 +116,21 @@ _ARR_FN = {"u": "mz_arr_u", "bool": "mz_arr_bool", "s": "mz_arr_s",
 _MOD = "message::"
 
 
+# sofabgen's Rust spelling of a schema field name (generators/rust/reserved.go `rustIdent`):
+# `r#name` for a keyword, `name_` for the four keywords Rust refuses as raw identifiers.
+_RUST_NON_RAW = {"self", "Self", "crate", "super"}
+_RUST_KEYWORDS = set("""as break const continue crate dyn else enum extern false fn for if impl in
+    let loop match mod move mut pub ref return static struct trait true type unsafe use where while
+    async await yield gen abstract become box do final macro override priv typeof unsized virtual
+    try""".split())
+
+
+def _ident(name):
+    if name in _RUST_NON_RAW:
+        return name + "_"
+    return "r#" + name if name in _RUST_KEYWORDS else name
+
+
 def _camel(name):
     return "".join(p[:1].upper() + p[1:] for p in name.split("_"))
 
@@ -141,7 +156,13 @@ def _field_ty(parent_ty, f):
     """Generated Rust type name of field/option `f` declared under type `parent_ty`.
 
     sofabgen joins the nesting with `_` (Probe_Choice_Pt) and names a shared $ref union
-    <Ref>__Default<Option>; the types it declares hang off <Ref>, not off that name."""
+    <Ref>__Default<Option>; the types it declares hang off <Ref>, not off that name. When the
+    table carries the union's generated type (`ir_type`, schema.py --types: sofabgen's own
+    path and split variant), that is used and nothing is guessed."""
+    if f.get("ir_type"):
+        name = "_".join(_camel(seg) for seg in f["ir_type"]["path"])
+        variant = f["ir_type"].get("variant")
+        return name + ("__Default" + _camel(variant) if variant else "")
     if f["kind"] == "union" and f["name"] in _REFS:
         dflt = [o for o in f["options"] if o["id"] == f["default_id"]][0]
         return _camel(_REFS[f["name"]]) + "__Default" + _camel(dflt["name"])
@@ -177,12 +198,14 @@ def emit_value(node, path, out, ty="Probe"):
             if j > 0:
                 out.append('    let _ = write!(s, ";");')
             out.append('    let _ = write!(s, "' + str(f["id"]) + ':");')
-            emit_value(f, path + "." + f["name"], out, _field_ty(ty, f))
+            emit_value(f, path + "." + _ident(f["name"]), out, _field_ty(ty, f))
         out.append('    let _ = write!(s, "}}");')
     elif kind == "union":
         # A union holds exactly ONE option: walk it through the native enum's variant (the
         # tag), never by testing every option for a non-default value -- a held option at
         # its own default is still held and must print. Shape: {<held id>:<value>}.
+        if node.get("ir_type"):                   # an array element's union: its own type
+            ty = _field_ty(ty, node)
         out.append("    match &" + path + " {")
         for o in node["options"]:
             out.append("        " + _MOD + ty + "::" + _camel(o["name"]) + "(mzv) => {")

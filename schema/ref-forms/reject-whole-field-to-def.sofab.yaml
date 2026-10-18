@@ -1,0 +1,10 @@
+# form: a whole field that is $ref to a whole $defs struct (not to a field)
+# expect: reject missing required key
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+messages:
+  probe:
+    payload:
+      p: { $ref: '#/$defs/struct/Vec2' }

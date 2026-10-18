@@ -1,0 +1,11 @@
+# form: a bitfield body that is $ref to a $defs enum
+# Refused for its SHAPE (an enum constant is no flag mapping), not by a category check: G-0050.
+# expect: reject bitfield flag must be a mapping
+version: 1
+$defs:
+  enum:
+    Hue: { R: 0, G: 1, B: 2 }
+messages:
+  probe:
+    payload:
+      f: { id: 1, type: bitfield, bits: { $ref: '#/$defs/enum/Hue' } }

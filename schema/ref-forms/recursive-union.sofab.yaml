@@ -1,0 +1,19 @@
+# form: a $defs union with an option that refers back to the union (an expression tree)
+# MESSAGE_SPEC §6 names recursion via $ref to a $defs struct/union; termination: `lit` is default_id.
+# sofabgen refuses every cycle with `circular $ref`.
+# known: G-0049
+# expect: accept
+version: 1
+$defs:
+  struct:
+    Pair:
+      l: { id: 0, type: union, oneof: { $ref: '#/$defs/union/Expr' } }
+      r: { id: 1, type: union, oneof: { $ref: '#/$defs/union/Expr' } }
+  union:
+    Expr:
+      lit: { id: 0, type: i32 }
+      add: { id: 1, type: struct, fields: { $ref: '#/$defs/struct/Pair' } }
+messages:
+  probe:
+    payload:
+      e: { id: 1, type: union, oneof: { $ref: '#/$defs/union/Expr' } }

@@ -1,0 +1,18 @@
+# form: an array with a declared default whose enum element is $ref to a $defs enum
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  enum:
+    Hue: { R: 0, G: 1, B: 2 }
+messages:
+  probe:
+    payload:
+      cs: { id: 1, type: array, default: [1, 2], items: { type: enum, count: 4, enum: { $ref: '#/$defs/enum/Hue' } } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      cs: { id: 1, type: array, default: [1, 2], items: { type: enum, count: 4, enum: { R: 0, G: 1, B: 2 } } }

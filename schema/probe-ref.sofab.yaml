@@ -1,0 +1,119 @@
+# Crucible $ref probe (crucible#212) — every way a schema can use `$ref`, in ONE message the
+# whole roster builds. Its twin schema/probe-ref-inline.sofab.yaml is the same message with
+# every `$ref` written out: the two are the same wire format, so every driver must answer
+# every input identically under both (scripts/run-ref.sh). Keyed `probe`, one message, as the
+# schema-agnostic round-trip drivers need.
+#
+# What sharing a type through `$ref` can get wrong is a property that belongs to the SITE, not
+# to the shared type: a union's default_id (the def is split per effective default_id), an
+# enum's default, an array's count. Each is used at two or more sites with different values,
+# so a backend that keys it on the shared type gets one site wrong — and the inline twin, with
+# one type per site, cannot.
+#
+# Forms not here because they cannot be built or are refused: recursion (MESSAGE_SPEC §5.4;
+# sofabgen refuses every cycle, G-0049) and the rejected spellings — see schema/ref-forms/,
+# which also holds each form below as its own minimal pair for the codegen comparison.
+version: 1
+$defs:
+  struct:
+    Vec2:  { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+    # an alias def: a def that is only a $ref to another
+    Vec2Alias: { $ref: '#/$defs/struct/Vec2' }
+    # a chain of defs, three deep
+    Outer:  { mid: { id: 0, type: struct, fields: { $ref: '#/$defs/struct/Middle' } }, n: { id: 1, type: u8 } }
+    Middle: { inn: { id: 0, type: struct, fields: { $ref: '#/$defs/struct/Inner' } } }
+    Inner:  { v: { id: 0, type: u8, default: 3 } }
+    # a def holding $ref'd members of every other category; Tiny here has default_id 1
+    Record:
+      c: { id: 0, type: enum, enum: { $ref: '#/$defs/enum/Hue' }, default: 1 }
+      f: { id: 1, type: bitfield, bits: { $ref: '#/$defs/bitfield/Mode' } }
+      u: { id: 2, type: union, default_id: 1, oneof: { $ref: '#/$defs/union/Tiny' } }
+    # a def holding an INLINE struct (its type is named after the def, not the site)
+    Crate: { inner: { id: 0, type: struct, fields: { z: { id: 0, type: u8 } } }, w: { id: 1, type: u16 } }
+    # the source of two whole-field copies (ids 19, 20 travel with them); used as no type
+    Knobs:
+      level: { id: 19, type: u8, default: 4 }
+      lit:   { id: 20, type: boolean, default: true }
+    # never referenced: must change nothing
+    Unused: { k: { id: 0, type: u8 } }
+    # the payload itself
+    Body:
+      tag:  { id: 0, type: u8 }
+      # one struct def at many sites: two fields, array element, nested array element, union option
+      a:    { id: 1, type: struct, fields: { $ref: '#/$defs/struct/Vec2' } }
+      b:    { id: 2, type: struct, fields: { $ref: '#/$defs/struct/Vec2' } }
+      # one enum def at five sites with three defaults (0, 2 here; 1 in Record; 2 in opt; 0 in cs)
+      c0:   { id: 3, type: enum, enum: { $ref: '#/$defs/enum/Hue' } }
+      c2:   { id: 4, type: enum, enum: { $ref: '#/$defs/enum/Hue' }, default: 2 }
+      f:    { id: 5, type: bitfield, bits: { $ref: '#/$defs/bitfield/Mode' } }
+      # one union def at four sites with three effective default_ids: 0, 1, omitted (= 0), 2
+      u0:   { id: 6, type: union, default_id: 0, oneof: { $ref: '#/$defs/union/Shape' } }
+      u1:   { id: 7, type: union, default_id: 1, oneof: { $ref: '#/$defs/union/Shape' } }
+      un:   { id: 8, type: union, oneof: { $ref: '#/$defs/union/Shape' } }
+      # array elements of every category; count stays on items, per site
+      pts:  { id: 9,  type: array, items: { type: struct, count: 3, fields: { $ref: '#/$defs/struct/Vec2' } } }
+      cs:   { id: 10, type: array, items: { type: enum, count: 4, enum: { $ref: '#/$defs/enum/Hue' } } }
+      fs:   { id: 11, type: array, items: { type: bitfield, count: 2, bits: { $ref: '#/$defs/bitfield/Mode' } } }
+      us:   { id: 12, type: array, items: { type: union, count: 2, default_id: 2, oneof: { $ref: '#/$defs/union/Shape' } } }
+      grid: { id: 13, type: array, items: { type: array, count: 2, items: { type: struct, count: 2, fields: { $ref: '#/$defs/struct/Vec2' } } } }
+      chain: { id: 14, type: struct, fields: { $ref: '#/$defs/struct/Outer' } }
+      al:   { id: 15, type: struct, fields: { $ref: '#/$defs/struct/Vec2Alias' } }
+      # an inline union whose options are $ref'd bodies of every category
+      opt:
+        id: 16
+        type: union
+        default_id: 1
+        oneof:
+          p: { id: 0, type: struct, fields: { $ref: '#/$defs/struct/Vec2' } }
+          c: { id: 1, type: enum, enum: { $ref: '#/$defs/enum/Hue' }, default: 2 }
+          f: { id: 2, type: bitfield, bits: { $ref: '#/$defs/bitfield/Mode' } }
+          m: { id: 3, type: union, default_id: 0, oneof: { $ref: '#/$defs/union/Tiny' } }
+      rec:   { id: 17, type: struct, fields: { $ref: '#/$defs/struct/Record' } }
+      crate: { id: 18, type: struct, fields: { $ref: '#/$defs/struct/Crate' } }
+      # whole-field copies
+      level: { $ref: '#/$defs/struct/Knobs/level' }
+      power: { $ref: '#/$defs/struct/Knobs/lit' }
+      # a def from another file; Far refers to a def of its own file and to a third file
+      far:   { id: 21, type: struct, fields: { $ref: 'probe-ref.defs.yaml#/$defs/struct/Far' } }
+      # a second array site per element def, each with its own count (and default_id)
+      cs2:  { id: 22, type: array, items: { type: enum, count: 2, enum: { $ref: '#/$defs/enum/Hue' } } }
+      fs2:  { id: 23, type: array, items: { type: bitfield, count: 3, bits: { $ref: '#/$defs/bitfield/Mode' } } }
+      us2:  { id: 24, type: array, items: { type: union, count: 3, default_id: 0, oneof: { $ref: '#/$defs/union/Shape' } } }
+      # a $defs union built from $refs, split by default_id at two sites (omitted = 0 = p, and 1 = c)
+      mx0:  { id: 25, type: union, oneof: { $ref: '#/$defs/union/Mixed' } }
+      mx1:  { id: 26, type: union, default_id: 1, oneof: { $ref: '#/$defs/union/Mixed' } }
+      # a union alias def
+      ta:   { id: 27, type: union, default_id: 1, oneof: { $ref: '#/$defs/union/TinyAlias' } }
+      # whole-field copies of a union field (default_id travels along) and of a union option
+      hu:   { $ref: '#/$defs/struct/Holder/u' }
+      wc:   { $ref: '#/$defs/union/WithC/c' }
+      # an array with a declared default whose element is a $ref'd enum
+      cd:   { id: 30, type: array, default: [1, 2], items: { type: enum, count: 4, enum: { $ref: '#/$defs/enum/Hue' } } }
+      # the third file's def directly too (it is reached through Far as well: one type)
+      deep: { id: 31, type: struct, fields: { $ref: 'probe-ref-deep.defs.yaml#/$defs/struct/Deep' } }
+      # a union from another file
+      xu:   { id: 32, type: union, default_id: 1, oneof: { $ref: 'probe-ref.defs.yaml#/$defs/union/Pair' } }
+    # the source of the `hu` copy (id 28 travels with it); used as no type
+    Holder: { u: { id: 28, type: union, default_id: 1, oneof: { $ref: '#/$defs/union/Tiny' } } }
+  enum:
+    Hue: { R: 0, G: 1, B: 2 }
+  bitfield:
+    Mode: { r: { pos: 0 }, w: { pos: 1, default: true }, x: { pos: 2 } }
+  union:
+    Shape:
+      num:  { id: 0, type: u16, default: 5 }
+      name: { id: 1, type: string, maxlen: 4 }
+      pt:   { id: 2, type: struct, fields: { x: { id: 0, type: i32, default: 7 } } }
+    Tiny: { a: { id: 0, type: u8 }, b: { id: 1, type: u32, default: 4 } }
+    TinyAlias: { $ref: '#/$defs/union/Tiny' }
+    # options that are $refs of three categories; Tiny here has default_id 1
+    Mixed:
+      p: { id: 0, type: struct, fields: { $ref: '#/$defs/struct/Vec2' } }
+      c: { id: 1, type: enum, enum: { $ref: '#/$defs/enum/Hue' }, default: 2 }
+      t: { id: 2, type: union, default_id: 1, oneof: { $ref: '#/$defs/union/Tiny' } }
+    # the source of the `wc` copy: option c (id 29, default 1) travels as a plain field
+    WithC: { a: { id: 0, type: u8 }, c: { id: 29, type: enum, enum: { $ref: '#/$defs/enum/Hue' }, default: 1 } }
+messages:
+  probe:
+    summary: Every $ref form the generator accepts, in one message (crucible#212).
+    payload: { $ref: '#/$defs/struct/Body' }

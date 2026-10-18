@@ -1,0 +1,7 @@
+# form: a cross-file whole-field $ref (only whole definitions cross files)
+# expect: reject shared.defs.yaml
+version: 1
+messages:
+  probe:
+    payload:
+      x: { $ref: 'shared.defs.yaml#/$defs/struct/Vec2/x' }

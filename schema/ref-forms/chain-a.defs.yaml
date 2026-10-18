@@ -1,0 +1,7 @@
+# Imported by cross-file-chain.sofab.yaml: a def that refers to a def of its own file AND to one
+# of chain-b.defs.yaml (resolved relative to THIS file). Not a form (no `# expect:` line).
+version: 1
+$defs:
+  struct:
+    Far:  { q: { id: 0, type: struct, fields: { $ref: '#/$defs/struct/Near' } }, r: { id: 1, type: struct, fields: { $ref: 'chain-b.defs.yaml#/$defs/struct/Deep' } } }
+    Near: { z: { id: 0, type: u8, default: 2 } }

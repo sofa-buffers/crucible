@@ -1,0 +1,18 @@
+# form: an array whose struct element is $ref to a $defs struct (count stays on items)
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+messages:
+  probe:
+    payload:
+      pts: { id: 1, type: array, items: { type: struct, count: 3, fields: { $ref: '#/$defs/struct/Vec2' } } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      pts: { id: 1, type: array, items: { type: struct, count: 3, fields: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } } } }

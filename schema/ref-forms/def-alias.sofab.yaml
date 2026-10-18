@@ -1,0 +1,19 @@
+# form: a $defs struct that is itself only a $ref to another def (an alias)
+# expect: equivalent
+#
+# Document 1 uses $ref; document 2 is the same message with every $ref written out.
+version: 1
+$defs:
+  struct:
+    Vec2: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } }
+    Vec2Alias: { $ref: '#/$defs/struct/Vec2' }
+messages:
+  probe:
+    payload:
+      a: { id: 1, type: struct, fields: { $ref: '#/$defs/struct/Vec2Alias' } }
+---
+version: 1
+messages:
+  probe:
+    payload:
+      a: { id: 1, type: struct, fields: { x: { id: 0, type: i32, default: 7 }, y: { id: 1, type: i32 } } }
